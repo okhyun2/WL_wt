@@ -1,0 +1,4 @@
+../Core/Src/app_error.c:16:6:App_ErrorInit	1
+../Core/Src/app_error.c:23:6:App_ErrorRecord	1
+../Core/Src/app_error.c:30:25:App_ErrorGetLast	1
+../Core/Src/app_error.c:35:6:App_ErrorTrap	1
