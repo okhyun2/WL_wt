@@ -60,8 +60,8 @@ all: main-build
 main-build: STM32L073RZT6.elf secondary-outputs
 
 # Tool invocations
-STM32L073RZT6.elf STM32L073RZT6.map: $(OBJS) $(USER_OBJS) C:\BMTech\Project\Biz_WaterLink\3_DevelopStep\Source\fw_model_d\Source\STM32L073RZTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "STM32L073RZT6.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0plus -T"C:\BMTech\Project\Biz_WaterLink\3_DevelopStep\Source\fw_model_d\Source\STM32L073RZTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32L073RZT6.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+STM32L073RZT6.elf STM32L073RZT6.map: $(OBJS) $(USER_OBJS) C:\BMTech\Project\Biz_WaterLink\3_DevelopStep\Source\WL_wt\Source\STM32L073RZTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "STM32L073RZT6.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0plus -T"C:\BMTech\Project\Biz_WaterLink\3_DevelopStep\Source\WL_wt\Source\STM32L073RZTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32L073RZT6.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
