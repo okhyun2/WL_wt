@@ -77,6 +77,8 @@ void Error_Handler(void);
 #define Meter_RX_GPIO_Port GPIOA
 #define NFC_ED_Pin GPIO_PIN_4
 #define NFC_ED_GPIO_Port GPIOA
+#define DEBUG_Pin GPIO_PIN_5
+#define DEBUG_GPIO_Port GPIOA
 #define Piezo_PWM_Pin GPIO_PIN_7
 #define Piezo_PWM_GPIO_Port GPIOA
 #define NFC_SCL_Pin GPIO_PIN_10

@@ -1,9 +1,10 @@
 ../Core/Inc/app_hw.h:59:20:App_HwSetNbiotEnable	1
 ../Core/Inc/app_hw.h:69:20:App_HwSetNbiotReset	1
 ../Core/Inc/app_hw.h:79:20:App_HwSetChargeBoot0	1
-../Core/Src/app_system.c:25:20:App_SystemValidateHandles	12
-../Core/Src/app_system.c:50:13:App_SystemApplySafeOutputs	1
-../Core/Src/app_system.c:57:13:App_SystemInit	4
-../Core/Src/app_system.c:91:6:App_SystemProcess	2
-../Core/Src/app_system.c:104:27:App_SystemGetContext	1
-../Core/Src/app_system.c:109:13:App_SystemGetVersionString	1
+../Core/Src/app_system.c:27:20:App_SystemValidateHandles	12
+../Core/Src/app_system.c:52:13:App_SystemApplySafeOutputs	1
+../Core/Src/app_system.c:64:20:App_SystemPrintBootLogs	7
+../Core/Src/app_system.c:94:13:App_SystemInit	6
+../Core/Src/app_system.c:143:6:App_SystemProcess	3
+../Core/Src/app_system.c:166:27:App_SystemGetContext	1
+../Core/Src/app_system.c:171:13:App_SystemGetVersionString	1

@@ -4,7 +4,9 @@
 
 #include "app_build_config.h"
 #include "app_clock.h"
+#include "app_debug.h"
 #include "app_hw.h"
+#include "app_log.h"
 
 /**
  * @file    app_system.c
@@ -15,7 +17,7 @@
 static AppSystemContext_t g_appSystemContext;
 
 /** @brief Static firmware version string. */
-static const char g_appVersionString[] = "0.2.0";
+static const char g_appVersionString[] = "0.3.0";
 
 /**
  * @brief Validate CubeMX-generated peripheral bindings.
@@ -54,6 +56,41 @@ static void App_SystemApplySafeOutputs(void)
     App_HwSetChargeBoot0(GPIO_PIN_RESET);
 }
 
+/**
+ * @brief Print boot banner and baseline status logs.
+ *
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+static AppStatus_t App_SystemPrintBootLogs(void)
+{
+    const AppClockContext_t *p_clockContext;
+
+    p_clockContext = App_ClockGetContext();
+
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteString(APP_DEBUG_CONSOLE_BANNER APP_DEBUG_CONSOLE_EOL) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(App_LogInit() == APP_STATUS_OK, APP_STATUS_LOG_INIT_FAILED);
+
+    g_appSystemContext.logReady = APP_TRUE;
+    g_appSystemContext.bootStage = APP_BOOT_STAGE_LOG_READY;
+
+    APP_RETURN_IF_FALSE(APP_LOGI("SYS", "Boot complete: %s v%s", APP_NAME_STRING, App_SystemGetVersionString()) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("SYS", "Clock SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu LSI=%u",
+                                 (unsigned long)p_clockContext->sysclkHz,
+                                 (unsigned long)p_clockContext->hclkHz,
+                                 (unsigned long)p_clockContext->pclk1Hz,
+                                 (unsigned long)p_clockContext->pclk2Hz,
+                                 (unsigned long)p_clockContext->msiRange,
+                                 (unsigned int)p_clockContext->lsiReady) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud", (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsolePrintPrompt() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+    return APP_STATUS_OK;
+}
+
 AppStatus_t App_SystemInit(void)
 {
     AppStatus_t status;
@@ -82,6 +119,21 @@ AppStatus_t App_SystemInit(void)
 
     App_SystemApplySafeOutputs();
 
+    status = App_DebugConsoleInit();
+    if (status != APP_STATUS_OK)
+    {
+        return APP_STATUS_DEBUG_INIT_FAILED;
+    }
+
+    g_appSystemContext.debugReady = APP_TRUE;
+    g_appSystemContext.bootStage = APP_BOOT_STAGE_DEBUG_READY;
+
+    status = App_SystemPrintBootLogs();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
     g_appSystemContext.initialized = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
 
@@ -90,13 +142,23 @@ AppStatus_t App_SystemInit(void)
 
 void App_SystemProcess(void)
 {
+    AppStatus_t status;
+
     if (g_appSystemContext.initialized != APP_TRUE)
     {
         App_ErrorRecord(APP_STATUS_NOT_INITIALIZED, __FILE__, __LINE__);
         App_ErrorTrap();
     }
 
+    status = App_DebugConsoleProcess();
+    if (status != APP_STATUS_OK)
+    {
+        App_ErrorRecord(status, __FILE__, __LINE__);
+    }
+
     g_appSystemContext.loopCounter++;
+
+    HAL_IWDG_Refresh(&hiwdg);
 
     HAL_Delay(APP_SUPERLOOP_IDLE_DELAY_MS);
 }

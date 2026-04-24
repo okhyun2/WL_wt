@@ -21,6 +21,8 @@ typedef enum
     APP_BOOT_STAGE_HAL_READY,
     APP_BOOT_STAGE_CLOCK_READY,
     APP_BOOT_STAGE_PERIPH_READY,
+    APP_BOOT_STAGE_DEBUG_READY,
+    APP_BOOT_STAGE_LOG_READY,
     APP_BOOT_STAGE_APP_READY
 } AppBootStage_t;
 
@@ -30,6 +32,8 @@ typedef enum
 typedef struct
 {
     uint8_t initialized;
+    uint8_t debugReady;
+    uint8_t logReady;
     AppBootStage_t bootStage;
     uint32_t bootSysClockHz;
     uint32_t loopCounter;

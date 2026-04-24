@@ -64,4 +64,5 @@ dkms.conf
 .settins/
 Debug/
 Release/
+.settins/
 

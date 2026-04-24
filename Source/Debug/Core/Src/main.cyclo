@@ -12,4 +12,4 @@
 ../Core/Src/main.c:575:13:MX_TIM3_Init	6
 ../Core/Src/main.c:634:13:MX_TIM22_Init	6
 ../Core/Src/main.c:693:13:MX_GPIO_Init	1
-../Core/Src/main.c:754:6:Error_Handler	1
+../Core/Src/main.c:762:6:Error_Handler	1

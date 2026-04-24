@@ -708,12 +708,20 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin, GPIO_PIN_SET);
+#ifdef MY_DEBUG
+  HAL_GPIO_WritePin(DEBUG_GPIO_Port, DEBUG_Pin, GPIO_PIN_SET);
+  GPIO_InitStruct.Pin = DEBUG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+#endif
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(Charge_BOOT0_GPIO_Port, Charge_BOOT0_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : NBIoT_EN_Pin NBIoT_RST_Pin */
-  GPIO_InitStruct.Pin = NBIoT_EN_Pin|NBIoT_RST_Pin;
+  GPIO_InitStruct.Pin = NBIoT_EN_Pin|NBIoT_RST_Pin|DEBUG_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
