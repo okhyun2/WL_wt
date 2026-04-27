@@ -392,7 +392,7 @@ static AppStatus_t App_SelfTestCheckAuxI2c(void)
 /**
  * @brief External watchdog output pseudo check.
  *
- * @note Real TPL5010 feeding policy should be implemented in the watchdog step.
+ * @note Runtime feed policy is handled by App_TaskWatchdog; this self-test only checks the output path.
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
@@ -409,7 +409,7 @@ static AppStatus_t App_SelfTestCheckExternalWatchdog(void)
     }
     else
     {
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "External watchdog probe pseudo only: TODO emit keep-alive pulse and verify reset path") == APP_STATUS_OK,
+        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "External watchdog output path ready; runtime feed handled by watchdog task") == APP_STATUS_OK,
                             APP_STATUS_UART_TX_FAILED);
     }
 

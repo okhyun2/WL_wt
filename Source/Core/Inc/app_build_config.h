@@ -101,6 +101,11 @@ extern "C" {
 #define APP_SCHEDULER_TASK_RTC_PERIOD_MS            (1000u)
 #define APP_SCHEDULER_TASK_MAIN_PERIOD_MS           (100u)
 
+#define APP_WATCHDOG_IWDG_REFRESH_MIN_INTERVAL_MS  (250u)
+#define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS        (50u)
+#define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT    (50u)
+#define APP_WATCHDOG_EXTERNAL_FEED_BOOT_PRIME_CNT  (1u)
+
 #define APP_MSGQ_DEPTH                              (48u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)
 #define APP_MSGQ_MAIN_DRAIN_PER_RUN                 (12u)

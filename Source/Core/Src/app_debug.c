@@ -101,6 +101,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     const AppErrorRecord_t *p_errorRecord;
     const AppDebugConsoleContext_t *p_debugContext;
     const AppTaskMainSummary_t *p_mainSummary;
+    const AppTaskWatchdogSummary_t *p_watchdogSummary;
     int32_t formattedLength;
 
     if ((p_command == NULL) || (p_command[0] == '\0'))
@@ -113,6 +114,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     p_errorRecord = App_ErrorGetLast();
     p_debugContext = App_DebugConsoleGetContext();
     p_mainSummary = App_TaskMainGetSummary();
+    p_watchdogSummary = App_TaskWatchdogGetSummary();
 
     if (strcmp(p_command, "help") == 0)
     {
@@ -123,6 +125,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("error      : show last error record") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("tasks      : show scheduler and task state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("main       : show main-task decision summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("wdog       : show watchdog service summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("echo on    : enable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("echo off   : disable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         return APP_STATUS_OK;
@@ -197,6 +200,22 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
                                    (unsigned long)p_mainSummary->staleCount,
                                    (unsigned long)p_mainSummary->processedMessageCount,
                                    (unsigned long)p_mainSummary->lastEvaluationTickMs);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (strcmp(p_command, "wdog") == 0)
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "wdog init=%u ok=%u iwdg=%lu ext=%lu last=%lu ext_last=%lu status=%lu",
+                                   (unsigned int)p_watchdogSummary->initialized,
+                                   (unsigned int)p_watchdogSummary->lastServiceOk,
+                                   (unsigned long)p_watchdogSummary->iwdgRefreshCount,
+                                   (unsigned long)p_watchdogSummary->externalFeedCount,
+                                   (unsigned long)p_watchdogSummary->lastServiceTickMs,
+                                   (unsigned long)p_watchdogSummary->lastExternalFeedTickMs,
+                                   (unsigned long)p_watchdogSummary->lastStatus);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
     }

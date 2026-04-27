@@ -129,6 +129,11 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud",
                                  (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("WDOG", "IWDG ready reload=%lu ext_pulse=%lu ms prime=%u",
+                                 (unsigned long)APP_IWDG_HANDLE->Init.Reload,
+                                 (unsigned long)APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS,
+                                 (unsigned int)APP_WATCHDOG_EXTERNAL_FEED_BOOT_PRIME_CNT) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(App_DebugConsolePrintPrompt() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 #ifdef DEBUG
     APP_RETURN_IF_FALSE(APP_LOGD("SYS", "Boot path complete: clock/log/debug ready") == APP_STATUS_OK,

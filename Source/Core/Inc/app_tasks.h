@@ -80,6 +80,19 @@ extern "C" {
         uint32_t lastEvaluationTickMs;
     } AppTaskMainSummary_t;
 
+    typedef struct
+    {
+        uint8_t initialized;
+        uint8_t externalFeedEnabled;
+        uint8_t lastServiceOk;
+        uint32_t iwdgRefreshCount;
+        uint32_t externalFeedCount;
+        uint32_t lastIwdgRefreshTickMs;
+        uint32_t lastExternalFeedTickMs;
+        uint32_t lastServiceTickMs;
+        AppStatus_t lastStatus;
+    } AppTaskWatchdogSummary_t;
+
     AppStatus_t App_TasksInit(void);
     AppStatus_t App_TasksRegisterAll(void);
     const AppTasksContext_t *App_TasksGetContext(void);
@@ -96,6 +109,7 @@ AppStatus_t App_TasksDebugStateTransition(const AppTaskModuleContext_t *p_module
     const AppTaskMainSummary_t *App_TaskMainGetSummary(void);
     AppTaskMainDecision_t App_TaskMainGetDecision(void);
     const char *App_TaskMainGetDecisionString(void);
+    const AppTaskWatchdogSummary_t *App_TaskWatchdogGetSummary(void);
 
 #ifdef DEBUG
 #define APP_TASK_SET_STATE(p_module, next_state)                                                       \

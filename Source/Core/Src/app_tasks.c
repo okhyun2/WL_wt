@@ -42,7 +42,13 @@ const char *App_TasksGetStateName(AppTaskId_t id, uint8_t state)
             return (state == APP_TASK_DEBUG_STATE_INIT) ? "INIT" : "POLL";
 
         case APP_TASK_ID_WATCHDOG:
-            return (state == APP_TASK_WATCHDOG_STATE_INIT) ? "INIT" : "REFRESH";
+            switch (state)
+            {
+                case APP_TASK_WATCHDOG_STATE_INIT: return "INIT";
+                case APP_TASK_WATCHDOG_STATE_SERVICE_IWDG: return "SERVICE_IWDG";
+                case APP_TASK_WATCHDOG_STATE_FEED_EXTERNAL: return "FEED_EXTERNAL";
+                default: return "UNKNOWN";
+            }
 
         case APP_TASK_ID_HOUSEKEEPING:
             switch (state)

@@ -15,7 +15,8 @@ extern "C" {
  * Watchdog Task
  * ========================================================================= */
 #define APP_TASK_WATCHDOG_STATE_INIT              (0u)
-#define APP_TASK_WATCHDOG_STATE_REFRESH           (1u)
+#define APP_TASK_WATCHDOG_STATE_SERVICE_IWDG      (1u)
+#define APP_TASK_WATCHDOG_STATE_FEED_EXTERNAL     (2u)
 
 /* =========================================================================
  * Housekeeping Task
