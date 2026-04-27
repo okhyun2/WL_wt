@@ -143,13 +143,16 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "boot=%lu loop=%lu idle=%lu lp=%s stop_req=%u stop=%lu sleep=%lu wake=%s",
+                                   "boot=%lu loop=%lu idle=%lu lp=%s stop_req=%u qual=%u cand=%lu stop=%lu dry=%lu sleep=%lu wake=%s",
                                    (unsigned long)p_systemContext->bootStage,
                                    (unsigned long)p_systemContext->loopCounter,
                                    (unsigned long)p_systemContext->idleCounter,
                                    App_SystemGetLowPowerModeString(),
                                    (unsigned int)p_systemContext->stopRequested,
+                                   (unsigned int)p_systemContext->stopQualificationCount,
+                                   (unsigned long)p_systemContext->stopCandidateCount,
                                    (unsigned long)p_systemContext->stopEntryCount,
+                                   (unsigned long)p_systemContext->stopDryRunCount,
                                    (unsigned long)p_systemContext->sleepEntryCount,
                                    App_SystemGetWakeSourceString());
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
@@ -225,12 +228,16 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "lp=%s stop_req=%u stop=%lu sleep=%lu wake=%s last_wake=%lu",
+                                   "lp=%s stop_req=%u qual=%u cand=%lu stop=%lu dry=%lu sleep=%lu wake=%s req_tick=%lu wake_tick=%lu",
                                    App_SystemGetLowPowerModeString(),
                                    (unsigned int)p_systemContext->stopRequested,
+                                   (unsigned int)p_systemContext->stopQualificationCount,
+                                   (unsigned long)p_systemContext->stopCandidateCount,
                                    (unsigned long)p_systemContext->stopEntryCount,
+                                   (unsigned long)p_systemContext->stopDryRunCount,
                                    (unsigned long)p_systemContext->sleepEntryCount,
                                    App_SystemGetWakeSourceString(),
+                                   (unsigned long)p_systemContext->lastStopRequestTickMs,
                                    (unsigned long)p_systemContext->lastWakeTickMs);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);

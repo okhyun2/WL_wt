@@ -66,6 +66,11 @@ static const char *App_SystemBuildWakeSourceString(uint32_t wakeMask)
         APP_SYSTEM_APPEND_WAKE("RTC");
     }
 
+    if ((wakeMask & APP_SYSTEM_WAKE_SRC_DEBUG_DRYRUN) != 0u)
+    {
+        APP_SYSTEM_APPEND_WAKE("DEBUG_DRYRUN");
+    }
+
     if ((wakeMask & APP_SYSTEM_WAKE_SRC_UNKNOWN) != 0u)
     {
         APP_SYSTEM_APPEND_WAKE("UNKNOWN");
@@ -87,6 +92,18 @@ static uint8_t App_SystemCanDebugLog(void)
             (p_logContext->initialized == APP_TRUE)) ? APP_TRUE : APP_FALSE;
 }
 #endif
+
+static void App_SystemResetStopQualification(void)
+{
+    g_appSystemContext.stopQualificationCount = 0u;
+}
+
+static AppStatus_t App_SystemRefreshIwdgBeforeStop(void)
+{
+    APP_RETURN_IF_FALSE(APP_IWDG_HANDLE->Instance == IWDG, APP_STATUS_HW_HANDLE_INVALID);
+    APP_RETURN_IF_HAL_ERROR(HAL_IWDG_Refresh(APP_IWDG_HANDLE), APP_STATUS_INIT_FAILED);
+    return APP_STATUS_OK;
+}
 
 const char *App_SystemGetLowPowerModeString(void)
 {
@@ -118,7 +135,8 @@ void App_SystemNotifyWakeSource(uint32_t sourceMask)
 
     g_appSystemContext.wakeSourceMask |= sourceMask;
     g_appSystemContext.lastWakeTickMs = HAL_GetTick();
-
+    g_appSystemContext.stopRequested = APP_FALSE;
+    App_SystemResetStopQualification();
 #ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
@@ -381,7 +399,15 @@ static AppStatus_t App_SystemEnterStopMode(void)
 {
     AppStatus_t status;
 
+    g_appSystemContext.stopCandidateCount++;
+
     status = App_SystemPrepareForStop();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    status = App_SystemRefreshIwdgBeforeStop();
     if (status != APP_STATUS_OK)
     {
         return status;
@@ -395,13 +421,36 @@ static AppStatus_t App_SystemEnterStopMode(void)
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
         (void)APP_LOGD("LP",
-                       "STOP entry: idle=%lu sleep=%lu stop=%lu",
+                       "STOP candidate=%lu qual=%u idle=%lu sleep=%lu stop=%lu dryrun=%u",
+                       (unsigned long)g_appSystemContext.stopCandidateCount,
+                       (unsigned int)g_appSystemContext.stopQualificationCount,
                        (unsigned long)g_appSystemContext.idleCounter,
                        (unsigned long)g_appSystemContext.sleepEntryCount,
-                       (unsigned long)g_appSystemContext.stopEntryCount);
+                       (unsigned long)g_appSystemContext.stopEntryCount,
+                       (unsigned int)APP_LP_STOP_DEBUG_DRY_RUN);
     }
 #endif
 
+#if (APP_LP_STOP_DEBUG_DRY_RUN == APP_TRUE)
+    g_appSystemContext.stopDryRunCount++;
+    App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_DEBUG_DRYRUN);
+    status = App_SystemRecoverFromStop();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+#ifdef DEBUG
+    if (App_SystemCanDebugLog() == APP_TRUE)
+    {
+        (void)APP_LOGW("LP",
+                       "STOP dry-run only: candidate=%lu dryrun=%lu wake=%s",
+                       (unsigned long)g_appSystemContext.stopCandidateCount,
+                       (unsigned long)g_appSystemContext.stopDryRunCount,
+                       App_SystemGetWakeSourceString());
+    }
+#endif
+    return APP_STATUS_OK;
+#else
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
     HAL_SuspendTick();
     HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
@@ -437,6 +486,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
 #endif
 
     return APP_STATUS_OK;
+#endif
 }
 
 static void App_SystemHandleIdle(void)
@@ -445,20 +495,44 @@ static void App_SystemHandleIdle(void)
 
     g_appSystemContext.idleCounter++;
 
-    if ((g_appSystemContext.stopRequested == APP_TRUE) &&
-        (App_TaskMainGetDecision() == APP_TASK_MAIN_DECISION_ALLOW_IDLE))
+    if (g_appSystemContext.stopRequested == APP_TRUE)
     {
-        g_appSystemContext.stopRequested = APP_FALSE;
-        status = App_SystemEnterStopMode();
-        if (status != APP_STATUS_OK)
+        if (g_appSystemContext.stopQualificationCount < 0xFFu)
         {
-            g_appSystemContext.schedulerStatus = status;
-            App_ErrorRecord(status, __FILE__, __LINE__);
-#ifdef DEBUG
-            (void)APP_LOGE("LP", "STOP entry/exit failed: status=%lu", (unsigned long)status);
-#endif
+            g_appSystemContext.stopQualificationCount++;
         }
-        return;
+
+#ifdef DEBUG
+        if (App_SystemCanDebugLog() == APP_TRUE)
+        {
+            (void)APP_LOGD("LP",
+                           "STOP qualify: step=%u/%u decision=%s idle=%lu",
+                           (unsigned int)g_appSystemContext.stopQualificationCount,
+                           (unsigned int)APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT,
+                           App_TaskMainGetDecisionString(),
+                           (unsigned long)g_appSystemContext.idleCounter);
+        }
+#endif
+
+        if (g_appSystemContext.stopQualificationCount >= APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT)
+        {
+            g_appSystemContext.stopRequested = APP_FALSE;
+            App_SystemResetStopQualification();
+            status = App_SystemEnterStopMode();
+            if (status != APP_STATUS_OK)
+            {
+                g_appSystemContext.schedulerStatus = status;
+                App_ErrorRecord(status, __FILE__, __LINE__);
+#ifdef DEBUG
+                (void)APP_LOGE("LP", "STOP entry/exit failed: status=%lu", (unsigned long)status);
+#endif
+            }
+            return;
+        }
+    }
+    else
+    {
+        App_SystemResetStopQualification();
     }
 
 #ifdef DEBUG
@@ -485,7 +559,7 @@ static void App_SystemHandleIdle(void)
                            (unsigned long)g_appSystemContext.lastSleepEntryTickMs);
         }
 #endif
-         __WFI();
+        __WFI();
 #ifdef DEBUG
         if (App_SystemCanDebugLog() == APP_TRUE)
         {
@@ -609,6 +683,7 @@ void App_SystemProcess(void)
     else
     {
         g_appSystemContext.lastLowPowerMode = APP_SYSTEM_LP_MODE_RUN;
+        App_SystemResetStopQualification();
     }
 
     g_appSystemContext.loopCounter++;
@@ -661,7 +736,7 @@ AppStatus_t App_SystemSetNbiotPowered(uint8_t powered)
 }
 
 AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
- {
+{
     uint8_t previousRequest;
 #ifdef DEBUG
     const AppTaskMainSummary_t *p_mainSummary;
@@ -670,19 +745,28 @@ AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
     APP_RETURN_IF_FALSE((allowStop == APP_FALSE) || (allowStop == APP_TRUE), APP_STATUS_INVALID_PARAM);
     previousRequest = g_appSystemContext.stopRequested;
     g_appSystemContext.stopRequested = allowStop;
+    if (allowStop == APP_TRUE)
+    {
+        g_appSystemContext.lastStopRequestTickMs = HAL_GetTick();
+    }
+    else
+    {
+        App_SystemResetStopQualification();
+    }
 #ifdef DEBUG
     p_mainSummary = App_TaskMainGetSummary();
     if ((previousRequest != allowStop) && (App_SystemCanDebugLog() == APP_TRUE))
     {
         (void)APP_LOGD("LP",
-                       "stop_request=%u decision=%s busy=%lu stale=%lu",
+                       "stop_request=%u decision=%s busy=%lu stale=%lu qualify=%u",
                        (unsigned int)allowStop,
                        App_TaskMainGetDecisionString(),
                        (unsigned long)p_mainSummary->busyCount,
-                       (unsigned long)p_mainSummary->staleCount);
+                       (unsigned long)p_mainSummary->staleCount,
+                       (unsigned int)g_appSystemContext.stopQualificationCount);
     }
 #endif
-     return APP_STATUS_OK;
+    return APP_STATUS_OK;
 }
 
 const AppSystemContext_t *App_SystemGetContext(void)

@@ -106,6 +106,13 @@ extern "C" {
 #define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT    (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_BOOT_PRIME_CNT  (1u)
 
+#define APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT         (2u)
+#ifdef DEBUG
+#define APP_LP_STOP_DEBUG_DRY_RUN                  (APP_TRUE)
+#else
+#define APP_LP_STOP_DEBUG_DRY_RUN                  (APP_FALSE)
+#endif
+
 #define APP_MSGQ_DEPTH                              (48u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)
 #define APP_MSGQ_MAIN_DRAIN_PER_RUN                 (12u)

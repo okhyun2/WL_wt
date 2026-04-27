@@ -35,13 +35,14 @@ typedef enum
 
 typedef enum
 {
-    APP_SYSTEM_WAKE_SRC_NONE     = 0x00000000u,
-    APP_SYSTEM_WAKE_SRC_NBIOT_RI = 0x00000001u,
-    APP_SYSTEM_WAKE_SRC_NFC_ED   = 0x00000002u,
-    APP_SYSTEM_WAKE_SRC_REED     = 0x00000004u,
-    APP_SYSTEM_WAKE_SRC_ESI_INT  = 0x00000008u,
-    APP_SYSTEM_WAKE_SRC_RTC      = 0x00000010u,
-    APP_SYSTEM_WAKE_SRC_UNKNOWN  = 0x80000000u
+    APP_SYSTEM_WAKE_SRC_NONE         = 0x00000000u,
+    APP_SYSTEM_WAKE_SRC_NBIOT_RI     = 0x00000001u,
+    APP_SYSTEM_WAKE_SRC_NFC_ED       = 0x00000002u,
+    APP_SYSTEM_WAKE_SRC_REED         = 0x00000004u,
+    APP_SYSTEM_WAKE_SRC_ESI_INT      = 0x00000008u,
+    APP_SYSTEM_WAKE_SRC_RTC          = 0x00000010u,
+    APP_SYSTEM_WAKE_SRC_DEBUG_DRYRUN = 0x40000000u,
+    APP_SYSTEM_WAKE_SRC_UNKNOWN      = 0x80000000u
 } AppSystemWakeSource_t;
 
 typedef struct
@@ -53,6 +54,7 @@ typedef struct
     uint8_t selfTestFailed;
     uint8_t schedulerReady;
     uint8_t stopRequested;
+    uint8_t stopQualificationCount;
     AppBootStage_t bootStage;
     AppStatus_t selfTestStatus;
     AppStatus_t schedulerStatus;
@@ -61,8 +63,11 @@ typedef struct
     uint32_t idleCounter;
     uint32_t sleepEntryCount;
     uint32_t stopEntryCount;
+    uint32_t stopCandidateCount;
+    uint32_t stopDryRunCount;
     uint32_t wakeSourceMask;
     uint32_t lastWakeTickMs;
+    uint32_t lastStopRequestTickMs;
     uint32_t lastSleepEntryTickMs;
     uint32_t lastStopEntryTickMs;
     AppSystemLowPowerMode_t lastLowPowerMode;
