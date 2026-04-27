@@ -12,20 +12,25 @@ extern "C" {
  * @brief   Application-wide build configuration and constant definitions.
  */
 
+/** @brief Boolean style constants for portability. */
+#define APP_FALSE                                   (0u)
+/** @brief Boolean style constants for portability. */
+#define APP_TRUE                                    (1u)
+
 /** @brief Application name string. */
-#define APP_NAME_STRING                     "WaterLink WaterTerminal"
+#define APP_NAME_STRING                             "WaterLink WaterTerminal"
 
 /** @brief Firmware semantic version major. */
 #define APP_FW_VERSION_MAJOR                        (0u)
 /** @brief Firmware semantic version minor. */
-#define APP_FW_VERSION_MINOR                        (4u)
+#define APP_FW_VERSION_MINOR                        (5u)
 /** @brief Firmware semantic version patch. */
 #define APP_FW_VERSION_PATCH                        (0u)
 
-/** @brief Project structure revision for Step 3 peripheral self-test patch. */
-#define APP_PROJECT_LAYOUT_REV                      (4u)
+/** @brief Project structure revision for Step 4 scheduler baseline. */
+#define APP_PROJECT_LAYOUT_REV                      (5u)
 
-/** @brief Cooperative loop idle delay before scheduler is introduced. */
+/** @brief Cooperative loop idle fallback delay before the next scheduler pass. */
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
 
 /** @brief Boot clock target: MSI range 5 = 2.097 MHz nominal. */
@@ -56,7 +61,7 @@ extern "C" {
 /** @brief Console line ending. */
 #define APP_DEBUG_CONSOLE_EOL                       "\r\n"
 /** @brief Console banner string. */
-#define APP_DEBUG_CONSOLE_BANNER            "WaterLink WaterTerminal Debug Console"
+#define APP_DEBUG_CONSOLE_BANNER                    "WaterLink WaterTerminal Debug Console"
 /** @brief Log formatting buffer size. */
 #define APP_LOG_BUFFER_SIZE                         (192u)
 /** @brief Hex dump bytes per line. */
@@ -126,10 +131,20 @@ extern "C" {
 /** @brief Auxiliary device 7-bit I2C address. Set non-zero when known. */
 #define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x00u)
 
-/** @brief Boolean style constants for portability. */
-#define APP_FALSE                                   (0u)
-/** @brief Boolean style constants for portability. */
-#define APP_TRUE                                    (1u)
+/** @brief Maximum number of cooperative tasks. */
+#define APP_SCHEDULER_MAX_TASKS                     (8u)
+/** @brief Dispatch debug console polling every 1 ms. */
+#define APP_SCHEDULER_TASK_DEBUG_PERIOD_MS          (1u)
+/** @brief Refresh watchdog once per second. */
+#define APP_SCHEDULER_TASK_WATCHDOG_PERIOD_MS       (1000u)
+/** @brief Run system housekeeping once per 100 ms. */
+#define APP_SCHEDULER_TASK_HOUSEKEEPING_PERIOD_MS   (100u)
+/** @brief Allow immediate dispatch after task registration. */
+#define APP_SCHEDULER_RUN_IMMEDIATE                 (APP_TRUE)
+/** @brief Enable WFI during idle instead of simple delay. */
+#define APP_SCHEDULER_USE_WFI_IDLE                  (APP_TRUE)
+/** @brief Fallback idle delay when WFI idle is disabled. */
+#define APP_SCHEDULER_IDLE_DELAY_MS                 (1u)
 
 #if !defined(STM32L073xx)
 #error "This project requires STM32L073xx device support."

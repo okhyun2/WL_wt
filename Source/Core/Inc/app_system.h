@@ -25,6 +25,7 @@ typedef enum
     APP_BOOT_STAGE_DEBUG_READY,
     APP_BOOT_STAGE_LOG_READY,
     APP_BOOT_STAGE_SELFTEST_DONE,
+    APP_BOOT_STAGE_SCHEDULER_READY,
     APP_BOOT_STAGE_APP_READY
 } AppBootStage_t;
 
@@ -38,10 +39,13 @@ typedef struct
     uint8_t logReady;
     uint8_t selfTestCompleted;
     uint8_t selfTestFailed;
+    uint8_t schedulerReady;
     AppBootStage_t bootStage;
     AppStatus_t selfTestStatus;
+    AppStatus_t schedulerStatus;
     uint32_t bootSysClockHz;
     uint32_t loopCounter;
+    uint32_t idleCounter;
 } AppSystemContext_t;
 
 /**
