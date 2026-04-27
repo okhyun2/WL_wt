@@ -45,25 +45,25 @@ AppStatus_t App_TaskNbiot(void *p_context)
     {
         case APP_TASK_NBIOT_STATE_INIT:
             APP_RETURN_IF_FALSE(App_TaskNbiotIf_InitContext() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_NBIOT_STATE_DECIDE_WAKE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_NBIOT_STATE_DECIDE_WAKE);
             break;
 
         case APP_TASK_NBIOT_STATE_DECIDE_WAKE:
             /* PSEUDO: decide upload/config/alarm requirement. */
             p_module->eventPending = APP_FALSE;
-            p_module->state = APP_TASK_NBIOT_STATE_POWER_ON;
+            APP_TASK_SET_STATE(p_module, APP_TASK_NBIOT_STATE_POWER_ON);
             break;
 
         case APP_TASK_NBIOT_STATE_POWER_ON:
             APP_RETURN_IF_FALSE(App_TaskNbiotIf_PowerOn() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_TRUE;
-            p_module->state = APP_TASK_NBIOT_STATE_EXCHANGE_AT;
+            APP_TASK_SET_STATE(p_module, APP_TASK_NBIOT_STATE_EXCHANGE_AT);
             break;
 
         default:
             APP_RETURN_IF_FALSE(App_TaskNbiotIf_RunAtSession() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_FALSE;
-            p_module->state = APP_TASK_NBIOT_STATE_DECIDE_WAKE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_NBIOT_STATE_DECIDE_WAKE);
             break;
     }
 

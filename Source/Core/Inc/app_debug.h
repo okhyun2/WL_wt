@@ -6,7 +6,6 @@ extern "C" {
 #endif
 
 #include "app_build_config.h"
-#include "app_build_config.h"
 #include "app_error.h"
 
 /**

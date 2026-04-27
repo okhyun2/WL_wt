@@ -6,6 +6,8 @@ extern "C" {
 #endif
 
 #include "app_scheduler.h"
+#include "app_log.h"
+#include "app_task_state_defs.h"
 
     typedef enum
     {
@@ -88,11 +90,38 @@ extern "C" {
     AppTaskId_t App_TasksFindIdBySchedulerHandle(AppSchedulerTaskHandle_t handle);
     AppStatus_t App_TasksCompleteRun(AppTaskModuleContext_t *p_module, AppStatus_t status);
     AppStatus_t App_TasksPublishMessage(AppTaskId_t sourceId, uint8_t type, uint32_t param0, uint32_t param1);
+AppStatus_t App_TasksDebugStateTransition(const AppTaskModuleContext_t *p_module, uint8_t nextState, const char *p_file, uint32_t line);
 
     const AppTaskMainMonitor_t *App_TaskMainGetMonitor(AppTaskId_t id);
     const AppTaskMainSummary_t *App_TaskMainGetSummary(void);
     AppTaskMainDecision_t App_TaskMainGetDecision(void);
     const char *App_TaskMainGetDecisionString(void);
+
+#ifdef DEBUG
+#define APP_TASK_SET_STATE(p_module, next_state)                                                       \
+    do                                                                                                 \
+    {                                                                                                  \
+        (void)App_TasksDebugStateTransition((p_module), (uint8_t)(next_state), __FILE__, __LINE__);   \
+        (p_module)->state = (uint8_t)(next_state);                                                     \
+    } while (0)
+
+#define APP_TASK_DEBUG_PRINT(module, fmt, ...)                                                         \
+    do                                                                                                 \
+    {                                                                                                  \
+        (void)APP_LOGD((module), (fmt), ##__VA_ARGS__);                                                \
+    } while (0)
+#else
+#define APP_TASK_SET_STATE(p_module, next_state)                                                       \
+    do                                                                                                 \
+    {                                                                                                  \
+        (p_module)->state = (uint8_t)(next_state);                                                     \
+    } while (0)
+
+#define APP_TASK_DEBUG_PRINT(module, fmt, ...)                                                         \
+    do                                                                                                 \
+    {                                                                                                  \
+    } while (0)
+#endif
 
     AppStatus_t App_TaskDebug(void *p_context);
     AppStatus_t App_TaskWatchdog(void *p_context);

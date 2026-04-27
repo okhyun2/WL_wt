@@ -130,6 +130,10 @@ static AppStatus_t App_SystemPrintBootLogs(void)
                                  (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(App_DebugConsolePrintPrompt() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+#ifdef DEBUG
+    APP_RETURN_IF_FALSE(APP_LOGD("SYS", "Boot path complete: clock/log/debug ready") == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+#endif
 
     return APP_STATUS_OK;
 }
@@ -212,6 +216,9 @@ static void App_SystemHandleIdle(void)
 {
     g_appSystemContext.idleCounter++;
 
+#ifdef DEBUG
+    (void)APP_LOGD("SYS", "Entering idle path: mode=%s", (APP_SCHEDULER_USE_WFI_IDLE == APP_TRUE) ? "WFI" : "delay");
+#endif
     if (APP_SCHEDULER_USE_WFI_IDLE == APP_TRUE)
     {
         __WFI();
@@ -308,6 +315,9 @@ void App_SystemProcess(void)
     if (status != APP_STATUS_OK)
     {
         App_ErrorRecord(status, __FILE__, __LINE__);
+#ifdef DEBUG
+        (void)APP_LOGE("SYS", "Scheduler run failed: status=%lu", (unsigned long)status);
+#endif
     }
 
     p_schedulerContext = App_SchedulerGetContext();

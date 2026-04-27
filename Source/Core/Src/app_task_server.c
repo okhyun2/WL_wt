@@ -41,19 +41,19 @@ AppStatus_t App_TaskServer(void *p_context)
     {
         case APP_TASK_SERVER_STATE_INIT:
             APP_RETURN_IF_FALSE(App_TaskServerIf_InitSession() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_SERVER_STATE_PREPARE_PACKET;
+            APP_TASK_SET_STATE(p_module, APP_TASK_SERVER_STATE_PREPARE_PACKET);
             break;
 
         case APP_TASK_SERVER_STATE_PREPARE_PACKET:
             APP_RETURN_IF_FALSE(App_TaskServerIf_PreparePacket() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->eventPending = APP_FALSE;
-            p_module->state = APP_TASK_SERVER_STATE_REQUEST_SEND;
+            APP_TASK_SET_STATE(p_module, APP_TASK_SERVER_STATE_REQUEST_SEND);
             break;
 
         default:
             APP_RETURN_IF_FALSE(App_TaskServerIf_RequestNbiotSend() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_FALSE;
-            p_module->state = APP_TASK_SERVER_STATE_PREPARE_PACKET;
+            APP_TASK_SET_STATE(p_module, APP_TASK_SERVER_STATE_PREPARE_PACKET);
             break;
     }
 

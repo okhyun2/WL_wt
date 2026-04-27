@@ -44,25 +44,25 @@ AppStatus_t App_TaskMeter(void *p_context)
     {
         case APP_TASK_METER_STATE_INIT:
             APP_RETURN_IF_FALSE(App_TaskMeterIf_InitProtocol() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_METER_STATE_WAIT_TRIGGER;
+            APP_TASK_SET_STATE(p_module, APP_TASK_METER_STATE_WAIT_TRIGGER);
             break;
 
         case APP_TASK_METER_STATE_WAIT_TRIGGER:
             /* PSEUDO: periodic read schedule or pulse/event driven meter request. */
             p_module->eventPending = APP_FALSE;
-            p_module->state = APP_TASK_METER_STATE_SEND_REQUEST;
+            APP_TASK_SET_STATE(p_module, APP_TASK_METER_STATE_SEND_REQUEST);
             break;
 
         case APP_TASK_METER_STATE_SEND_REQUEST:
             APP_RETURN_IF_FALSE(App_TaskMeterIf_SendReadFrame() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_TRUE;
-            p_module->state = APP_TASK_METER_STATE_PARSE_REPLY;
+            APP_TASK_SET_STATE(p_module, APP_TASK_METER_STATE_PARSE_REPLY);
             break;
 
         default:
             APP_RETURN_IF_FALSE(App_TaskMeterIf_ParseReply() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_FALSE;
-            p_module->state = APP_TASK_METER_STATE_WAIT_TRIGGER;
+            APP_TASK_SET_STATE(p_module, APP_TASK_METER_STATE_WAIT_TRIGGER);
             break;
     }
 

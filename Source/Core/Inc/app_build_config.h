@@ -43,6 +43,12 @@ extern "C" {
 #define APP_LOG_HEXDUMP_BYTES_PER_LINE              (16u)
 
 #define APP_BUILD_IS_PRODUCTION                     (APP_FALSE)
+#ifdef DEBUG
+#define APP_BUILD_DEBUG_ENABLED                  (APP_TRUE)
+#else
+#define APP_BUILD_DEBUG_ENABLED                  (APP_FALSE)
+#endif
+
 #define APP_GPIO_LP_DISABLE_SWD_IN_PRODUCTION       (APP_TRUE)
 
 #define APP_SELFTEST_FAIL_STOPS_BOOT                (APP_FALSE)

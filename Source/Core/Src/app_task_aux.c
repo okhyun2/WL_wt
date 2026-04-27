@@ -46,19 +46,19 @@ AppStatus_t App_TaskAux(void *p_context)
     {
         case APP_TASK_AUX_STATE_INIT:
             APP_RETURN_IF_FALSE(App_TaskAuxIf_InitBus() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_AUX_STATE_TRIGGER_MEASURE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_AUX_STATE_TRIGGER_MEASURE);
             break;
 
         case APP_TASK_AUX_STATE_TRIGGER_MEASURE:
             APP_RETURN_IF_FALSE(App_TaskAuxIf_TriggerMeasure() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_TRUE;
-            p_module->state = APP_TASK_AUX_STATE_READ_RESULT;
+            APP_TASK_SET_STATE(p_module, APP_TASK_AUX_STATE_READ_RESULT);
             break;
 
         default:
             APP_RETURN_IF_FALSE(App_TaskAuxIf_ReadResult() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_FALSE;
-            p_module->state = APP_TASK_AUX_STATE_TRIGGER_MEASURE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_AUX_STATE_TRIGGER_MEASURE);
             break;
     }
 

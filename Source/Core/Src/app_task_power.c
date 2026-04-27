@@ -36,19 +36,19 @@ AppStatus_t App_TaskPower(void *p_context)
     {
         case APP_TASK_POWER_STATE_INIT:
             APP_RETURN_IF_FALSE(App_TaskPowerIf_LoadPolicy() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_POWER_STATE_EVALUATE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_POWER_STATE_EVALUATE);
             break;
 
         case APP_TASK_POWER_STATE_EVALUATE:
             APP_RETURN_IF_FALSE(App_TaskPowerIf_EvaluatePowerConditions() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->eventPending = APP_FALSE;
-            p_module->state = APP_TASK_POWER_STATE_DECIDE_IDLE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_POWER_STATE_DECIDE_IDLE);
             break;
 
         default:
             /* PSEUDO: if all modules are quiescent, request low power transition next cycle. */
             p_module->busy = APP_FALSE;
-            p_module->state = APP_TASK_POWER_STATE_EVALUATE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_POWER_STATE_EVALUATE);
             break;
     }
 

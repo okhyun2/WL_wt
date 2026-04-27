@@ -35,19 +35,19 @@ AppStatus_t App_TaskStorage(void *p_context)
     {
         case APP_TASK_STORAGE_STATE_INIT:
             APP_RETURN_IF_FALSE(App_TaskStorageIf_LoadParameterBlocks() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_STORAGE_STATE_SCAN_QUEUE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_STORAGE_STATE_SCAN_QUEUE);
             break;
 
         case APP_TASK_STORAGE_STATE_SCAN_QUEUE:
             /* PSEUDO: inspect save requests from NFC/server/meter/main task. */
             p_module->eventPending = APP_FALSE;
-            p_module->state = APP_TASK_STORAGE_STATE_COMMIT_ONE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_STORAGE_STATE_COMMIT_ONE);
             break;
 
         default:
             APP_RETURN_IF_FALSE(App_TaskStorageIf_CommitOneRecord() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_FALSE;
-            p_module->state = APP_TASK_STORAGE_STATE_SCAN_QUEUE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_STORAGE_STATE_SCAN_QUEUE);
             break;
     }
 

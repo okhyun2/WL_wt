@@ -83,7 +83,7 @@ AppStatus_t App_TaskMain(void *p_context)
             (void)memset(&g_appTaskMainSummary, 0, sizeof(g_appTaskMainSummary));
             g_appTaskMainRequireSafe = APP_FALSE;
             g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_BOOT;
-            p_module->state = APP_TASK_MAIN_STATE_COLLECT;
+            APP_TASK_SET_STATE(p_module, APP_TASK_MAIN_STATE_COLLECT);
             break;
 
         case APP_TASK_MAIN_STATE_COLLECT:
@@ -116,7 +116,7 @@ AppStatus_t App_TaskMain(void *p_context)
 
                 drainedCount++;
             }
-            p_module->state = APP_TASK_MAIN_STATE_EVALUATE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_MAIN_STATE_EVALUATE);
             break;
 
         case APP_TASK_MAIN_STATE_EVALUATE:
@@ -164,7 +164,7 @@ AppStatus_t App_TaskMain(void *p_context)
             g_appTaskMainRequireSafe = requireSafe;
             p_module->busy = (g_appTaskMainSummary.busyCount != 0u) ? APP_TRUE : APP_FALSE;
             p_module->eventPending = anyEvent;
-            p_module->state = APP_TASK_MAIN_STATE_DECIDE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_MAIN_STATE_DECIDE);
             break;
 
         case APP_TASK_MAIN_STATE_DECIDE:
@@ -188,7 +188,16 @@ AppStatus_t App_TaskMain(void *p_context)
             }
 
             p_module->lastActionTickMs = nowTick;
-            p_module->state = APP_TASK_MAIN_STATE_COLLECT;
+#ifdef DEBUG
+            APP_TASK_DEBUG_PRINT("MAIN",
+                                 "decision=%s alive=%lu busy=%lu stale=%lu pending=%u",
+                                 App_TaskMainGetDecisionString(),
+                                 (unsigned long)g_appTaskMainSummary.aliveCount,
+                                 (unsigned long)g_appTaskMainSummary.busyCount,
+                                 (unsigned long)g_appTaskMainSummary.staleCount,
+                                 (unsigned int)p_module->eventPending);
+#endif
+            APP_TASK_SET_STATE(p_module, APP_TASK_MAIN_STATE_COLLECT);
             break;
     }
 

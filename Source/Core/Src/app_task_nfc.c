@@ -34,18 +34,18 @@ AppStatus_t App_TaskNfc(void *p_context)
     {
         case APP_TASK_NFC_STATE_INIT:
             APP_RETURN_IF_FALSE(App_TaskNfcIf_InitSession() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_NFC_STATE_WAIT_EVENT;
+            APP_TASK_SET_STATE(p_module, APP_TASK_NFC_STATE_WAIT_EVENT);
             break;
 
         case APP_TASK_NFC_STATE_WAIT_EVENT:
             p_module->eventPending = (App_HwReadNfcEvent() == GPIO_PIN_SET) ? APP_TRUE : APP_FALSE;
-            p_module->state = APP_TASK_NFC_STATE_EXCHANGE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_NFC_STATE_EXCHANGE);
             break;
 
         default:
             APP_RETURN_IF_FALSE(App_TaskNfcIf_ExchangeBlocks() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_FALSE;
-            p_module->state = APP_TASK_NFC_STATE_WAIT_EVENT;
+            APP_TASK_SET_STATE(p_module, APP_TASK_NFC_STATE_WAIT_EVENT);
             break;
     }
 

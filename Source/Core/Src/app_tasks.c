@@ -39,110 +39,110 @@ const char *App_TasksGetStateName(AppTaskId_t id, uint8_t state)
     switch (id)
     {
         case APP_TASK_ID_DEBUG:
-            return (state == 0u) ? "INIT" : "POLL";
+            return (state == APP_TASK_DEBUG_STATE_INIT) ? "INIT" : "POLL";
 
         case APP_TASK_ID_WATCHDOG:
-            return (state == 0u) ? "INIT" : "REFRESH";
+            return (state == APP_TASK_WATCHDOG_STATE_INIT) ? "INIT" : "REFRESH";
 
         case APP_TASK_ID_HOUSEKEEPING:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "SNAPSHOT";
-                case 2u: return "ROTATE";
+                case APP_TASK_HOUSEKEEPING_STATE_INIT: return "INIT";
+                case APP_TASK_HOUSEKEEPING_STATE_SNAPSHOT: return "SNAPSHOT";
+                case APP_TASK_HOUSEKEEPING_STATE_ROTATE: return "ROTATE";
                 default: return "UNKNOWN";
             }
 
         case APP_TASK_ID_POWER:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "EVALUATE";
-                case 2u: return "DECIDE_IDLE";
+                case APP_TASK_POWER_STATE_INIT: return "INIT";
+                case APP_TASK_POWER_STATE_EVALUATE: return "EVALUATE";
+                case APP_TASK_POWER_STATE_DECIDE_IDLE: return "DECIDE_IDLE";
                 default: return "UNKNOWN";
             }
 
         case APP_TASK_ID_STORAGE:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "SCAN_QUEUE";
-                case 2u: return "COMMIT_ONE";
+                case APP_TASK_STORAGE_STATE_INIT: return "INIT";
+                case APP_TASK_STORAGE_STATE_SCAN_QUEUE: return "SCAN_QUEUE";
+                case APP_TASK_STORAGE_STATE_COMMIT_ONE: return "COMMIT_ONE";
                 default: return "UNKNOWN";
             }
 
         case APP_TASK_ID_METER:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "WAIT_TRIGGER";
-                case 2u: return "SEND_REQUEST";
-                case 3u: return "PARSE_REPLY";
+                case APP_TASK_METER_STATE_INIT: return "INIT";
+                case APP_TASK_METER_STATE_WAIT_TRIGGER: return "WAIT_TRIGGER";
+                case APP_TASK_METER_STATE_SEND_REQUEST: return "SEND_REQUEST";
+                case APP_TASK_METER_STATE_PARSE_REPLY: return "PARSE_REPLY";
                 default: return "UNKNOWN";
             }
 
         case APP_TASK_ID_NFC:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "WAIT_EVENT";
-                case 2u: return "EXCHANGE";
+                case APP_TASK_NFC_STATE_INIT: return "INIT";
+                case APP_TASK_NFC_STATE_WAIT_EVENT: return "WAIT_EVENT";
+                case APP_TASK_NFC_STATE_EXCHANGE: return "EXCHANGE";
                 default: return "UNKNOWN";
             }
 
         case APP_TASK_ID_ESI:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "WAIT_INTERRUPT";
-                case 2u: return "READ_COEFF";
+                case APP_TASK_ESI_STATE_INIT: return "INIT";
+                case APP_TASK_ESI_STATE_WAIT_INTERRUPT: return "WAIT_INTERRUPT";
+                case APP_TASK_ESI_STATE_READ_COEFFICIENT: return "READ_COEFF";
                 default: return "UNKNOWN";
             }
 
         case APP_TASK_ID_AUX:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "TRIGGER_MEASURE";
-                case 2u: return "READ_RESULT";
+                case APP_TASK_AUX_STATE_INIT: return "INIT";
+                case APP_TASK_AUX_STATE_TRIGGER_MEASURE: return "TRIGGER_MEASURE";
+                case APP_TASK_AUX_STATE_READ_RESULT: return "READ_RESULT";
                 default: return "UNKNOWN";
             }
 
         case APP_TASK_ID_NBIOT:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "DECIDE_WAKE";
-                case 2u: return "POWER_ON";
-                case 3u: return "EXCHANGE_AT";
+                case APP_TASK_NBIOT_STATE_INIT: return "INIT";
+                case APP_TASK_NBIOT_STATE_DECIDE_WAKE: return "DECIDE_WAKE";
+                case APP_TASK_NBIOT_STATE_POWER_ON: return "POWER_ON";
+                case APP_TASK_NBIOT_STATE_EXCHANGE_AT: return "EXCHANGE_AT";
                 default: return "UNKNOWN";
             }
 
         case APP_TASK_ID_SERVER:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "PREPARE_PACKET";
-                case 2u: return "REQUEST_SEND";
+                case APP_TASK_SERVER_STATE_INIT: return "INIT";
+                case APP_TASK_SERVER_STATE_PREPARE_PACKET: return "PREPARE_PACKET";
+                case APP_TASK_SERVER_STATE_REQUEST_SEND: return "REQUEST_SEND";
                 default: return "UNKNOWN";
             }
 
         case APP_TASK_ID_RTC:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "CHECK_SCHEDULE";
-                case 2u: return "APPLY_SYNC";
+                case APP_TASK_RTC_STATE_INIT: return "INIT";
+                case APP_TASK_RTC_STATE_CHECK_SCHEDULE: return "CHECK_SCHEDULE";
+                case APP_TASK_RTC_STATE_APPLY_SYNC: return "APPLY_SYNC";
                 default: return "UNKNOWN";
             }
 
         case APP_TASK_ID_MAIN:
             switch (state)
             {
-                case 0u: return "INIT";
-                case 1u: return "COLLECT";
-                case 2u: return "EVALUATE";
-                case 3u: return "DECIDE";
+                case APP_TASK_MAIN_STATE_INIT: return "INIT";
+                case APP_TASK_MAIN_STATE_COLLECT: return "COLLECT";
+                case APP_TASK_MAIN_STATE_EVALUATE: return "EVALUATE";
+                case APP_TASK_MAIN_STATE_DECIDE: return "DECIDE";
                 default: return "UNKNOWN";
             }
 
@@ -164,6 +164,38 @@ AppTaskId_t App_TasksFindIdBySchedulerHandle(AppSchedulerTaskHandle_t handle)
     }
 
     return APP_TASK_ID_COUNT;
+}
+
+
+AppStatus_t App_TasksDebugStateTransition(const AppTaskModuleContext_t *p_module, uint8_t nextState, const char *p_file, uint32_t line)
+{
+#ifdef DEBUG
+    const char *p_oldState;
+    const char *p_newState;
+
+    if (p_module == NULL)
+    {
+        return APP_STATUS_INVALID_PARAM;
+    }
+
+    if (p_module->state != nextState)
+    {
+        p_oldState = App_TasksGetStateName(p_module->id, p_module->state);
+        p_newState = App_TasksGetStateName(p_module->id, nextState);
+        (void)APP_LOGD("TASK", "%s state %s -> %s (%s:%lu)",
+                       (p_module->p_name != NULL) ? p_module->p_name : "unknown",
+                       p_oldState,
+                       p_newState,
+                       (p_file != NULL) ? p_file : "-",
+                       (unsigned long)line);
+    }
+#else
+    (void)p_module;
+    (void)nextState;
+    (void)p_file;
+    (void)line;
+#endif
+    return APP_STATUS_OK;
 }
 
 AppStatus_t App_TasksPublishMessage(AppTaskId_t sourceId, uint8_t type, uint32_t param0, uint32_t param1)
@@ -210,7 +242,22 @@ AppStatus_t App_TasksCompleteRun(AppTaskModuleContext_t *p_module, AppStatus_t s
         {
             p_module->lastHeartbeatTickMs = nowTick;
         }
+#ifdef DEBUG
+        else
+        {
+            (void)APP_LOGW("TASK", "%s heartbeat publish failed", (p_module->p_name != NULL) ? p_module->p_name : "unknown");
+        }
+#endif
     }
+
+#ifdef DEBUG
+    if (status != APP_STATUS_OK)
+    {
+        (void)APP_LOGW("TASK", "%s returned status=%lu",
+                       (p_module->p_name != NULL) ? p_module->p_name : "unknown",
+                       (unsigned long)status);
+    }
+#endif
 
     return status;
 }

@@ -41,18 +41,18 @@ AppStatus_t App_TaskRtc(void *p_context)
     {
         case APP_TASK_RTC_STATE_INIT:
             APP_RETURN_IF_FALSE(App_TaskRtcIf_InitService() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_RTC_STATE_CHECK_SCHEDULE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_RTC_STATE_CHECK_SCHEDULE);
             break;
 
         case APP_TASK_RTC_STATE_CHECK_SCHEDULE:
             APP_RETURN_IF_FALSE(App_TaskRtcIf_CheckSchedule() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_RTC_STATE_APPLY_SYNC;
+            APP_TASK_SET_STATE(p_module, APP_TASK_RTC_STATE_APPLY_SYNC);
             break;
 
         default:
             APP_RETURN_IF_FALSE(App_TaskRtcIf_ApplySync() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_FALSE;
-            p_module->state = APP_TASK_RTC_STATE_CHECK_SCHEDULE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_RTC_STATE_CHECK_SCHEDULE);
             break;
     }
 

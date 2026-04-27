@@ -35,17 +35,17 @@ AppStatus_t App_TaskHousekeeping(void *p_context)
     switch (p_module->state)
     {
         case APP_TASK_HOUSEKEEPING_STATE_INIT:
-            p_module->state = APP_TASK_HOUSEKEEPING_STATE_SNAPSHOT;
+            APP_TASK_SET_STATE(p_module, APP_TASK_HOUSEKEEPING_STATE_SNAPSHOT);
             break;
 
         case APP_TASK_HOUSEKEEPING_STATE_SNAPSHOT:
             APP_RETURN_IF_FALSE(App_TaskHousekeepingIf_SnapshotDiagnostics() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_HOUSEKEEPING_STATE_ROTATE;
+            APP_TASK_SET_STATE(p_module, APP_TASK_HOUSEKEEPING_STATE_ROTATE);
             break;
 
         default:
             APP_RETURN_IF_FALSE(App_TaskHousekeepingIf_RotateDeferredWork() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_HOUSEKEEPING_STATE_SNAPSHOT;
+            APP_TASK_SET_STATE(p_module, APP_TASK_HOUSEKEEPING_STATE_SNAPSHOT);
             break;
     }
 

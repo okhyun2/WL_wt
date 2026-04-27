@@ -20,7 +20,10 @@ AppStatus_t App_TaskDebug(void *p_context)
 
     if (p_module->state == APP_TASK_DEBUG_STATE_INIT)
     {
-        p_module->state = APP_TASK_DEBUG_STATE_POLL;
+        APP_TASK_SET_STATE(p_module, APP_TASK_DEBUG_STATE_POLL);
+#ifdef DEBUG
+        APP_TASK_DEBUG_PRINT("DEBUG", "console task entered POLL state");
+#endif
     }
 
     status = App_TaskDebugIf_ProcessConsole();

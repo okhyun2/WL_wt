@@ -34,18 +34,18 @@ AppStatus_t App_TaskEsi(void *p_context)
     {
         case APP_TASK_ESI_STATE_INIT:
             APP_RETURN_IF_FALSE(App_TaskEsiIf_InitContext() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
-            p_module->state = APP_TASK_ESI_STATE_WAIT_INTERRUPT;
+            APP_TASK_SET_STATE(p_module, APP_TASK_ESI_STATE_WAIT_INTERRUPT);
             break;
 
         case APP_TASK_ESI_STATE_WAIT_INTERRUPT:
             p_module->eventPending = (App_HwReadEsiInterrupt() == GPIO_PIN_SET) ? APP_TRUE : APP_FALSE;
-            p_module->state = APP_TASK_ESI_STATE_READ_COEFFICIENT;
+            APP_TASK_SET_STATE(p_module, APP_TASK_ESI_STATE_READ_COEFFICIENT);
             break;
 
         default:
             APP_RETURN_IF_FALSE(App_TaskEsiIf_ReadCoefficient() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_FALSE;
-            p_module->state = APP_TASK_ESI_STATE_WAIT_INTERRUPT;
+            APP_TASK_SET_STATE(p_module, APP_TASK_ESI_STATE_WAIT_INTERRUPT);
             break;
     }
 
