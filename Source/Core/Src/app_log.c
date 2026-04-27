@@ -51,11 +51,8 @@ AppStatus_t App_LogInit(void)
 
     APP_RETURN_IF_FALSE(App_DebugConsoleGetContext()->initialized == APP_TRUE, APP_STATUS_LOG_INIT_FAILED);
 
-#ifdef DEBUG
-    g_appLogContext.minimumLevel = APP_LOG_LEVEL_DEBUG;
-#else
+    //g_appLogContext.minimumLevel = APP_LOG_LEVEL_DEBUG;
     g_appLogContext.minimumLevel = APP_LOG_LEVEL_INFO;
-#endif
     g_appLogContext.initialized = APP_TRUE;
 
     return APP_STATUS_OK;

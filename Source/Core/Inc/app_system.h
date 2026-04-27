@@ -65,6 +65,7 @@ typedef struct
     uint32_t stopEntryCount;
     uint32_t stopCandidateCount;
     uint32_t stopDryRunCount;
+    uint32_t rtcWakeEventCount;
     uint32_t wakeSourceMask;
     uint32_t lastWakeTickMs;
     uint32_t lastStopRequestTickMs;
@@ -82,6 +83,7 @@ AppStatus_t App_SystemRecoverFromStop(void);
 AppStatus_t App_SystemSetNbiotPowered(uint8_t powered);
 AppStatus_t App_SystemRequestLowPower(uint8_t allowStop);
 void App_SystemNotifyWakeSource(uint32_t sourceMask);
+void App_SystemHandleRtcIrq(void);
 uint32_t App_SystemGetWakeSourceMask(void);
 const AppSystemContext_t *App_SystemGetContext(void);
 const char *App_SystemGetVersionString(void);

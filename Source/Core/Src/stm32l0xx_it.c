@@ -22,6 +22,7 @@
 #include "stm32l0xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "app_system.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -139,6 +140,11 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32l0xx.s).                    */
 /******************************************************************************/
+void RTC_IRQHandler(void)
+{
+  App_SystemHandleRtcIrq();
+}
+
 void EXTI0_1_IRQHandler(void)
 {
   HAL_GPIO_EXTI_IRQHandler(NBIoT_RI_Pin);

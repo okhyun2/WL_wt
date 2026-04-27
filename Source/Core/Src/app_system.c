@@ -18,6 +18,10 @@ static const char g_appVersionString[] = "0.6.0";
 static AppGpioLpConfig_t g_appGpioLpConfig;
 static char g_appSystemWakeString[64];
 
+#define APP_SYSTEM_RTC_TIMEOUT_LOOPS              (200000u)
+#define APP_SYSTEM_RTC_WPR_KEY1                   (0xCAu)
+#define APP_SYSTEM_RTC_WPR_KEY2                   (0x53u)
+
 static const char *App_SystemBuildWakeSourceString(uint32_t wakeMask)
 {
     uint8_t first;
@@ -102,6 +106,151 @@ static AppStatus_t App_SystemRefreshIwdgBeforeStop(void)
 {
     APP_RETURN_IF_FALSE(APP_IWDG_HANDLE->Instance == IWDG, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_HAL_ERROR(HAL_IWDG_Refresh(APP_IWDG_HANDLE), APP_STATUS_INIT_FAILED);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_SystemRtcOpenBackupDomain(void)
+{
+    uint32_t timeoutLoops;
+
+    __HAL_RCC_PWR_CLK_ENABLE();
+    SET_BIT(PWR->CR, PWR_CR_DBP);
+
+    timeoutLoops = APP_SYSTEM_RTC_TIMEOUT_LOOPS;
+    while (((PWR->CR & PWR_CR_DBP) == 0u) && (timeoutLoops > 0u))
+    {
+        timeoutLoops--;
+    }
+
+    APP_RETURN_IF_FALSE((PWR->CR & PWR_CR_DBP) != 0u, APP_STATUS_INIT_FAILED);
+    return APP_STATUS_OK;
+}
+
+static void App_SystemRtcWriteProtectionDisable(void)
+{
+    RTC->WPR = APP_SYSTEM_RTC_WPR_KEY1;
+    RTC->WPR = APP_SYSTEM_RTC_WPR_KEY2;
+}
+
+static void App_SystemRtcWriteProtectionEnable(void)
+{
+    RTC->WPR = 0xFFu;
+}
+
+static AppStatus_t App_SystemRtcWaitFlagSet(uint32_t flagMask)
+{
+    uint32_t timeoutLoops;
+
+    timeoutLoops = APP_SYSTEM_RTC_TIMEOUT_LOOPS;
+    while (((RTC->ISR & flagMask) == 0u) && (timeoutLoops > 0u))
+    {
+        timeoutLoops--;
+    }
+
+    APP_RETURN_IF_FALSE((RTC->ISR & flagMask) != 0u, APP_STATUS_INIT_FAILED);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_SystemRtcInitBase(void)
+{
+    AppStatus_t status;
+
+    status = App_SystemRtcOpenBackupDomain();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    SET_BIT(RCC->CSR, RCC_CSR_LSION);
+    APP_RETURN_IF_FALSE((__HAL_RCC_GET_FLAG(RCC_FLAG_LSIRDY) != RESET), APP_STATUS_INIT_FAILED);
+
+    if (((RCC->CSR & RCC_CSR_RTCSEL) != RCC_CSR_RTCSEL_LSI) || ((RCC->CSR & RCC_CSR_RTCEN) == 0u))
+    {
+        SET_BIT(RCC->CSR, RCC_CSR_RTCRST);
+        CLEAR_BIT(RCC->CSR, RCC_CSR_RTCRST);
+        MODIFY_REG(RCC->CSR, RCC_CSR_RTCSEL, RCC_CSR_RTCSEL_LSI);
+        SET_BIT(RCC->CSR, RCC_CSR_RTCEN);
+    }
+
+    if ((RTC->ISR & RTC_ISR_INITS) == 0u)
+    {
+        App_SystemRtcWriteProtectionDisable();
+        SET_BIT(RTC->ISR, RTC_ISR_INIT);
+        status = App_SystemRtcWaitFlagSet(RTC_ISR_INITF);
+        if (status != APP_STATUS_OK)
+        {
+            App_SystemRtcWriteProtectionEnable();
+            return status;
+        }
+
+        CLEAR_BIT(RTC->CR, RTC_CR_FMT | RTC_CR_WUTE | RTC_CR_WUTIE);
+        RTC->PRER = ((APP_RTC_LSI_ASYNC_PREDIV << RTC_PRER_PREDIV_A_Pos) & RTC_PRER_PREDIV_A) |
+                    ((APP_RTC_LSI_SYNC_PREDIV << RTC_PRER_PREDIV_S_Pos) & RTC_PRER_PREDIV_S);
+        RTC->TR = 0u;
+        RTC->DR = (1u << RTC_DR_WDU_Pos) | (1u << RTC_DR_MU_Pos) | (1u << RTC_DR_DU_Pos);
+        CLEAR_BIT(RTC->ISR, RTC_ISR_INIT);
+        App_SystemRtcWriteProtectionEnable();
+    }
+
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_SystemRtcConfigureWakeupTimer(void)
+{
+    AppStatus_t status;
+    uint32_t wakeupSeconds;
+
+    wakeupSeconds = (APP_RTC_WAKEUP_PERIOD_MS + 999u) / 1000u;
+    if (wakeupSeconds == 0u)
+    {
+        wakeupSeconds = 1u;
+    }
+
+    APP_RETURN_IF_FALSE(wakeupSeconds <= 0x10000u, APP_STATUS_INVALID_PARAM);
+
+    status = App_SystemRtcInitBase();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    App_SystemRtcWriteProtectionDisable();
+    CLEAR_BIT(RTC->CR, RTC_CR_WUTE | RTC_CR_WUTIE);
+    status = App_SystemRtcWaitFlagSet(RTC_ISR_WUTWF);
+    if (status != APP_STATUS_OK)
+    {
+        App_SystemRtcWriteProtectionEnable();
+        return status;
+    }
+
+    CLEAR_BIT(RTC->ISR, RTC_ISR_WUTF);
+    EXTI->PR = EXTI_PR_PIF20;
+    RTC->WUTR = (wakeupSeconds - 1u) & RTC_WUTR_WUT;
+    MODIFY_REG(RTC->CR, RTC_CR_WUCKSEL, RTC_CR_WUCKSEL_2);
+    SET_BIT(RTC->CR, RTC_CR_WUTIE | RTC_CR_WUTE);
+    App_SystemRtcWriteProtectionEnable();
+
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_SystemInitRtcWakeup(void)
+{
+    AppStatus_t status;
+
+    status = App_SystemRtcInitBase();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    EXTI->IMR |= EXTI_IMR_IM20;
+    EXTI->RTSR |= EXTI_RTSR_RT20;
+    EXTI->FTSR &= ~EXTI_FTSR_FT20;
+    EXTI->PR = EXTI_PR_PIF20;
+
+    HAL_NVIC_SetPriority(RTC_IRQn, 2u, 0u);
+    HAL_NVIC_EnableIRQ(RTC_IRQn);
+
     return APP_STATUS_OK;
 }
 
@@ -192,6 +341,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 static void App_SystemConfigureWakeupInterrupts(void)
 {
     __HAL_RCC_SYSCFG_CLK_ENABLE();
+    HAL_NVIC_SetPriority(RTC_IRQn, 2u, 0u);
+    HAL_NVIC_EnableIRQ(RTC_IRQn);
     HAL_NVIC_SetPriority(EXTI0_1_IRQn, 2u, 0u);
     HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
     HAL_NVIC_SetPriority(EXTI2_3_IRQn, 2u, 0u);
@@ -309,6 +460,9 @@ static AppStatus_t App_SystemPrintBootLogs(void)
                                  (unsigned long)g_appGpioLpConfig.swdPolicy,
                                  (unsigned int)g_appGpioLpConfig.keepNbiotRiWakeWhenPowered) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("RTC", "STOP wake period=%lu ms (LSI rtc wakeup)",
+                                 (unsigned long)APP_RTC_WAKEUP_PERIOD_MS) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud",
                                  (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
@@ -400,6 +554,12 @@ static AppStatus_t App_SystemEnterStopMode(void)
     AppStatus_t status;
 
     g_appSystemContext.stopCandidateCount++;
+
+    status = App_SystemRtcConfigureWakeupTimer();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
 
     status = App_SystemPrepareForStop();
     if (status != APP_STATUS_OK)
@@ -576,6 +736,25 @@ static void App_SystemHandleIdle(void)
     }
 }
 
+void App_SystemHandleRtcIrq(void)
+{
+    if ((RTC->ISR & RTC_ISR_WUTF) != 0u)
+    {
+        App_SystemRtcWriteProtectionDisable();
+        CLEAR_BIT(RTC->CR, RTC_CR_WUTIE | RTC_CR_WUTE);
+        CLEAR_BIT(RTC->ISR, RTC_ISR_WUTF);
+        App_SystemRtcWriteProtectionEnable();
+        EXTI->PR = EXTI_PR_PIF20;
+        g_appSystemContext.rtcWakeEventCount++;
+        App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_RTC);
+        App_SystemSetTaskWakeEvent(APP_TASK_ID_RTC);
+    }
+    else
+    {
+        EXTI->PR = EXTI_PR_PIF20;
+    }
+}
+
 AppStatus_t App_SystemInit(void)
 {
     AppStatus_t status;
@@ -606,6 +785,12 @@ AppStatus_t App_SystemInit(void)
     g_appSystemContext.bootStage = APP_BOOT_STAGE_PERIPH_READY;
     App_SystemApplySafeOutputs();
     App_SystemConfigureWakeupInterrupts();
+
+    status = App_SystemInitRtcWakeup();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
 
     status = App_SystemInitLowPowerGpio();
     if (status != APP_STATUS_OK)

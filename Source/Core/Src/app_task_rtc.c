@@ -2,22 +2,34 @@
 #include "app_task_state_defs.h"
 
 #include "app_build_config.h"
+#include "app_system.h"
+
+static uint32_t g_appTaskRtcWakeHandleCount;
 
 static AppStatus_t App_TaskRtcIf_InitService(void)
 {
-    /* PSEUDO external interface:
-     * - RTC service init
-     * - drift/epoch cache init
-     */
+    g_appTaskRtcWakeHandleCount = 0u;
+#ifdef DEBUG
+    APP_TASK_DEBUG_PRINT("RTC",
+                         "service init: wake_period=%lu ms",
+                         (unsigned long)APP_RTC_WAKEUP_PERIOD_MS);
+#endif
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_TaskRtcIf_CheckSchedule(void)
+static AppStatus_t App_TaskRtcIf_CheckSchedule(uint8_t eventPending)
 {
-    /* PSEUDO external interface:
-     * - wake alarm scan
-     * - periodic acquisition schedule
-     */
+    if (((App_SystemGetWakeSourceMask() & APP_SYSTEM_WAKE_SRC_RTC) != 0u) || (eventPending == APP_TRUE))
+    {
+        g_appTaskRtcWakeHandleCount++;
+#ifdef DEBUG
+        APP_TASK_DEBUG_PRINT("RTC",
+                             "wake handled: count=%lu wake=%s",
+                             (unsigned long)g_appTaskRtcWakeHandleCount,
+                             App_SystemGetWakeSourceString());
+#endif
+    }
+
     return APP_STATUS_OK;
 }
 
@@ -25,8 +37,13 @@ static AppStatus_t App_TaskRtcIf_ApplySync(void)
 {
     /* PSEUDO external interface:
      * - apply network/NFC time sync
-     * - compute next wake alarm
+     * - compute next wake alarm policy
+     * - current implementation uses fixed periodic RTC wake-up in system layer
      */
+#ifdef DEBUG
+    APP_TASK_DEBUG_PRINT("RTC", "schedule confirmed: periodic wake=%lu ms",
+                         (unsigned long)APP_RTC_WAKEUP_PERIOD_MS);
+#endif
     return APP_STATUS_OK;
 }
 
@@ -37,6 +54,8 @@ AppStatus_t App_TaskRtc(void *p_context)
     p_module = (AppTaskModuleContext_t *)p_context;
     APP_RETURN_IF_FALSE((p_module != NULL), APP_STATUS_INVALID_PARAM);
 
+    p_module->busy = APP_TRUE;
+
     switch (p_module->state)
     {
         case APP_TASK_RTC_STATE_INIT:
@@ -45,13 +64,15 @@ AppStatus_t App_TaskRtc(void *p_context)
             break;
 
         case APP_TASK_RTC_STATE_CHECK_SCHEDULE:
-            APP_RETURN_IF_FALSE(App_TaskRtcIf_CheckSchedule() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+            APP_RETURN_IF_FALSE(App_TaskRtcIf_CheckSchedule(p_module->eventPending) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+            p_module->eventPending = APP_FALSE;
             APP_TASK_SET_STATE(p_module, APP_TASK_RTC_STATE_APPLY_SYNC);
             break;
 
         default:
             APP_RETURN_IF_FALSE(App_TaskRtcIf_ApplySync() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             p_module->busy = APP_FALSE;
+            p_module->eventPending = APP_FALSE;
             APP_TASK_SET_STATE(p_module, APP_TASK_RTC_STATE_CHECK_SCHEDULE);
             break;
     }
