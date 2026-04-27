@@ -25,10 +25,10 @@ extern "C" {
 /** @brief Firmware semantic version minor. */
 #define APP_FW_VERSION_MINOR                        (5u)
 /** @brief Firmware semantic version patch. */
-#define APP_FW_VERSION_PATCH                        (0u)
+#define APP_FW_VERSION_PATCH                        (1u)
 
-/** @brief Project structure revision for Step 4 scheduler baseline. */
-#define APP_PROJECT_LAYOUT_REV                      (5u)
+/** @brief Project structure revision for Step 4 expanded scheduler baseline. */
+#define APP_PROJECT_LAYOUT_REV                      (6u)
 
 /** @brief Cooperative loop idle fallback delay before the next scheduler pass. */
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
@@ -132,19 +132,38 @@ extern "C" {
 #define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x00u)
 
 /** @brief Maximum number of cooperative tasks. */
-#define APP_SCHEDULER_MAX_TASKS                     (8u)
-/** @brief Dispatch debug console polling every 1 ms. */
-#define APP_SCHEDULER_TASK_DEBUG_PERIOD_MS          (1u)
-/** @brief Refresh watchdog once per second. */
-#define APP_SCHEDULER_TASK_WATCHDOG_PERIOD_MS       (1000u)
-/** @brief Run system housekeeping once per 100 ms. */
-#define APP_SCHEDULER_TASK_HOUSEKEEPING_PERIOD_MS   (100u)
+#define APP_SCHEDULER_MAX_TASKS                     (16u)
 /** @brief Allow immediate dispatch after task registration. */
 #define APP_SCHEDULER_RUN_IMMEDIATE                 (APP_TRUE)
 /** @brief Enable WFI during idle instead of simple delay. */
 #define APP_SCHEDULER_USE_WFI_IDLE                  (APP_TRUE)
 /** @brief Fallback idle delay when WFI idle is disabled. */
 #define APP_SCHEDULER_IDLE_DELAY_MS                 (1u)
+
+/** @brief Dispatch debug console polling every 1 ms. */
+#define APP_SCHEDULER_TASK_DEBUG_PERIOD_MS          (1u)
+/** @brief Refresh watchdog once per 1 second. */
+#define APP_SCHEDULER_TASK_WATCHDOG_PERIOD_MS       (1000u)
+/** @brief Run system housekeeping once per 100 ms. */
+#define APP_SCHEDULER_TASK_HOUSEKEEPING_PERIOD_MS   (100u)
+/** @brief Evaluate power-state policy once per 250 ms. */
+#define APP_SCHEDULER_TASK_POWER_PERIOD_MS          (250u)
+/** @brief Process storage state machine once per 200 ms. */
+#define APP_SCHEDULER_TASK_STORAGE_PERIOD_MS        (200u)
+/** @brief Poll meter communication state machine once per 500 ms. */
+#define APP_SCHEDULER_TASK_METER_PERIOD_MS          (500u)
+/** @brief Poll NFC interaction state machine once per 250 ms. */
+#define APP_SCHEDULER_TASK_NFC_PERIOD_MS            (250u)
+/** @brief Poll ESI state machine once per 500 ms. */
+#define APP_SCHEDULER_TASK_ESI_PERIOD_MS            (500u)
+/** @brief Poll AUX sensor state machine once per 1000 ms. */
+#define APP_SCHEDULER_TASK_AUX_PERIOD_MS            (1000u)
+/** @brief Poll NB-IoT state machine once per 500 ms. */
+#define APP_SCHEDULER_TASK_NBIOT_PERIOD_MS          (500u)
+/** @brief Poll server communication state machine once per 1000 ms. */
+#define APP_SCHEDULER_TASK_SERVER_PERIOD_MS         (1000u)
+/** @brief Poll RTC/timebase management once per 1000 ms. */
+#define APP_SCHEDULER_TASK_RTC_PERIOD_MS            (1000u)
 
 #if !defined(STM32L073xx)
 #error "This project requires STM32L073xx device support."

@@ -6,7 +6,9 @@
 #include "app_build_config.h"
 #include "app_clock.h"
 #include "app_hw.h"
+#include "app_scheduler.h"
 #include "app_system.h"
+#include "app_tasks.h"
 
 /**
  * @file    app_debug.c
@@ -72,6 +74,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("error      : show last error record") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("echo on    : enable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("echo off   : disable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("tasks      : show scheduler task state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         return APP_STATUS_OK;
     }
 
@@ -141,6 +144,72 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         g_appDebugConsoleContext.echoEnabled = APP_FALSE;
         return App_DebugConsoleWriteLine("echo disabled");
+    }
+
+    if (strcmp(p_command, "tasks") == 0)
+    {
+        const AppSchedulerContext_t *p_schedulerContext;
+        const AppTasksContext_t *p_tasksContext;
+        uint32_t index;
+
+        p_schedulerContext = App_SchedulerGetContext();
+        p_tasksContext = App_TasksGetContext();
+
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "sched tasks=%u dispatch=%u idle=%lu loop=%lu",
+                                   (unsigned int)p_schedulerContext->taskCount,
+                                   (unsigned int)p_schedulerContext->lastDispatchCount,
+                                   (unsigned long)p_schedulerContext->idleCount,
+                                   (unsigned long)p_schedulerContext->loopCount);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+        for (index = 0u; index < APP_SCHEDULER_MAX_TASKS; index++)
+        {
+            const AppSchedulerTask_t *p_task;
+            uint32_t moduleIndex;
+            uint32_t taskState;
+            uint8_t taskBusy;
+
+            p_task = App_SchedulerGetTask((AppSchedulerTaskHandle_t)index);
+            if (p_task == NULL)
+            {
+                continue;
+            }
+
+            taskState = 0u;
+            taskBusy = 0u;
+            for (moduleIndex = 0u; moduleIndex < (uint32_t)APP_TASK_ID_COUNT; moduleIndex++)
+            {
+                const AppTaskModuleContext_t *p_module;
+
+                p_module = App_TasksGetModuleContext((AppTaskId_t)moduleIndex);
+                if ((p_module != NULL) && (p_module->schedulerHandle == (AppSchedulerTaskHandle_t)index))
+                {
+                    taskState = p_module->state;
+                    taskBusy = p_module->busy;
+                    break;
+                }
+            }
+
+            formattedLength = snprintf(txBuffer,
+                                       sizeof(txBuffer),
+                                       "[%02lu] %-12s en=%u run=%lu state=%lu busy=%u last=%lu st=%lu",
+                                       (unsigned long)index,
+                                       (p_task->p_name != NULL) ? p_task->p_name : "-",
+                                       (unsigned int)p_task->enabled,
+                                       (unsigned long)p_task->runCount,
+                                       (unsigned long)taskState,
+                                       (unsigned int)taskBusy,
+                                       (unsigned long)p_task->lastRunTickMs,
+                                       (unsigned long)p_task->lastStatus);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+            APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+        }
+
+        (void)p_tasksContext;
+        return APP_STATUS_OK;
     }
 
     g_appDebugConsoleContext.unknownCommandCount++;

@@ -10,6 +10,7 @@
 #include "app_log.h"
 #include "app_scheduler.h"
 #include "app_selftest.h"
+#include "app_tasks.h"
 
 /**
  * @file    app_system.c
@@ -20,46 +21,27 @@
 static AppSystemContext_t g_appSystemContext;
 
 /** @brief Static firmware version string. */
-static const char g_appVersionString[] = "0.5.0";
+static const char g_appVersionString[] = "0.5.1";
 
 /** @brief Board-specific low-power GPIO configuration. */
 static AppGpioLpConfig_t g_appGpioLpConfig;
 
-/** @brief Registered debug task handle. */
-static AppSchedulerTaskHandle_t g_appDebugTaskHandle = APP_SCHEDULER_TASK_HANDLE_INVALID;
-/** @brief Registered watchdog task handle. */
-static AppSchedulerTaskHandle_t g_appWatchdogTaskHandle = APP_SCHEDULER_TASK_HANDLE_INVALID;
-/** @brief Registered housekeeping task handle. */
-static AppSchedulerTaskHandle_t g_appHousekeepingTaskHandle = APP_SCHEDULER_TASK_HANDLE_INVALID;
-
-/**
- * @brief Validate CubeMX-generated peripheral bindings.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 static AppStatus_t App_SystemValidateHandles(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_DEBUG_HANDLE->Instance == USART1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
-
     APP_RETURN_IF_FALSE(APP_I2C_ESI_HANDLE->Instance == I2C1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_I2C_NFC_HANDLE->Instance == I2C2, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_I2C_AUX_HANDLE->Instance == I2C3, APP_STATUS_HW_HANDLE_INVALID);
-
     APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_CRC_HANDLE->Instance == CRC, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_IWDG_HANDLE->Instance == IWDG, APP_STATUS_HW_HANDLE_INVALID);
-
     APP_RETURN_IF_FALSE(APP_TIM_PIEZO_HANDLE->Instance == TIM3, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_TIM_WD_FEED_HANDLE->Instance == TIM22, APP_STATUS_HW_HANDLE_INVALID);
-
     return APP_STATUS_OK;
 }
 
-/**
- * @brief Apply safe default output states after GPIO init.
- */
 static void App_SystemApplySafeOutputs(void)
 {
     App_HwSetNbiotEnable(GPIO_PIN_RESET);
@@ -67,11 +49,6 @@ static void App_SystemApplySafeOutputs(void)
     App_HwSetChargeBoot0(GPIO_PIN_RESET);
 }
 
-/**
- * @brief Initialize board-specific low-power GPIO policy.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 static AppStatus_t App_SystemInitLowPowerGpio(void)
 {
     AppStatus_t status;
@@ -131,11 +108,6 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
     return APP_STATUS_OK;
 }
 
-/**
- * @brief Print boot banner and baseline status logs.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 static AppStatus_t App_SystemPrintBootLogs(void)
 {
     const AppClockContext_t *p_clockContext;
@@ -171,11 +143,6 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     return APP_STATUS_OK;
 }
 
-/**
- * @brief Run boot peripheral self-test sequence.
- *
- * @return APP_STATUS_OK on success, or configured self-test status otherwise.
- */
 static AppStatus_t App_SystemRunBootSelfTest(void)
 {
     AppStatus_t status;
@@ -210,48 +177,6 @@ static AppStatus_t App_SystemRunBootSelfTest(void)
     return APP_STATUS_OK;
 }
 
-/**
- * @brief Scheduler task: poll the debug console.
- *
- * @param p_context Unused.
- * @return APP_STATUS_OK on success, error code otherwise.
- */
-static AppStatus_t App_SystemTaskDebug(void *p_context)
-{
-    (void)p_context;
-    return App_DebugConsoleProcess();
-}
-
-/**
- * @brief Scheduler task: refresh the internal watchdog.
- *
- * @param p_context Unused.
- * @return APP_STATUS_OK on success, error code otherwise.
- */
-static AppStatus_t App_SystemTaskWatchdog(void *p_context)
-{
-    (void)p_context;
-    APP_RETURN_IF_HAL_ERROR(HAL_IWDG_Refresh(APP_IWDG_HANDLE), APP_STATUS_INIT_FAILED);
-    return APP_STATUS_OK;
-}
-
-/**
- * @brief Scheduler task: execute lightweight periodic housekeeping.
- *
- * @param p_context Unused.
- * @return APP_STATUS_OK on success, error code otherwise.
- */
-static AppStatus_t App_SystemTaskHousekeeping(void *p_context)
-{
-    (void)p_context;
-    return APP_STATUS_OK;
-}
-
-/**
- * @brief Register baseline tasks in the cooperative scheduler.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 static AppStatus_t App_SystemInitScheduler(void)
 {
     AppStatus_t status;
@@ -262,34 +187,13 @@ static AppStatus_t App_SystemInitScheduler(void)
         return APP_STATUS_SCHEDULER_INIT_FAILED;
     }
 
-    status = App_SchedulerRegisterTask("debug",
-                                       App_SystemTaskDebug,
-                                       NULL,
-                                       APP_SCHEDULER_TASK_DEBUG_PERIOD_MS,
-                                       APP_SCHEDULER_RUN_IMMEDIATE,
-                                       &g_appDebugTaskHandle);
+    status = App_TasksInit();
     if (status != APP_STATUS_OK)
     {
-        return status;
+        return APP_STATUS_SCHEDULER_INIT_FAILED;
     }
 
-    status = App_SchedulerRegisterTask("watchdog",
-                                       App_SystemTaskWatchdog,
-                                       NULL,
-                                       APP_SCHEDULER_TASK_WATCHDOG_PERIOD_MS,
-                                       APP_SCHEDULER_RUN_IMMEDIATE,
-                                       &g_appWatchdogTaskHandle);
-    if (status != APP_STATUS_OK)
-    {
-        return status;
-    }
-
-    status = App_SchedulerRegisterTask("housekeeping",
-                                       App_SystemTaskHousekeeping,
-                                       NULL,
-                                       APP_SCHEDULER_TASK_HOUSEKEEPING_PERIOD_MS,
-                                       APP_SCHEDULER_RUN_IMMEDIATE,
-                                       &g_appHousekeepingTaskHandle);
+    status = App_TasksRegisterAll();
     if (status != APP_STATUS_OK)
     {
         return status;
@@ -299,18 +203,13 @@ static AppStatus_t App_SystemInitScheduler(void)
     g_appSystemContext.schedulerStatus = APP_STATUS_OK;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_SCHEDULER_READY;
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SCH", "Scheduler ready: debug=%lu ms watchdog=%lu ms housekeeping=%lu ms",
-                                 (unsigned long)APP_SCHEDULER_TASK_DEBUG_PERIOD_MS,
-                                 (unsigned long)APP_SCHEDULER_TASK_WATCHDOG_PERIOD_MS,
-                                 (unsigned long)APP_SCHEDULER_TASK_HOUSEKEEPING_PERIOD_MS) == APP_STATUS_OK,
+    APP_RETURN_IF_FALSE(APP_LOGI("SCH", "Scheduler ready: %u tasks registered",
+                                 (unsigned int)App_SchedulerGetContext()->taskCount) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
     return APP_STATUS_OK;
 }
 
-/**
- * @brief Execute idle processing when no task is ready.
- */
 static void App_SystemHandleIdle(void)
 {
     g_appSystemContext.idleCounter++;
@@ -427,14 +326,12 @@ void App_SystemProcess(void)
 AppStatus_t App_SystemOnBeforeStopEnter(void)
 {
     APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
-
     return App_GpioLpOnBeforeStopEnter();
 }
 
 AppStatus_t App_SystemOnAfterStopExit(void)
 {
     APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
-
     return App_GpioLpOnAfterStopExit();
 }
 
@@ -451,7 +348,6 @@ AppStatus_t App_SystemRecoverFromStop(void)
 AppStatus_t App_SystemSetNbiotPowered(uint8_t powered)
 {
     APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
-
     return App_GpioLpSetNbiotPowered(powered);
 }
 
