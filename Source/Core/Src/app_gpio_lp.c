@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "app_build_config.h"
+#include "app_log.h"
 
 /**
  * @file    app_gpio_lp.c
@@ -36,6 +37,16 @@
 
 /** @brief Runtime context instance. */
 static AppGpioLpContext_t g_appGpioLpContext;
+
+#ifdef DEBUG
+static uint8_t App_GpioLpCanDebugLog(void)
+{
+    const AppLogContext_t *p_logContext;
+
+    p_logContext = App_LogGetContext();
+    return ((p_logContext != NULL) && (p_logContext->initialized == 1u)) ? 1u : 0u;
+}
+#endif
 
 /**
  * @brief Enable all GPIO port clocks used by the board.
@@ -551,6 +562,18 @@ AppStatus_t App_GpioLpSetNbiotPowered(uint8_t powered)
         App_GpioLpRestoreNbiotInterface();
     }
 
+#ifdef DEBUG
+    if (App_GpioLpCanDebugLog() == 1u)
+    {
+        (void)APP_LOGD("GPIO",
+                       "NB-IoT power=%u isolate=%u restore=%u keep_ri=%u",
+                       (unsigned int)powered,
+                       (unsigned int)g_appGpioLpContext.config.isolateNbiotInterfaceWhenPoweredOff,
+                       (unsigned int)g_appGpioLpContext.config.restoreNbiotInterfaceAfterWake,
+                       (unsigned int)g_appGpioLpContext.config.keepNbiotRiWakeWhenPowered);
+    }
+#endif
+
     return APP_STATUS_OK;
 }
 
@@ -623,6 +646,18 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
     g_appGpioLpContext.lastDisabledClockMask = g_appGpioLpContext.config.stopClockDisableMask;
     g_appGpioLpContext.stopPrepared = 1u;
 
+#ifdef DEBUG
+    if (App_GpioLpCanDebugLog() == 1u)
+    {
+        (void)APP_LOGD("GPIO",
+                       "STOP prep done: nbiot=%u keep_dbg=%u keep_meter=%u clk_mask=0x%08lX",
+                       (unsigned int)g_appGpioLpContext.nbiotPowered,
+                       (unsigned int)g_appGpioLpContext.config.keepDebugUartPinsInStop,
+                       (unsigned int)g_appGpioLpContext.config.keepMeterUartPinsInStop,
+                       (unsigned long)g_appGpioLpContext.lastDisabledClockMask);
+    }
+#endif
+
     return APP_STATUS_OK;
 }
 
@@ -685,6 +720,16 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
     App_GpioLpApplySwdPolicy();
 
     g_appGpioLpContext.stopPrepared = 0u;
+
+#ifdef DEBUG
+    if (App_GpioLpCanDebugLog() == 1u)
+    {
+        (void)APP_LOGD("GPIO",
+                       "STOP recover done: nbiot=%u restored_mask=0x%08lX",
+                       (unsigned int)g_appGpioLpContext.nbiotPowered,
+                       (unsigned long)g_appGpioLpContext.lastDisabledClockMask);
+    }
+#endif
 
     return APP_STATUS_OK;
 }

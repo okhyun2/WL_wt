@@ -126,6 +126,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("tasks      : show scheduler and task state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("main       : show main-task decision summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("wdog       : show watchdog service summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("lp         : show low-power state and wake source") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("echo on    : enable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("echo off   : disable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         return APP_STATUS_OK;
@@ -142,15 +143,15 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "boot=%lu loop=%lu idle=%lu debug=%u log=%u echo=%u cmd=%lu unknown=%lu",
+                                   "boot=%lu loop=%lu idle=%lu lp=%s stop_req=%u stop=%lu sleep=%lu wake=%s",
                                    (unsigned long)p_systemContext->bootStage,
                                    (unsigned long)p_systemContext->loopCounter,
                                    (unsigned long)p_systemContext->idleCounter,
-                                   (unsigned int)p_systemContext->debugReady,
-                                   (unsigned int)p_systemContext->logReady,
-                                   (unsigned int)p_debugContext->echoEnabled,
-                                   (unsigned long)p_debugContext->commandCount,
-                                   (unsigned long)p_debugContext->unknownCommandCount);
+                                   App_SystemGetLowPowerModeString(),
+                                   (unsigned int)p_systemContext->stopRequested,
+                                   (unsigned long)p_systemContext->stopEntryCount,
+                                   (unsigned long)p_systemContext->sleepEntryCount,
+                                   App_SystemGetWakeSourceString());
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
     }
@@ -216,6 +217,21 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
                                    (unsigned long)p_watchdogSummary->lastServiceTickMs,
                                    (unsigned long)p_watchdogSummary->lastExternalFeedTickMs,
                                    (unsigned long)p_watchdogSummary->lastStatus);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (strcmp(p_command, "lp") == 0)
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "lp=%s stop_req=%u stop=%lu sleep=%lu wake=%s last_wake=%lu",
+                                   App_SystemGetLowPowerModeString(),
+                                   (unsigned int)p_systemContext->stopRequested,
+                                   (unsigned long)p_systemContext->stopEntryCount,
+                                   (unsigned long)p_systemContext->sleepEntryCount,
+                                   App_SystemGetWakeSourceString(),
+                                   (unsigned long)p_systemContext->lastWakeTickMs);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
     }

@@ -48,6 +48,13 @@ typedef struct
 AppStatus_t App_ClockInit(void);
 
 /**
+ * @brief Restore boot clock tree after STOP wake-up and refresh clock context.
+ *
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+AppStatus_t App_ClockRecoverAfterStop(void);
+
+/**
  * @brief Check whether clock context was initialized.
  *
  * @return APP_TRUE when initialized, otherwise APP_FALSE.

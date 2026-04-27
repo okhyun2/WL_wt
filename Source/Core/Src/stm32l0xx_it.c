@@ -139,7 +139,18 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32l0xx.s).                    */
 /******************************************************************************/
+void EXTI0_1_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(NBIoT_RI_Pin);
+}
 
-/* USER CODE BEGIN 1 */
+void EXTI2_3_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(ESI_Int_Pin);
+}
 
-/* USER CODE END 1 */
+void EXTI4_15_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(NFC_ED_Pin);
+  HAL_GPIO_EXTI_IRQHandler(REED_IN_Pin);
+}
