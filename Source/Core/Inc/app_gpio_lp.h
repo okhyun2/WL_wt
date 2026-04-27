@@ -106,14 +106,14 @@ AppStatus_t App_GpioLpSetNbiotPowered(uint8_t powered);
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
-AppStatus_t App_GpioLpPrepareForStop(void);
+AppStatus_t App_GpioLpOnBeforeStopEnter(void);
 
 /**
  * @brief Restore GPIO and peripheral clock state after wake-up.
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
-AppStatus_t App_GpioLpRecoverFromStop(void);
+AppStatus_t App_GpioLpOnAfterStopExit(void);
 
 /**
  * @brief Get immutable low-power GPIO context.

@@ -486,7 +486,7 @@ AppStatus_t App_GpioLpSetNbiotPowered(uint8_t powered)
     return APP_STATUS_OK;
 }
 
-AppStatus_t App_GpioLpPrepareForStop(void)
+AppStatus_t App_GpioLpOnBeforeStopEnter(void)
 {
     APP_RETURN_IF_FALSE((g_appGpioLpContext.initialized == APP_TRUE), APP_STATUS_NOT_INITIALIZED);
 
@@ -550,7 +550,7 @@ AppStatus_t App_GpioLpPrepareForStop(void)
     return APP_STATUS_OK;
 }
 
-AppStatus_t App_GpioLpRecoverFromStop(void)
+AppStatus_t App_GpioLpOnAfterStopExit(void)
 {
     APP_RETURN_IF_FALSE((g_appGpioLpContext.initialized == APP_TRUE), APP_STATUS_NOT_INITIALIZED);
 

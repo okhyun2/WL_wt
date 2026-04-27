@@ -24,6 +24,7 @@ typedef enum
     APP_BOOT_STAGE_GPIO_LP_READY,
     APP_BOOT_STAGE_DEBUG_READY,
     APP_BOOT_STAGE_LOG_READY,
+    APP_BOOT_STAGE_SELFTEST_DONE,
     APP_BOOT_STAGE_APP_READY
 } AppBootStage_t;
 
@@ -35,7 +36,10 @@ typedef struct
     uint8_t initialized;
     uint8_t debugReady;
     uint8_t logReady;
+    uint8_t selfTestCompleted;
+    uint8_t selfTestFailed;
     AppBootStage_t bootStage;
+    AppStatus_t selfTestStatus;
     uint32_t bootSysClockHz;
     uint32_t loopCounter;
 } AppSystemContext_t;
@@ -53,14 +57,28 @@ AppStatus_t App_SystemInit(void);
 void App_SystemProcess(void);
 
 /**
- * @brief Prepare GPIO and peripheral clocks before STOP entry.
+ * @brief Low-power hook to be called immediately before STOP entry.
+ *
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+AppStatus_t App_SystemOnBeforeStopEnter(void);
+
+/**
+ * @brief Low-power hook to be called immediately after STOP wake-up.
+ *
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+AppStatus_t App_SystemOnAfterStopExit(void);
+
+/**
+ * @brief Backward-compatible alias for STOP preparation.
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
 AppStatus_t App_SystemPrepareForStop(void);
 
 /**
- * @brief Restore GPIO and peripheral clocks after STOP wake-up.
+ * @brief Backward-compatible alias for STOP recovery.
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */

@@ -8,6 +8,7 @@
 #include "app_gpio_lp.h"
 #include "app_hw.h"
 #include "app_log.h"
+#include "app_selftest.h"
 
 /**
  * @file    app_system.c
@@ -18,7 +19,7 @@
 static AppSystemContext_t g_appSystemContext;
 
 /** @brief Static firmware version string. */
-static const char g_appVersionString[] = "0.3.0";
+static const char g_appVersionString[] = "0.4.0";
 
 /** @brief Board-specific low-power GPIO configuration. */
 static AppGpioLpConfig_t g_appGpioLpConfig;
@@ -50,8 +51,6 @@ static AppStatus_t App_SystemValidateHandles(void)
 
 /**
  * @brief Apply safe default output states after GPIO init.
- *
- * @note  Final power policy is handled in later low-power/NB-IoT steps.
  */
 static void App_SystemApplySafeOutputs(void)
 {
@@ -71,17 +70,23 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
 
     App_GpioLpGetDefaultConfig(&g_appGpioLpConfig);
 
-    /* Development default: keep SWD attached. */
-    g_appGpioLpConfig.swdPolicy = APP_GPIO_LP_SWD_KEEP;
+    if ((APP_BUILD_IS_PRODUCTION == APP_TRUE) &&
+        (APP_GPIO_LP_DISABLE_SWD_IN_PRODUCTION == APP_TRUE))
+    {
+        g_appGpioLpConfig.swdPolicy = APP_GPIO_LP_SWD_DISABLE_IN_PRODUCTION;
+    }
+    else
+    {
+        g_appGpioLpConfig.swdPolicy = APP_GPIO_LP_SWD_KEEP;
+    }
 
-    /* Stop mode policy for current board. */
     g_appGpioLpConfig.keepDebugUartPinsInStop = APP_FALSE;
     g_appGpioLpConfig.keepMeterUartPinsInStop = APP_FALSE;
     g_appGpioLpConfig.keepEsiI2cPinsInStop = APP_FALSE;
     g_appGpioLpConfig.keepNfcI2cPinsInStop = APP_FALSE;
     g_appGpioLpConfig.keepTempI2cPinsInStop = APP_FALSE;
     g_appGpioLpConfig.keepPiezoPinInStop = APP_FALSE;
-    g_appGpioLpConfig.keepExternalWatchdogPinInStop = APP_TRUE;
+    g_appGpioLpConfig.keepExternalWatchdogPinInStop = APP_FALSE;
     g_appGpioLpConfig.keepNbiotRiWakeWhenPowered = APP_FALSE;
     g_appGpioLpConfig.isolateNbiotInterfaceWhenPoweredOff = APP_TRUE;
     g_appGpioLpConfig.restoreNbiotInterfaceAfterWake = APP_TRUE;
@@ -89,6 +94,7 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
         APP_GPIO_LP_CLK_ADC1 |
         APP_GPIO_LP_CLK_CRC |
         APP_GPIO_LP_CLK_TIM3 |
+        APP_GPIO_LP_CLK_TIM22 |
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
@@ -99,7 +105,7 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
     status = App_GpioLpInit(&g_appGpioLpConfig);
     if (status != APP_STATUS_OK)
     {
-        return status;
+        return APP_STATUS_GPIO_LP_INIT_FAILED;
     }
 
     status = App_GpioLpSetNbiotPowered(APP_FALSE);
@@ -137,7 +143,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
 
     APP_RETURN_IF_FALSE(APP_LOGI("SYS", "Boot complete: %s v%s", APP_NAME_STRING, App_SystemGetVersionString()) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("SYS", "Clock SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu LSI=%u",
+    APP_RETURN_IF_FALSE(APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu LSI=%u",
                                  (unsigned long)p_clockContext->sysclkHz,
                                  (unsigned long)p_clockContext->hclkHz,
                                  (unsigned long)p_clockContext->pclk1Hz,
@@ -145,13 +151,53 @@ static AppStatus_t App_SystemPrintBootLogs(void)
                                  (unsigned long)p_clockContext->msiRange,
                                  (unsigned int)p_clockContext->lsiReady) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("GPIO", "Low-power GPIO policy ready (SWD=%lu, NB-IoT isolate=%u)",
+    APP_RETURN_IF_FALSE(APP_LOGI("GPIO", "LP policy ready: SWD=%lu NB-IoT-isolation=%u",
                                  (unsigned long)g_appGpioLpConfig.swdPolicy,
                                  (unsigned int)g_appGpioLpConfig.isolateNbiotInterfaceWhenPoweredOff) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud", (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
+    APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud",
+                                 (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(App_DebugConsolePrintPrompt() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+    return APP_STATUS_OK;
+}
+
+/**
+ * @brief Run boot peripheral self-test sequence.
+ *
+ * @return APP_STATUS_OK on success, or configured self-test status otherwise.
+ */
+static AppStatus_t App_SystemRunBootSelfTest(void)
+{
+    AppStatus_t status;
+
+    status = App_SelfTestInit();
+    if (status != APP_STATUS_OK)
+    {
+        return APP_STATUS_SELFTEST_INIT_FAILED;
+    }
+
+    status = App_SelfTestRunBootSequence();
+    g_appSystemContext.selfTestCompleted = APP_TRUE;
+    g_appSystemContext.selfTestStatus = status;
+    g_appSystemContext.selfTestFailed = (status == APP_STATUS_OK) ? APP_FALSE : APP_TRUE;
+    g_appSystemContext.bootStage = APP_BOOT_STAGE_SELFTEST_DONE;
+
+    if (status == APP_STATUS_OK)
+    {
+        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Boot self-test finished without failures") == APP_STATUS_OK,
+                            APP_STATUS_UART_TX_FAILED);
+        return APP_STATUS_OK;
+    }
+
+    APP_RETURN_IF_FALSE(APP_LOGW("SELF", "Boot self-test completed with one or more failures") == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+
+    if (APP_SELFTEST_FAIL_STOPS_BOOT == APP_TRUE)
+    {
+        return status;
+    }
 
     return APP_STATUS_OK;
 }
@@ -165,6 +211,7 @@ AppStatus_t App_SystemInit(void)
     App_ErrorInit();
 
     g_appSystemContext.bootStage = APP_BOOT_STAGE_HAL_READY;
+    g_appSystemContext.selfTestStatus = APP_STATUS_NOT_INITIALIZED;
 
     APP_RETURN_IF_FALSE(App_ClockIsInitialized() == APP_TRUE, APP_STATUS_CLOCK_NOT_INITIALIZED);
 
@@ -207,6 +254,12 @@ AppStatus_t App_SystemInit(void)
         return status;
     }
 
+    status = App_SystemRunBootSelfTest();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
     g_appSystemContext.initialized = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
 
@@ -229,25 +282,25 @@ void App_SystemProcess(void)
         App_ErrorRecord(status, __FILE__, __LINE__);
     }
 
-    g_appSystemContext.loopCounter++;
+    (void)HAL_IWDG_Refresh(APP_IWDG_HANDLE);
 
-    HAL_IWDG_Refresh(&hiwdg);
+    g_appSystemContext.loopCounter++;
 
     HAL_Delay(APP_SUPERLOOP_IDLE_DELAY_MS);
 }
 
-AppStatus_t App_SystemPrepareForStop(void)
+AppStatus_t App_SystemOnBeforeStopEnter(void)
 {
-    APP_RETURN_IF_FALSE((g_appSystemContext.initialized == APP_TRUE), APP_STATUS_NOT_INITIALIZED);
+    APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
 
-    return App_GpioLpPrepareForStop();
+    return App_GpioLpOnBeforeStopEnter();
 }
 
-AppStatus_t App_SystemRecoverFromStop(void)
+AppStatus_t App_SystemOnAfterStopExit(void)
 {
-    APP_RETURN_IF_FALSE((g_appSystemContext.initialized == APP_TRUE), APP_STATUS_NOT_INITIALIZED);
+    APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
 
-    return App_GpioLpRecoverFromStop();
+    return App_GpioLpOnAfterStopExit();
 }
 
 AppStatus_t App_SystemSetNbiotPowered(uint8_t powered)
