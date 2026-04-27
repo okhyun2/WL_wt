@@ -5,6 +5,7 @@
 #include "app_build_config.h"
 #include "app_clock.h"
 #include "app_debug.h"
+#include "app_gpio_lp.h"
 #include "app_hw.h"
 #include "app_log.h"
 
@@ -18,6 +19,9 @@ static AppSystemContext_t g_appSystemContext;
 
 /** @brief Static firmware version string. */
 static const char g_appVersionString[] = "0.3.0";
+
+/** @brief Board-specific low-power GPIO configuration. */
+static AppGpioLpConfig_t g_appGpioLpConfig;
 
 /**
  * @brief Validate CubeMX-generated peripheral bindings.
@@ -57,6 +61,63 @@ static void App_SystemApplySafeOutputs(void)
 }
 
 /**
+ * @brief Initialize board-specific low-power GPIO policy.
+ *
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+static AppStatus_t App_SystemInitLowPowerGpio(void)
+{
+    AppStatus_t status;
+
+    App_GpioLpGetDefaultConfig(&g_appGpioLpConfig);
+
+    /* Development default: keep SWD attached. */
+    g_appGpioLpConfig.swdPolicy = APP_GPIO_LP_SWD_KEEP;
+
+    /* Stop mode policy for current board. */
+    g_appGpioLpConfig.keepDebugUartPinsInStop = APP_FALSE;
+    g_appGpioLpConfig.keepMeterUartPinsInStop = APP_FALSE;
+    g_appGpioLpConfig.keepEsiI2cPinsInStop = APP_FALSE;
+    g_appGpioLpConfig.keepNfcI2cPinsInStop = APP_FALSE;
+    g_appGpioLpConfig.keepTempI2cPinsInStop = APP_FALSE;
+    g_appGpioLpConfig.keepPiezoPinInStop = APP_FALSE;
+    g_appGpioLpConfig.keepExternalWatchdogPinInStop = APP_TRUE;
+    g_appGpioLpConfig.keepNbiotRiWakeWhenPowered = APP_FALSE;
+    g_appGpioLpConfig.isolateNbiotInterfaceWhenPoweredOff = APP_TRUE;
+    g_appGpioLpConfig.restoreNbiotInterfaceAfterWake = APP_TRUE;
+    g_appGpioLpConfig.stopClockDisableMask =
+        APP_GPIO_LP_CLK_ADC1 |
+        APP_GPIO_LP_CLK_CRC |
+        APP_GPIO_LP_CLK_TIM3 |
+        APP_GPIO_LP_CLK_USART1 |
+        APP_GPIO_LP_CLK_USART2 |
+        APP_GPIO_LP_CLK_LPUART1 |
+        APP_GPIO_LP_CLK_I2C1 |
+        APP_GPIO_LP_CLK_I2C2 |
+        APP_GPIO_LP_CLK_I2C3;
+
+    status = App_GpioLpInit(&g_appGpioLpConfig);
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    status = App_GpioLpSetNbiotPowered(APP_FALSE);
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    status = App_GpioLpApplyRunBaseState();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    return APP_STATUS_OK;
+}
+
+/**
  * @brief Print boot banner and baseline status logs.
  *
  * @return APP_STATUS_OK on success, error code otherwise.
@@ -83,6 +144,10 @@ static AppStatus_t App_SystemPrintBootLogs(void)
                                  (unsigned long)p_clockContext->pclk2Hz,
                                  (unsigned long)p_clockContext->msiRange,
                                  (unsigned int)p_clockContext->lsiReady) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("GPIO", "Low-power GPIO policy ready (SWD=%lu, NB-IoT isolate=%u)",
+                                 (unsigned long)g_appGpioLpConfig.swdPolicy,
+                                 (unsigned int)g_appGpioLpConfig.isolateNbiotInterfaceWhenPoweredOff) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud", (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
@@ -118,6 +183,14 @@ AppStatus_t App_SystemInit(void)
     g_appSystemContext.bootStage = APP_BOOT_STAGE_PERIPH_READY;
 
     App_SystemApplySafeOutputs();
+
+    status = App_SystemInitLowPowerGpio();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    g_appSystemContext.bootStage = APP_BOOT_STAGE_GPIO_LP_READY;
 
     status = App_DebugConsoleInit();
     if (status != APP_STATUS_OK)
@@ -161,6 +234,27 @@ void App_SystemProcess(void)
     HAL_IWDG_Refresh(&hiwdg);
 
     HAL_Delay(APP_SUPERLOOP_IDLE_DELAY_MS);
+}
+
+AppStatus_t App_SystemPrepareForStop(void)
+{
+    APP_RETURN_IF_FALSE((g_appSystemContext.initialized == APP_TRUE), APP_STATUS_NOT_INITIALIZED);
+
+    return App_GpioLpPrepareForStop();
+}
+
+AppStatus_t App_SystemRecoverFromStop(void)
+{
+    APP_RETURN_IF_FALSE((g_appSystemContext.initialized == APP_TRUE), APP_STATUS_NOT_INITIALIZED);
+
+    return App_GpioLpRecoverFromStop();
+}
+
+AppStatus_t App_SystemSetNbiotPowered(uint8_t powered)
+{
+    APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
+
+    return App_GpioLpSetNbiotPowered(powered);
 }
 
 const AppSystemContext_t *App_SystemGetContext(void)

@@ -21,6 +21,7 @@ typedef enum
     APP_BOOT_STAGE_HAL_READY,
     APP_BOOT_STAGE_CLOCK_READY,
     APP_BOOT_STAGE_PERIPH_READY,
+    APP_BOOT_STAGE_GPIO_LP_READY,
     APP_BOOT_STAGE_DEBUG_READY,
     APP_BOOT_STAGE_LOG_READY,
     APP_BOOT_STAGE_APP_READY
@@ -50,6 +51,28 @@ AppStatus_t App_SystemInit(void);
  * @brief Execute one application superloop cycle.
  */
 void App_SystemProcess(void);
+
+/**
+ * @brief Prepare GPIO and peripheral clocks before STOP entry.
+ *
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+AppStatus_t App_SystemPrepareForStop(void);
+
+/**
+ * @brief Restore GPIO and peripheral clocks after STOP wake-up.
+ *
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+AppStatus_t App_SystemRecoverFromStop(void);
+
+/**
+ * @brief Notify system low-power policy about NB-IoT power state.
+ *
+ * @param powered APP_TRUE when module is powered, APP_FALSE otherwise.
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+AppStatus_t App_SystemSetNbiotPowered(uint8_t powered);
 
 /**
  * @brief Get immutable runtime context.

@@ -1,4 +1,7 @@
-../Core/Src/app_system.c:94:13:App_SystemInit	21
-../Core/Src/app_system.c:143:6:App_SystemProcess	3
-../Core/Src/app_system.c:166:27:App_SystemGetContext	1
-../Core/Src/app_system.c:171:13:App_SystemGetVersionString	1
+../Core/Src/app_system.c:159:13:App_SystemInit	25
+../Core/Src/app_system.c:216:6:App_SystemProcess	3
+../Core/Src/app_system.c:239:13:App_SystemPrepareForStop	2
+../Core/Src/app_system.c:246:13:App_SystemRecoverFromStop	2
+../Core/Src/app_system.c:253:13:App_SystemSetNbiotPowered	2
+../Core/Src/app_system.c:260:27:App_SystemGetContext	1
+../Core/Src/app_system.c:265:13:App_SystemGetVersionString	1
