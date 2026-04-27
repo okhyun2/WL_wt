@@ -68,6 +68,7 @@ typedef struct
     uint8_t initialized;
     uint8_t stopPrepared;
     uint8_t nbiotPowered;
+    uint32_t lastDisabledClockMask;
     AppGpioLpConfig_t config;
 } AppGpioLpContext_t;
 
@@ -102,18 +103,32 @@ AppStatus_t App_GpioLpApplyRunBaseState(void);
 AppStatus_t App_GpioLpSetNbiotPowered(uint8_t powered);
 
 /**
- * @brief Apply stop-entry GPIO and peripheral clock policy.
+ * @brief Apply GPIO/clock policy immediately before STOP entry.
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
 AppStatus_t App_GpioLpOnBeforeStopEnter(void);
 
 /**
- * @brief Restore GPIO and peripheral clock state after wake-up.
+ * @brief Restore GPIO/clock policy immediately after STOP wake-up.
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
 AppStatus_t App_GpioLpOnAfterStopExit(void);
+
+/**
+ * @brief Backward-compatible alias for STOP preparation.
+ *
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+AppStatus_t App_GpioLpPrepareForStop(void);
+
+/**
+ * @brief Backward-compatible alias for STOP recovery.
+ *
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+AppStatus_t App_GpioLpRecoverFromStop(void);
 
 /**
  * @brief Get immutable low-power GPIO context.

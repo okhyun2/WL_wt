@@ -4,35 +4,14 @@
 
 #include "app_build_config.h"
 
-/**
- * @file    app_scheduler.c
- * @brief   Tick-based cooperative task scheduler.
- */
-
-/** @brief Static task table. */
 static AppSchedulerTask_t g_appSchedulerTasks[APP_SCHEDULER_MAX_TASKS];
-
-/** @brief Scheduler runtime context. */
 static AppSchedulerContext_t g_appSchedulerContext;
 
-/**
- * @brief Check whether a task release time has elapsed with tick wrap support.
- *
- * @param nowTick Current HAL tick.
- * @param releaseTick Scheduled release tick.
- * @return APP_TRUE when task is due, APP_FALSE otherwise.
- */
 static uint8_t App_SchedulerIsTaskDue(uint32_t nowTick, uint32_t releaseTick)
 {
     return (((int32_t)(nowTick - releaseTick)) >= 0) ? APP_TRUE : APP_FALSE;
 }
 
-/**
- * @brief Advance next release time without accumulating drift.
- *
- * @param p_task Task descriptor pointer.
- * @param nowTick Current HAL tick.
- */
 static void App_SchedulerUpdateNextRelease(AppSchedulerTask_t *p_task, uint32_t nowTick)
 {
     if ((p_task == NULL) || (p_task->periodMs == 0u))
@@ -50,10 +29,8 @@ AppStatus_t App_SchedulerInit(void)
 {
     (void)memset(g_appSchedulerTasks, 0, sizeof(g_appSchedulerTasks));
     (void)memset(&g_appSchedulerContext, 0, sizeof(g_appSchedulerContext));
-
     g_appSchedulerContext.initialized = APP_TRUE;
     g_appSchedulerContext.lastStatus = APP_STATUS_OK;
-
     return APP_STATUS_OK;
 }
 
@@ -91,7 +68,6 @@ AppStatus_t App_SchedulerRegisterTask(const char *p_name,
             g_appSchedulerTasks[index].lastRunTickMs = 0u;
             g_appSchedulerTasks[index].runCount = 0u;
             g_appSchedulerTasks[index].lastStatus = APP_STATUS_OK;
-
             g_appSchedulerContext.taskCount++;
             *p_handle = (AppSchedulerTaskHandle_t)index;
             return APP_STATUS_OK;
@@ -108,7 +84,6 @@ AppStatus_t App_SchedulerSetTaskEnabled(AppSchedulerTaskHandle_t handle, uint8_t
     APP_RETURN_IF_FALSE(g_appSchedulerTasks[handle].inUse == APP_TRUE, APP_STATUS_SCHEDULER_TASK_INVALID);
 
     g_appSchedulerTasks[handle].enabled = enabled;
-
     if (enabled == APP_TRUE)
     {
         g_appSchedulerTasks[handle].nextReleaseTickMs = HAL_GetTick() + g_appSchedulerTasks[handle].periodMs;
@@ -129,22 +104,19 @@ AppStatus_t App_SchedulerRunOnce(void)
     nowTick = HAL_GetTick();
     dispatchCount = 0u;
     finalStatus = APP_STATUS_OK;
-
     g_appSchedulerContext.loopCount++;
     g_appSchedulerContext.lastRunTickMs = nowTick;
 
     for (index = 0u; index < APP_SCHEDULER_MAX_TASKS; index++)
     {
-        AppStatus_t taskStatus;
         AppSchedulerTask_t *p_task;
+        AppStatus_t taskStatus;
 
         p_task = &g_appSchedulerTasks[index];
-
         if ((p_task->inUse != APP_TRUE) || (p_task->enabled != APP_TRUE))
         {
             continue;
         }
-
         if (App_SchedulerIsTaskDue(nowTick, p_task->nextReleaseTickMs) != APP_TRUE)
         {
             continue;
@@ -156,7 +128,6 @@ AppStatus_t App_SchedulerRunOnce(void)
         p_task->runCount++;
         dispatchCount++;
         g_appSchedulerContext.totalDispatchCount++;
-
         App_SchedulerUpdateNextRelease(p_task, nowTick);
 
         if (taskStatus != APP_STATUS_OK)

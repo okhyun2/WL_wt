@@ -8,22 +8,13 @@
 #include "app_gpio_lp.h"
 #include "app_hw.h"
 #include "app_log.h"
+#include "app_msgq.h"
 #include "app_scheduler.h"
 #include "app_selftest.h"
 #include "app_tasks.h"
 
-/**
- * @file    app_system.c
- * @brief   Application bootstrap and cooperative scheduler integration.
- */
-
-/** @brief Internal runtime context. */
 static AppSystemContext_t g_appSystemContext;
-
-/** @brief Static firmware version string. */
-static const char g_appVersionString[] = "0.5.1";
-
-/** @brief Board-specific low-power GPIO configuration. */
+static const char g_appVersionString[] = "0.6.0";
 static AppGpioLpConfig_t g_appGpioLpConfig;
 
 static AppStatus_t App_SystemValidateHandles(void)
@@ -187,6 +178,12 @@ static AppStatus_t App_SystemInitScheduler(void)
         return APP_STATUS_SCHEDULER_INIT_FAILED;
     }
 
+    status = App_MsgqInit();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
     status = App_TasksInit();
     if (status != APP_STATUS_OK)
     {
@@ -203,8 +200,9 @@ static AppStatus_t App_SystemInitScheduler(void)
     g_appSystemContext.schedulerStatus = APP_STATUS_OK;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_SCHEDULER_READY;
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SCH", "Scheduler ready: %u tasks registered",
-                                 (unsigned int)App_SchedulerGetContext()->taskCount) == APP_STATUS_OK,
+    APP_RETURN_IF_FALSE(APP_LOGI("SCH", "Scheduler ready: %u tasks registered, queue=%u",
+                                 (unsigned int)App_SchedulerGetContext()->taskCount,
+                                 (unsigned int)APP_MSGQ_CAPACITY) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
     return APP_STATUS_OK;
@@ -251,7 +249,6 @@ AppStatus_t App_SystemInit(void)
     }
 
     g_appSystemContext.bootStage = APP_BOOT_STAGE_PERIPH_READY;
-
     App_SystemApplySafeOutputs();
 
     status = App_SystemInitLowPowerGpio();
@@ -292,7 +289,6 @@ AppStatus_t App_SystemInit(void)
 
     g_appSystemContext.initialized = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
-
     return APP_STATUS_OK;
 }
 

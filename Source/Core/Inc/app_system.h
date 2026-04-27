@@ -12,9 +12,6 @@ extern "C" {
  * @brief   Application bootstrap and top-level superloop interface.
  */
 
-/**
- * @brief Boot stage indicator.
- */
 typedef enum
 {
     APP_BOOT_STAGE_RESET = 0,
@@ -29,9 +26,6 @@ typedef enum
     APP_BOOT_STAGE_APP_READY
 } AppBootStage_t;
 
-/**
- * @brief Global runtime context for the application.
- */
 typedef struct
 {
     uint8_t initialized;
@@ -48,66 +42,14 @@ typedef struct
     uint32_t idleCounter;
 } AppSystemContext_t;
 
-/**
- * @brief Initialize application software layer after CubeMX peripheral init.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 AppStatus_t App_SystemInit(void);
-
-/**
- * @brief Execute one application superloop cycle.
- */
 void App_SystemProcess(void);
-
-/**
- * @brief Low-power hook to be called immediately before STOP entry.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 AppStatus_t App_SystemOnBeforeStopEnter(void);
-
-/**
- * @brief Low-power hook to be called immediately after STOP wake-up.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 AppStatus_t App_SystemOnAfterStopExit(void);
-
-/**
- * @brief Backward-compatible alias for STOP preparation.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 AppStatus_t App_SystemPrepareForStop(void);
-
-/**
- * @brief Backward-compatible alias for STOP recovery.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 AppStatus_t App_SystemRecoverFromStop(void);
-
-/**
- * @brief Notify system low-power policy about NB-IoT power state.
- *
- * @param powered APP_TRUE when module is powered, APP_FALSE otherwise.
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 AppStatus_t App_SystemSetNbiotPowered(uint8_t powered);
-
-/**
- * @brief Get immutable runtime context.
- *
- * @return Pointer to runtime context.
- */
 const AppSystemContext_t *App_SystemGetContext(void);
-
-/**
- * @brief Get firmware version string.
- *
- * @return Version string pointer.
- */
 const char *App_SystemGetVersionString(void);
 
 #ifdef __cplusplus

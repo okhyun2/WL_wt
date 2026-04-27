@@ -12,9 +12,6 @@ extern "C" {
  * @brief   Common application status codes and fatal error handling.
  */
 
-/**
- * @brief Application status/error codes.
- */
 typedef enum
 {
     APP_STATUS_OK = 0,
@@ -39,15 +36,15 @@ typedef enum
     APP_STATUS_SELFTEST_TIMEOUT,
     APP_STATUS_SCHEDULER_NOT_INITIALIZED,
     APP_STATUS_SCHEDULER_INIT_FAILED,
-    APP_STATUS_SCHEDULER_TASK_LIMIT_REACHED,
     APP_STATUS_SCHEDULER_TASK_INVALID,
+    APP_STATUS_SCHEDULER_TASK_LIMIT_REACHED,
+    APP_STATUS_MSGQ_NOT_INITIALIZED,
+    APP_STATUS_MSGQ_FULL,
+    APP_STATUS_MSGQ_EMPTY,
     APP_STATUS_INIT_FAILED,
     APP_STATUS_FATAL
 } AppStatus_t;
 
-/**
- * @brief Last captured error information.
- */
 typedef struct
 {
     AppStatus_t code;
@@ -55,35 +52,11 @@ typedef struct
     uint32_t line;
 } AppErrorRecord_t;
 
-/**
- * @brief Initialize the application error recorder.
- */
 void App_ErrorInit(void);
-
-/**
- * @brief Save the latest error information.
- *
- * @param code Error/status code.
- * @param file Source file name.
- * @param line Source line number.
- */
 void App_ErrorRecord(AppStatus_t code, const char *file, uint32_t line);
-
-/**
- * @brief Get the last stored error record.
- *
- * @return Pointer to internal immutable error record.
- */
 const AppErrorRecord_t *App_ErrorGetLast(void);
-
-/**
- * @brief Enter non-returning fatal error trap.
- */
 void App_ErrorTrap(void);
 
-/**
- * @brief Record error and return when expression is false.
- */
 #define APP_RETURN_IF_FALSE(expr, err_code)                    \
     do                                                         \
     {                                                          \
@@ -94,9 +67,6 @@ void App_ErrorTrap(void);
         }                                                      \
     } while (0)
 
-/**
- * @brief Record error and return when HAL API fails.
- */
 #define APP_RETURN_IF_HAL_ERROR(expr, err_code)                \
     do                                                         \
     {                                                          \

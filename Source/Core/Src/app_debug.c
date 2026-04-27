@@ -10,23 +10,9 @@
 #include "app_system.h"
 #include "app_tasks.h"
 
-/**
- * @file    app_debug.c
- * @brief   UART1-based debug console implementation.
- */
-
-/** @brief Console prompt string. */
 static const char g_appDebugPrompt[] = APP_DEBUG_CONSOLE_PROMPT;
-
-/** @brief Console context instance. */
 static AppDebugConsoleContext_t g_appDebugConsoleContext;
 
-/**
- * @brief Send one zero-terminated response line.
- *
- * @param p_text Response text.
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 static AppStatus_t App_DebugConsoleWriteLine(const char *p_text)
 {
     AppStatus_t status;
@@ -40,12 +26,73 @@ static AppStatus_t App_DebugConsoleWriteLine(const char *p_text)
     return App_DebugConsoleWriteString(APP_DEBUG_CONSOLE_EOL);
 }
 
-/**
- * @brief Execute one parsed console command.
- *
- * @param p_command Zero-terminated command string.
- * @return APP_STATUS_OK on success, error code otherwise.
- */
+static AppStatus_t App_DebugConsolePrintTaskTable(void)
+{
+    char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
+    const AppSchedulerContext_t *p_schedulerContext;
+    const AppTaskMainSummary_t *p_mainSummary;
+    uint32_t index;
+    int32_t formattedLength;
+    uint32_t nowTick;
+
+    p_schedulerContext = App_SchedulerGetContext();
+    p_mainSummary = App_TaskMainGetSummary();
+    nowTick = HAL_GetTick();
+
+    formattedLength = snprintf(txBuffer,
+                               sizeof(txBuffer),
+                               "sched tasks=%u dispatch=%u idle=%lu loop=%lu main=%s alive=%lu busy=%lu stale=%lu",
+                               (unsigned int)p_schedulerContext->taskCount,
+                               (unsigned int)p_schedulerContext->lastDispatchCount,
+                               (unsigned long)p_schedulerContext->idleCount,
+                               (unsigned long)p_schedulerContext->loopCount,
+                               App_TaskMainGetDecisionString(),
+                               (unsigned long)p_mainSummary->aliveCount,
+                               (unsigned long)p_mainSummary->busyCount,
+                               (unsigned long)p_mainSummary->staleCount);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+    for (index = 0u; index < APP_SCHEDULER_MAX_TASKS; index++)
+    {
+        const AppSchedulerTask_t *p_task;
+        AppTaskId_t taskId;
+        const AppTaskModuleContext_t *p_module;
+        const AppTaskMainMonitor_t *p_monitor;
+        const char *p_stateName;
+        uint32_t ageMs;
+
+        p_task = App_SchedulerGetTask((AppSchedulerTaskHandle_t)index);
+        if (p_task == NULL)
+        {
+            continue;
+        }
+
+        taskId = App_TasksFindIdBySchedulerHandle((AppSchedulerTaskHandle_t)index);
+        p_module = ((uint32_t)taskId < (uint32_t)APP_TASK_ID_COUNT) ? App_TasksGetModuleContext(taskId) : NULL;
+        p_monitor = ((uint32_t)taskId < (uint32_t)APP_TASK_ID_COUNT) ? App_TaskMainGetMonitor(taskId) : NULL;
+        p_stateName = ((p_module != NULL) && ((uint32_t)taskId < (uint32_t)APP_TASK_ID_COUNT)) ? App_TasksGetStateName(taskId, p_module->state) : "-";
+        ageMs = ((p_monitor != NULL) && (p_monitor->heartbeatCount != 0u)) ? (nowTick - p_monitor->lastHeartbeatTickMs) : 0u;
+
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "[%02lu] %-12s en=%u run=%lu state=%-12s busy=%u alive=%u age=%lu last=%lu",
+                                   (unsigned long)index,
+                                   (p_task->p_name != NULL) ? p_task->p_name : "-",
+                                   (unsigned int)p_task->enabled,
+                                   (unsigned long)p_task->runCount,
+                                   p_stateName,
+                                   (unsigned int)((p_module != NULL) ? p_module->busy : 0u),
+                                   (unsigned int)((p_monitor != NULL) ? p_monitor->alive : 0u),
+                                   (unsigned long)ageMs,
+                                   (unsigned long)p_task->lastStatus);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    }
+
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
 {
     char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
@@ -53,6 +100,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     const AppClockContext_t *p_clockContext;
     const AppErrorRecord_t *p_errorRecord;
     const AppDebugConsoleContext_t *p_debugContext;
+    const AppTaskMainSummary_t *p_mainSummary;
     int32_t formattedLength;
 
     if ((p_command == NULL) || (p_command[0] == '\0'))
@@ -64,6 +112,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     p_clockContext = App_ClockGetContext();
     p_errorRecord = App_ErrorGetLast();
     p_debugContext = App_DebugConsoleGetContext();
+    p_mainSummary = App_TaskMainGetSummary();
 
     if (strcmp(p_command, "help") == 0)
     {
@@ -72,19 +121,16 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("status     : show system/debug state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("clock      : show boot clock summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("error      : show last error record") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("tasks      : show scheduler and task state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("main       : show main-task decision summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("echo on    : enable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("echo off   : disable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("tasks      : show scheduler task state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         return APP_STATUS_OK;
     }
 
     if (strcmp(p_command, "ver") == 0)
     {
-        formattedLength = snprintf(txBuffer,
-                                   sizeof(txBuffer),
-                                   "%s v%s",
-                                   APP_NAME_STRING,
-                                   App_SystemGetVersionString());
+        formattedLength = snprintf(txBuffer, sizeof(txBuffer), "%s v%s", APP_NAME_STRING, App_SystemGetVersionString());
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
     }
@@ -93,9 +139,10 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "boot=%lu loop=%lu debug=%u log=%u echo=%u cmd=%lu unknown=%lu",
+                                   "boot=%lu loop=%lu idle=%lu debug=%u log=%u echo=%u cmd=%lu unknown=%lu",
                                    (unsigned long)p_systemContext->bootStage,
                                    (unsigned long)p_systemContext->loopCounter,
+                                   (unsigned long)p_systemContext->idleCounter,
                                    (unsigned int)p_systemContext->debugReady,
                                    (unsigned int)p_systemContext->logReady,
                                    (unsigned int)p_debugContext->echoEnabled,
@@ -134,6 +181,26 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         return App_DebugConsoleWriteLine(txBuffer);
     }
 
+    if (strcmp(p_command, "tasks") == 0)
+    {
+        return App_DebugConsolePrintTaskTable();
+    }
+
+    if (strcmp(p_command, "main") == 0)
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "main=%s alive=%lu busy=%lu stale=%lu msg=%lu tick=%lu",
+                                   App_TaskMainGetDecisionString(),
+                                   (unsigned long)p_mainSummary->aliveCount,
+                                   (unsigned long)p_mainSummary->busyCount,
+                                   (unsigned long)p_mainSummary->staleCount,
+                                   (unsigned long)p_mainSummary->processedMessageCount,
+                                   (unsigned long)p_mainSummary->lastEvaluationTickMs);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
     if (strcmp(p_command, "echo on") == 0)
     {
         g_appDebugConsoleContext.echoEnabled = APP_TRUE;
@@ -146,81 +213,10 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         return App_DebugConsoleWriteLine("echo disabled");
     }
 
-    if (strcmp(p_command, "tasks") == 0)
-    {
-        const AppSchedulerContext_t *p_schedulerContext;
-        const AppTasksContext_t *p_tasksContext;
-        uint32_t index;
-
-        p_schedulerContext = App_SchedulerGetContext();
-        p_tasksContext = App_TasksGetContext();
-
-        formattedLength = snprintf(txBuffer,
-                                   sizeof(txBuffer),
-                                   "sched tasks=%u dispatch=%u idle=%lu loop=%lu",
-                                   (unsigned int)p_schedulerContext->taskCount,
-                                   (unsigned int)p_schedulerContext->lastDispatchCount,
-                                   (unsigned long)p_schedulerContext->idleCount,
-                                   (unsigned long)p_schedulerContext->loopCount);
-        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
-        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-
-        for (index = 0u; index < APP_SCHEDULER_MAX_TASKS; index++)
-        {
-            const AppSchedulerTask_t *p_task;
-            uint32_t moduleIndex;
-            uint32_t taskState;
-            uint8_t taskBusy;
-
-            p_task = App_SchedulerGetTask((AppSchedulerTaskHandle_t)index);
-            if (p_task == NULL)
-            {
-                continue;
-            }
-
-            taskState = 0u;
-            taskBusy = 0u;
-            for (moduleIndex = 0u; moduleIndex < (uint32_t)APP_TASK_ID_COUNT; moduleIndex++)
-            {
-                const AppTaskModuleContext_t *p_module;
-
-                p_module = App_TasksGetModuleContext((AppTaskId_t)moduleIndex);
-                if ((p_module != NULL) && (p_module->schedulerHandle == (AppSchedulerTaskHandle_t)index))
-                {
-                    taskState = p_module->state;
-                    taskBusy = p_module->busy;
-                    break;
-                }
-            }
-
-            formattedLength = snprintf(txBuffer,
-                                       sizeof(txBuffer),
-                                       "[%02lu] %-12s en=%u run=%lu state=%lu busy=%u last=%lu st=%lu",
-                                       (unsigned long)index,
-                                       (p_task->p_name != NULL) ? p_task->p_name : "-",
-                                       (unsigned int)p_task->enabled,
-                                       (unsigned long)p_task->runCount,
-                                       (unsigned long)taskState,
-                                       (unsigned int)taskBusy,
-                                       (unsigned long)p_task->lastRunTickMs,
-                                       (unsigned long)p_task->lastStatus);
-            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
-            APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-        }
-
-        (void)p_tasksContext;
-        return APP_STATUS_OK;
-    }
-
     g_appDebugConsoleContext.unknownCommandCount++;
     return App_DebugConsoleWriteLine("unknown command; type 'help'");
 }
 
-/**
- * @brief Finalize current RX line and execute command.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 static AppStatus_t App_DebugConsoleCommitLine(void)
 {
     AppStatus_t status;
@@ -249,12 +245,6 @@ static AppStatus_t App_DebugConsoleCommitLine(void)
     return App_DebugConsolePrintPrompt();
 }
 
-/**
- * @brief Handle one received character.
- *
- * @param rxByte Received UART byte.
- * @return APP_STATUS_OK on success, error code otherwise.
- */
 static AppStatus_t App_DebugConsoleHandleByte(uint8_t rxByte)
 {
     static const uint8_t backspaceSequence[] = {'\b', ' ', '\b'};
@@ -277,13 +267,11 @@ static AppStatus_t App_DebugConsoleHandleByte(uint8_t rxByte)
         {
             g_appDebugConsoleContext.rxLength--;
             g_appDebugConsoleContext.rxLine[g_appDebugConsoleContext.rxLength] = '\0';
-
             if (g_appDebugConsoleContext.echoEnabled == APP_TRUE)
             {
                 return App_DebugConsoleWrite(backspaceSequence, (uint16_t)sizeof(backspaceSequence));
             }
         }
-
         return APP_STATUS_OK;
     }
 
@@ -315,12 +303,9 @@ static AppStatus_t App_DebugConsoleHandleByte(uint8_t rxByte)
 AppStatus_t App_DebugConsoleInit(void)
 {
     (void)memset(&g_appDebugConsoleContext, 0, sizeof(g_appDebugConsoleContext));
-
     APP_RETURN_IF_FALSE(APP_UART_DEBUG_HANDLE->Instance == USART1, APP_STATUS_HW_HANDLE_INVALID);
-
     g_appDebugConsoleContext.echoEnabled = APP_TRUE;
     g_appDebugConsoleContext.initialized = APP_TRUE;
-
     return APP_STATUS_OK;
 }
 
@@ -334,20 +319,16 @@ AppStatus_t App_DebugConsoleProcess(void)
     while (1)
     {
         halStatus = HAL_UART_Receive(APP_UART_DEBUG_HANDLE, &rxByte, 1u, 0u);
-
         if (halStatus == HAL_TIMEOUT)
         {
             break;
         }
-
         if (halStatus != HAL_OK)
         {
             return APP_STATUS_UART_RX_FAILED;
         }
-
         {
             AppStatus_t status;
-
             status = App_DebugConsoleHandleByte(rxByte);
             if (status != APP_STATUS_OK)
             {
@@ -374,14 +355,12 @@ AppStatus_t App_DebugConsoleWrite(const uint8_t *p_data, uint16_t length)
                                               length,
                                               APP_DEBUG_UART_TIMEOUT_MS),
                             APP_STATUS_UART_TX_FAILED);
-
     return APP_STATUS_OK;
 }
 
 AppStatus_t App_DebugConsoleWriteString(const char *p_text)
 {
     APP_RETURN_IF_FALSE((p_text != NULL), APP_STATUS_INVALID_PARAM);
-
     return App_DebugConsoleWrite((const uint8_t *)p_text, (uint16_t)strlen(p_text));
 }
 

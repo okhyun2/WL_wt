@@ -7,94 +7,106 @@ extern "C" {
 
 #include "app_scheduler.h"
 
-/**
- * @file    app_tasks.h
- * @brief   Cooperative task registry and pseudo task implementations.
- */
+    typedef enum
+    {
+        APP_TASK_ID_DEBUG = 0,
+        APP_TASK_ID_WATCHDOG,
+        APP_TASK_ID_HOUSEKEEPING,
+        APP_TASK_ID_POWER,
+        APP_TASK_ID_STORAGE,
+        APP_TASK_ID_METER,
+        APP_TASK_ID_NFC,
+        APP_TASK_ID_ESI,
+        APP_TASK_ID_AUX,
+        APP_TASK_ID_NBIOT,
+        APP_TASK_ID_SERVER,
+        APP_TASK_ID_RTC,
+        APP_TASK_ID_MAIN,
+        APP_TASK_ID_COUNT
+    } AppTaskId_t;
 
-/**
- * @brief Application task identifiers.
- */
-typedef enum
-{
-    APP_TASK_ID_DEBUG = 0,
-    APP_TASK_ID_WATCHDOG,
-    APP_TASK_ID_HOUSEKEEPING,
-    APP_TASK_ID_POWER,
-    APP_TASK_ID_STORAGE,
-    APP_TASK_ID_METER,
-    APP_TASK_ID_NFC,
-    APP_TASK_ID_ESI,
-    APP_TASK_ID_AUX,
-    APP_TASK_ID_NBIOT,
-    APP_TASK_ID_SERVER,
-    APP_TASK_ID_RTC,
-    APP_TASK_ID_COUNT
-} AppTaskId_t;
+    typedef struct
+    {
+        AppTaskId_t id;
+        uint8_t initialized;
+        uint8_t state;
+        uint8_t busy;
+        uint8_t eventPending;
+        const char *p_name;
+        uint32_t periodMs;
+        uint32_t runCount;
+        uint32_t lastRunTickMs;
+        uint32_t lastActionTickMs;
+        uint32_t lastHeartbeatTickMs;
+        AppStatus_t lastStatus;
+        AppSchedulerTaskHandle_t schedulerHandle;
+    } AppTaskModuleContext_t;
 
-/**
- * @brief Runtime context for one application task.
- */
-typedef struct
-{
-    AppTaskId_t id;
-    uint8_t initialized;
-    uint8_t state;
-    uint8_t busy;
-    uint8_t eventPending;
-    const char *p_name;
-    uint32_t runCount;
-    uint32_t lastRunTickMs;
-    uint32_t lastActionTickMs;
-    AppStatus_t lastStatus;
-    AppSchedulerTaskHandle_t schedulerHandle;
-} AppTaskModuleContext_t;
+    typedef struct
+    {
+        uint8_t initialized;
+        AppTaskModuleContext_t modules[APP_TASK_ID_COUNT];
+    } AppTasksContext_t;
 
-/**
- * @brief Runtime context for all registered application tasks.
- */
-typedef struct
-{
-    uint8_t initialized;
-    AppTaskModuleContext_t modules[APP_TASK_ID_COUNT];
-} AppTasksContext_t;
+    typedef enum
+    {
+        APP_TASK_MAIN_DECISION_BOOT = 0,
+        APP_TASK_MAIN_DECISION_MONITOR,
+        APP_TASK_MAIN_DECISION_RUN_ACTIVE,
+        APP_TASK_MAIN_DECISION_ALLOW_IDLE,
+        APP_TASK_MAIN_DECISION_REQUIRE_SAFE
+    } AppTaskMainDecision_t;
 
-/**
- * @brief Initialize task module contexts.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
-AppStatus_t App_TasksInit(void);
+    typedef struct
+    {
+        uint8_t state;
+        uint8_t busy;
+        uint8_t eventPending;
+        uint8_t alive;
+        AppStatus_t lastStatus;
+        uint32_t lastHeartbeatTickMs;
+        uint32_t heartbeatCount;
+    } AppTaskMainMonitor_t;
 
-/**
- * @brief Register all baseline tasks in the cooperative scheduler.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
-AppStatus_t App_TasksRegisterAll(void);
+    typedef struct
+    {
+        AppTaskMainDecision_t decision;
+        uint32_t aliveCount;
+        uint32_t busyCount;
+        uint32_t staleCount;
+        uint32_t processedMessageCount;
+        uint32_t lastEvaluationTickMs;
+    } AppTaskMainSummary_t;
 
-/**
- * @brief Get immutable global task context.
- *
- * @return Pointer to task context.
- */
-const AppTasksContext_t *App_TasksGetContext(void);
+    AppStatus_t App_TasksInit(void);
+    AppStatus_t App_TasksRegisterAll(void);
+    const AppTasksContext_t *App_TasksGetContext(void);
+    const AppTaskModuleContext_t *App_TasksGetModuleContext(AppTaskId_t id);
+    AppTaskModuleContext_t *App_TasksGetModuleContextMutable(AppTaskId_t id);
+    const char *App_TasksGetName(AppTaskId_t id);
+    const char *App_TasksGetStateName(AppTaskId_t id, uint8_t state);
+    AppTaskId_t App_TasksFindIdBySchedulerHandle(AppSchedulerTaskHandle_t handle);
+    AppStatus_t App_TasksCompleteRun(AppTaskModuleContext_t *p_module, AppStatus_t status);
+    AppStatus_t App_TasksPublishMessage(AppTaskId_t sourceId, uint8_t type, uint32_t param0, uint32_t param1);
 
-/**
- * @brief Get immutable context for one application task.
- *
- * @param id Task identifier.
- * @return Pointer to module context, or NULL if id is invalid.
- */
-const AppTaskModuleContext_t *App_TasksGetModuleContext(AppTaskId_t id);
+    const AppTaskMainMonitor_t *App_TaskMainGetMonitor(AppTaskId_t id);
+    const AppTaskMainSummary_t *App_TaskMainGetSummary(void);
+    AppTaskMainDecision_t App_TaskMainGetDecision(void);
+    const char *App_TaskMainGetDecisionString(void);
 
-/**
- * @brief Get task display name.
- *
- * @param id Task identifier.
- * @return Constant task name string.
- */
-const char *App_TasksGetName(AppTaskId_t id);
+    AppStatus_t App_TaskDebug(void *p_context);
+    AppStatus_t App_TaskWatchdog(void *p_context);
+    AppStatus_t App_TaskHousekeeping(void *p_context);
+    AppStatus_t App_TaskPower(void *p_context);
+    AppStatus_t App_TaskStorage(void *p_context);
+    AppStatus_t App_TaskMeter(void *p_context);
+    AppStatus_t App_TaskNfc(void *p_context);
+    AppStatus_t App_TaskEsi(void *p_context);
+    AppStatus_t App_TaskAux(void *p_context);
+    AppStatus_t App_TaskNbiot(void *p_context);
+    AppStatus_t App_TaskServer(void *p_context);
+    AppStatus_t App_TaskRtc(void *p_context);
+    AppStatus_t App_TaskMain(void *p_context);
 
 #ifdef __cplusplus
 }
