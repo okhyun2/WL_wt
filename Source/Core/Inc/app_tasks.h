@@ -85,9 +85,7 @@ extern "C" {
         uint8_t initialized;
         uint8_t externalFeedEnabled;
         uint8_t lastServiceOk;
-        uint32_t iwdgRefreshCount;
         uint32_t externalFeedCount;
-        uint32_t lastIwdgRefreshTickMs;
         uint32_t lastExternalFeedTickMs;
         uint32_t lastServiceTickMs;
         AppStatus_t lastStatus;

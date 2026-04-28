@@ -35,8 +35,7 @@ static uint32_t App_TaskWatchdogIf_GetExternalPulseTicks(void)
 static AppStatus_t App_TaskWatchdogIf_ConfigureDebugFreeze(void)
 {
 #ifdef DEBUG
-    /* External interface: __HAL_DBGMCU_FREEZE_IWDG(), __HAL_DBGMCU_FREEZE_TIM22() */
-    __HAL_DBGMCU_FREEZE_IWDG();
+    /* External interface: __HAL_DBGMCU_FREEZE_TIM22() */
     __HAL_DBGMCU_FREEZE_TIM22();
 #endif
     return APP_STATUS_OK;
@@ -54,14 +53,6 @@ static AppStatus_t App_TaskWatchdogIf_InitExternalFeed(void)
     (void)HAL_TIM_PWM_Stop(APP_TIM_WD_FEED_HANDLE, TIM_CHANNEL_2);
 
     g_appTaskWatchdogContext.externalFeedEnabled = (pulseTicks > 0u) ? APP_TRUE : APP_FALSE;
-    return APP_STATUS_OK;
-}
-
-static AppStatus_t App_TaskWatchdogIf_RefreshHardwareWatchdog(void)
-{
-    /* External interface: HAL_IWDG_Refresh(APP_IWDG_HANDLE) */
-    APP_RETURN_IF_FALSE(APP_IWDG_HANDLE->Instance == IWDG, APP_STATUS_HW_HANDLE_INVALID);
-    APP_RETURN_IF_HAL_ERROR(HAL_IWDG_Refresh(APP_IWDG_HANDLE), APP_STATUS_INIT_FAILED);
     return APP_STATUS_OK;
 }
 
@@ -88,12 +79,6 @@ static AppStatus_t App_TaskWatchdogIf_FeedExternalWatchdog(void)
     __HAL_TIM_SET_COMPARE(APP_TIM_WD_FEED_HANDLE, TIM_CHANNEL_2, 0u);
 
     return APP_STATUS_OK;
-}
-
-static void App_TaskWatchdogRecordRefresh(void)
-{
-    g_appTaskWatchdogContext.iwdgRefreshCount++;
-    g_appTaskWatchdogContext.lastIwdgRefreshTickMs = HAL_GetTick();
 }
 
 static void App_TaskWatchdogRecordExternalFeed(void)
@@ -156,17 +141,6 @@ AppStatus_t App_TaskWatchdog(void *p_context)
             APP_TASK_DEBUG_PRINT("WDOG", "watchdog init done: ext_feed=%u prime=%lu",
                                  (unsigned int)g_appTaskWatchdogContext.externalFeedEnabled,
                                  (unsigned long)APP_WATCHDOG_EXTERNAL_FEED_BOOT_PRIME_CNT);
-            APP_TASK_SET_STATE(p_module, APP_TASK_WATCHDOG_STATE_SERVICE_IWDG);
-            /* fall through */
-
-        case APP_TASK_WATCHDOG_STATE_SERVICE_IWDG:
-            status = App_TaskWatchdogIf_RefreshHardwareWatchdog();
-            if (status != APP_STATUS_OK)
-            {
-                break;
-            }
-
-            App_TaskWatchdogRecordRefresh();
             APP_TASK_SET_STATE(p_module, APP_TASK_WATCHDOG_STATE_FEED_EXTERNAL);
             /* fall through */
 
@@ -180,7 +154,7 @@ AppStatus_t App_TaskWatchdog(void *p_context)
                 }
                 App_TaskWatchdogRecordExternalFeed();
             }
-            APP_TASK_SET_STATE(p_module, APP_TASK_WATCHDOG_STATE_SERVICE_IWDG);
+            APP_TASK_SET_STATE(p_module, APP_TASK_WATCHDOG_STATE_FEED_EXTERNAL);
             break;
 
         default:
@@ -197,8 +171,7 @@ AppStatus_t App_TaskWatchdog(void *p_context)
 #ifdef DEBUG
     if (status == APP_STATUS_OK)
     {
-        APP_TASK_DEBUG_PRINT("WDOG", "service ok: iwdg=%lu ext=%lu tick=%lu",
-                             (unsigned long)g_appTaskWatchdogContext.iwdgRefreshCount,
+        APP_TASK_DEBUG_PRINT("WDOG", "service ok: ext=%lu tick=%lu",
                              (unsigned long)g_appTaskWatchdogContext.externalFeedCount,
                              (unsigned long)g_appTaskWatchdogContext.lastServiceTickMs);
     }

@@ -45,7 +45,6 @@ const char *App_TasksGetStateName(AppTaskId_t id, uint8_t state)
             switch (state)
             {
                 case APP_TASK_WATCHDOG_STATE_INIT: return "INIT";
-                case APP_TASK_WATCHDOG_STATE_SERVICE_IWDG: return "SERVICE_IWDG";
                 case APP_TASK_WATCHDOG_STATE_FEED_EXTERNAL: return "FEED_EXTERNAL";
                 default: return "UNKNOWN";
             }

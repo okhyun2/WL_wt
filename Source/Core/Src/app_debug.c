@@ -216,10 +216,9 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "wdog init=%u ok=%u iwdg=%lu ext=%lu last=%lu ext_last=%lu status=%lu",
+                                   "wdog init=%u ok=%u ext=%lu last=%lu ext_last=%lu status=%lu",
                                    (unsigned int)p_watchdogSummary->initialized,
                                    (unsigned int)p_watchdogSummary->lastServiceOk,
-                                   (unsigned long)p_watchdogSummary->iwdgRefreshCount,
                                    (unsigned long)p_watchdogSummary->externalFeedCount,
                                    (unsigned long)p_watchdogSummary->lastServiceTickMs,
                                    (unsigned long)p_watchdogSummary->lastExternalFeedTickMs,

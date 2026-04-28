@@ -28,7 +28,6 @@ extern CRC_HandleTypeDef hcrc;
 extern I2C_HandleTypeDef hi2c1;
 extern I2C_HandleTypeDef hi2c2;
 extern I2C_HandleTypeDef hi2c3;
-extern IWDG_HandleTypeDef hiwdg;
 extern UART_HandleTypeDef hlpuart1;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
@@ -46,7 +45,6 @@ extern TIM_HandleTypeDef htim22;
 
 #define APP_ADC_BATTERY_HANDLE          (&hadc)
 #define APP_CRC_HANDLE                  (&hcrc)
-#define APP_IWDG_HANDLE                 (&hiwdg)
 
 #define APP_TIM_PIEZO_HANDLE            (&htim3)
 #define APP_TIM_WD_FEED_HANDLE          (&htim22)

@@ -44,9 +44,9 @@ extern "C" {
 
 #define APP_BUILD_IS_PRODUCTION                     (APP_FALSE)
 #ifdef DEBUG
-#define APP_BUILD_DEBUG_ENABLED                  (APP_TRUE)
+#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #else
-#define APP_BUILD_DEBUG_ENABLED                  (APP_FALSE)
+#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE)
 #endif
 
 #define APP_GPIO_LP_DISABLE_SWD_IN_PRODUCTION       (APP_TRUE)
@@ -105,7 +105,6 @@ extern "C" {
 #define APP_RTC_LSI_SYNC_PREDIV                    (295u)
 #define APP_RTC_WAKEUP_PERIOD_MS                   (60*1000u)
 
-#define APP_WATCHDOG_IWDG_REFRESH_MIN_INTERVAL_MS  (250u)
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS        (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT    (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_BOOT_PRIME_CNT  (1u)

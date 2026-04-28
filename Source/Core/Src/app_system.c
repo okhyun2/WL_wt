@@ -100,13 +100,6 @@ static void App_SystemResetStopQualification(void)
     g_appSystemContext.stopQualificationCount = 0u;
 }
 
-static AppStatus_t App_SystemRefreshIwdgBeforeStop(void)
-{
-    APP_RETURN_IF_FALSE(APP_IWDG_HANDLE->Instance == IWDG, APP_STATUS_HW_HANDLE_INVALID);
-    APP_RETURN_IF_HAL_ERROR(HAL_IWDG_Refresh(APP_IWDG_HANDLE), APP_STATUS_INIT_FAILED);
-    return APP_STATUS_OK;
-}
-
 static AppStatus_t App_SystemRtcOpenBackupDomain(void)
 {
     uint32_t timeoutLoops;
@@ -357,7 +350,6 @@ static AppStatus_t App_SystemValidateHandles(void)
     APP_RETURN_IF_FALSE(APP_I2C_AUX_HANDLE->Instance == I2C3, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_CRC_HANDLE->Instance == CRC, APP_STATUS_HW_HANDLE_INVALID);
-    APP_RETURN_IF_FALSE(APP_IWDG_HANDLE->Instance == IWDG, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_TIM_PIEZO_HANDLE->Instance == TIM3, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_TIM_WD_FEED_HANDLE->Instance == TIM22, APP_STATUS_HW_HANDLE_INVALID);
     return APP_STATUS_OK;
@@ -558,12 +550,6 @@ static AppStatus_t App_SystemEnterStopMode(void)
     }
 
     status = App_SystemPrepareForStop();
-    if (status != APP_STATUS_OK)
-    {
-        return status;
-    }
-
-    status = App_SystemRefreshIwdgBeforeStop();
     if (status != APP_STATUS_OK)
     {
         return status;
