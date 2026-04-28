@@ -185,6 +185,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("main                     : show main-task decision summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("wdog                     : show watchdog service summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("lp                       : show low-power state and wake source") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("resetboot                : queue resetboot via power task") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("stor                     : show storage summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("stor resp                : show last main/storage response") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("stor save                : request save with current active data to both") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
@@ -308,6 +309,18 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
                                    (unsigned long)p_systemContext->lastWakeTickMs);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if ((strcmp(p_command, "resetboot") == 0) )
+    {
+        status = App_TaskMainRequestPowerResetBoot();
+        if (status != APP_STATUS_OK)
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "resetboot failed status=%lu", (unsigned long)status);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+            return App_DebugConsoleWriteLine(txBuffer);
+        }
+        return App_DebugConsoleWriteLine("resetboot queued");
     }
 
     if (strcmp(p_command, "stor") == 0)

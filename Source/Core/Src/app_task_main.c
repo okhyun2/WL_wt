@@ -389,3 +389,15 @@ AppStatus_t App_TaskMainRequestStorageLoad(AppStorageTarget_t backend)
     message.tickMs = requestTickMs;
     return App_MsgqPush(&message);
 }
+
+AppStatus_t App_TaskMainRequestPowerResetBoot(void)
+{
+    AppMsgqMessage_t message;
+
+    (void)memset(&message, 0, sizeof(message));
+    message.type = APP_MSGQ_TYPE_POWER_REQUEST;
+    message.sourceId = (uint8_t)APP_TASK_ID_MAIN;
+    message.reserved0 = (uint8_t)APP_POWER_QUEUE_OP_RESET_BOOT;
+    message.tickMs = HAL_GetTick();
+    return App_MsgqPush(&message);
+}

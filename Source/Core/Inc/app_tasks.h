@@ -40,6 +40,11 @@ typedef enum
     APP_STORAGE_QUEUE_OP_LOAD = 2u
 } AppStorageQueueOp_t;
 
+typedef enum
+{
+    APP_POWER_QUEUE_OP_RESET_BOOT = 1u
+} AppPowerQueueOp_t;
+
 typedef struct
 {
     AppTaskId_t id;
@@ -157,6 +162,7 @@ const char *App_TaskMainGetDecisionString(void);
 const AppTaskMainStorageResponse_t *App_TaskMainGetStorageResponse(void);
 AppStatus_t App_TaskMainRequestStorageSave(AppStorageTarget_t backend, uint32_t userData0, uint32_t userData1);
 AppStatus_t App_TaskMainRequestStorageLoad(AppStorageTarget_t backend);
+AppStatus_t App_TaskMainRequestPowerResetBoot(void);
 const AppTaskWatchdogSummary_t *App_TaskWatchdogGetSummary(void);
 const AppTaskStorageSummary_t *App_TaskStorageGetSummary(void);
 AppStatus_t App_TaskStorageRequestSave(void);
