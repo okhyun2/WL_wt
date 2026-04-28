@@ -14,7 +14,7 @@
 #include "app_tasks.h"
 
 static AppSystemContext_t g_appSystemContext;
-static const char g_appVersionString[] = "0.6.0";
+static const char g_appVersionString[] = "0.7.0";
 static AppGpioLpConfig_t g_appGpioLpConfig;
 static char g_appSystemWakeString[64];
 
@@ -152,14 +152,14 @@ static AppStatus_t App_SystemRtcInitBase(void)
         return status;
     }
 
-    SET_BIT(RCC->CSR, RCC_CSR_LSION);
-    APP_RETURN_IF_FALSE((__HAL_RCC_GET_FLAG(RCC_FLAG_LSIRDY) != RESET), APP_STATUS_INIT_FAILED);
+    SET_BIT(RCC->CSR, RCC_CSR_LSEON);
+    APP_RETURN_IF_FALSE((__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) != RESET), APP_STATUS_INIT_FAILED);
 
-    if (((RCC->CSR & RCC_CSR_RTCSEL) != RCC_CSR_RTCSEL_LSI) || ((RCC->CSR & RCC_CSR_RTCEN) == 0u))
+    if (((RCC->CSR & RCC_CSR_RTCSEL) != RCC_CSR_RTCSEL_LSE) || ((RCC->CSR & RCC_CSR_RTCEN) == 0u))
     {
         SET_BIT(RCC->CSR, RCC_CSR_RTCRST);
         CLEAR_BIT(RCC->CSR, RCC_CSR_RTCRST);
-        MODIFY_REG(RCC->CSR, RCC_CSR_RTCSEL, RCC_CSR_RTCSEL_LSI);
+        MODIFY_REG(RCC->CSR, RCC_CSR_RTCSEL, RCC_CSR_RTCSEL_LSE);
         SET_BIT(RCC->CSR, RCC_CSR_RTCEN);
     }
 
@@ -175,8 +175,8 @@ static AppStatus_t App_SystemRtcInitBase(void)
         }
 
         CLEAR_BIT(RTC->CR, RTC_CR_FMT | RTC_CR_WUTE | RTC_CR_WUTIE);
-        RTC->PRER = ((APP_RTC_LSI_ASYNC_PREDIV << RTC_PRER_PREDIV_A_Pos) & RTC_PRER_PREDIV_A) |
-                    ((APP_RTC_LSI_SYNC_PREDIV << RTC_PRER_PREDIV_S_Pos) & RTC_PRER_PREDIV_S);
+        RTC->PRER = ((APP_RTC_LSE_ASYNC_PREDIV << RTC_PRER_PREDIV_A_Pos) & RTC_PRER_PREDIV_A) |
+                    ((APP_RTC_LSE_SYNC_PREDIV << RTC_PRER_PREDIV_S_Pos) & RTC_PRER_PREDIV_S);
         RTC->TR = 0u;
         RTC->DR = (1u << RTC_DR_WDU_Pos) | (1u << RTC_DR_MU_Pos) | (1u << RTC_DR_DU_Pos);
         CLEAR_BIT(RTC->ISR, RTC_ISR_INIT);
@@ -438,19 +438,19 @@ static AppStatus_t App_SystemPrintBootLogs(void)
 
     APP_RETURN_IF_FALSE(APP_LOGI("SYS", "Boot complete: %s v%s", APP_NAME_STRING, App_SystemGetVersionString()) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu LSI=%u",
+    APP_RETURN_IF_FALSE(APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu LSE=%u",
                                  (unsigned long)p_clockContext->sysclkHz,
                                  (unsigned long)p_clockContext->hclkHz,
                                  (unsigned long)p_clockContext->pclk1Hz,
                                  (unsigned long)p_clockContext->pclk2Hz,
                                  (unsigned long)p_clockContext->msiRange,
-                                 (unsigned int)p_clockContext->lsiReady) == APP_STATUS_OK,
+                                 (unsigned int)p_clockContext->lseReady) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(APP_LOGI("GPIO", "LP policy ready: SWD=%lu NB-IoT-wake=%u",
                                  (unsigned long)g_appGpioLpConfig.swdPolicy,
                                  (unsigned int)g_appGpioLpConfig.keepNbiotRiWakeWhenPowered) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("RTC", "STOP wake period=%lu ms (LSI rtc wakeup)",
+    APP_RETURN_IF_FALSE(APP_LOGI("RTC", "STOP wake period=%lu ms (LSE rtc wakeup)",
                                  (unsigned long)APP_RTC_WAKEUP_PERIOD_MS) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud",

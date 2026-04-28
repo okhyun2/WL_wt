@@ -42,7 +42,7 @@ static AppStatus_t App_ClockCaptureContext(void)
 
     halSysClkSource = __HAL_RCC_GET_SYSCLK_SOURCE();
     g_appClockContext.sysclkSource = App_ClockDecodeSystemSource(halSysClkSource);
-    g_appClockContext.lsiReady = (__HAL_RCC_GET_FLAG(RCC_FLAG_LSIRDY) != RESET) ? APP_TRUE : APP_FALSE;
+    g_appClockContext.lseReady = (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) != RESET) ? APP_TRUE : APP_FALSE;
     g_appClockContext.flashLatency = __HAL_FLASH_GET_LATENCY();
 
     HAL_RCC_GetOscConfig(&oscConfig);
@@ -58,7 +58,7 @@ static AppStatus_t App_ClockCaptureContext(void)
     APP_RETURN_IF_FALSE((__HAL_RCC_GET_FLAG(RCC_FLAG_MSIRDY) != RESET), APP_STATUS_CLOCK_VERIFY_FAILED);
     //TODO Check More depth
 #if 0
-    APP_RETURN_IF_FALSE(g_appClockContext.lsiReady == APP_TRUE, APP_STATUS_CLOCK_VERIFY_FAILED);
+    APP_RETURN_IF_FALSE(g_appClockContext.lseReady == APP_TRUE, APP_STATUS_CLOCK_VERIFY_FAILED);
     APP_RETURN_IF_FALSE(oscConfig.MSIState == RCC_MSI_ON, APP_STATUS_CLOCK_VERIFY_FAILED);
     APP_RETURN_IF_FALSE(oscConfig.MSIClockRange == APP_CLOCK_MSI_RANGE_BOOT, APP_STATUS_CLOCK_VERIFY_FAILED);
     APP_RETURN_IF_FALSE(g_appClockContext.sysclkHz == APP_CLOCK_SYSCLK_BOOT_HZ, APP_STATUS_CLOCK_VERIFY_FAILED);
@@ -88,8 +88,7 @@ AppStatus_t App_ClockRecoverAfterStop(void)
     (void)memset(&clkConfig, 0, sizeof(clkConfig));
     (void)memset(&periphClkInit, 0, sizeof(periphClkInit));
 
-    oscConfig.OscillatorType = RCC_OSCILLATORTYPE_LSI | RCC_OSCILLATORTYPE_MSI;
-    oscConfig.LSIState = RCC_LSI_ON;
+    oscConfig.OscillatorType = RCC_OSCILLATORTYPE_MSI;
     oscConfig.MSIState = RCC_MSI_ON;
     oscConfig.MSICalibrationValue = 0u;
     oscConfig.MSIClockRange = APP_CLOCK_MSI_RANGE_BOOT;

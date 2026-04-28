@@ -30,7 +30,7 @@ typedef enum
 typedef struct
 {
     uint8_t initialized;
-    uint8_t lsiReady;
+    uint8_t lseReady;
     uint32_t msiRange;
     uint32_t flashLatency;
     uint32_t sysclkHz;

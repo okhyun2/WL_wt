@@ -230,14 +230,14 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "src=%lu sys=%lu hclk=%lu pclk1=%lu pclk2=%lu msi=%lu lsi=%u flash=%lu",
+                                   "src=%lu sys=%lu hclk=%lu pclk1=%lu pclk2=%lu msi=%lu lse=%u flash=%lu",
                                    (unsigned long)p_clockContext->sysclkSource,
                                    (unsigned long)p_clockContext->sysclkHz,
                                    (unsigned long)p_clockContext->hclkHz,
                                    (unsigned long)p_clockContext->pclk1Hz,
                                    (unsigned long)p_clockContext->pclk2Hz,
                                    (unsigned long)p_clockContext->msiRange,
-                                   (unsigned int)p_clockContext->lsiReady,
+                                   (unsigned int)p_clockContext->lseReady,
                                    (unsigned long)p_clockContext->flashLatency);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);

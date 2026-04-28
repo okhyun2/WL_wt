@@ -30,7 +30,9 @@ extern "C" {
 #define APP_CLOCK_PCLK1_BOOT_HZ                     (APP_CLOCK_SYSCLK_BOOT_HZ)
 #define APP_CLOCK_PCLK2_BOOT_HZ                     (APP_CLOCK_SYSCLK_BOOT_HZ)
 #define APP_CLOCK_FLASH_LATENCY_BOOT                FLASH_LATENCY_0
-#define APP_CLOCK_LSI_NOMINAL_HZ                    (37000u)
+#define APP_CLOCK_LSE_NOMINAL_HZ                    (32768u)
+#define APP_CLOCK_LSE_DRIVE                         RCC_LSEDRIVE_LOW
+#define APP_CLOCK_LSI_NOMINAL_HZ                    (APP_CLOCK_LSE_NOMINAL_HZ)
 #define APP_CLOCK_SYSTICK_HZ                        (1000u)
 
 #define APP_DEBUG_UART_TIMEOUT_MS                   (100u)
@@ -101,8 +103,10 @@ extern "C" {
 #define APP_SCHEDULER_TASK_RTC_PERIOD_MS            (1000u)
 #define APP_SCHEDULER_TASK_MAIN_PERIOD_MS           (100u)
 
-#define APP_RTC_LSI_ASYNC_PREDIV                    (124u)
-#define APP_RTC_LSI_SYNC_PREDIV                     (295u)
+#define APP_RTC_LSE_ASYNC_PREDIV                    (127u)
+#define APP_RTC_LSE_SYNC_PREDIV                     (255u)
+#define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
+#define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
 #define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u)
 
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)
