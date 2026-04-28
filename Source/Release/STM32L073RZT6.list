@@ -5939,153 +5939,152 @@ Disassembly of section .text:
  8003454:	2000087c 	.word	0x2000087c
 
 08003458 <App_TasksRegisterAll>:
- 8003458:	4b4e      	ldr	r3, [pc, #312]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 8003458:	4b4d      	ldr	r3, [pc, #308]	@ (8003590 <App_TasksRegisterAll+0x138>)
  800345a:	b510      	push	{r4, lr}
  800345c:	781c      	ldrb	r4, [r3, #0]
  800345e:	2c01      	cmp	r4, #1
  8003460:	d007      	beq.n	8003472 <App_TasksRegisterAll+0x1a>
  8003462:	2236      	movs	r2, #54	@ 0x36
  8003464:	2002      	movs	r0, #2
- 8003466:	494c      	ldr	r1, [pc, #304]	@ (8003598 <App_TasksRegisterAll+0x140>)
+ 8003466:	494b      	ldr	r1, [pc, #300]	@ (8003594 <App_TasksRegisterAll+0x13c>)
  8003468:	32ff      	adds	r2, #255	@ 0xff
  800346a:	f7fd fc4d 	bl	8000d08 <App_ErrorRecord>
  800346e:	2002      	movs	r0, #2
  8003470:	bd10      	pop	{r4, pc}
  8003472:	0022      	movs	r2, r4
  8003474:	2000      	movs	r0, #0
- 8003476:	4949      	ldr	r1, [pc, #292]	@ (800359c <App_TasksRegisterAll+0x144>)
+ 8003476:	4948      	ldr	r1, [pc, #288]	@ (8003598 <App_TasksRegisterAll+0x140>)
  8003478:	f7ff fe9c 	bl	80031b4 <App_TasksRegisterOne>
  800347c:	2800      	cmp	r0, #0
  800347e:	d003      	beq.n	8003488 <App_TasksRegisterAll+0x30>
  8003480:	2238      	movs	r2, #56	@ 0x38
- 8003482:	4945      	ldr	r1, [pc, #276]	@ (8003598 <App_TasksRegisterAll+0x140>)
+ 8003482:	4944      	ldr	r1, [pc, #272]	@ (8003594 <App_TasksRegisterAll+0x13c>)
  8003484:	32ff      	adds	r2, #255	@ 0xff
- 8003486:	e00a      	b.n	800349e <App_TasksRegisterAll+0x46>
- 8003488:	22fa      	movs	r2, #250	@ 0xfa
- 800348a:	0020      	movs	r0, r4
- 800348c:	4944      	ldr	r1, [pc, #272]	@ (80035a0 <App_TasksRegisterAll+0x148>)
- 800348e:	0092      	lsls	r2, r2, #2
- 8003490:	f7ff fe90 	bl	80031b4 <App_TasksRegisterOne>
- 8003494:	2800      	cmp	r0, #0
- 8003496:	d007      	beq.n	80034a8 <App_TasksRegisterAll+0x50>
- 8003498:	229c      	movs	r2, #156	@ 0x9c
- 800349a:	493f      	ldr	r1, [pc, #252]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 800349c:	0052      	lsls	r2, r2, #1
- 800349e:	2015      	movs	r0, #21
- 80034a0:	f7fd fc32 	bl	8000d08 <App_ErrorRecord>
- 80034a4:	2015      	movs	r0, #21
- 80034a6:	e7e3      	b.n	8003470 <App_TasksRegisterAll+0x18>
- 80034a8:	2264      	movs	r2, #100	@ 0x64
- 80034aa:	2002      	movs	r0, #2
- 80034ac:	493d      	ldr	r1, [pc, #244]	@ (80035a4 <App_TasksRegisterAll+0x14c>)
- 80034ae:	f7ff fe81 	bl	80031b4 <App_TasksRegisterOne>
- 80034b2:	2800      	cmp	r0, #0
- 80034b4:	d002      	beq.n	80034bc <App_TasksRegisterAll+0x64>
- 80034b6:	223a      	movs	r2, #58	@ 0x3a
- 80034b8:	4937      	ldr	r1, [pc, #220]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 80034ba:	e7e3      	b.n	8003484 <App_TasksRegisterAll+0x2c>
- 80034bc:	22fa      	movs	r2, #250	@ 0xfa
- 80034be:	2003      	movs	r0, #3
- 80034c0:	4939      	ldr	r1, [pc, #228]	@ (80035a8 <App_TasksRegisterAll+0x150>)
- 80034c2:	f7ff fe77 	bl	80031b4 <App_TasksRegisterOne>
- 80034c6:	2800      	cmp	r0, #0
- 80034c8:	d002      	beq.n	80034d0 <App_TasksRegisterAll+0x78>
- 80034ca:	229d      	movs	r2, #157	@ 0x9d
- 80034cc:	4932      	ldr	r1, [pc, #200]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 80034ce:	e7e5      	b.n	800349c <App_TasksRegisterAll+0x44>
- 80034d0:	22c8      	movs	r2, #200	@ 0xc8
- 80034d2:	2004      	movs	r0, #4
- 80034d4:	4935      	ldr	r1, [pc, #212]	@ (80035ac <App_TasksRegisterAll+0x154>)
- 80034d6:	f7ff fe6d 	bl	80031b4 <App_TasksRegisterOne>
- 80034da:	2800      	cmp	r0, #0
- 80034dc:	d002      	beq.n	80034e4 <App_TasksRegisterAll+0x8c>
- 80034de:	223c      	movs	r2, #60	@ 0x3c
- 80034e0:	492d      	ldr	r1, [pc, #180]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 80034e2:	e7cf      	b.n	8003484 <App_TasksRegisterAll+0x2c>
- 80034e4:	22fa      	movs	r2, #250	@ 0xfa
- 80034e6:	2005      	movs	r0, #5
- 80034e8:	4931      	ldr	r1, [pc, #196]	@ (80035b0 <App_TasksRegisterAll+0x158>)
- 80034ea:	0052      	lsls	r2, r2, #1
- 80034ec:	f7ff fe62 	bl	80031b4 <App_TasksRegisterOne>
- 80034f0:	2800      	cmp	r0, #0
- 80034f2:	d002      	beq.n	80034fa <App_TasksRegisterAll+0xa2>
- 80034f4:	229e      	movs	r2, #158	@ 0x9e
- 80034f6:	4928      	ldr	r1, [pc, #160]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 80034f8:	e7d0      	b.n	800349c <App_TasksRegisterAll+0x44>
- 80034fa:	22fa      	movs	r2, #250	@ 0xfa
- 80034fc:	2006      	movs	r0, #6
- 80034fe:	492d      	ldr	r1, [pc, #180]	@ (80035b4 <App_TasksRegisterAll+0x15c>)
- 8003500:	f7ff fe58 	bl	80031b4 <App_TasksRegisterOne>
- 8003504:	2800      	cmp	r0, #0
- 8003506:	d002      	beq.n	800350e <App_TasksRegisterAll+0xb6>
- 8003508:	223e      	movs	r2, #62	@ 0x3e
- 800350a:	4923      	ldr	r1, [pc, #140]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 800350c:	e7ba      	b.n	8003484 <App_TasksRegisterAll+0x2c>
- 800350e:	22fa      	movs	r2, #250	@ 0xfa
- 8003510:	2007      	movs	r0, #7
- 8003512:	4929      	ldr	r1, [pc, #164]	@ (80035b8 <App_TasksRegisterAll+0x160>)
- 8003514:	0052      	lsls	r2, r2, #1
- 8003516:	f7ff fe4d 	bl	80031b4 <App_TasksRegisterOne>
- 800351a:	2800      	cmp	r0, #0
- 800351c:	d002      	beq.n	8003524 <App_TasksRegisterAll+0xcc>
- 800351e:	229f      	movs	r2, #159	@ 0x9f
- 8003520:	491d      	ldr	r1, [pc, #116]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 8003522:	e7bb      	b.n	800349c <App_TasksRegisterAll+0x44>
- 8003524:	22fa      	movs	r2, #250	@ 0xfa
- 8003526:	2008      	movs	r0, #8
- 8003528:	4924      	ldr	r1, [pc, #144]	@ (80035bc <App_TasksRegisterAll+0x164>)
- 800352a:	0092      	lsls	r2, r2, #2
- 800352c:	f7ff fe42 	bl	80031b4 <App_TasksRegisterOne>
- 8003530:	2800      	cmp	r0, #0
- 8003532:	d002      	beq.n	800353a <App_TasksRegisterAll+0xe2>
- 8003534:	2240      	movs	r2, #64	@ 0x40
- 8003536:	4918      	ldr	r1, [pc, #96]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 8003538:	e7a4      	b.n	8003484 <App_TasksRegisterAll+0x2c>
- 800353a:	22fa      	movs	r2, #250	@ 0xfa
- 800353c:	2009      	movs	r0, #9
- 800353e:	4920      	ldr	r1, [pc, #128]	@ (80035c0 <App_TasksRegisterAll+0x168>)
- 8003540:	0052      	lsls	r2, r2, #1
- 8003542:	f7ff fe37 	bl	80031b4 <App_TasksRegisterOne>
- 8003546:	2800      	cmp	r0, #0
- 8003548:	d002      	beq.n	8003550 <App_TasksRegisterAll+0xf8>
- 800354a:	22a0      	movs	r2, #160	@ 0xa0
- 800354c:	4912      	ldr	r1, [pc, #72]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 800354e:	e7a5      	b.n	800349c <App_TasksRegisterAll+0x44>
- 8003550:	22fa      	movs	r2, #250	@ 0xfa
- 8003552:	200a      	movs	r0, #10
- 8003554:	491b      	ldr	r1, [pc, #108]	@ (80035c4 <App_TasksRegisterAll+0x16c>)
- 8003556:	0092      	lsls	r2, r2, #2
- 8003558:	f7ff fe2c 	bl	80031b4 <App_TasksRegisterOne>
- 800355c:	2800      	cmp	r0, #0
- 800355e:	d002      	beq.n	8003566 <App_TasksRegisterAll+0x10e>
- 8003560:	2242      	movs	r2, #66	@ 0x42
- 8003562:	490d      	ldr	r1, [pc, #52]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 8003564:	e78e      	b.n	8003484 <App_TasksRegisterAll+0x2c>
- 8003566:	22fa      	movs	r2, #250	@ 0xfa
- 8003568:	200b      	movs	r0, #11
- 800356a:	4917      	ldr	r1, [pc, #92]	@ (80035c8 <App_TasksRegisterAll+0x170>)
- 800356c:	0092      	lsls	r2, r2, #2
- 800356e:	f7ff fe21 	bl	80031b4 <App_TasksRegisterOne>
- 8003572:	2800      	cmp	r0, #0
- 8003574:	d002      	beq.n	800357c <App_TasksRegisterAll+0x124>
- 8003576:	22a1      	movs	r2, #161	@ 0xa1
- 8003578:	4907      	ldr	r1, [pc, #28]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 800357a:	e78f      	b.n	800349c <App_TasksRegisterAll+0x44>
- 800357c:	2264      	movs	r2, #100	@ 0x64
- 800357e:	200c      	movs	r0, #12
- 8003580:	4912      	ldr	r1, [pc, #72]	@ (80035cc <App_TasksRegisterAll+0x174>)
- 8003582:	f7ff fe17 	bl	80031b4 <App_TasksRegisterOne>
- 8003586:	2800      	cmp	r0, #0
- 8003588:	d100      	bne.n	800358c <App_TasksRegisterAll+0x134>
- 800358a:	e771      	b.n	8003470 <App_TasksRegisterAll+0x18>
- 800358c:	2244      	movs	r2, #68	@ 0x44
- 800358e:	4902      	ldr	r1, [pc, #8]	@ (8003598 <App_TasksRegisterAll+0x140>)
- 8003590:	e778      	b.n	8003484 <App_TasksRegisterAll+0x2c>
- 8003592:	46c0      	nop			@ (mov r8, r8)
- 8003594:	2000087c 	.word	0x2000087c
- 8003598:	0800790f 	.word	0x0800790f
- 800359c:	08002b25 	.word	0x08002b25
- 80035a0:	080030f5 	.word	0x080030f5
+ 8003486:	e009      	b.n	800349c <App_TasksRegisterAll+0x44>
+ 8003488:	0020      	movs	r0, r4
+ 800348a:	4944      	ldr	r1, [pc, #272]	@ (800359c <App_TasksRegisterAll+0x144>)
+ 800348c:	4a44      	ldr	r2, [pc, #272]	@ (80035a0 <App_TasksRegisterAll+0x148>)
+ 800348e:	f7ff fe91 	bl	80031b4 <App_TasksRegisterOne>
+ 8003492:	2800      	cmp	r0, #0
+ 8003494:	d007      	beq.n	80034a6 <App_TasksRegisterAll+0x4e>
+ 8003496:	229c      	movs	r2, #156	@ 0x9c
+ 8003498:	493e      	ldr	r1, [pc, #248]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 800349a:	0052      	lsls	r2, r2, #1
+ 800349c:	2015      	movs	r0, #21
+ 800349e:	f7fd fc33 	bl	8000d08 <App_ErrorRecord>
+ 80034a2:	2015      	movs	r0, #21
+ 80034a4:	e7e4      	b.n	8003470 <App_TasksRegisterAll+0x18>
+ 80034a6:	2264      	movs	r2, #100	@ 0x64
+ 80034a8:	2002      	movs	r0, #2
+ 80034aa:	493e      	ldr	r1, [pc, #248]	@ (80035a4 <App_TasksRegisterAll+0x14c>)
+ 80034ac:	f7ff fe82 	bl	80031b4 <App_TasksRegisterOne>
+ 80034b0:	2800      	cmp	r0, #0
+ 80034b2:	d002      	beq.n	80034ba <App_TasksRegisterAll+0x62>
+ 80034b4:	223a      	movs	r2, #58	@ 0x3a
+ 80034b6:	4937      	ldr	r1, [pc, #220]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 80034b8:	e7e4      	b.n	8003484 <App_TasksRegisterAll+0x2c>
+ 80034ba:	22fa      	movs	r2, #250	@ 0xfa
+ 80034bc:	2003      	movs	r0, #3
+ 80034be:	493a      	ldr	r1, [pc, #232]	@ (80035a8 <App_TasksRegisterAll+0x150>)
+ 80034c0:	f7ff fe78 	bl	80031b4 <App_TasksRegisterOne>
+ 80034c4:	2800      	cmp	r0, #0
+ 80034c6:	d002      	beq.n	80034ce <App_TasksRegisterAll+0x76>
+ 80034c8:	229d      	movs	r2, #157	@ 0x9d
+ 80034ca:	4932      	ldr	r1, [pc, #200]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 80034cc:	e7e5      	b.n	800349a <App_TasksRegisterAll+0x42>
+ 80034ce:	22c8      	movs	r2, #200	@ 0xc8
+ 80034d0:	2004      	movs	r0, #4
+ 80034d2:	4936      	ldr	r1, [pc, #216]	@ (80035ac <App_TasksRegisterAll+0x154>)
+ 80034d4:	f7ff fe6e 	bl	80031b4 <App_TasksRegisterOne>
+ 80034d8:	2800      	cmp	r0, #0
+ 80034da:	d002      	beq.n	80034e2 <App_TasksRegisterAll+0x8a>
+ 80034dc:	223c      	movs	r2, #60	@ 0x3c
+ 80034de:	492d      	ldr	r1, [pc, #180]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 80034e0:	e7d0      	b.n	8003484 <App_TasksRegisterAll+0x2c>
+ 80034e2:	22fa      	movs	r2, #250	@ 0xfa
+ 80034e4:	2005      	movs	r0, #5
+ 80034e6:	4932      	ldr	r1, [pc, #200]	@ (80035b0 <App_TasksRegisterAll+0x158>)
+ 80034e8:	0052      	lsls	r2, r2, #1
+ 80034ea:	f7ff fe63 	bl	80031b4 <App_TasksRegisterOne>
+ 80034ee:	2800      	cmp	r0, #0
+ 80034f0:	d002      	beq.n	80034f8 <App_TasksRegisterAll+0xa0>
+ 80034f2:	229e      	movs	r2, #158	@ 0x9e
+ 80034f4:	4927      	ldr	r1, [pc, #156]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 80034f6:	e7d0      	b.n	800349a <App_TasksRegisterAll+0x42>
+ 80034f8:	22fa      	movs	r2, #250	@ 0xfa
+ 80034fa:	2006      	movs	r0, #6
+ 80034fc:	492d      	ldr	r1, [pc, #180]	@ (80035b4 <App_TasksRegisterAll+0x15c>)
+ 80034fe:	f7ff fe59 	bl	80031b4 <App_TasksRegisterOne>
+ 8003502:	2800      	cmp	r0, #0
+ 8003504:	d002      	beq.n	800350c <App_TasksRegisterAll+0xb4>
+ 8003506:	223e      	movs	r2, #62	@ 0x3e
+ 8003508:	4922      	ldr	r1, [pc, #136]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 800350a:	e7bb      	b.n	8003484 <App_TasksRegisterAll+0x2c>
+ 800350c:	22fa      	movs	r2, #250	@ 0xfa
+ 800350e:	2007      	movs	r0, #7
+ 8003510:	4929      	ldr	r1, [pc, #164]	@ (80035b8 <App_TasksRegisterAll+0x160>)
+ 8003512:	0052      	lsls	r2, r2, #1
+ 8003514:	f7ff fe4e 	bl	80031b4 <App_TasksRegisterOne>
+ 8003518:	2800      	cmp	r0, #0
+ 800351a:	d002      	beq.n	8003522 <App_TasksRegisterAll+0xca>
+ 800351c:	229f      	movs	r2, #159	@ 0x9f
+ 800351e:	491d      	ldr	r1, [pc, #116]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 8003520:	e7bb      	b.n	800349a <App_TasksRegisterAll+0x42>
+ 8003522:	22fa      	movs	r2, #250	@ 0xfa
+ 8003524:	2008      	movs	r0, #8
+ 8003526:	4925      	ldr	r1, [pc, #148]	@ (80035bc <App_TasksRegisterAll+0x164>)
+ 8003528:	0092      	lsls	r2, r2, #2
+ 800352a:	f7ff fe43 	bl	80031b4 <App_TasksRegisterOne>
+ 800352e:	2800      	cmp	r0, #0
+ 8003530:	d002      	beq.n	8003538 <App_TasksRegisterAll+0xe0>
+ 8003532:	2240      	movs	r2, #64	@ 0x40
+ 8003534:	4917      	ldr	r1, [pc, #92]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 8003536:	e7a5      	b.n	8003484 <App_TasksRegisterAll+0x2c>
+ 8003538:	22fa      	movs	r2, #250	@ 0xfa
+ 800353a:	2009      	movs	r0, #9
+ 800353c:	4920      	ldr	r1, [pc, #128]	@ (80035c0 <App_TasksRegisterAll+0x168>)
+ 800353e:	0052      	lsls	r2, r2, #1
+ 8003540:	f7ff fe38 	bl	80031b4 <App_TasksRegisterOne>
+ 8003544:	2800      	cmp	r0, #0
+ 8003546:	d002      	beq.n	800354e <App_TasksRegisterAll+0xf6>
+ 8003548:	22a0      	movs	r2, #160	@ 0xa0
+ 800354a:	4912      	ldr	r1, [pc, #72]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 800354c:	e7a5      	b.n	800349a <App_TasksRegisterAll+0x42>
+ 800354e:	22fa      	movs	r2, #250	@ 0xfa
+ 8003550:	200a      	movs	r0, #10
+ 8003552:	491c      	ldr	r1, [pc, #112]	@ (80035c4 <App_TasksRegisterAll+0x16c>)
+ 8003554:	0092      	lsls	r2, r2, #2
+ 8003556:	f7ff fe2d 	bl	80031b4 <App_TasksRegisterOne>
+ 800355a:	2800      	cmp	r0, #0
+ 800355c:	d002      	beq.n	8003564 <App_TasksRegisterAll+0x10c>
+ 800355e:	2242      	movs	r2, #66	@ 0x42
+ 8003560:	490c      	ldr	r1, [pc, #48]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 8003562:	e78f      	b.n	8003484 <App_TasksRegisterAll+0x2c>
+ 8003564:	22fa      	movs	r2, #250	@ 0xfa
+ 8003566:	200b      	movs	r0, #11
+ 8003568:	4917      	ldr	r1, [pc, #92]	@ (80035c8 <App_TasksRegisterAll+0x170>)
+ 800356a:	0092      	lsls	r2, r2, #2
+ 800356c:	f7ff fe22 	bl	80031b4 <App_TasksRegisterOne>
+ 8003570:	2800      	cmp	r0, #0
+ 8003572:	d002      	beq.n	800357a <App_TasksRegisterAll+0x122>
+ 8003574:	22a1      	movs	r2, #161	@ 0xa1
+ 8003576:	4907      	ldr	r1, [pc, #28]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 8003578:	e78f      	b.n	800349a <App_TasksRegisterAll+0x42>
+ 800357a:	2264      	movs	r2, #100	@ 0x64
+ 800357c:	200c      	movs	r0, #12
+ 800357e:	4913      	ldr	r1, [pc, #76]	@ (80035cc <App_TasksRegisterAll+0x174>)
+ 8003580:	f7ff fe18 	bl	80031b4 <App_TasksRegisterOne>
+ 8003584:	2800      	cmp	r0, #0
+ 8003586:	d100      	bne.n	800358a <App_TasksRegisterAll+0x132>
+ 8003588:	e772      	b.n	8003470 <App_TasksRegisterAll+0x18>
+ 800358a:	2244      	movs	r2, #68	@ 0x44
+ 800358c:	4901      	ldr	r1, [pc, #4]	@ (8003594 <App_TasksRegisterAll+0x13c>)
+ 800358e:	e779      	b.n	8003484 <App_TasksRegisterAll+0x2c>
+ 8003590:	2000087c 	.word	0x2000087c
+ 8003594:	0800790f 	.word	0x0800790f
+ 8003598:	08002b25 	.word	0x08002b25
+ 800359c:	080030f5 	.word	0x080030f5
+ 80035a0:	00002710 	.word	0x00002710
  80035a4:	08002ba9 	.word	0x08002ba9
  80035a8:	08002ea9 	.word	0x08002ea9
  80035ac:	08003001 	.word	0x08003001
