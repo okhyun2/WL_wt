@@ -39,9 +39,9 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  17 .debug_line   00024a62  00000000  00000000  0004ed91  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    00090c80  00000000  00000000  000737f3  2**0
+ 18 .debug_str    00090c81  00000000  00000000  000737f3  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  00104473  2**0
+ 19 .comment      00000043  00000000  00000000  00104474  2**0
                   CONTENTS, READONLY
  20 .debug_frame  00005a20  00000000  00000000  001044b8  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
@@ -16411,22 +16411,22 @@ AppStatus_t App_TasksRegisterAll(void)
  80066b8:	b580      	push	{r7, lr}
  80066ba:	af00      	add	r7, sp, #0
     APP_RETURN_IF_FALSE(g_appTasksContext.initialized == APP_TRUE, APP_STATUS_NOT_INITIALIZED);
- 80066bc:	4b7e      	ldr	r3, [pc, #504]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 80066bc:	4b7d      	ldr	r3, [pc, #500]	@ (80068b4 <App_TasksRegisterAll+0x1fc>)
  80066be:	781b      	ldrb	r3, [r3, #0]
  80066c0:	2b01      	cmp	r3, #1
  80066c2:	d009      	beq.n	80066d8 <App_TasksRegisterAll+0x20>
  80066c4:	2336      	movs	r3, #54	@ 0x36
  80066c6:	33ff      	adds	r3, #255	@ 0xff
  80066c8:	001a      	movs	r2, r3
- 80066ca:	4b7c      	ldr	r3, [pc, #496]	@ (80068bc <App_TasksRegisterAll+0x204>)
+ 80066ca:	4b7b      	ldr	r3, [pc, #492]	@ (80068b8 <App_TasksRegisterAll+0x200>)
  80066cc:	0019      	movs	r1, r3
  80066ce:	2002      	movs	r0, #2
  80066d0:	f7fb f804 	bl	80016dc <App_ErrorRecord>
  80066d4:	2302      	movs	r3, #2
- 80066d6:	e0eb      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 80066d6:	e0ea      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
 
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_DEBUG, App_TaskDebug, APP_SCHEDULER_TASK_DEBUG_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 80066d8:	4b79      	ldr	r3, [pc, #484]	@ (80068c0 <App_TasksRegisterAll+0x208>)
+ 80066d8:	4b78      	ldr	r3, [pc, #480]	@ (80068bc <App_TasksRegisterAll+0x204>)
  80066da:	2201      	movs	r2, #1
  80066dc:	0019      	movs	r1, r3
  80066de:	2000      	movs	r0, #0
@@ -16436,228 +16436,227 @@ AppStatus_t App_TasksRegisterAll(void)
  80066e8:	2338      	movs	r3, #56	@ 0x38
  80066ea:	33ff      	adds	r3, #255	@ 0xff
  80066ec:	001a      	movs	r2, r3
- 80066ee:	4b73      	ldr	r3, [pc, #460]	@ (80068bc <App_TasksRegisterAll+0x204>)
+ 80066ee:	4b72      	ldr	r3, [pc, #456]	@ (80068b8 <App_TasksRegisterAll+0x200>)
  80066f0:	0019      	movs	r1, r3
  80066f2:	2015      	movs	r0, #21
  80066f4:	f7fa fff2 	bl	80016dc <App_ErrorRecord>
  80066f8:	2315      	movs	r3, #21
- 80066fa:	e0d9      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 80066fa:	e0d8      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_WATCHDOG, App_TaskWatchdog, APP_SCHEDULER_TASK_WATCHDOG_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 80066fc:	23fa      	movs	r3, #250	@ 0xfa
- 80066fe:	009a      	lsls	r2, r3, #2
- 8006700:	4b70      	ldr	r3, [pc, #448]	@ (80068c4 <App_TasksRegisterAll+0x20c>)
- 8006702:	0019      	movs	r1, r3
- 8006704:	2001      	movs	r0, #1
- 8006706:	f7ff ff37 	bl	8006578 <App_TasksRegisterOne>
- 800670a:	1e03      	subs	r3, r0, #0
- 800670c:	d008      	beq.n	8006720 <App_TasksRegisterAll+0x68>
- 800670e:	239c      	movs	r3, #156	@ 0x9c
- 8006710:	005a      	lsls	r2, r3, #1
- 8006712:	4b6a      	ldr	r3, [pc, #424]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 8006714:	0019      	movs	r1, r3
- 8006716:	2015      	movs	r0, #21
- 8006718:	f7fa ffe0 	bl	80016dc <App_ErrorRecord>
- 800671c:	2315      	movs	r3, #21
- 800671e:	e0c7      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 80066fc:	4a70      	ldr	r2, [pc, #448]	@ (80068c0 <App_TasksRegisterAll+0x208>)
+ 80066fe:	4b71      	ldr	r3, [pc, #452]	@ (80068c4 <App_TasksRegisterAll+0x20c>)
+ 8006700:	0019      	movs	r1, r3
+ 8006702:	2001      	movs	r0, #1
+ 8006704:	f7ff ff38 	bl	8006578 <App_TasksRegisterOne>
+ 8006708:	1e03      	subs	r3, r0, #0
+ 800670a:	d008      	beq.n	800671e <App_TasksRegisterAll+0x66>
+ 800670c:	239c      	movs	r3, #156	@ 0x9c
+ 800670e:	005a      	lsls	r2, r3, #1
+ 8006710:	4b69      	ldr	r3, [pc, #420]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 8006712:	0019      	movs	r1, r3
+ 8006714:	2015      	movs	r0, #21
+ 8006716:	f7fa ffe1 	bl	80016dc <App_ErrorRecord>
+ 800671a:	2315      	movs	r3, #21
+ 800671c:	e0c7      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_HOUSEKEEPING, App_TaskHousekeeping, APP_SCHEDULER_TASK_HOUSEKEEPING_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 8006720:	4b69      	ldr	r3, [pc, #420]	@ (80068c8 <App_TasksRegisterAll+0x210>)
- 8006722:	2264      	movs	r2, #100	@ 0x64
- 8006724:	0019      	movs	r1, r3
- 8006726:	2002      	movs	r0, #2
- 8006728:	f7ff ff26 	bl	8006578 <App_TasksRegisterOne>
- 800672c:	1e03      	subs	r3, r0, #0
- 800672e:	d009      	beq.n	8006744 <App_TasksRegisterAll+0x8c>
- 8006730:	233a      	movs	r3, #58	@ 0x3a
- 8006732:	33ff      	adds	r3, #255	@ 0xff
- 8006734:	001a      	movs	r2, r3
- 8006736:	4b61      	ldr	r3, [pc, #388]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 8006738:	0019      	movs	r1, r3
- 800673a:	2015      	movs	r0, #21
- 800673c:	f7fa ffce 	bl	80016dc <App_ErrorRecord>
- 8006740:	2315      	movs	r3, #21
- 8006742:	e0b5      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 800671e:	4b6a      	ldr	r3, [pc, #424]	@ (80068c8 <App_TasksRegisterAll+0x210>)
+ 8006720:	2264      	movs	r2, #100	@ 0x64
+ 8006722:	0019      	movs	r1, r3
+ 8006724:	2002      	movs	r0, #2
+ 8006726:	f7ff ff27 	bl	8006578 <App_TasksRegisterOne>
+ 800672a:	1e03      	subs	r3, r0, #0
+ 800672c:	d009      	beq.n	8006742 <App_TasksRegisterAll+0x8a>
+ 800672e:	233a      	movs	r3, #58	@ 0x3a
+ 8006730:	33ff      	adds	r3, #255	@ 0xff
+ 8006732:	001a      	movs	r2, r3
+ 8006734:	4b60      	ldr	r3, [pc, #384]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 8006736:	0019      	movs	r1, r3
+ 8006738:	2015      	movs	r0, #21
+ 800673a:	f7fa ffcf 	bl	80016dc <App_ErrorRecord>
+ 800673e:	2315      	movs	r3, #21
+ 8006740:	e0b5      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_POWER, App_TaskPower, APP_SCHEDULER_TASK_POWER_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 8006744:	4b61      	ldr	r3, [pc, #388]	@ (80068cc <App_TasksRegisterAll+0x214>)
- 8006746:	22fa      	movs	r2, #250	@ 0xfa
- 8006748:	0019      	movs	r1, r3
- 800674a:	2003      	movs	r0, #3
- 800674c:	f7ff ff14 	bl	8006578 <App_TasksRegisterOne>
- 8006750:	1e03      	subs	r3, r0, #0
- 8006752:	d008      	beq.n	8006766 <App_TasksRegisterAll+0xae>
- 8006754:	239d      	movs	r3, #157	@ 0x9d
- 8006756:	005a      	lsls	r2, r3, #1
- 8006758:	4b58      	ldr	r3, [pc, #352]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 800675a:	0019      	movs	r1, r3
- 800675c:	2015      	movs	r0, #21
- 800675e:	f7fa ffbd 	bl	80016dc <App_ErrorRecord>
- 8006762:	2315      	movs	r3, #21
- 8006764:	e0a4      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 8006742:	4b62      	ldr	r3, [pc, #392]	@ (80068cc <App_TasksRegisterAll+0x214>)
+ 8006744:	22fa      	movs	r2, #250	@ 0xfa
+ 8006746:	0019      	movs	r1, r3
+ 8006748:	2003      	movs	r0, #3
+ 800674a:	f7ff ff15 	bl	8006578 <App_TasksRegisterOne>
+ 800674e:	1e03      	subs	r3, r0, #0
+ 8006750:	d008      	beq.n	8006764 <App_TasksRegisterAll+0xac>
+ 8006752:	239d      	movs	r3, #157	@ 0x9d
+ 8006754:	005a      	lsls	r2, r3, #1
+ 8006756:	4b58      	ldr	r3, [pc, #352]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 8006758:	0019      	movs	r1, r3
+ 800675a:	2015      	movs	r0, #21
+ 800675c:	f7fa ffbe 	bl	80016dc <App_ErrorRecord>
+ 8006760:	2315      	movs	r3, #21
+ 8006762:	e0a4      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_STORAGE, App_TaskStorage, APP_SCHEDULER_TASK_STORAGE_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 8006766:	4b5a      	ldr	r3, [pc, #360]	@ (80068d0 <App_TasksRegisterAll+0x218>)
- 8006768:	22c8      	movs	r2, #200	@ 0xc8
- 800676a:	0019      	movs	r1, r3
- 800676c:	2004      	movs	r0, #4
- 800676e:	f7ff ff03 	bl	8006578 <App_TasksRegisterOne>
- 8006772:	1e03      	subs	r3, r0, #0
- 8006774:	d009      	beq.n	800678a <App_TasksRegisterAll+0xd2>
- 8006776:	233c      	movs	r3, #60	@ 0x3c
- 8006778:	33ff      	adds	r3, #255	@ 0xff
- 800677a:	001a      	movs	r2, r3
- 800677c:	4b4f      	ldr	r3, [pc, #316]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 800677e:	0019      	movs	r1, r3
- 8006780:	2015      	movs	r0, #21
- 8006782:	f7fa ffab 	bl	80016dc <App_ErrorRecord>
- 8006786:	2315      	movs	r3, #21
- 8006788:	e092      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 8006764:	4b5a      	ldr	r3, [pc, #360]	@ (80068d0 <App_TasksRegisterAll+0x218>)
+ 8006766:	22c8      	movs	r2, #200	@ 0xc8
+ 8006768:	0019      	movs	r1, r3
+ 800676a:	2004      	movs	r0, #4
+ 800676c:	f7ff ff04 	bl	8006578 <App_TasksRegisterOne>
+ 8006770:	1e03      	subs	r3, r0, #0
+ 8006772:	d009      	beq.n	8006788 <App_TasksRegisterAll+0xd0>
+ 8006774:	233c      	movs	r3, #60	@ 0x3c
+ 8006776:	33ff      	adds	r3, #255	@ 0xff
+ 8006778:	001a      	movs	r2, r3
+ 800677a:	4b4f      	ldr	r3, [pc, #316]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 800677c:	0019      	movs	r1, r3
+ 800677e:	2015      	movs	r0, #21
+ 8006780:	f7fa ffac 	bl	80016dc <App_ErrorRecord>
+ 8006784:	2315      	movs	r3, #21
+ 8006786:	e092      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_METER, App_TaskMeter, APP_SCHEDULER_TASK_METER_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 800678a:	23fa      	movs	r3, #250	@ 0xfa
- 800678c:	005a      	lsls	r2, r3, #1
- 800678e:	4b51      	ldr	r3, [pc, #324]	@ (80068d4 <App_TasksRegisterAll+0x21c>)
- 8006790:	0019      	movs	r1, r3
- 8006792:	2005      	movs	r0, #5
- 8006794:	f7ff fef0 	bl	8006578 <App_TasksRegisterOne>
- 8006798:	1e03      	subs	r3, r0, #0
- 800679a:	d008      	beq.n	80067ae <App_TasksRegisterAll+0xf6>
- 800679c:	239e      	movs	r3, #158	@ 0x9e
- 800679e:	005a      	lsls	r2, r3, #1
- 80067a0:	4b46      	ldr	r3, [pc, #280]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 80067a2:	0019      	movs	r1, r3
- 80067a4:	2015      	movs	r0, #21
- 80067a6:	f7fa ff99 	bl	80016dc <App_ErrorRecord>
- 80067aa:	2315      	movs	r3, #21
- 80067ac:	e080      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 8006788:	23fa      	movs	r3, #250	@ 0xfa
+ 800678a:	005a      	lsls	r2, r3, #1
+ 800678c:	4b51      	ldr	r3, [pc, #324]	@ (80068d4 <App_TasksRegisterAll+0x21c>)
+ 800678e:	0019      	movs	r1, r3
+ 8006790:	2005      	movs	r0, #5
+ 8006792:	f7ff fef1 	bl	8006578 <App_TasksRegisterOne>
+ 8006796:	1e03      	subs	r3, r0, #0
+ 8006798:	d008      	beq.n	80067ac <App_TasksRegisterAll+0xf4>
+ 800679a:	239e      	movs	r3, #158	@ 0x9e
+ 800679c:	005a      	lsls	r2, r3, #1
+ 800679e:	4b46      	ldr	r3, [pc, #280]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 80067a0:	0019      	movs	r1, r3
+ 80067a2:	2015      	movs	r0, #21
+ 80067a4:	f7fa ff9a 	bl	80016dc <App_ErrorRecord>
+ 80067a8:	2315      	movs	r3, #21
+ 80067aa:	e080      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_NFC, App_TaskNfc, APP_SCHEDULER_TASK_NFC_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 80067ae:	4b4a      	ldr	r3, [pc, #296]	@ (80068d8 <App_TasksRegisterAll+0x220>)
- 80067b0:	22fa      	movs	r2, #250	@ 0xfa
- 80067b2:	0019      	movs	r1, r3
- 80067b4:	2006      	movs	r0, #6
- 80067b6:	f7ff fedf 	bl	8006578 <App_TasksRegisterOne>
- 80067ba:	1e03      	subs	r3, r0, #0
- 80067bc:	d009      	beq.n	80067d2 <App_TasksRegisterAll+0x11a>
- 80067be:	233e      	movs	r3, #62	@ 0x3e
- 80067c0:	33ff      	adds	r3, #255	@ 0xff
- 80067c2:	001a      	movs	r2, r3
- 80067c4:	4b3d      	ldr	r3, [pc, #244]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 80067c6:	0019      	movs	r1, r3
- 80067c8:	2015      	movs	r0, #21
- 80067ca:	f7fa ff87 	bl	80016dc <App_ErrorRecord>
- 80067ce:	2315      	movs	r3, #21
- 80067d0:	e06e      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 80067ac:	4b4a      	ldr	r3, [pc, #296]	@ (80068d8 <App_TasksRegisterAll+0x220>)
+ 80067ae:	22fa      	movs	r2, #250	@ 0xfa
+ 80067b0:	0019      	movs	r1, r3
+ 80067b2:	2006      	movs	r0, #6
+ 80067b4:	f7ff fee0 	bl	8006578 <App_TasksRegisterOne>
+ 80067b8:	1e03      	subs	r3, r0, #0
+ 80067ba:	d009      	beq.n	80067d0 <App_TasksRegisterAll+0x118>
+ 80067bc:	233e      	movs	r3, #62	@ 0x3e
+ 80067be:	33ff      	adds	r3, #255	@ 0xff
+ 80067c0:	001a      	movs	r2, r3
+ 80067c2:	4b3d      	ldr	r3, [pc, #244]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 80067c4:	0019      	movs	r1, r3
+ 80067c6:	2015      	movs	r0, #21
+ 80067c8:	f7fa ff88 	bl	80016dc <App_ErrorRecord>
+ 80067cc:	2315      	movs	r3, #21
+ 80067ce:	e06e      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_ESI, App_TaskEsi, APP_SCHEDULER_TASK_ESI_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 80067d2:	23fa      	movs	r3, #250	@ 0xfa
- 80067d4:	005a      	lsls	r2, r3, #1
- 80067d6:	4b41      	ldr	r3, [pc, #260]	@ (80068dc <App_TasksRegisterAll+0x224>)
- 80067d8:	0019      	movs	r1, r3
- 80067da:	2007      	movs	r0, #7
- 80067dc:	f7ff fecc 	bl	8006578 <App_TasksRegisterOne>
- 80067e0:	1e03      	subs	r3, r0, #0
- 80067e2:	d008      	beq.n	80067f6 <App_TasksRegisterAll+0x13e>
- 80067e4:	239f      	movs	r3, #159	@ 0x9f
- 80067e6:	005a      	lsls	r2, r3, #1
- 80067e8:	4b34      	ldr	r3, [pc, #208]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 80067ea:	0019      	movs	r1, r3
- 80067ec:	2015      	movs	r0, #21
- 80067ee:	f7fa ff75 	bl	80016dc <App_ErrorRecord>
- 80067f2:	2315      	movs	r3, #21
- 80067f4:	e05c      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 80067d0:	23fa      	movs	r3, #250	@ 0xfa
+ 80067d2:	005a      	lsls	r2, r3, #1
+ 80067d4:	4b41      	ldr	r3, [pc, #260]	@ (80068dc <App_TasksRegisterAll+0x224>)
+ 80067d6:	0019      	movs	r1, r3
+ 80067d8:	2007      	movs	r0, #7
+ 80067da:	f7ff fecd 	bl	8006578 <App_TasksRegisterOne>
+ 80067de:	1e03      	subs	r3, r0, #0
+ 80067e0:	d008      	beq.n	80067f4 <App_TasksRegisterAll+0x13c>
+ 80067e2:	239f      	movs	r3, #159	@ 0x9f
+ 80067e4:	005a      	lsls	r2, r3, #1
+ 80067e6:	4b34      	ldr	r3, [pc, #208]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 80067e8:	0019      	movs	r1, r3
+ 80067ea:	2015      	movs	r0, #21
+ 80067ec:	f7fa ff76 	bl	80016dc <App_ErrorRecord>
+ 80067f0:	2315      	movs	r3, #21
+ 80067f2:	e05c      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_AUX, App_TaskAux, APP_SCHEDULER_TASK_AUX_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 80067f6:	23fa      	movs	r3, #250	@ 0xfa
- 80067f8:	009a      	lsls	r2, r3, #2
- 80067fa:	4b39      	ldr	r3, [pc, #228]	@ (80068e0 <App_TasksRegisterAll+0x228>)
- 80067fc:	0019      	movs	r1, r3
- 80067fe:	2008      	movs	r0, #8
- 8006800:	f7ff feba 	bl	8006578 <App_TasksRegisterOne>
- 8006804:	1e03      	subs	r3, r0, #0
- 8006806:	d009      	beq.n	800681c <App_TasksRegisterAll+0x164>
- 8006808:	2340      	movs	r3, #64	@ 0x40
- 800680a:	33ff      	adds	r3, #255	@ 0xff
- 800680c:	001a      	movs	r2, r3
- 800680e:	4b2b      	ldr	r3, [pc, #172]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 8006810:	0019      	movs	r1, r3
- 8006812:	2015      	movs	r0, #21
- 8006814:	f7fa ff62 	bl	80016dc <App_ErrorRecord>
- 8006818:	2315      	movs	r3, #21
- 800681a:	e049      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 80067f4:	23fa      	movs	r3, #250	@ 0xfa
+ 80067f6:	009a      	lsls	r2, r3, #2
+ 80067f8:	4b39      	ldr	r3, [pc, #228]	@ (80068e0 <App_TasksRegisterAll+0x228>)
+ 80067fa:	0019      	movs	r1, r3
+ 80067fc:	2008      	movs	r0, #8
+ 80067fe:	f7ff febb 	bl	8006578 <App_TasksRegisterOne>
+ 8006802:	1e03      	subs	r3, r0, #0
+ 8006804:	d009      	beq.n	800681a <App_TasksRegisterAll+0x162>
+ 8006806:	2340      	movs	r3, #64	@ 0x40
+ 8006808:	33ff      	adds	r3, #255	@ 0xff
+ 800680a:	001a      	movs	r2, r3
+ 800680c:	4b2a      	ldr	r3, [pc, #168]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 800680e:	0019      	movs	r1, r3
+ 8006810:	2015      	movs	r0, #21
+ 8006812:	f7fa ff63 	bl	80016dc <App_ErrorRecord>
+ 8006816:	2315      	movs	r3, #21
+ 8006818:	e049      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_NBIOT, App_TaskNbiot, APP_SCHEDULER_TASK_NBIOT_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 800681c:	23fa      	movs	r3, #250	@ 0xfa
- 800681e:	005a      	lsls	r2, r3, #1
- 8006820:	4b30      	ldr	r3, [pc, #192]	@ (80068e4 <App_TasksRegisterAll+0x22c>)
- 8006822:	0019      	movs	r1, r3
- 8006824:	2009      	movs	r0, #9
- 8006826:	f7ff fea7 	bl	8006578 <App_TasksRegisterOne>
- 800682a:	1e03      	subs	r3, r0, #0
- 800682c:	d008      	beq.n	8006840 <App_TasksRegisterAll+0x188>
- 800682e:	23a0      	movs	r3, #160	@ 0xa0
- 8006830:	005a      	lsls	r2, r3, #1
- 8006832:	4b22      	ldr	r3, [pc, #136]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 8006834:	0019      	movs	r1, r3
- 8006836:	2015      	movs	r0, #21
- 8006838:	f7fa ff50 	bl	80016dc <App_ErrorRecord>
- 800683c:	2315      	movs	r3, #21
- 800683e:	e037      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 800681a:	23fa      	movs	r3, #250	@ 0xfa
+ 800681c:	005a      	lsls	r2, r3, #1
+ 800681e:	4b31      	ldr	r3, [pc, #196]	@ (80068e4 <App_TasksRegisterAll+0x22c>)
+ 8006820:	0019      	movs	r1, r3
+ 8006822:	2009      	movs	r0, #9
+ 8006824:	f7ff fea8 	bl	8006578 <App_TasksRegisterOne>
+ 8006828:	1e03      	subs	r3, r0, #0
+ 800682a:	d008      	beq.n	800683e <App_TasksRegisterAll+0x186>
+ 800682c:	23a0      	movs	r3, #160	@ 0xa0
+ 800682e:	005a      	lsls	r2, r3, #1
+ 8006830:	4b21      	ldr	r3, [pc, #132]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 8006832:	0019      	movs	r1, r3
+ 8006834:	2015      	movs	r0, #21
+ 8006836:	f7fa ff51 	bl	80016dc <App_ErrorRecord>
+ 800683a:	2315      	movs	r3, #21
+ 800683c:	e037      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_SERVER, App_TaskServer, APP_SCHEDULER_TASK_SERVER_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 8006840:	23fa      	movs	r3, #250	@ 0xfa
- 8006842:	009a      	lsls	r2, r3, #2
- 8006844:	4b28      	ldr	r3, [pc, #160]	@ (80068e8 <App_TasksRegisterAll+0x230>)
- 8006846:	0019      	movs	r1, r3
- 8006848:	200a      	movs	r0, #10
- 800684a:	f7ff fe95 	bl	8006578 <App_TasksRegisterOne>
- 800684e:	1e03      	subs	r3, r0, #0
- 8006850:	d009      	beq.n	8006866 <App_TasksRegisterAll+0x1ae>
- 8006852:	2342      	movs	r3, #66	@ 0x42
- 8006854:	33ff      	adds	r3, #255	@ 0xff
- 8006856:	001a      	movs	r2, r3
- 8006858:	4b18      	ldr	r3, [pc, #96]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 800685a:	0019      	movs	r1, r3
- 800685c:	2015      	movs	r0, #21
- 800685e:	f7fa ff3d 	bl	80016dc <App_ErrorRecord>
- 8006862:	2315      	movs	r3, #21
- 8006864:	e024      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 800683e:	23fa      	movs	r3, #250	@ 0xfa
+ 8006840:	009a      	lsls	r2, r3, #2
+ 8006842:	4b29      	ldr	r3, [pc, #164]	@ (80068e8 <App_TasksRegisterAll+0x230>)
+ 8006844:	0019      	movs	r1, r3
+ 8006846:	200a      	movs	r0, #10
+ 8006848:	f7ff fe96 	bl	8006578 <App_TasksRegisterOne>
+ 800684c:	1e03      	subs	r3, r0, #0
+ 800684e:	d009      	beq.n	8006864 <App_TasksRegisterAll+0x1ac>
+ 8006850:	2342      	movs	r3, #66	@ 0x42
+ 8006852:	33ff      	adds	r3, #255	@ 0xff
+ 8006854:	001a      	movs	r2, r3
+ 8006856:	4b18      	ldr	r3, [pc, #96]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 8006858:	0019      	movs	r1, r3
+ 800685a:	2015      	movs	r0, #21
+ 800685c:	f7fa ff3e 	bl	80016dc <App_ErrorRecord>
+ 8006860:	2315      	movs	r3, #21
+ 8006862:	e024      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_RTC, App_TaskRtc, APP_SCHEDULER_TASK_RTC_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 8006866:	23fa      	movs	r3, #250	@ 0xfa
- 8006868:	009a      	lsls	r2, r3, #2
- 800686a:	4b20      	ldr	r3, [pc, #128]	@ (80068ec <App_TasksRegisterAll+0x234>)
- 800686c:	0019      	movs	r1, r3
- 800686e:	200b      	movs	r0, #11
- 8006870:	f7ff fe82 	bl	8006578 <App_TasksRegisterOne>
- 8006874:	1e03      	subs	r3, r0, #0
- 8006876:	d008      	beq.n	800688a <App_TasksRegisterAll+0x1d2>
- 8006878:	23a1      	movs	r3, #161	@ 0xa1
- 800687a:	005a      	lsls	r2, r3, #1
- 800687c:	4b0f      	ldr	r3, [pc, #60]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 800687e:	0019      	movs	r1, r3
- 8006880:	2015      	movs	r0, #21
- 8006882:	f7fa ff2b 	bl	80016dc <App_ErrorRecord>
- 8006886:	2315      	movs	r3, #21
- 8006888:	e012      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 8006864:	23fa      	movs	r3, #250	@ 0xfa
+ 8006866:	009a      	lsls	r2, r3, #2
+ 8006868:	4b20      	ldr	r3, [pc, #128]	@ (80068ec <App_TasksRegisterAll+0x234>)
+ 800686a:	0019      	movs	r1, r3
+ 800686c:	200b      	movs	r0, #11
+ 800686e:	f7ff fe83 	bl	8006578 <App_TasksRegisterOne>
+ 8006872:	1e03      	subs	r3, r0, #0
+ 8006874:	d008      	beq.n	8006888 <App_TasksRegisterAll+0x1d0>
+ 8006876:	23a1      	movs	r3, #161	@ 0xa1
+ 8006878:	005a      	lsls	r2, r3, #1
+ 800687a:	4b0f      	ldr	r3, [pc, #60]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 800687c:	0019      	movs	r1, r3
+ 800687e:	2015      	movs	r0, #21
+ 8006880:	f7fa ff2c 	bl	80016dc <App_ErrorRecord>
+ 8006884:	2315      	movs	r3, #21
+ 8006886:	e012      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
     APP_RETURN_IF_FALSE(App_TasksRegisterOne(APP_TASK_ID_MAIN, App_TaskMain, APP_SCHEDULER_TASK_MAIN_PERIOD_MS) == APP_STATUS_OK, APP_STATUS_SCHEDULER_INIT_FAILED);
- 800688a:	4b19      	ldr	r3, [pc, #100]	@ (80068f0 <App_TasksRegisterAll+0x238>)
- 800688c:	2264      	movs	r2, #100	@ 0x64
- 800688e:	0019      	movs	r1, r3
- 8006890:	200c      	movs	r0, #12
- 8006892:	f7ff fe71 	bl	8006578 <App_TasksRegisterOne>
- 8006896:	1e03      	subs	r3, r0, #0
- 8006898:	d009      	beq.n	80068ae <App_TasksRegisterAll+0x1f6>
- 800689a:	2344      	movs	r3, #68	@ 0x44
- 800689c:	33ff      	adds	r3, #255	@ 0xff
- 800689e:	001a      	movs	r2, r3
- 80068a0:	4b06      	ldr	r3, [pc, #24]	@ (80068bc <App_TasksRegisterAll+0x204>)
- 80068a2:	0019      	movs	r1, r3
- 80068a4:	2015      	movs	r0, #21
- 80068a6:	f7fa ff19 	bl	80016dc <App_ErrorRecord>
- 80068aa:	2315      	movs	r3, #21
- 80068ac:	e000      	b.n	80068b0 <App_TasksRegisterAll+0x1f8>
+ 8006888:	4b19      	ldr	r3, [pc, #100]	@ (80068f0 <App_TasksRegisterAll+0x238>)
+ 800688a:	2264      	movs	r2, #100	@ 0x64
+ 800688c:	0019      	movs	r1, r3
+ 800688e:	200c      	movs	r0, #12
+ 8006890:	f7ff fe72 	bl	8006578 <App_TasksRegisterOne>
+ 8006894:	1e03      	subs	r3, r0, #0
+ 8006896:	d009      	beq.n	80068ac <App_TasksRegisterAll+0x1f4>
+ 8006898:	2344      	movs	r3, #68	@ 0x44
+ 800689a:	33ff      	adds	r3, #255	@ 0xff
+ 800689c:	001a      	movs	r2, r3
+ 800689e:	4b06      	ldr	r3, [pc, #24]	@ (80068b8 <App_TasksRegisterAll+0x200>)
+ 80068a0:	0019      	movs	r1, r3
+ 80068a2:	2015      	movs	r0, #21
+ 80068a4:	f7fa ff1a 	bl	80016dc <App_ErrorRecord>
+ 80068a8:	2315      	movs	r3, #21
+ 80068aa:	e000      	b.n	80068ae <App_TasksRegisterAll+0x1f6>
 
     return APP_STATUS_OK;
- 80068ae:	2300      	movs	r3, #0
+ 80068ac:	2300      	movs	r3, #0
 }
- 80068b0:	0018      	movs	r0, r3
- 80068b2:	46bd      	mov	sp, r7
- 80068b4:	bd80      	pop	{r7, pc}
- 80068b6:	46c0      	nop			@ (mov r8, r8)
- 80068b8:	2000087c 	.word	0x2000087c
- 80068bc:	0800dcc4 	.word	0x0800dcc4
- 80068c0:	08004cc9 	.word	0x08004cc9
+ 80068ae:	0018      	movs	r0, r3
+ 80068b0:	46bd      	mov	sp, r7
+ 80068b2:	bd80      	pop	{r7, pc}
+ 80068b4:	2000087c 	.word	0x2000087c
+ 80068b8:	0800dcc4 	.word	0x0800dcc4
+ 80068bc:	08004cc9 	.word	0x08004cc9
+ 80068c0:	00002710 	.word	0x00002710
  80068c4:	08005e01 	.word	0x08005e01
  80068c8:	08004e65 	.word	0x08004e65
  80068cc:	08005761 	.word	0x08005761
