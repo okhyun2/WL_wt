@@ -10,6 +10,8 @@ extern "C" {
 #define APP_MSGQ_TYPE_TASK_HEARTBEAT      (1u)
 #define APP_MSGQ_TYPE_TASK_EVENT          (2u)
 #define APP_MSGQ_TYPE_TASK_ALERT          (3u)
+#define APP_MSGQ_TYPE_STORAGE_REQUEST     (10u)
+#define APP_MSGQ_TYPE_STORAGE_RESPONSE    (11u)
 
 #define APP_MSGQ_MSG_TASK_HEARTBEAT       APP_MSGQ_TYPE_TASK_HEARTBEAT
 #define APP_MSGQ_MSG_TASK_EVENT           APP_MSGQ_TYPE_TASK_EVENT
@@ -24,6 +26,8 @@ typedef struct
     uint32_t tickMs;
     uint32_t param0;
     uint32_t param1;
+    uint32_t param2;
+    uint32_t param3;
 } AppMsgqMessage_t;
 
 typedef struct
@@ -40,6 +44,7 @@ typedef struct
 AppStatus_t App_MsgqInit(void);
 AppStatus_t App_MsgqPush(const AppMsgqMessage_t *p_message);
 AppStatus_t App_MsgqPop(AppMsgqMessage_t *p_message);
+AppStatus_t App_MsgqTakeFirstByType(uint8_t type, AppMsgqMessage_t *p_message);
 const AppMsgqContext_t *App_MsgqGetContext(void);
 
 #ifdef __cplusplus

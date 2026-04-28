@@ -1,6 +1,7 @@
 #include "app_debug.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "app_build_config.h"
@@ -93,6 +94,55 @@ static AppStatus_t App_DebugConsolePrintTaskTable(void)
     return APP_STATUS_OK;
 }
 
+static const char *App_DebugConsoleGetStorageBackendString(uint8_t backend)
+{
+    switch (backend)
+    {
+        case APP_STORAGE_TARGET_EEPROM: return "eeprom";
+        case APP_STORAGE_TARGET_FLASH:  return "flash";
+        case APP_STORAGE_TARGET_BOTH:   return "both";
+        default:                        return "unknown";
+    }
+}
+
+static const char *App_DebugConsoleGetStorageOperationString(uint8_t operation)
+{
+    switch (operation)
+    {
+        case APP_STORAGE_QUEUE_OP_SAVE: return "save";
+        case APP_STORAGE_QUEUE_OP_LOAD: return "load";
+        default:                        return "unknown";
+    }
+}
+
+static AppStatus_t App_DebugConsoleParseStorageBackend(const char *p_token,
+                                                       uint8_t allowBoth,
+                                                       AppStorageTarget_t *p_backend)
+{
+    APP_RETURN_IF_FALSE((p_token != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_backend != NULL), APP_STATUS_INVALID_PARAM);
+
+    if ((strcmp(p_token, "eep") == 0) || (strcmp(p_token, "eeprom") == 0))
+    {
+        *p_backend = APP_STORAGE_TARGET_EEPROM;
+        return APP_STATUS_OK;
+    }
+
+    if (strcmp(p_token, "flash") == 0)
+    {
+        *p_backend = APP_STORAGE_TARGET_FLASH;
+        return APP_STATUS_OK;
+    }
+
+    if ((allowBoth == APP_TRUE) && (strcmp(p_token, "both") == 0))
+    {
+        *p_backend = APP_STORAGE_TARGET_BOTH;
+        return APP_STATUS_OK;
+    }
+
+    return APP_STATUS_INVALID_PARAM;
+}
+
 static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
 {
     char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
@@ -101,9 +151,12 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     const AppErrorRecord_t *p_errorRecord;
     const AppDebugConsoleContext_t *p_debugContext;
     const AppTaskMainSummary_t *p_mainSummary;
+    const AppTaskMainStorageResponse_t *p_storageResponse;
     const AppTaskWatchdogSummary_t *p_watchdogSummary;
+    const AppTaskStorageSummary_t *p_storageSummary;
     const AppSchedulerContext_t *p_schedulerContext;
     int32_t formattedLength;
+    AppStatus_t status;
 
     if ((p_command == NULL) || (p_command[0] == '\0'))
     {
@@ -115,22 +168,31 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     p_errorRecord = App_ErrorGetLast();
     p_debugContext = App_DebugConsoleGetContext();
     p_mainSummary = App_TaskMainGetSummary();
+    p_storageResponse = App_TaskMainGetStorageResponse();
     p_watchdogSummary = App_TaskWatchdogGetSummary();
+    p_storageSummary = App_TaskStorageGetSummary();
     p_schedulerContext = App_SchedulerGetContext();
+    (void)p_debugContext;
 
     if (strcmp(p_command, "help") == 0)
     {
-        if (App_DebugConsoleWriteLine("help       : show command list") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("ver        : show firmware version") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("status     : show system/debug state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("clock      : show boot clock summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("error      : show last error record") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("tasks      : show scheduler and task state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("main       : show main-task decision summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("wdog       : show watchdog service summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("lp         : show low-power state and wake source") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("echo on    : enable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("echo off   : disable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("help                     : show command list") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("ver                      : show firmware version") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("status                   : show system/debug state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("clock                    : show boot clock summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("error                    : show last error record") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("tasks                    : show scheduler and task state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("main                     : show main-task decision summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("wdog                     : show watchdog service summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("lp                       : show low-power state and wake source") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("stor                     : show storage summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("stor resp                : show last main/storage response") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("stor save                : request save with current active data to both") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("stor save <eep|flash|both> <d0> <d1> : queue save request") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("stor load <eep|flash>    : queue load request") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("stor def                 : load defaults and save") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("echo on                  : enable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("echo off                 : disable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         return APP_STATUS_OK;
     }
 
@@ -246,6 +308,172 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
                                    (unsigned long)p_systemContext->lastWakeTickMs);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (strcmp(p_command, "stor") == 0)
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "stor init=%u def=%u eep=%u flash=%u pend=%u fpend=%u seq=%lu",
+                                   (unsigned int)p_storageSummary->initialized,
+                                   (unsigned int)p_storageSummary->defaultsApplied,
+                                   (unsigned int)p_storageSummary->eepromValid,
+                                   (unsigned int)p_storageSummary->flashValid,
+                                   (unsigned int)p_storageSummary->commitPending,
+                                   (unsigned int)p_storageSummary->flashCommitPending,
+                                   (unsigned long)p_storageSummary->sequence);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "stor data active=%08lX/%08lX eep=0x%08lX flash=0x%08lX",
+                                   (unsigned long)p_storageSummary->activeUserData0,
+                                   (unsigned long)p_storageSummary->activeUserData1,
+                                   (unsigned long)p_storageSummary->activeEepromAddress,
+                                   (unsigned long)p_storageSummary->activeFlashAddress);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "stor wr=%lu/%lu last=%lu st=%lu/%lu resp=%u %s/%s",
+                                   (unsigned long)p_storageSummary->eepromWriteCount,
+                                   (unsigned long)p_storageSummary->flashWriteCount,
+                                   (unsigned long)p_storageSummary->lastCommitTickMs,
+                                   (unsigned long)p_storageSummary->lastLoadStatus,
+                                   (unsigned long)p_storageSummary->lastCommitStatus,
+                                   (unsigned int)p_storageResponse->responseReady,
+                                   App_DebugConsoleGetStorageOperationString(p_storageResponse->operation),
+                                   App_DebugConsoleGetStorageBackendString(p_storageResponse->backend));
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (strcmp(p_command, "stor resp") == 0)
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "stor resp ready=%u op=%s backend=%s status=%lu req=%lu data=%08lX/%08lX seq=%lu cnt=%lu",
+                                   (unsigned int)p_storageResponse->responseReady,
+                                   App_DebugConsoleGetStorageOperationString(p_storageResponse->operation),
+                                   App_DebugConsoleGetStorageBackendString(p_storageResponse->backend),
+                                   (unsigned long)p_storageResponse->status,
+                                   (unsigned long)p_storageResponse->requestTickMs,
+                                   (unsigned long)p_storageResponse->userData0,
+                                   (unsigned long)p_storageResponse->userData1,
+                                   (unsigned long)p_storageResponse->sequence,
+                                   (unsigned long)p_storageResponse->responseCount);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (strcmp(p_command, "stor save") == 0)
+    {
+        status = App_TaskMainRequestStorageSave(APP_STORAGE_TARGET_BOTH,
+                                                p_storageSummary->activeUserData0,
+                                                p_storageSummary->activeUserData1);
+        if (status != APP_STATUS_OK)
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "stor save failed status=%lu", (unsigned long)status);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+            return App_DebugConsoleWriteLine(txBuffer);
+        }
+        return App_DebugConsoleWriteLine("stor save queued");
+    }
+
+    if (strncmp(p_command, "stor save ", 10) == 0)
+    {
+        char backendToken[16];
+        char data0Token[24];
+        char data1Token[24];
+        char *p_end;
+        unsigned long userData0;
+        unsigned long userData1;
+        AppStorageTarget_t backend;
+
+        if (sscanf(p_command, "stor save %15s %23s %23s", backendToken, data0Token, data1Token) != 3)
+        {
+            return App_DebugConsoleWriteLine("usage: stor save <eep|flash|both> <d0> <d1>");
+        }
+
+        status = App_DebugConsoleParseStorageBackend(backendToken, APP_TRUE, &backend);
+        if (status != APP_STATUS_OK)
+        {
+            return App_DebugConsoleWriteLine("backend: eep, flash, both");
+        }
+
+        userData0 = strtoul(data0Token, &p_end, 0);
+        if ((p_end == data0Token) || (*p_end != '\0'))
+        {
+            return App_DebugConsoleWriteLine("invalid d0");
+        }
+        userData1 = strtoul(data1Token, &p_end, 0);
+        if ((p_end == data1Token) || (*p_end != '\0'))
+        {
+            return App_DebugConsoleWriteLine("invalid d1");
+        }
+
+        status = App_TaskMainRequestStorageSave(backend, (uint32_t)userData0, (uint32_t)userData1);
+        if (status != APP_STATUS_OK)
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "stor save failed status=%lu", (unsigned long)status);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+            return App_DebugConsoleWriteLine(txBuffer);
+        }
+
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "stor save queued backend=%s data=%08lX/%08lX",
+                                   App_DebugConsoleGetStorageBackendString((uint8_t)backend),
+                                   userData0,
+                                   userData1);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (strncmp(p_command, "stor load ", 10) == 0)
+    {
+        char backendToken[16];
+        AppStorageTarget_t backend;
+
+        if (sscanf(p_command, "stor load %15s", backendToken) != 1)
+        {
+            return App_DebugConsoleWriteLine("usage: stor load <eep|flash>");
+        }
+
+        status = App_DebugConsoleParseStorageBackend(backendToken, APP_FALSE, &backend);
+        if (status != APP_STATUS_OK)
+        {
+            return App_DebugConsoleWriteLine("backend: eep or flash");
+        }
+
+        status = App_TaskMainRequestStorageLoad(backend);
+        if (status != APP_STATUS_OK)
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "stor load failed status=%lu", (unsigned long)status);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+            return App_DebugConsoleWriteLine(txBuffer);
+        }
+
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "stor load queued backend=%s",
+                                   App_DebugConsoleGetStorageBackendString((uint8_t)backend));
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (strcmp(p_command, "stor def") == 0)
+    {
+        status = App_TaskStorageLoadDefaults();
+        if (status != APP_STATUS_OK)
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "stor def failed status=%lu", (unsigned long)status);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+            return App_DebugConsoleWriteLine(txBuffer);
+        }
+        return App_DebugConsoleWriteLine("stor defaults requested");
     }
 
     if (strcmp(p_command, "echo on") == 0)
@@ -375,11 +603,11 @@ AppStatus_t App_DebugConsoleProcess(void)
             return APP_STATUS_UART_RX_FAILED;
         }
         {
-            AppStatus_t status;
-            status = App_DebugConsoleHandleByte(rxByte);
-            if (status != APP_STATUS_OK)
+            AppStatus_t byteStatus;
+            byteStatus = App_DebugConsoleHandleByte(rxByte);
+            if (byteStatus != APP_STATUS_OK)
             {
-                return status;
+                return byteStatus;
             }
         }
     }

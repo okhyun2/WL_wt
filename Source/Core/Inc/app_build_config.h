@@ -101,16 +101,16 @@ extern "C" {
 #define APP_SCHEDULER_TASK_RTC_PERIOD_MS            (1000u)
 #define APP_SCHEDULER_TASK_MAIN_PERIOD_MS           (100u)
 
-#define APP_RTC_LSI_ASYNC_PREDIV                   (124u)
-#define APP_RTC_LSI_SYNC_PREDIV                    (295u)
-#define APP_RTC_WAKEUP_PERIOD_MS                   (60*1000u)
+#define APP_RTC_LSI_ASYNC_PREDIV                    (124u)
+#define APP_RTC_LSI_SYNC_PREDIV                     (295u)
+#define APP_RTC_WAKEUP_PERIOD_MS                    (60 * 1000u)
 
-#define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS        (50u)
-#define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT    (50u)
-#define APP_WATCHDOG_EXTERNAL_FEED_BOOT_PRIME_CNT  (1u)
+#define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)
+#define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT     (50u)
+#define APP_WATCHDOG_EXTERNAL_FEED_BOOT_PRIME_CNT   (1u)
 
-#define APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT         (2u)
-#define APP_LP_STOP_DEBUG_DRY_RUN                  (APP_FALSE)
+#define APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT          (2u)
+#define APP_LP_STOP_DEBUG_DRY_RUN                   (APP_FALSE)
 
 #define APP_MSGQ_DEPTH                              (48u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)
@@ -118,7 +118,14 @@ extern "C" {
 #define APP_TASK_HEARTBEAT_MIN_INTERVAL_MS          (100u)
 #define APP_TASK_MAIN_STALE_FACTOR                  (3u)
 #define APP_TASK_MAIN_STALE_MARGIN_MS               (100u)
-#define APP_TASK_MAIN_HEARTBEAT_GRACE_MS           ((APP_TASK_MAIN_STALE_FACTOR * APP_SCHEDULER_TASK_MAIN_PERIOD_MS) + APP_TASK_MAIN_STALE_MARGIN_MS)
+#define APP_TASK_MAIN_HEARTBEAT_GRACE_MS            ((APP_TASK_MAIN_STALE_FACTOR * APP_SCHEDULER_TASK_MAIN_PERIOD_MS) + APP_TASK_MAIN_STALE_MARGIN_MS)
+
+#define APP_STORAGE_LAYOUT_REV                      (1u)
+#define APP_STORAGE_DATA_EEPROM_SLOT_COUNT          (2u)
+#define APP_STORAGE_DATA_EEPROM_SLOT_SIZE_BYTES     (64u)
+#define APP_STORAGE_FLASH_PARTITION_PAGE_COUNT      (8u)
+#define APP_STORAGE_FLASH_RECORD_STRIDE_BYTES       (FLASH_PAGE_SIZE)
+#define APP_STORAGE_PARAM_FLAGS_VALID               (0x00000001u)
 
 #if !defined(STM32L073xx)
 #error "This project requires STM32L073xx device support."
