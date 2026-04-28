@@ -281,9 +281,9 @@ AppStatus_t App_TaskMain(void *p_context)
             }
             else if ((g_appTaskMainSummary.busyCount == 0u) && (p_module->eventPending == APP_FALSE))
             {
-                //g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_ALLOW_IDLE;
+                g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_ALLOW_IDLE;
                 //don't enter stop mode.
-                g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_RUN_ACTIVE;
+                //g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_RUN_ACTIVE;
             }
             else
             {

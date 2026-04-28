@@ -103,7 +103,7 @@ extern "C" {
 
 #define APP_RTC_LSI_ASYNC_PREDIV                    (124u)
 #define APP_RTC_LSI_SYNC_PREDIV                     (295u)
-#define APP_RTC_WAKEUP_PERIOD_MS                    (60 * 1000u)
+#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u)
 
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT     (50u)
