@@ -1,6 +1,6 @@
 ../Core/Src/app_clock.c:14:25:App_ClockDecodeSystemSource	7
-../Core/Src/app_clock.c:35:20:App_ClockCaptureContext	4
-../Core/Src/app_clock.c:75:13:App_ClockInit	1
-../Core/Src/app_clock.c:81:13:App_ClockRecoverAfterStop	4
-../Core/Src/app_clock.c:116:9:App_ClockIsInitialized	1
-../Core/Src/app_clock.c:121:26:App_ClockGetContext	1
+../Core/Src/app_clock.c:35:20:App_ClockCaptureContext	7
+../Core/Src/app_clock.c:68:13:App_ClockInit	1
+../Core/Src/app_clock.c:74:13:App_ClockRecoverAfterStop	4
+../Core/Src/app_clock.c:109:9:App_ClockIsInitialized	1
+../Core/Src/app_clock.c:114:26:App_ClockGetContext	1
