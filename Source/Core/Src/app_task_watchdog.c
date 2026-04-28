@@ -153,11 +153,9 @@ AppStatus_t App_TaskWatchdog(void *p_context)
             {
                 break;
             }
-#ifdef DEBUG
             APP_TASK_DEBUG_PRINT("WDOG", "watchdog init done: ext_feed=%u prime=%lu",
                                  (unsigned int)g_appTaskWatchdogContext.externalFeedEnabled,
                                  (unsigned long)APP_WATCHDOG_EXTERNAL_FEED_BOOT_PRIME_CNT);
-#endif
             APP_TASK_SET_STATE(p_module, APP_TASK_WATCHDOG_STATE_SERVICE_IWDG);
             /* fall through */
 
@@ -199,8 +197,7 @@ AppStatus_t App_TaskWatchdog(void *p_context)
 #ifdef DEBUG
     if (status == APP_STATUS_OK)
     {
-        APP_TASK_DEBUG_PRINT("WDOG",
-                             "service ok: iwdg=%lu ext=%lu tick=%lu",
+        APP_TASK_DEBUG_PRINT("WDOG", "service ok: iwdg=%lu ext=%lu tick=%lu",
                              (unsigned long)g_appTaskWatchdogContext.iwdgRefreshCount,
                              (unsigned long)g_appTaskWatchdogContext.externalFeedCount,
                              (unsigned long)g_appTaskWatchdogContext.lastServiceTickMs);

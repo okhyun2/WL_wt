@@ -9,11 +9,8 @@ static uint32_t g_appTaskRtcWakeHandleCount;
 static AppStatus_t App_TaskRtcIf_InitService(void)
 {
     g_appTaskRtcWakeHandleCount = 0u;
-#ifdef DEBUG
-    APP_TASK_DEBUG_PRINT("RTC",
-                         "service init: wake_period=%lu ms",
+    APP_LOGI("RTC", "service init: wake_period=%lu ms",
                          (unsigned long)APP_RTC_WAKEUP_PERIOD_MS);
-#endif
     return APP_STATUS_OK;
 }
 
@@ -22,12 +19,9 @@ static AppStatus_t App_TaskRtcIf_CheckSchedule(uint8_t eventPending)
     if (((App_SystemGetWakeSourceMask() & APP_SYSTEM_WAKE_SRC_RTC) != 0u) || (eventPending == APP_TRUE))
     {
         g_appTaskRtcWakeHandleCount++;
-#ifdef DEBUG
-        APP_TASK_DEBUG_PRINT("RTC",
-                             "wake handled: count=%lu wake=%s",
+        APP_LOGI("RTC", "wake handled: count=%lu wake=%s",
                              (unsigned long)g_appTaskRtcWakeHandleCount,
                              App_SystemGetWakeSourceString());
-#endif
     }
 
     return APP_STATUS_OK;
@@ -40,10 +34,8 @@ static AppStatus_t App_TaskRtcIf_ApplySync(void)
      * - compute next wake alarm policy
      * - current implementation uses fixed periodic RTC wake-up in system layer
      */
-#ifdef DEBUG
-    APP_TASK_DEBUG_PRINT("RTC", "schedule confirmed: periodic wake=%lu ms",
+    APP_LOGI("RTC", "schedule confirmed: periodic wake=%lu ms",
                          (unsigned long)APP_RTC_WAKEUP_PERIOD_MS);
-#endif
     return APP_STATUS_OK;
 }
 

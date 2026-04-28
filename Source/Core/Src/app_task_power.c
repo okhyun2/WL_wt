@@ -11,13 +11,10 @@ static AppStatus_t App_TaskPowerIf_LoadPolicy(void)
      * - wake source masks
      * - sleep/stop entry guards
      */
-#ifdef DEBUG
-    APP_TASK_DEBUG_PRINT("POWER",
-                         "policy loaded: power_period=%lu main_period=%lu idle_delay=%lu",
+    APP_TASK_DEBUG_PRINT("POWER", "policy loaded: power_period=%lu main_period=%lu idle_delay=%lu",
                          (unsigned long)APP_SCHEDULER_TASK_POWER_PERIOD_MS,
                          (unsigned long)APP_SCHEDULER_TASK_MAIN_PERIOD_MS,
                          (unsigned long)APP_SCHEDULER_IDLE_DELAY_MS);
-#endif
     return APP_STATUS_OK;
 }
 
@@ -34,12 +31,9 @@ static AppStatus_t App_TaskPowerIf_EvaluatePowerConditions(void)
      */
     decision = App_TaskMainGetDecision();
     allowLowPower = (decision == APP_TASK_MAIN_DECISION_ALLOW_IDLE) ? APP_TRUE : APP_FALSE;
-#ifdef DEBUG
-    APP_TASK_DEBUG_PRINT("POWER",
-                         "evaluate: main=%s allow_stop=%u",
+    APP_TASK_DEBUG_PRINT("POWER", "evaluate: main=%s allow_stop=%u",
                          App_TaskMainGetDecisionString(),
                          (unsigned int)allowLowPower);
-#endif
     return App_SystemRequestLowPower(allowLowPower);
 }
 
@@ -76,8 +70,7 @@ AppStatus_t App_TaskPower(void *p_context)
             APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
             p_module->eventPending = APP_FALSE;
 #ifdef DEBUG
-            APP_TASK_DEBUG_PRINT("POWER",
-                                 "state=EVALUATE stop_req=%u wake=%s",
+            APP_TASK_DEBUG_PRINT("POWER", "state=EVALUATE stop_req=%u wake=%s",
                                  (unsigned int)p_system->stopRequested,
                                  App_SystemGetWakeSourceString());
 #endif
@@ -90,8 +83,7 @@ AppStatus_t App_TaskPower(void *p_context)
             APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
             p_module->busy = APP_FALSE;
 #ifdef DEBUG
-            APP_TASK_DEBUG_PRINT("POWER",
-                                 "state=DECIDE_IDLE next=EVALUATE stop_req=%u",
+            APP_TASK_DEBUG_PRINT("POWER", "state=DECIDE_IDLE next=EVALUATE stop_req=%u",
                                  (unsigned int)p_system->stopRequested);
 #endif
             APP_TASK_SET_STATE(p_module, APP_TASK_POWER_STATE_EVALUATE);

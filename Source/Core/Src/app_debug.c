@@ -102,6 +102,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     const AppDebugConsoleContext_t *p_debugContext;
     const AppTaskMainSummary_t *p_mainSummary;
     const AppTaskWatchdogSummary_t *p_watchdogSummary;
+    const AppSchedulerContext_t *p_schedulerContext;
     int32_t formattedLength;
 
     if ((p_command == NULL) || (p_command[0] == '\0'))
@@ -115,6 +116,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     p_debugContext = App_DebugConsoleGetContext();
     p_mainSummary = App_TaskMainGetSummary();
     p_watchdogSummary = App_TaskWatchdogGetSummary();
+    p_schedulerContext = App_SchedulerGetContext();
 
     if (strcmp(p_command, "help") == 0)
     {
@@ -143,10 +145,11 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "boot=%lu loop=%lu idle=%lu lp=%s stop_req=%u qual=%u cand=%lu stop=%lu dry=%lu rtc=%lu sleep=%lu wake=%s",
+                                   "boot=%lu loop=%lu idle=%lu dispatch=%u lp=%s stop_req=%u qual=%u cand=%lu stop=%lu dry=%lu rtc=%lu sleep=%lu wake=%s",
                                    (unsigned long)p_systemContext->bootStage,
                                    (unsigned long)p_systemContext->loopCounter,
                                    (unsigned long)p_systemContext->idleCounter,
+                                   (unsigned int)((p_schedulerContext != NULL) ? p_schedulerContext->lastDispatchCount : 0u),
                                    App_SystemGetLowPowerModeString(),
                                    (unsigned int)p_systemContext->stopRequested,
                                    (unsigned int)p_systemContext->stopQualificationCount,
@@ -229,8 +232,9 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "lp=%s stop_req=%u qual=%u cand=%lu stop=%lu dry=%lu rtc=%lu sleep=%lu wake=%s req_tick=%lu wake_tick=%lu",
+                                   "lp=%s dispatch=%u stop_req=%u qual=%u cand=%lu stop=%lu dry=%lu rtc=%lu sleep=%lu wake=%s req_tick=%lu wake_tick=%lu",
                                    App_SystemGetLowPowerModeString(),
+                                   (unsigned int)((p_schedulerContext != NULL) ? p_schedulerContext->lastDispatchCount : 0u),
                                    (unsigned int)p_systemContext->stopRequested,
                                    (unsigned int)p_systemContext->stopQualificationCount,
                                    (unsigned long)p_systemContext->stopCandidateCount,

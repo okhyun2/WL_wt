@@ -188,15 +188,12 @@ AppStatus_t App_TaskMain(void *p_context)
             }
 
             p_module->lastActionTickMs = nowTick;
-#ifdef DEBUG
-            APP_TASK_DEBUG_PRINT("MAIN",
-                                 "decision=%s alive=%lu busy=%lu stale=%lu pending=%u",
+            APP_TASK_DEBUG_PRINT("MAIN", "decision=%s alive=%lu busy=%lu stale=%lu pending=%u",
                                  App_TaskMainGetDecisionString(),
                                  (unsigned long)g_appTaskMainSummary.aliveCount,
                                  (unsigned long)g_appTaskMainSummary.busyCount,
                                  (unsigned long)g_appTaskMainSummary.staleCount,
                                  (unsigned int)p_module->eventPending);
-#endif
             APP_TASK_SET_STATE(p_module, APP_TASK_MAIN_STATE_COLLECT);
             break;
     }

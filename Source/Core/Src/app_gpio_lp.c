@@ -586,6 +586,8 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         return APP_STATUS_OK;
     }
 
+    (void)APP_LOGW("GPIO", "STOP External interface pins(UART, I2C, gpios..)");
+
     App_GpioLpEnablePortClocks();
     App_GpioLpApplyUnusedPins();
     App_GpioLpApplyStaticControlPins();
@@ -720,6 +722,8 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
     App_GpioLpApplySwdPolicy();
 
     g_appGpioLpContext.stopPrepared = 0u;
+
+    (void)APP_LOGI("GPIO", "STOP recover external interface pins(UART, I2C, gpios..)");
 
 #ifdef DEBUG
     if (App_GpioLpCanDebugLog() == 1u)
