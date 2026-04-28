@@ -7,23 +7,23 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
   1 .text         0000c74c  080000c0  080000c0  000010c0  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, CODE
-  2 .rodata       00001654  0800c80c  0800c80c  0000d80c  2**2
+  2 .rodata       00001668  0800c80c  0800c80c  0000d80c  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  3 .ARM.extab    00000000  0800de60  0800de60  0000f068  2**0
+  3 .ARM.extab    00000000  0800de74  0800de74  0000f068  2**0
                   CONTENTS, READONLY
-  4 .ARM          00000008  0800de60  0800de60  0000ee60  2**2
+  4 .ARM          00000008  0800de74  0800de74  0000ee74  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  5 .preinit_array 00000000  0800de68  0800de68  0000f068  2**0
+  5 .preinit_array 00000000  0800de7c  0800de7c  0000f068  2**0
                   CONTENTS, ALLOC, LOAD, DATA
-  6 .init_array   00000004  0800de68  0800de68  0000ee68  2**2
+  6 .init_array   00000004  0800de7c  0800de7c  0000ee7c  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  7 .fini_array   00000004  0800de6c  0800de6c  0000ee6c  2**2
+  7 .fini_array   00000004  0800de80  0800de80  0000ee80  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  8 .data         00000068  20000000  0800de70  0000f000  2**2
+  8 .data         00000068  20000000  0800de84  0000f000  2**2
                   CONTENTS, ALLOC, LOAD, DATA
-  9 .bss          00000ed0  20000068  0800ded8  0000f068  2**2
+  9 .bss          00000ed0  20000068  0800deec  0000f068  2**2
                   ALLOC
- 10 ._user_heap_stack 00000600  20000f38  0800ded8  0000ff38  2**0
+ 10 ._user_heap_stack 00000600  20000f38  0800deec  0000ff38  2**0
                   ALLOC
  11 .ARM.attributes 00000028  00000000  00000000  0000f068  2**0
                   CONTENTS, READONLY
@@ -2941,7 +2941,7 @@ static AppStatus_t App_DebugConsoleHandleByte(uint8_t rxByte)
  80014d4:	b002      	add	sp, #8
  80014d6:	bd80      	pop	{r7, pc}
  80014d8:	200000a4 	.word	0x200000a4
- 80014dc:	0800dcf8 	.word	0x0800dcf8
+ 80014dc:	0800dd0c 	.word	0x0800dd0c
  80014e0:	0800cd20 	.word	0x0800cd20
  80014e4:	0800c87c 	.word	0x0800c87c
 
@@ -3222,7 +3222,7 @@ AppStatus_t App_DebugConsolePrintPrompt(void)
  800169e:	46bd      	mov	sp, r7
  80016a0:	bd80      	pop	{r7, pc}
  80016a2:	46c0      	nop			@ (mov r8, r8)
- 80016a4:	0800dcf0 	.word	0x0800dcf0
+ 80016a4:	0800dd04 	.word	0x0800dd04
 
 080016a8 <App_DebugConsoleGetContext>:
 
@@ -5592,7 +5592,7 @@ static const char *App_LogLevelToString(AppLogLevel_t level)
  800241e:	46bd      	mov	sp, r7
  8002420:	b002      	add	sp, #8
  8002422:	bd80      	pop	{r7, pc}
- 8002424:	0800dcfc 	.word	0x0800dcfc
+ 8002424:	0800dd10 	.word	0x0800dd10
  8002428:	0800ce78 	.word	0x0800ce78
  800242c:	0800ce80 	.word	0x0800ce80
  8002430:	0800ce88 	.word	0x0800ce88
@@ -6960,7 +6960,7 @@ static const char *App_SelfTestItemToString(AppSelfTestItem_t item)
  8002c76:	46bd      	mov	sp, r7
  8002c78:	b002      	add	sp, #8
  8002c7a:	bd80      	pop	{r7, pc}
- 8002c7c:	0800dd10 	.word	0x0800dd10
+ 8002c7c:	0800dd24 	.word	0x0800dd24
  8002c80:	0800cf28 	.word	0x0800cf28
  8002c84:	0800cf30 	.word	0x0800cf30
  8002c88:	0800cf34 	.word	0x0800cf34
@@ -9508,13 +9508,14 @@ void App_SystemNotifyWakeSource(uint32_t sourceMask)
  8003d0c:	719a      	strb	r2, [r3, #6]
     App_SystemResetStopQualification();
  8003d0e:	f7ff fdf5 	bl	80038fc <App_SystemResetStopQualification>
+#ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
  8003d12:	f7ff fdd7 	bl	80038c4 <App_SystemCanDebugLog>
  8003d16:	0003      	movs	r3, r0
  8003d18:	2b01      	cmp	r3, #1
  8003d1a:	d114      	bne.n	8003d46 <App_SystemNotifyWakeSource+0x62>
     {
-        (void)APP_LOGI("WAKE",
+        (void)APP_LOGD("WAKE",
  8003d1c:	4b0b      	ldr	r3, [pc, #44]	@ (8003d4c <App_SystemNotifyWakeSource+0x68>)
  8003d1e:	6adb      	ldr	r3, [r3, #44]	@ 0x2c
  8003d20:	0018      	movs	r0, r3
@@ -9530,16 +9531,16 @@ void App_SystemNotifyWakeSource(uint32_t sourceMask)
  8003d36:	9200      	str	r2, [sp, #0]
  8003d38:	0023      	movs	r3, r4
  8003d3a:	0002      	movs	r2, r0
- 8003d3c:	2002      	movs	r0, #2
+ 8003d3c:	2001      	movs	r0, #1
  8003d3e:	f7fe fc51 	bl	80025e4 <App_LogPrintf>
  8003d42:	e000      	b.n	8003d46 <App_SystemNotifyWakeSource+0x62>
         return;
  8003d44:	46c0      	nop			@ (mov r8, r8)
-                       "source=%s mask=0x%08lX tick=%lu",
                        App_SystemBuildWakeSourceString(g_appSystemContext.wakeSourceMask),
                        (unsigned long)g_appSystemContext.wakeSourceMask,
                        (unsigned long)g_appSystemContext.lastWakeTickMs);
     }
+#endif
 }
  8003d46:	46bd      	mov	sp, r7
  8003d48:	b003      	add	sp, #12
@@ -9723,7 +9724,7 @@ static AppStatus_t App_SystemValidateHandles(void)
  8003e5c:	4a4a      	ldr	r2, [pc, #296]	@ (8003f88 <App_SystemValidateHandles+0x134>)
  8003e5e:	4293      	cmp	r3, r2
  8003e60:	d009      	beq.n	8003e76 <App_SystemValidateHandles+0x22>
- 8003e62:	235a      	movs	r3, #90	@ 0x5a
+ 8003e62:	235c      	movs	r3, #92	@ 0x5c
  8003e64:	33ff      	adds	r3, #255	@ 0xff
  8003e66:	001a      	movs	r2, r3
  8003e68:	4b48      	ldr	r3, [pc, #288]	@ (8003f8c <App_SystemValidateHandles+0x138>)
@@ -9738,7 +9739,7 @@ static AppStatus_t App_SystemValidateHandles(void)
  8003e7a:	4a46      	ldr	r2, [pc, #280]	@ (8003f94 <App_SystemValidateHandles+0x140>)
  8003e7c:	4293      	cmp	r3, r2
  8003e7e:	d008      	beq.n	8003e92 <App_SystemValidateHandles+0x3e>
- 8003e80:	23ad      	movs	r3, #173	@ 0xad
+ 8003e80:	23ae      	movs	r3, #174	@ 0xae
  8003e82:	005a      	lsls	r2, r3, #1
  8003e84:	4b41      	ldr	r3, [pc, #260]	@ (8003f8c <App_SystemValidateHandles+0x138>)
  8003e86:	0019      	movs	r1, r3
@@ -9752,7 +9753,7 @@ static AppStatus_t App_SystemValidateHandles(void)
  8003e96:	4a41      	ldr	r2, [pc, #260]	@ (8003f9c <App_SystemValidateHandles+0x148>)
  8003e98:	4293      	cmp	r3, r2
  8003e9a:	d009      	beq.n	8003eb0 <App_SystemValidateHandles+0x5c>
- 8003e9c:	235c      	movs	r3, #92	@ 0x5c
+ 8003e9c:	235e      	movs	r3, #94	@ 0x5e
  8003e9e:	33ff      	adds	r3, #255	@ 0xff
  8003ea0:	001a      	movs	r2, r3
  8003ea2:	4b3a      	ldr	r3, [pc, #232]	@ (8003f8c <App_SystemValidateHandles+0x138>)
@@ -9767,7 +9768,7 @@ static AppStatus_t App_SystemValidateHandles(void)
  8003eb4:	4a3b      	ldr	r2, [pc, #236]	@ (8003fa4 <App_SystemValidateHandles+0x150>)
  8003eb6:	4293      	cmp	r3, r2
  8003eb8:	d008      	beq.n	8003ecc <App_SystemValidateHandles+0x78>
- 8003eba:	23ae      	movs	r3, #174	@ 0xae
+ 8003eba:	23af      	movs	r3, #175	@ 0xaf
  8003ebc:	005a      	lsls	r2, r3, #1
  8003ebe:	4b33      	ldr	r3, [pc, #204]	@ (8003f8c <App_SystemValidateHandles+0x138>)
  8003ec0:	0019      	movs	r1, r3
@@ -9781,7 +9782,7 @@ static AppStatus_t App_SystemValidateHandles(void)
  8003ed0:	4a36      	ldr	r2, [pc, #216]	@ (8003fac <App_SystemValidateHandles+0x158>)
  8003ed2:	4293      	cmp	r3, r2
  8003ed4:	d009      	beq.n	8003eea <App_SystemValidateHandles+0x96>
- 8003ed6:	235e      	movs	r3, #94	@ 0x5e
+ 8003ed6:	2360      	movs	r3, #96	@ 0x60
  8003ed8:	33ff      	adds	r3, #255	@ 0xff
  8003eda:	001a      	movs	r2, r3
  8003edc:	4b2b      	ldr	r3, [pc, #172]	@ (8003f8c <App_SystemValidateHandles+0x138>)
@@ -9796,7 +9797,7 @@ static AppStatus_t App_SystemValidateHandles(void)
  8003eee:	4a31      	ldr	r2, [pc, #196]	@ (8003fb4 <App_SystemValidateHandles+0x160>)
  8003ef0:	4293      	cmp	r3, r2
  8003ef2:	d008      	beq.n	8003f06 <App_SystemValidateHandles+0xb2>
- 8003ef4:	23af      	movs	r3, #175	@ 0xaf
+ 8003ef4:	23b0      	movs	r3, #176	@ 0xb0
  8003ef6:	005a      	lsls	r2, r3, #1
  8003ef8:	4b24      	ldr	r3, [pc, #144]	@ (8003f8c <App_SystemValidateHandles+0x138>)
  8003efa:	0019      	movs	r1, r3
@@ -9810,7 +9811,7 @@ static AppStatus_t App_SystemValidateHandles(void)
  8003f0a:	4a2c      	ldr	r2, [pc, #176]	@ (8003fbc <App_SystemValidateHandles+0x168>)
  8003f0c:	4293      	cmp	r3, r2
  8003f0e:	d009      	beq.n	8003f24 <App_SystemValidateHandles+0xd0>
- 8003f10:	2360      	movs	r3, #96	@ 0x60
+ 8003f10:	2362      	movs	r3, #98	@ 0x62
  8003f12:	33ff      	adds	r3, #255	@ 0xff
  8003f14:	001a      	movs	r2, r3
  8003f16:	4b1d      	ldr	r3, [pc, #116]	@ (8003f8c <App_SystemValidateHandles+0x138>)
@@ -9825,7 +9826,7 @@ static AppStatus_t App_SystemValidateHandles(void)
  8003f28:	4a26      	ldr	r2, [pc, #152]	@ (8003fc4 <App_SystemValidateHandles+0x170>)
  8003f2a:	4293      	cmp	r3, r2
  8003f2c:	d008      	beq.n	8003f40 <App_SystemValidateHandles+0xec>
- 8003f2e:	23b0      	movs	r3, #176	@ 0xb0
+ 8003f2e:	23b1      	movs	r3, #177	@ 0xb1
  8003f30:	005a      	lsls	r2, r3, #1
  8003f32:	4b16      	ldr	r3, [pc, #88]	@ (8003f8c <App_SystemValidateHandles+0x138>)
  8003f34:	0019      	movs	r1, r3
@@ -9839,7 +9840,7 @@ static AppStatus_t App_SystemValidateHandles(void)
  8003f44:	4a21      	ldr	r2, [pc, #132]	@ (8003fcc <App_SystemValidateHandles+0x178>)
  8003f46:	4293      	cmp	r3, r2
  8003f48:	d009      	beq.n	8003f5e <App_SystemValidateHandles+0x10a>
- 8003f4a:	2362      	movs	r3, #98	@ 0x62
+ 8003f4a:	2364      	movs	r3, #100	@ 0x64
  8003f4c:	33ff      	adds	r3, #255	@ 0xff
  8003f4e:	001a      	movs	r2, r3
  8003f50:	4b0e      	ldr	r3, [pc, #56]	@ (8003f8c <App_SystemValidateHandles+0x138>)
@@ -9854,7 +9855,7 @@ static AppStatus_t App_SystemValidateHandles(void)
  8003f62:	4a1c      	ldr	r2, [pc, #112]	@ (8003fd4 <App_SystemValidateHandles+0x180>)
  8003f64:	4293      	cmp	r3, r2
  8003f66:	d008      	beq.n	8003f7a <App_SystemValidateHandles+0x126>
- 8003f68:	23b1      	movs	r3, #177	@ 0xb1
+ 8003f68:	23b2      	movs	r3, #178	@ 0xb2
  8003f6a:	005a      	lsls	r2, r3, #1
  8003f6c:	4b07      	ldr	r3, [pc, #28]	@ (8003f8c <App_SystemValidateHandles+0x138>)
  8003f6e:	0019      	movs	r1, r3
@@ -10069,7 +10070,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
  80040be:	f7fd fac3 	bl	8001648 <App_DebugConsoleWriteString>
  80040c2:	1e03      	subs	r3, r0, #0
  80040c4:	d008      	beq.n	80040d8 <App_SystemPrintBootLogs+0x30>
- 80040c6:	23d7      	movs	r3, #215	@ 0xd7
+ 80040c6:	23d8      	movs	r3, #216	@ 0xd8
  80040c8:	005a      	lsls	r2, r3, #1
  80040ca:	4b5e      	ldr	r3, [pc, #376]	@ (8004244 <App_SystemPrintBootLogs+0x19c>)
  80040cc:	0019      	movs	r1, r3
@@ -10082,7 +10083,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
  80040d8:	f7fe f9b2 	bl	8002440 <App_LogInit>
  80040dc:	1e03      	subs	r3, r0, #0
  80040de:	d008      	beq.n	80040f2 <App_SystemPrintBootLogs+0x4a>
- 80040e0:	23d8      	movs	r3, #216	@ 0xd8
+ 80040e0:	23d9      	movs	r3, #217	@ 0xd9
  80040e2:	005a      	lsls	r2, r3, #1
  80040e4:	4b57      	ldr	r3, [pc, #348]	@ (8004244 <App_SystemPrintBootLogs+0x19c>)
  80040e6:	0019      	movs	r1, r3
@@ -10110,7 +10111,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
  800410c:	f7fe fa6a 	bl	80025e4 <App_LogPrintf>
  8004110:	1e03      	subs	r3, r0, #0
  8004112:	d009      	beq.n	8004128 <App_SystemPrintBootLogs+0x80>
- 8004114:	23b6      	movs	r3, #182	@ 0xb6
+ 8004114:	23b8      	movs	r3, #184	@ 0xb8
  8004116:	33ff      	adds	r3, #255	@ 0xff
  8004118:	001a      	movs	r2, r3
  800411a:	4b4a      	ldr	r3, [pc, #296]	@ (8004244 <App_SystemPrintBootLogs+0x19c>)
@@ -10151,7 +10152,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
  800415e:	f7fe fa41 	bl	80025e4 <App_LogPrintf>
  8004162:	1e03      	subs	r3, r0, #0
  8004164:	d009      	beq.n	800417a <App_SystemPrintBootLogs+0xd2>
- 8004166:	23b8      	movs	r3, #184	@ 0xb8
+ 8004166:	23ba      	movs	r3, #186	@ 0xba
  8004168:	33ff      	adds	r3, #255	@ 0xff
  800416a:	001a      	movs	r2, r3
  800416c:	4b35      	ldr	r3, [pc, #212]	@ (8004244 <App_SystemPrintBootLogs+0x19c>)
@@ -10179,7 +10180,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
  800418e:	f7fe fa29 	bl	80025e4 <App_LogPrintf>
  8004192:	1e03      	subs	r3, r0, #0
  8004194:	d009      	beq.n	80041aa <App_SystemPrintBootLogs+0x102>
- 8004196:	23c0      	movs	r3, #192	@ 0xc0
+ 8004196:	23c2      	movs	r3, #194	@ 0xc2
  8004198:	33ff      	adds	r3, #255	@ 0xff
  800419a:	001a      	movs	r2, r3
  800419c:	4b29      	ldr	r3, [pc, #164]	@ (8004244 <App_SystemPrintBootLogs+0x19c>)
@@ -10199,7 +10200,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
  80041b2:	f7fe fa17 	bl	80025e4 <App_LogPrintf>
  80041b6:	1e03      	subs	r3, r0, #0
  80041b8:	d009      	beq.n	80041ce <App_SystemPrintBootLogs+0x126>
- 80041ba:	23c4      	movs	r3, #196	@ 0xc4
+ 80041ba:	23c6      	movs	r3, #198	@ 0xc6
  80041bc:	33ff      	adds	r3, #255	@ 0xff
  80041be:	001a      	movs	r2, r3
  80041c0:	4b20      	ldr	r3, [pc, #128]	@ (8004244 <App_SystemPrintBootLogs+0x19c>)
@@ -10219,7 +10220,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
  80041d8:	f7fe fa04 	bl	80025e4 <App_LogPrintf>
  80041dc:	1e03      	subs	r3, r0, #0
  80041de:	d008      	beq.n	80041f2 <App_SystemPrintBootLogs+0x14a>
- 80041e0:	23e3      	movs	r3, #227	@ 0xe3
+ 80041e0:	23e4      	movs	r3, #228	@ 0xe4
  80041e2:	005a      	lsls	r2, r3, #1
  80041e4:	4b17      	ldr	r3, [pc, #92]	@ (8004244 <App_SystemPrintBootLogs+0x19c>)
  80041e6:	0019      	movs	r1, r3
@@ -10233,7 +10234,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
  80041f2:	f7fd fa4b 	bl	800168c <App_DebugConsolePrintPrompt>
  80041f6:	1e03      	subs	r3, r0, #0
  80041f8:	d009      	beq.n	800420e <App_SystemPrintBootLogs+0x166>
- 80041fa:	23ca      	movs	r3, #202	@ 0xca
+ 80041fa:	23cc      	movs	r3, #204	@ 0xcc
  80041fc:	33ff      	adds	r3, #255	@ 0xff
  80041fe:	001a      	movs	r2, r3
  8004200:	4b10      	ldr	r3, [pc, #64]	@ (8004244 <App_SystemPrintBootLogs+0x19c>)
@@ -10250,7 +10251,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
  8004216:	f7fe f9e5 	bl	80025e4 <App_LogPrintf>
  800421a:	1e03      	subs	r3, r0, #0
  800421c:	d008      	beq.n	8004230 <App_SystemPrintBootLogs+0x188>
- 800421e:	23e5      	movs	r3, #229	@ 0xe5
+ 800421e:	23e6      	movs	r3, #230	@ 0xe6
  8004220:	005a      	lsls	r2, r3, #1
  8004222:	4b08      	ldr	r3, [pc, #32]	@ (8004244 <App_SystemPrintBootLogs+0x19c>)
  8004224:	0019      	movs	r1, r3
@@ -10356,7 +10357,7 @@ static AppStatus_t App_SystemRunBootSelfTest(void)
  80042e2:	f7fe f97f 	bl	80025e4 <App_LogPrintf>
  80042e6:	1e03      	subs	r3, r0, #0
  80042e8:	d008      	beq.n	80042fc <App_SystemRunBootSelfTest+0x74>
- 80042ea:	23f1      	movs	r3, #241	@ 0xf1
+ 80042ea:	23f2      	movs	r3, #242	@ 0xf2
  80042ec:	005a      	lsls	r2, r3, #1
  80042ee:	4b13      	ldr	r3, [pc, #76]	@ (800433c <App_SystemRunBootSelfTest+0xb4>)
  80042f0:	0019      	movs	r1, r3
@@ -10378,7 +10379,7 @@ static AppStatus_t App_SystemRunBootSelfTest(void)
  8004308:	f7fe f96c 	bl	80025e4 <App_LogPrintf>
  800430c:	1e03      	subs	r3, r0, #0
  800430e:	d009      	beq.n	8004324 <App_SystemRunBootSelfTest+0x9c>
- 8004310:	23e8      	movs	r3, #232	@ 0xe8
+ 8004310:	23ea      	movs	r3, #234	@ 0xea
  8004312:	33ff      	adds	r3, #255	@ 0xff
  8004314:	001a      	movs	r2, r3
  8004316:	4b09      	ldr	r3, [pc, #36]	@ (800433c <App_SystemRunBootSelfTest+0xb4>)
@@ -10428,7 +10429,7 @@ static AppStatus_t App_SystemInitScheduler(void)
     {
         return APP_STATUS_SCHEDULER_INIT_FAILED;
  800435c:	2315      	movs	r3, #21
- 800435e:	e043      	b.n	80043e8 <App_SystemInitScheduler+0xa4>
+ 800435e:	e044      	b.n	80043ea <App_SystemInitScheduler+0xa6>
     }
 
     status = App_MsgqInit();
@@ -10445,7 +10446,7 @@ static AppStatus_t App_SystemInitScheduler(void)
         return status;
  8004372:	1dfb      	adds	r3, r7, #7
  8004374:	781b      	ldrb	r3, [r3, #0]
- 8004376:	e037      	b.n	80043e8 <App_SystemInitScheduler+0xa4>
+ 8004376:	e038      	b.n	80043ea <App_SystemInitScheduler+0xa6>
     }
 
     status = App_TasksInit();
@@ -10461,7 +10462,7 @@ static AppStatus_t App_SystemInitScheduler(void)
     {
         return APP_STATUS_SCHEDULER_INIT_FAILED;
  800438a:	2315      	movs	r3, #21
- 800438c:	e02c      	b.n	80043e8 <App_SystemInitScheduler+0xa4>
+ 800438c:	e02d      	b.n	80043ea <App_SystemInitScheduler+0xa6>
     }
 
     status = App_TasksRegisterAll();
@@ -10478,19 +10479,19 @@ static AppStatus_t App_SystemInitScheduler(void)
         return status;
  80043a0:	1dfb      	adds	r3, r7, #7
  80043a2:	781b      	ldrb	r3, [r3, #0]
- 80043a4:	e020      	b.n	80043e8 <App_SystemInitScheduler+0xa4>
+ 80043a4:	e021      	b.n	80043ea <App_SystemInitScheduler+0xa6>
     }
 
     g_appSystemContext.schedulerReady = APP_TRUE;
- 80043a6:	4b12      	ldr	r3, [pc, #72]	@ (80043f0 <App_SystemInitScheduler+0xac>)
+ 80043a6:	4b13      	ldr	r3, [pc, #76]	@ (80043f4 <App_SystemInitScheduler+0xb0>)
  80043a8:	2201      	movs	r2, #1
  80043aa:	715a      	strb	r2, [r3, #5]
     g_appSystemContext.schedulerStatus = APP_STATUS_OK;
- 80043ac:	4b10      	ldr	r3, [pc, #64]	@ (80043f0 <App_SystemInitScheduler+0xac>)
+ 80043ac:	4b11      	ldr	r3, [pc, #68]	@ (80043f4 <App_SystemInitScheduler+0xb0>)
  80043ae:	2200      	movs	r2, #0
  80043b0:	729a      	strb	r2, [r3, #10]
     g_appSystemContext.bootStage = APP_BOOT_STAGE_SCHEDULER_READY;
- 80043b2:	4b0f      	ldr	r3, [pc, #60]	@ (80043f0 <App_SystemInitScheduler+0xac>)
+ 80043b2:	4b10      	ldr	r3, [pc, #64]	@ (80043f4 <App_SystemInitScheduler+0xb0>)
  80043b4:	2208      	movs	r2, #8
  80043b6:	721a      	strb	r2, [r3, #8]
 
@@ -10499,37 +10500,38 @@ static AppStatus_t App_SystemInitScheduler(void)
  80043bc:	0003      	movs	r3, r0
  80043be:	785b      	ldrb	r3, [r3, #1]
  80043c0:	0018      	movs	r0, r3
- 80043c2:	4a0c      	ldr	r2, [pc, #48]	@ (80043f4 <App_SystemInitScheduler+0xb0>)
- 80043c4:	490c      	ldr	r1, [pc, #48]	@ (80043f8 <App_SystemInitScheduler+0xb4>)
+ 80043c2:	4a0d      	ldr	r2, [pc, #52]	@ (80043f8 <App_SystemInitScheduler+0xb4>)
+ 80043c4:	490d      	ldr	r1, [pc, #52]	@ (80043fc <App_SystemInitScheduler+0xb8>)
  80043c6:	2330      	movs	r3, #48	@ 0x30
  80043c8:	9300      	str	r3, [sp, #0]
  80043ca:	0003      	movs	r3, r0
  80043cc:	2002      	movs	r0, #2
  80043ce:	f7fe f909 	bl	80025e4 <App_LogPrintf>
  80043d2:	1e03      	subs	r3, r0, #0
- 80043d4:	d007      	beq.n	80043e6 <App_SystemInitScheduler+0xa2>
- 80043d6:	4a09      	ldr	r2, [pc, #36]	@ (80043fc <App_SystemInitScheduler+0xb8>)
- 80043d8:	4b09      	ldr	r3, [pc, #36]	@ (8004400 <App_SystemInitScheduler+0xbc>)
- 80043da:	0019      	movs	r1, r3
- 80043dc:	2009      	movs	r0, #9
- 80043de:	f7fd f97d 	bl	80016dc <App_ErrorRecord>
- 80043e2:	2309      	movs	r3, #9
- 80043e4:	e000      	b.n	80043e8 <App_SystemInitScheduler+0xa4>
+ 80043d4:	d008      	beq.n	80043e8 <App_SystemInitScheduler+0xa4>
+ 80043d6:	2385      	movs	r3, #133	@ 0x85
+ 80043d8:	009a      	lsls	r2, r3, #2
+ 80043da:	4b09      	ldr	r3, [pc, #36]	@ (8004400 <App_SystemInitScheduler+0xbc>)
+ 80043dc:	0019      	movs	r1, r3
+ 80043de:	2009      	movs	r0, #9
+ 80043e0:	f7fd f97c 	bl	80016dc <App_ErrorRecord>
+ 80043e4:	2309      	movs	r3, #9
+ 80043e6:	e000      	b.n	80043ea <App_SystemInitScheduler+0xa6>
                                  (unsigned int)App_SchedulerGetContext()->taskCount,
                                  (unsigned int)APP_MSGQ_CAPACITY) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
     return APP_STATUS_OK;
- 80043e6:	2300      	movs	r3, #0
+ 80043e8:	2300      	movs	r3, #0
 }
- 80043e8:	0018      	movs	r0, r3
- 80043ea:	46bd      	mov	sp, r7
- 80043ec:	b003      	add	sp, #12
- 80043ee:	bd90      	pop	{r4, r7, pc}
- 80043f0:	200006e4 	.word	0x200006e4
- 80043f4:	0800d434 	.word	0x0800d434
- 80043f8:	0800d464 	.word	0x0800d464
- 80043fc:	00000212 	.word	0x00000212
+ 80043ea:	0018      	movs	r0, r3
+ 80043ec:	46bd      	mov	sp, r7
+ 80043ee:	b003      	add	sp, #12
+ 80043f0:	bd90      	pop	{r4, r7, pc}
+ 80043f2:	46c0      	nop			@ (mov r8, r8)
+ 80043f4:	200006e4 	.word	0x200006e4
+ 80043f8:	0800d434 	.word	0x0800d434
+ 80043fc:	0800d464 	.word	0x0800d464
  8004400:	0800d22c 	.word	0x0800d22c
 
 08004404 <App_SystemEnterStopMode>:
@@ -10541,18 +10543,19 @@ static AppStatus_t App_SystemEnterStopMode(void)
  8004408:	af06      	add	r7, sp, #24
     AppStatus_t status;
 
-    (void)APP_LOGI("LP", "Enter STOP mode");
- 800440a:	4a4e      	ldr	r2, [pc, #312]	@ (8004544 <App_SystemEnterStopMode+0x140>)
- 800440c:	4b4e      	ldr	r3, [pc, #312]	@ (8004548 <App_SystemEnterStopMode+0x144>)
- 800440e:	0019      	movs	r1, r3
+    (void)APP_LOGI("LP", "Enter STOP mode(wake_period=%lu ms)",
+ 800440a:	4b4e      	ldr	r3, [pc, #312]	@ (8004544 <App_SystemEnterStopMode+0x140>)
+ 800440c:	4a4e      	ldr	r2, [pc, #312]	@ (8004548 <App_SystemEnterStopMode+0x144>)
+ 800440e:	494f      	ldr	r1, [pc, #316]	@ (800454c <App_SystemEnterStopMode+0x148>)
  8004410:	2002      	movs	r0, #2
  8004412:	f7fe f8e7 	bl	80025e4 <App_LogPrintf>
+                         (unsigned long)APP_RTC_WAKEUP_PERIOD_MS);
 
     g_appSystemContext.stopCandidateCount++;
- 8004416:	4b4d      	ldr	r3, [pc, #308]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 8004416:	4b4e      	ldr	r3, [pc, #312]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004418:	6a1b      	ldr	r3, [r3, #32]
  800441a:	1c5a      	adds	r2, r3, #1
- 800441c:	4b4b      	ldr	r3, [pc, #300]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 800441c:	4b4c      	ldr	r3, [pc, #304]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  800441e:	621a      	str	r2, [r3, #32]
 
     status = App_SystemRtcConfigureWakeupTimer();
@@ -10574,7 +10577,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
 
     status = App_SystemPrepareForStop();
  8004438:	1dfc      	adds	r4, r7, #7
- 800443a:	f000 fb3d 	bl	8004ab8 <App_SystemPrepareForStop>
+ 800443a:	f000 fb3f 	bl	8004abc <App_SystemPrepareForStop>
  800443e:	0003      	movs	r3, r0
  8004440:	7023      	strb	r3, [r4, #0]
     if (status != APP_STATUS_OK)
@@ -10590,20 +10593,21 @@ static AppStatus_t App_SystemEnterStopMode(void)
     }
 
     g_appSystemContext.lastLowPowerMode = APP_SYSTEM_LP_MODE_STOP;
- 8004450:	4b3e      	ldr	r3, [pc, #248]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 8004450:	4b3f      	ldr	r3, [pc, #252]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004452:	2240      	movs	r2, #64	@ 0x40
  8004454:	2102      	movs	r1, #2
  8004456:	5499      	strb	r1, [r3, r2]
     g_appSystemContext.lastStopEntryTickMs = HAL_GetTick();
  8004458:	f003 faf8 	bl	8007a4c <HAL_GetTick>
  800445c:	0002      	movs	r2, r0
- 800445e:	4b3b      	ldr	r3, [pc, #236]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 800445e:	4b3c      	ldr	r3, [pc, #240]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004460:	63da      	str	r2, [r3, #60]	@ 0x3c
     g_appSystemContext.wakeSourceMask = APP_SYSTEM_WAKE_SRC_NONE;
- 8004462:	4b3a      	ldr	r3, [pc, #232]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 8004462:	4b3b      	ldr	r3, [pc, #236]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004464:	2200      	movs	r2, #0
  8004466:	62da      	str	r2, [r3, #44]	@ 0x2c
 
+#ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
  8004468:	f7ff fa2c 	bl	80038c4 <App_SystemCanDebugLog>
  800446c:	0003      	movs	r3, r0
@@ -10612,19 +10616,19 @@ static AppStatus_t App_SystemEnterStopMode(void)
     {
         // this don't print because stopped external interface.
         (void)APP_LOGI("LP", "STOP candidate=%lu qual=%u idle=%lu sleep=%lu stop=%lu dryrun=%u",
- 8004472:	4b36      	ldr	r3, [pc, #216]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 8004472:	4b37      	ldr	r3, [pc, #220]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004474:	6a1d      	ldr	r5, [r3, #32]
- 8004476:	4b35      	ldr	r3, [pc, #212]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 8004476:	4b36      	ldr	r3, [pc, #216]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004478:	79db      	ldrb	r3, [r3, #7]
  800447a:	469c      	mov	ip, r3
- 800447c:	4b33      	ldr	r3, [pc, #204]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 800447c:	4b34      	ldr	r3, [pc, #208]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  800447e:	695a      	ldr	r2, [r3, #20]
- 8004480:	4b32      	ldr	r3, [pc, #200]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 8004480:	4b33      	ldr	r3, [pc, #204]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004482:	6999      	ldr	r1, [r3, #24]
- 8004484:	4b31      	ldr	r3, [pc, #196]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 8004484:	4b32      	ldr	r3, [pc, #200]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004486:	69db      	ldr	r3, [r3, #28]
- 8004488:	4c31      	ldr	r4, [pc, #196]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
- 800448a:	482f      	ldr	r0, [pc, #188]	@ (8004548 <App_SystemEnterStopMode+0x144>)
+ 8004488:	4c32      	ldr	r4, [pc, #200]	@ (8004554 <App_SystemEnterStopMode+0x150>)
+ 800448a:	4830      	ldr	r0, [pc, #192]	@ (800454c <App_SystemEnterStopMode+0x148>)
  800448c:	2600      	movs	r6, #0
  800448e:	9604      	str	r6, [sp, #16]
  8004490:	9303      	str	r3, [sp, #12]
@@ -10637,15 +10641,15 @@ static AppStatus_t App_SystemEnterStopMode(void)
  800449e:	0001      	movs	r1, r0
  80044a0:	2002      	movs	r0, #2
  80044a2:	f7fe f89f 	bl	80025e4 <App_LogPrintf>
-                       (unsigned long)g_appSystemContext.stopDryRunCount,
                        App_SystemGetWakeSourceString());
     }
+#endif
     return APP_STATUS_OK;
 #else
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
- 80044a6:	4b2b      	ldr	r3, [pc, #172]	@ (8004554 <App_SystemEnterStopMode+0x150>)
+ 80044a6:	4b2c      	ldr	r3, [pc, #176]	@ (8004558 <App_SystemEnterStopMode+0x154>)
  80044a8:	681a      	ldr	r2, [r3, #0]
- 80044aa:	4b2a      	ldr	r3, [pc, #168]	@ (8004554 <App_SystemEnterStopMode+0x150>)
+ 80044aa:	4b2b      	ldr	r3, [pc, #172]	@ (8004558 <App_SystemEnterStopMode+0x154>)
  80044ac:	2104      	movs	r1, #4
  80044ae:	430a      	orrs	r2, r1
  80044b0:	601a      	str	r2, [r3, #0]
@@ -10677,7 +10681,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
 
     status = App_SystemRecoverFromStop();
  80044da:	1dfc      	adds	r4, r7, #7
- 80044dc:	f000 faf4 	bl	8004ac8 <App_SystemRecoverFromStop>
+ 80044dc:	f000 faf6 	bl	8004acc <App_SystemRecoverFromStop>
  80044e0:	0003      	movs	r3, r0
  80044e2:	7023      	strb	r3, [r4, #0]
     if (status != APP_STATUS_OK)
@@ -10693,7 +10697,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
     }
 
     if (g_appSystemContext.wakeSourceMask == APP_SYSTEM_WAKE_SRC_NONE)
- 80044f2:	4b16      	ldr	r3, [pc, #88]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 80044f2:	4b17      	ldr	r3, [pc, #92]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  80044f4:	6adb      	ldr	r3, [r3, #44]	@ 0x2c
  80044f6:	2b00      	cmp	r3, #0
  80044f8:	d104      	bne.n	8004504 <App_SystemEnterStopMode+0x100>
@@ -10706,10 +10710,10 @@ static AppStatus_t App_SystemEnterStopMode(void)
     }
 
     g_appSystemContext.stopEntryCount++;
- 8004504:	4b11      	ldr	r3, [pc, #68]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 8004504:	4b12      	ldr	r3, [pc, #72]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004506:	69db      	ldr	r3, [r3, #28]
  8004508:	1c5a      	adds	r2, r3, #1
- 800450a:	4b10      	ldr	r3, [pc, #64]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 800450a:	4b11      	ldr	r3, [pc, #68]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  800450c:	61da      	str	r2, [r3, #28]
 
     if (App_SystemCanDebugLog() == APP_TRUE)
@@ -10721,12 +10725,12 @@ static AppStatus_t App_SystemEnterStopMode(void)
         (void)APP_LOGI("LP", "STOP exit wake=%s count=%lu tick=%lu",
  8004518:	f7ff fbcc 	bl	8003cb4 <App_SystemGetWakeSourceString>
  800451c:	0004      	movs	r4, r0
- 800451e:	4b0b      	ldr	r3, [pc, #44]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 800451e:	4b0c      	ldr	r3, [pc, #48]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004520:	69da      	ldr	r2, [r3, #28]
- 8004522:	4b0a      	ldr	r3, [pc, #40]	@ (800454c <App_SystemEnterStopMode+0x148>)
+ 8004522:	4b0b      	ldr	r3, [pc, #44]	@ (8004550 <App_SystemEnterStopMode+0x14c>)
  8004524:	6b1b      	ldr	r3, [r3, #48]	@ 0x30
- 8004526:	480c      	ldr	r0, [pc, #48]	@ (8004558 <App_SystemEnterStopMode+0x154>)
- 8004528:	4907      	ldr	r1, [pc, #28]	@ (8004548 <App_SystemEnterStopMode+0x144>)
+ 8004526:	480d      	ldr	r0, [pc, #52]	@ (800455c <App_SystemEnterStopMode+0x158>)
+ 8004528:	4908      	ldr	r1, [pc, #32]	@ (800454c <App_SystemEnterStopMode+0x148>)
  800452a:	9301      	str	r3, [sp, #4]
  800452c:	9200      	str	r2, [sp, #0]
  800452e:	0023      	movs	r3, r4
@@ -10747,1016 +10751,1022 @@ static AppStatus_t App_SystemEnterStopMode(void)
  800453e:	b003      	add	sp, #12
  8004540:	bdf0      	pop	{r4, r5, r6, r7, pc}
  8004542:	46c0      	nop			@ (mov r8, r8)
- 8004544:	0800d468 	.word	0x0800d468
- 8004548:	0800d478 	.word	0x0800d478
- 800454c:	200006e4 	.word	0x200006e4
- 8004550:	0800d47c 	.word	0x0800d47c
- 8004554:	40007000 	.word	0x40007000
- 8004558:	0800d4c0 	.word	0x0800d4c0
+ 8004544:	0000ea60 	.word	0x0000ea60
+ 8004548:	0800d468 	.word	0x0800d468
+ 800454c:	0800d48c 	.word	0x0800d48c
+ 8004550:	200006e4 	.word	0x200006e4
+ 8004554:	0800d490 	.word	0x0800d490
+ 8004558:	40007000 	.word	0x40007000
+ 800455c:	0800d4d4 	.word	0x0800d4d4
 
-0800455c <App_SystemHandleIdle>:
+08004560 <App_SystemHandleIdle>:
 
 static void App_SystemHandleIdle(void)
 {
- 800455c:	b5b0      	push	{r4, r5, r7, lr}
- 800455e:	b086      	sub	sp, #24
- 8004560:	af04      	add	r7, sp, #16
+ 8004560:	b5b0      	push	{r4, r5, r7, lr}
+ 8004562:	b086      	sub	sp, #24
+ 8004564:	af04      	add	r7, sp, #16
     AppStatus_t status;
     const AppSchedulerContext_t *p_schedulerContext;
 
     p_schedulerContext = App_SchedulerGetContext();
- 8004562:	f7fe fb0f 	bl	8002b84 <App_SchedulerGetContext>
- 8004566:	0003      	movs	r3, r0
- 8004568:	607b      	str	r3, [r7, #4]
+ 8004566:	f7fe fb0d 	bl	8002b84 <App_SchedulerGetContext>
+ 800456a:	0003      	movs	r3, r0
+ 800456c:	607b      	str	r3, [r7, #4]
     g_appSystemContext.idleCounter++;
- 800456a:	4b55      	ldr	r3, [pc, #340]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 800456c:	695b      	ldr	r3, [r3, #20]
- 800456e:	1c5a      	adds	r2, r3, #1
- 8004570:	4b53      	ldr	r3, [pc, #332]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 8004572:	615a      	str	r2, [r3, #20]
+ 800456e:	4b55      	ldr	r3, [pc, #340]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 8004570:	695b      	ldr	r3, [r3, #20]
+ 8004572:	1c5a      	adds	r2, r3, #1
+ 8004574:	4b53      	ldr	r3, [pc, #332]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 8004576:	615a      	str	r2, [r3, #20]
 
     if (g_appSystemContext.stopRequested == APP_TRUE)
- 8004574:	4b52      	ldr	r3, [pc, #328]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 8004576:	799b      	ldrb	r3, [r3, #6]
- 8004578:	2b01      	cmp	r3, #1
- 800457a:	d14d      	bne.n	8004618 <App_SystemHandleIdle+0xbc>
+ 8004578:	4b52      	ldr	r3, [pc, #328]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 800457a:	799b      	ldrb	r3, [r3, #6]
+ 800457c:	2b01      	cmp	r3, #1
+ 800457e:	d14d      	bne.n	800461c <App_SystemHandleIdle+0xbc>
     {
         if (g_appSystemContext.stopQualificationCount < 0xFFu)
- 800457c:	4b50      	ldr	r3, [pc, #320]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 800457e:	79db      	ldrb	r3, [r3, #7]
- 8004580:	2bff      	cmp	r3, #255	@ 0xff
- 8004582:	d005      	beq.n	8004590 <App_SystemHandleIdle+0x34>
+ 8004580:	4b50      	ldr	r3, [pc, #320]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 8004582:	79db      	ldrb	r3, [r3, #7]
+ 8004584:	2bff      	cmp	r3, #255	@ 0xff
+ 8004586:	d005      	beq.n	8004594 <App_SystemHandleIdle+0x34>
         {
             g_appSystemContext.stopQualificationCount++;
- 8004584:	4b4e      	ldr	r3, [pc, #312]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 8004586:	79db      	ldrb	r3, [r3, #7]
- 8004588:	3301      	adds	r3, #1
- 800458a:	b2da      	uxtb	r2, r3
- 800458c:	4b4c      	ldr	r3, [pc, #304]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 800458e:	71da      	strb	r2, [r3, #7]
+ 8004588:	4b4e      	ldr	r3, [pc, #312]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 800458a:	79db      	ldrb	r3, [r3, #7]
+ 800458c:	3301      	adds	r3, #1
+ 800458e:	b2da      	uxtb	r2, r3
+ 8004590:	4b4c      	ldr	r3, [pc, #304]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 8004592:	71da      	strb	r2, [r3, #7]
         }
 
+#ifdef DEBUG
         if (App_SystemCanDebugLog() == APP_TRUE)
- 8004590:	f7ff f998 	bl	80038c4 <App_SystemCanDebugLog>
- 8004594:	0003      	movs	r3, r0
- 8004596:	2b01      	cmp	r3, #1
- 8004598:	d119      	bne.n	80045ce <App_SystemHandleIdle+0x72>
+ 8004594:	f7ff f996 	bl	80038c4 <App_SystemCanDebugLog>
+ 8004598:	0003      	movs	r3, r0
+ 800459a:	2b01      	cmp	r3, #1
+ 800459c:	d119      	bne.n	80045d2 <App_SystemHandleIdle+0x72>
         {
-            (void)APP_LOGI("LP",
- 800459a:	4b49      	ldr	r3, [pc, #292]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 800459c:	79db      	ldrb	r3, [r3, #7]
- 800459e:	001d      	movs	r5, r3
- 80045a0:	f000 fed8 	bl	8005354 <App_TaskMainGetDecisionString>
- 80045a4:	4b46      	ldr	r3, [pc, #280]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 80045a6:	695b      	ldr	r3, [r3, #20]
- 80045a8:	687a      	ldr	r2, [r7, #4]
- 80045aa:	2a00      	cmp	r2, #0
- 80045ac:	d003      	beq.n	80045b6 <App_SystemHandleIdle+0x5a>
- 80045ae:	687a      	ldr	r2, [r7, #4]
- 80045b0:	7892      	ldrb	r2, [r2, #2]
- 80045b2:	0014      	movs	r4, r2
- 80045b4:	e000      	b.n	80045b8 <App_SystemHandleIdle+0x5c>
- 80045b6:	2400      	movs	r4, #0
- 80045b8:	4a42      	ldr	r2, [pc, #264]	@ (80046c4 <App_SystemHandleIdle+0x168>)
- 80045ba:	4943      	ldr	r1, [pc, #268]	@ (80046c8 <App_SystemHandleIdle+0x16c>)
- 80045bc:	9403      	str	r4, [sp, #12]
- 80045be:	9302      	str	r3, [sp, #8]
- 80045c0:	9001      	str	r0, [sp, #4]
- 80045c2:	2302      	movs	r3, #2
- 80045c4:	9300      	str	r3, [sp, #0]
- 80045c6:	002b      	movs	r3, r5
- 80045c8:	2002      	movs	r0, #2
- 80045ca:	f7fe f80b 	bl	80025e4 <App_LogPrintf>
-                           App_TaskMainGetDecisionString(),
+            (void)APP_LOGD("LP",
+ 800459e:	4b49      	ldr	r3, [pc, #292]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 80045a0:	79db      	ldrb	r3, [r3, #7]
+ 80045a2:	001d      	movs	r5, r3
+ 80045a4:	f000 fed6 	bl	8005354 <App_TaskMainGetDecisionString>
+ 80045a8:	4b46      	ldr	r3, [pc, #280]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 80045aa:	695b      	ldr	r3, [r3, #20]
+ 80045ac:	687a      	ldr	r2, [r7, #4]
+ 80045ae:	2a00      	cmp	r2, #0
+ 80045b0:	d003      	beq.n	80045ba <App_SystemHandleIdle+0x5a>
+ 80045b2:	687a      	ldr	r2, [r7, #4]
+ 80045b4:	7892      	ldrb	r2, [r2, #2]
+ 80045b6:	0014      	movs	r4, r2
+ 80045b8:	e000      	b.n	80045bc <App_SystemHandleIdle+0x5c>
+ 80045ba:	2400      	movs	r4, #0
+ 80045bc:	4a42      	ldr	r2, [pc, #264]	@ (80046c8 <App_SystemHandleIdle+0x168>)
+ 80045be:	4943      	ldr	r1, [pc, #268]	@ (80046cc <App_SystemHandleIdle+0x16c>)
+ 80045c0:	9403      	str	r4, [sp, #12]
+ 80045c2:	9302      	str	r3, [sp, #8]
+ 80045c4:	9001      	str	r0, [sp, #4]
+ 80045c6:	2302      	movs	r3, #2
+ 80045c8:	9300      	str	r3, [sp, #0]
+ 80045ca:	002b      	movs	r3, r5
+ 80045cc:	2001      	movs	r0, #1
+ 80045ce:	f7fe f809 	bl	80025e4 <App_LogPrintf>
                            (unsigned long)g_appSystemContext.idleCounter,
                            (unsigned int)((p_schedulerContext != NULL) ? p_schedulerContext->lastDispatchCount : 0u));
         }
+#endif
 
         if (g_appSystemContext.stopQualificationCount >= APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT)
- 80045ce:	4b3c      	ldr	r3, [pc, #240]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 80045d0:	79db      	ldrb	r3, [r3, #7]
- 80045d2:	2b01      	cmp	r3, #1
- 80045d4:	d922      	bls.n	800461c <App_SystemHandleIdle+0xc0>
+ 80045d2:	4b3c      	ldr	r3, [pc, #240]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 80045d4:	79db      	ldrb	r3, [r3, #7]
+ 80045d6:	2b01      	cmp	r3, #1
+ 80045d8:	d922      	bls.n	8004620 <App_SystemHandleIdle+0xc0>
         {
             g_appSystemContext.stopRequested = APP_FALSE;
- 80045d6:	4b3a      	ldr	r3, [pc, #232]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 80045d8:	2200      	movs	r2, #0
- 80045da:	719a      	strb	r2, [r3, #6]
+ 80045da:	4b3a      	ldr	r3, [pc, #232]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 80045dc:	2200      	movs	r2, #0
+ 80045de:	719a      	strb	r2, [r3, #6]
             App_SystemResetStopQualification();
- 80045dc:	f7ff f98e 	bl	80038fc <App_SystemResetStopQualification>
+ 80045e0:	f7ff f98c 	bl	80038fc <App_SystemResetStopQualification>
             status = App_SystemEnterStopMode();
- 80045e0:	1cfc      	adds	r4, r7, #3
- 80045e2:	f7ff ff0f 	bl	8004404 <App_SystemEnterStopMode>
- 80045e6:	0003      	movs	r3, r0
- 80045e8:	7023      	strb	r3, [r4, #0]
+ 80045e4:	1cfc      	adds	r4, r7, #3
+ 80045e6:	f7ff ff0d 	bl	8004404 <App_SystemEnterStopMode>
+ 80045ea:	0003      	movs	r3, r0
+ 80045ec:	7023      	strb	r3, [r4, #0]
             if (status != APP_STATUS_OK)
- 80045ea:	1cfb      	adds	r3, r7, #3
- 80045ec:	781b      	ldrb	r3, [r3, #0]
- 80045ee:	2b00      	cmp	r3, #0
- 80045f0:	d062      	beq.n	80046b8 <App_SystemHandleIdle+0x15c>
+ 80045ee:	1cfb      	adds	r3, r7, #3
+ 80045f0:	781b      	ldrb	r3, [r3, #0]
+ 80045f2:	2b00      	cmp	r3, #0
+ 80045f4:	d062      	beq.n	80046bc <App_SystemHandleIdle+0x15c>
             {
                 g_appSystemContext.schedulerStatus = status;
- 80045f2:	4b33      	ldr	r3, [pc, #204]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 80045f4:	1cfa      	adds	r2, r7, #3
- 80045f6:	7812      	ldrb	r2, [r2, #0]
- 80045f8:	729a      	strb	r2, [r3, #10]
+ 80045f6:	4b33      	ldr	r3, [pc, #204]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 80045f8:	1cfa      	adds	r2, r7, #3
+ 80045fa:	7812      	ldrb	r2, [r2, #0]
+ 80045fc:	729a      	strb	r2, [r3, #10]
                 App_ErrorRecord(status, __FILE__, __LINE__);
- 80045fa:	4a34      	ldr	r2, [pc, #208]	@ (80046cc <App_SystemHandleIdle+0x170>)
- 80045fc:	4934      	ldr	r1, [pc, #208]	@ (80046d0 <App_SystemHandleIdle+0x174>)
- 80045fe:	1cfb      	adds	r3, r7, #3
- 8004600:	781b      	ldrb	r3, [r3, #0]
- 8004602:	0018      	movs	r0, r3
- 8004604:	f7fd f86a 	bl	80016dc <App_ErrorRecord>
+ 80045fe:	4a34      	ldr	r2, [pc, #208]	@ (80046d0 <App_SystemHandleIdle+0x170>)
+ 8004600:	4934      	ldr	r1, [pc, #208]	@ (80046d4 <App_SystemHandleIdle+0x174>)
+ 8004602:	1cfb      	adds	r3, r7, #3
+ 8004604:	781b      	ldrb	r3, [r3, #0]
+ 8004606:	0018      	movs	r0, r3
+ 8004608:	f7fd f868 	bl	80016dc <App_ErrorRecord>
                 (void)APP_LOGE("LP", "STOP entry/exit failed: status=%lu", (unsigned long)status);
- 8004608:	1cfb      	adds	r3, r7, #3
- 800460a:	781b      	ldrb	r3, [r3, #0]
- 800460c:	4a31      	ldr	r2, [pc, #196]	@ (80046d4 <App_SystemHandleIdle+0x178>)
- 800460e:	492e      	ldr	r1, [pc, #184]	@ (80046c8 <App_SystemHandleIdle+0x16c>)
- 8004610:	2004      	movs	r0, #4
- 8004612:	f7fd ffe7 	bl	80025e4 <App_LogPrintf>
+ 800460c:	1cfb      	adds	r3, r7, #3
+ 800460e:	781b      	ldrb	r3, [r3, #0]
+ 8004610:	4a31      	ldr	r2, [pc, #196]	@ (80046d8 <App_SystemHandleIdle+0x178>)
+ 8004612:	492e      	ldr	r1, [pc, #184]	@ (80046cc <App_SystemHandleIdle+0x16c>)
+ 8004614:	2004      	movs	r0, #4
+ 8004616:	f7fd ffe5 	bl	80025e4 <App_LogPrintf>
             }
             return;
- 8004616:	e04f      	b.n	80046b8 <App_SystemHandleIdle+0x15c>
+ 800461a:	e04f      	b.n	80046bc <App_SystemHandleIdle+0x15c>
         }
     }
     else
     {
         App_SystemResetStopQualification();
- 8004618:	f7ff f970 	bl	80038fc <App_SystemResetStopQualification>
+ 800461c:	f7ff f96e 	bl	80038fc <App_SystemResetStopQualification>
     }
 
 #ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
- 800461c:	f7ff f952 	bl	80038c4 <App_SystemCanDebugLog>
- 8004620:	0003      	movs	r3, r0
- 8004622:	2b01      	cmp	r3, #1
- 8004624:	d116      	bne.n	8004654 <App_SystemHandleIdle+0xf8>
+ 8004620:	f7ff f950 	bl	80038c4 <App_SystemCanDebugLog>
+ 8004624:	0003      	movs	r3, r0
+ 8004626:	2b01      	cmp	r3, #1
+ 8004628:	d116      	bne.n	8004658 <App_SystemHandleIdle+0xf8>
     {
         (void)APP_LOGD("SYS",
- 8004626:	4b26      	ldr	r3, [pc, #152]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 8004628:	799b      	ldrb	r3, [r3, #6]
- 800462a:	001d      	movs	r5, r3
- 800462c:	4b24      	ldr	r3, [pc, #144]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 800462e:	695b      	ldr	r3, [r3, #20]
- 8004630:	687a      	ldr	r2, [r7, #4]
- 8004632:	2a00      	cmp	r2, #0
- 8004634:	d003      	beq.n	800463e <App_SystemHandleIdle+0xe2>
- 8004636:	687a      	ldr	r2, [r7, #4]
- 8004638:	7892      	ldrb	r2, [r2, #2]
- 800463a:	0014      	movs	r4, r2
- 800463c:	e000      	b.n	8004640 <App_SystemHandleIdle+0xe4>
- 800463e:	2400      	movs	r4, #0
- 8004640:	4825      	ldr	r0, [pc, #148]	@ (80046d8 <App_SystemHandleIdle+0x17c>)
- 8004642:	4a26      	ldr	r2, [pc, #152]	@ (80046dc <App_SystemHandleIdle+0x180>)
- 8004644:	4926      	ldr	r1, [pc, #152]	@ (80046e0 <App_SystemHandleIdle+0x184>)
- 8004646:	9402      	str	r4, [sp, #8]
- 8004648:	9301      	str	r3, [sp, #4]
- 800464a:	9500      	str	r5, [sp, #0]
- 800464c:	0003      	movs	r3, r0
- 800464e:	2001      	movs	r0, #1
- 8004650:	f7fd ffc8 	bl	80025e4 <App_LogPrintf>
+ 800462a:	4b26      	ldr	r3, [pc, #152]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 800462c:	799b      	ldrb	r3, [r3, #6]
+ 800462e:	001d      	movs	r5, r3
+ 8004630:	4b24      	ldr	r3, [pc, #144]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 8004632:	695b      	ldr	r3, [r3, #20]
+ 8004634:	687a      	ldr	r2, [r7, #4]
+ 8004636:	2a00      	cmp	r2, #0
+ 8004638:	d003      	beq.n	8004642 <App_SystemHandleIdle+0xe2>
+ 800463a:	687a      	ldr	r2, [r7, #4]
+ 800463c:	7892      	ldrb	r2, [r2, #2]
+ 800463e:	0014      	movs	r4, r2
+ 8004640:	e000      	b.n	8004644 <App_SystemHandleIdle+0xe4>
+ 8004642:	2400      	movs	r4, #0
+ 8004644:	4825      	ldr	r0, [pc, #148]	@ (80046dc <App_SystemHandleIdle+0x17c>)
+ 8004646:	4a26      	ldr	r2, [pc, #152]	@ (80046e0 <App_SystemHandleIdle+0x180>)
+ 8004648:	4926      	ldr	r1, [pc, #152]	@ (80046e4 <App_SystemHandleIdle+0x184>)
+ 800464a:	9402      	str	r4, [sp, #8]
+ 800464c:	9301      	str	r3, [sp, #4]
+ 800464e:	9500      	str	r5, [sp, #0]
+ 8004650:	0003      	movs	r3, r0
+ 8004652:	2001      	movs	r0, #1
+ 8004654:	f7fd ffc6 	bl	80025e4 <App_LogPrintf>
     }
 #endif
 
     if (APP_SCHEDULER_USE_WFI_IDLE == APP_TRUE)
     {
         g_appSystemContext.lastLowPowerMode = APP_SYSTEM_LP_MODE_SLEEP;
- 8004654:	4b1a      	ldr	r3, [pc, #104]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 8004656:	2240      	movs	r2, #64	@ 0x40
- 8004658:	2101      	movs	r1, #1
- 800465a:	5499      	strb	r1, [r3, r2]
+ 8004658:	4b1a      	ldr	r3, [pc, #104]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 800465a:	2240      	movs	r2, #64	@ 0x40
+ 800465c:	2101      	movs	r1, #1
+ 800465e:	5499      	strb	r1, [r3, r2]
         g_appSystemContext.lastSleepEntryTickMs = HAL_GetTick();
- 800465c:	f003 f9f6 	bl	8007a4c <HAL_GetTick>
- 8004660:	0002      	movs	r2, r0
- 8004662:	4b17      	ldr	r3, [pc, #92]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 8004664:	639a      	str	r2, [r3, #56]	@ 0x38
+ 8004660:	f003 f9f4 	bl	8007a4c <HAL_GetTick>
+ 8004664:	0002      	movs	r2, r0
+ 8004666:	4b17      	ldr	r3, [pc, #92]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 8004668:	639a      	str	r2, [r3, #56]	@ 0x38
         g_appSystemContext.sleepEntryCount++;
- 8004666:	4b16      	ldr	r3, [pc, #88]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 8004668:	699b      	ldr	r3, [r3, #24]
- 800466a:	1c5a      	adds	r2, r3, #1
- 800466c:	4b14      	ldr	r3, [pc, #80]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 800466e:	619a      	str	r2, [r3, #24]
+ 800466a:	4b16      	ldr	r3, [pc, #88]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 800466c:	699b      	ldr	r3, [r3, #24]
+ 800466e:	1c5a      	adds	r2, r3, #1
+ 8004670:	4b14      	ldr	r3, [pc, #80]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 8004672:	619a      	str	r2, [r3, #24]
 #ifdef DEBUG
         if (App_SystemCanDebugLog() == APP_TRUE)
- 8004670:	f7ff f928 	bl	80038c4 <App_SystemCanDebugLog>
- 8004674:	0003      	movs	r3, r0
- 8004676:	2b01      	cmp	r3, #1
- 8004678:	d10a      	bne.n	8004690 <App_SystemHandleIdle+0x134>
+ 8004674:	f7ff f926 	bl	80038c4 <App_SystemCanDebugLog>
+ 8004678:	0003      	movs	r3, r0
+ 800467a:	2b01      	cmp	r3, #1
+ 800467c:	d10a      	bne.n	8004694 <App_SystemHandleIdle+0x134>
         {
             (void)APP_LOGD("LP", "SLEEP entry count=%lu tick=%lu",
- 800467a:	4b11      	ldr	r3, [pc, #68]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 800467c:	6998      	ldr	r0, [r3, #24]
- 800467e:	4b10      	ldr	r3, [pc, #64]	@ (80046c0 <App_SystemHandleIdle+0x164>)
- 8004680:	6b9b      	ldr	r3, [r3, #56]	@ 0x38
- 8004682:	4a18      	ldr	r2, [pc, #96]	@ (80046e4 <App_SystemHandleIdle+0x188>)
- 8004684:	4910      	ldr	r1, [pc, #64]	@ (80046c8 <App_SystemHandleIdle+0x16c>)
- 8004686:	9300      	str	r3, [sp, #0]
- 8004688:	0003      	movs	r3, r0
- 800468a:	2001      	movs	r0, #1
- 800468c:	f7fd ffaa 	bl	80025e4 <App_LogPrintf>
+ 800467e:	4b11      	ldr	r3, [pc, #68]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 8004680:	6998      	ldr	r0, [r3, #24]
+ 8004682:	4b10      	ldr	r3, [pc, #64]	@ (80046c4 <App_SystemHandleIdle+0x164>)
+ 8004684:	6b9b      	ldr	r3, [r3, #56]	@ 0x38
+ 8004686:	4a18      	ldr	r2, [pc, #96]	@ (80046e8 <App_SystemHandleIdle+0x188>)
+ 8004688:	4910      	ldr	r1, [pc, #64]	@ (80046cc <App_SystemHandleIdle+0x16c>)
+ 800468a:	9300      	str	r3, [sp, #0]
+ 800468c:	0003      	movs	r3, r0
+ 800468e:	2001      	movs	r0, #1
+ 8004690:	f7fd ffa8 	bl	80025e4 <App_LogPrintf>
                            (unsigned long)g_appSystemContext.sleepEntryCount,
                            (unsigned long)g_appSystemContext.lastSleepEntryTickMs);
         }
 #endif
         __WFI();
- 8004690:	bf30      	wfi
+ 8004694:	bf30      	wfi
 #ifdef DEBUG
         if (App_SystemCanDebugLog() == APP_TRUE)
- 8004692:	f7ff f917 	bl	80038c4 <App_SystemCanDebugLog>
- 8004696:	0003      	movs	r3, r0
- 8004698:	2b01      	cmp	r3, #1
- 800469a:	d10e      	bne.n	80046ba <App_SystemHandleIdle+0x15e>
+ 8004696:	f7ff f915 	bl	80038c4 <App_SystemCanDebugLog>
+ 800469a:	0003      	movs	r3, r0
+ 800469c:	2b01      	cmp	r3, #1
+ 800469e:	d10e      	bne.n	80046be <App_SystemHandleIdle+0x15e>
         {
             (void)APP_LOGD("LP", "SLEEP wake tick=%lu wake=%s",
- 800469c:	f003 f9d6 	bl	8007a4c <HAL_GetTick>
- 80046a0:	0004      	movs	r4, r0
- 80046a2:	f7ff fb07 	bl	8003cb4 <App_SystemGetWakeSourceString>
- 80046a6:	0003      	movs	r3, r0
- 80046a8:	4a0f      	ldr	r2, [pc, #60]	@ (80046e8 <App_SystemHandleIdle+0x18c>)
- 80046aa:	4907      	ldr	r1, [pc, #28]	@ (80046c8 <App_SystemHandleIdle+0x16c>)
- 80046ac:	9300      	str	r3, [sp, #0]
- 80046ae:	0023      	movs	r3, r4
- 80046b0:	2001      	movs	r0, #1
- 80046b2:	f7fd ff97 	bl	80025e4 <App_LogPrintf>
- 80046b6:	e000      	b.n	80046ba <App_SystemHandleIdle+0x15e>
+ 80046a0:	f003 f9d4 	bl	8007a4c <HAL_GetTick>
+ 80046a4:	0004      	movs	r4, r0
+ 80046a6:	f7ff fb05 	bl	8003cb4 <App_SystemGetWakeSourceString>
+ 80046aa:	0003      	movs	r3, r0
+ 80046ac:	4a0f      	ldr	r2, [pc, #60]	@ (80046ec <App_SystemHandleIdle+0x18c>)
+ 80046ae:	4907      	ldr	r1, [pc, #28]	@ (80046cc <App_SystemHandleIdle+0x16c>)
+ 80046b0:	9300      	str	r3, [sp, #0]
+ 80046b2:	0023      	movs	r3, r4
+ 80046b4:	2001      	movs	r0, #1
+ 80046b6:	f7fd ff95 	bl	80025e4 <App_LogPrintf>
+ 80046ba:	e000      	b.n	80046be <App_SystemHandleIdle+0x15e>
             return;
- 80046b8:	46c0      	nop			@ (mov r8, r8)
+ 80046bc:	46c0      	nop			@ (mov r8, r8)
     else
     {
         g_appSystemContext.lastLowPowerMode = APP_SYSTEM_LP_MODE_RUN;
         HAL_Delay(APP_SCHEDULER_IDLE_DELAY_MS);
     }
 }
- 80046ba:	46bd      	mov	sp, r7
- 80046bc:	b002      	add	sp, #8
- 80046be:	bdb0      	pop	{r4, r5, r7, pc}
- 80046c0:	200006e4 	.word	0x200006e4
- 80046c4:	0800d4e8 	.word	0x0800d4e8
- 80046c8:	0800d478 	.word	0x0800d478
- 80046cc:	00000296 	.word	0x00000296
- 80046d0:	0800d22c 	.word	0x0800d22c
- 80046d4:	0800d524 	.word	0x0800d524
- 80046d8:	0800d548 	.word	0x0800d548
- 80046dc:	0800d54c 	.word	0x0800d54c
- 80046e0:	0800d2dc 	.word	0x0800d2dc
- 80046e4:	0800d58c 	.word	0x0800d58c
- 80046e8:	0800d5ac 	.word	0x0800d5ac
+ 80046be:	46bd      	mov	sp, r7
+ 80046c0:	b002      	add	sp, #8
+ 80046c2:	bdb0      	pop	{r4, r5, r7, pc}
+ 80046c4:	200006e4 	.word	0x200006e4
+ 80046c8:	0800d4fc 	.word	0x0800d4fc
+ 80046cc:	0800d48c 	.word	0x0800d48c
+ 80046d0:	0000029f 	.word	0x0000029f
+ 80046d4:	0800d22c 	.word	0x0800d22c
+ 80046d8:	0800d538 	.word	0x0800d538
+ 80046dc:	0800d55c 	.word	0x0800d55c
+ 80046e0:	0800d560 	.word	0x0800d560
+ 80046e4:	0800d2dc 	.word	0x0800d2dc
+ 80046e8:	0800d5a0 	.word	0x0800d5a0
+ 80046ec:	0800d5c0 	.word	0x0800d5c0
 
-080046ec <App_SystemHandleRtcIrq>:
+080046f0 <App_SystemHandleRtcIrq>:
 
 void App_SystemHandleRtcIrq(void)
 {
- 80046ec:	b580      	push	{r7, lr}
- 80046ee:	af00      	add	r7, sp, #0
+ 80046f0:	b580      	push	{r7, lr}
+ 80046f2:	af00      	add	r7, sp, #0
     if ((RTC->ISR & RTC_ISR_WUTF) != 0u)
- 80046f0:	4b16      	ldr	r3, [pc, #88]	@ (800474c <App_SystemHandleRtcIrq+0x60>)
- 80046f2:	68da      	ldr	r2, [r3, #12]
- 80046f4:	2380      	movs	r3, #128	@ 0x80
- 80046f6:	00db      	lsls	r3, r3, #3
- 80046f8:	4013      	ands	r3, r2
- 80046fa:	d01f      	beq.n	800473c <App_SystemHandleRtcIrq+0x50>
+ 80046f4:	4b16      	ldr	r3, [pc, #88]	@ (8004750 <App_SystemHandleRtcIrq+0x60>)
+ 80046f6:	68da      	ldr	r2, [r3, #12]
+ 80046f8:	2380      	movs	r3, #128	@ 0x80
+ 80046fa:	00db      	lsls	r3, r3, #3
+ 80046fc:	4013      	ands	r3, r2
+ 80046fe:	d01f      	beq.n	8004740 <App_SystemHandleRtcIrq+0x50>
     {
         App_SystemRtcWriteProtectionDisable();
- 80046fc:	f7ff f944 	bl	8003988 <App_SystemRtcWriteProtectionDisable>
+ 8004700:	f7ff f942 	bl	8003988 <App_SystemRtcWriteProtectionDisable>
         CLEAR_BIT(RTC->CR, RTC_CR_WUTIE | RTC_CR_WUTE);
- 8004700:	4b12      	ldr	r3, [pc, #72]	@ (800474c <App_SystemHandleRtcIrq+0x60>)
- 8004702:	689a      	ldr	r2, [r3, #8]
- 8004704:	4b11      	ldr	r3, [pc, #68]	@ (800474c <App_SystemHandleRtcIrq+0x60>)
- 8004706:	4912      	ldr	r1, [pc, #72]	@ (8004750 <App_SystemHandleRtcIrq+0x64>)
- 8004708:	400a      	ands	r2, r1
- 800470a:	609a      	str	r2, [r3, #8]
+ 8004704:	4b12      	ldr	r3, [pc, #72]	@ (8004750 <App_SystemHandleRtcIrq+0x60>)
+ 8004706:	689a      	ldr	r2, [r3, #8]
+ 8004708:	4b11      	ldr	r3, [pc, #68]	@ (8004750 <App_SystemHandleRtcIrq+0x60>)
+ 800470a:	4912      	ldr	r1, [pc, #72]	@ (8004754 <App_SystemHandleRtcIrq+0x64>)
+ 800470c:	400a      	ands	r2, r1
+ 800470e:	609a      	str	r2, [r3, #8]
         CLEAR_BIT(RTC->ISR, RTC_ISR_WUTF);
- 800470c:	4b0f      	ldr	r3, [pc, #60]	@ (800474c <App_SystemHandleRtcIrq+0x60>)
- 800470e:	68da      	ldr	r2, [r3, #12]
- 8004710:	4b0e      	ldr	r3, [pc, #56]	@ (800474c <App_SystemHandleRtcIrq+0x60>)
- 8004712:	4910      	ldr	r1, [pc, #64]	@ (8004754 <App_SystemHandleRtcIrq+0x68>)
- 8004714:	400a      	ands	r2, r1
- 8004716:	60da      	str	r2, [r3, #12]
+ 8004710:	4b0f      	ldr	r3, [pc, #60]	@ (8004750 <App_SystemHandleRtcIrq+0x60>)
+ 8004712:	68da      	ldr	r2, [r3, #12]
+ 8004714:	4b0e      	ldr	r3, [pc, #56]	@ (8004750 <App_SystemHandleRtcIrq+0x60>)
+ 8004716:	4910      	ldr	r1, [pc, #64]	@ (8004758 <App_SystemHandleRtcIrq+0x68>)
+ 8004718:	400a      	ands	r2, r1
+ 800471a:	60da      	str	r2, [r3, #12]
         App_SystemRtcWriteProtectionEnable();
- 8004718:	f7ff f944 	bl	80039a4 <App_SystemRtcWriteProtectionEnable>
+ 800471c:	f7ff f942 	bl	80039a4 <App_SystemRtcWriteProtectionEnable>
         EXTI->PR = EXTI_PR_PIF20;
- 800471c:	4b0e      	ldr	r3, [pc, #56]	@ (8004758 <App_SystemHandleRtcIrq+0x6c>)
- 800471e:	2280      	movs	r2, #128	@ 0x80
- 8004720:	0352      	lsls	r2, r2, #13
- 8004722:	615a      	str	r2, [r3, #20]
+ 8004720:	4b0e      	ldr	r3, [pc, #56]	@ (800475c <App_SystemHandleRtcIrq+0x6c>)
+ 8004722:	2280      	movs	r2, #128	@ 0x80
+ 8004724:	0352      	lsls	r2, r2, #13
+ 8004726:	615a      	str	r2, [r3, #20]
         g_appSystemContext.rtcWakeEventCount++;
- 8004724:	4b0d      	ldr	r3, [pc, #52]	@ (800475c <App_SystemHandleRtcIrq+0x70>)
- 8004726:	6a9b      	ldr	r3, [r3, #40]	@ 0x28
- 8004728:	1c5a      	adds	r2, r3, #1
- 800472a:	4b0c      	ldr	r3, [pc, #48]	@ (800475c <App_SystemHandleRtcIrq+0x70>)
- 800472c:	629a      	str	r2, [r3, #40]	@ 0x28
+ 8004728:	4b0d      	ldr	r3, [pc, #52]	@ (8004760 <App_SystemHandleRtcIrq+0x70>)
+ 800472a:	6a9b      	ldr	r3, [r3, #40]	@ 0x28
+ 800472c:	1c5a      	adds	r2, r3, #1
+ 800472e:	4b0c      	ldr	r3, [pc, #48]	@ (8004760 <App_SystemHandleRtcIrq+0x70>)
+ 8004730:	629a      	str	r2, [r3, #40]	@ 0x28
         App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_RTC);
- 800472e:	2010      	movs	r0, #16
- 8004730:	f7ff fad8 	bl	8003ce4 <App_SystemNotifyWakeSource>
+ 8004732:	2010      	movs	r0, #16
+ 8004734:	f7ff fad6 	bl	8003ce4 <App_SystemNotifyWakeSource>
         App_SystemSetTaskWakeEvent(APP_TASK_ID_RTC);
- 8004734:	200b      	movs	r0, #11
- 8004736:	f7ff fb0f 	bl	8003d58 <App_SystemSetTaskWakeEvent>
+ 8004738:	200b      	movs	r0, #11
+ 800473a:	f7ff fb0d 	bl	8003d58 <App_SystemSetTaskWakeEvent>
     }
     else
     {
         EXTI->PR = EXTI_PR_PIF20;
     }
 }
- 800473a:	e003      	b.n	8004744 <App_SystemHandleRtcIrq+0x58>
+ 800473e:	e003      	b.n	8004748 <App_SystemHandleRtcIrq+0x58>
         EXTI->PR = EXTI_PR_PIF20;
- 800473c:	4b06      	ldr	r3, [pc, #24]	@ (8004758 <App_SystemHandleRtcIrq+0x6c>)
- 800473e:	2280      	movs	r2, #128	@ 0x80
- 8004740:	0352      	lsls	r2, r2, #13
- 8004742:	615a      	str	r2, [r3, #20]
+ 8004740:	4b06      	ldr	r3, [pc, #24]	@ (800475c <App_SystemHandleRtcIrq+0x6c>)
+ 8004742:	2280      	movs	r2, #128	@ 0x80
+ 8004744:	0352      	lsls	r2, r2, #13
+ 8004746:	615a      	str	r2, [r3, #20]
 }
- 8004744:	46c0      	nop			@ (mov r8, r8)
- 8004746:	46bd      	mov	sp, r7
- 8004748:	bd80      	pop	{r7, pc}
- 800474a:	46c0      	nop			@ (mov r8, r8)
- 800474c:	40002800 	.word	0x40002800
- 8004750:	ffffbbff 	.word	0xffffbbff
- 8004754:	fffffbff 	.word	0xfffffbff
- 8004758:	40010400 	.word	0x40010400
- 800475c:	200006e4 	.word	0x200006e4
+ 8004748:	46c0      	nop			@ (mov r8, r8)
+ 800474a:	46bd      	mov	sp, r7
+ 800474c:	bd80      	pop	{r7, pc}
+ 800474e:	46c0      	nop			@ (mov r8, r8)
+ 8004750:	40002800 	.word	0x40002800
+ 8004754:	ffffbbff 	.word	0xffffbbff
+ 8004758:	fffffbff 	.word	0xfffffbff
+ 800475c:	40010400 	.word	0x40010400
+ 8004760:	200006e4 	.word	0x200006e4
 
-08004760 <App_SystemInit>:
+08004764 <App_SystemInit>:
 
 AppStatus_t App_SystemInit(void)
 {
- 8004760:	b590      	push	{r4, r7, lr}
- 8004762:	b085      	sub	sp, #20
- 8004764:	af02      	add	r7, sp, #8
+ 8004764:	b590      	push	{r4, r7, lr}
+ 8004766:	b085      	sub	sp, #20
+ 8004768:	af02      	add	r7, sp, #8
     AppStatus_t status;
     const AppClockContext_t *clockContext;
 
     (void)memset(&g_appSystemContext, 0, sizeof(g_appSystemContext));
- 8004766:	4b60      	ldr	r3, [pc, #384]	@ (80048e8 <App_SystemInit+0x188>)
- 8004768:	2244      	movs	r2, #68	@ 0x44
- 800476a:	2100      	movs	r1, #0
- 800476c:	0018      	movs	r0, r3
- 800476e:	f007 fbb1 	bl	800bed4 <memset>
+ 800476a:	4b61      	ldr	r3, [pc, #388]	@ (80048f0 <App_SystemInit+0x18c>)
+ 800476c:	2244      	movs	r2, #68	@ 0x44
+ 800476e:	2100      	movs	r1, #0
+ 8004770:	0018      	movs	r0, r3
+ 8004772:	f007 fbaf 	bl	800bed4 <memset>
     App_ErrorInit();
- 8004772:	f7fc ffa1 	bl	80016b8 <App_ErrorInit>
+ 8004776:	f7fc ff9f 	bl	80016b8 <App_ErrorInit>
 
     g_appSystemContext.bootStage = APP_BOOT_STAGE_HAL_READY;
- 8004776:	4b5c      	ldr	r3, [pc, #368]	@ (80048e8 <App_SystemInit+0x188>)
- 8004778:	2201      	movs	r2, #1
- 800477a:	721a      	strb	r2, [r3, #8]
+ 800477a:	4b5d      	ldr	r3, [pc, #372]	@ (80048f0 <App_SystemInit+0x18c>)
+ 800477c:	2201      	movs	r2, #1
+ 800477e:	721a      	strb	r2, [r3, #8]
     g_appSystemContext.selfTestStatus = APP_STATUS_NOT_INITIALIZED;
- 800477c:	4b5a      	ldr	r3, [pc, #360]	@ (80048e8 <App_SystemInit+0x188>)
- 800477e:	2202      	movs	r2, #2
- 8004780:	725a      	strb	r2, [r3, #9]
+ 8004780:	4b5b      	ldr	r3, [pc, #364]	@ (80048f0 <App_SystemInit+0x18c>)
+ 8004782:	2202      	movs	r2, #2
+ 8004784:	725a      	strb	r2, [r3, #9]
     g_appSystemContext.schedulerStatus = APP_STATUS_NOT_INITIALIZED;
- 8004782:	4b59      	ldr	r3, [pc, #356]	@ (80048e8 <App_SystemInit+0x188>)
- 8004784:	2202      	movs	r2, #2
- 8004786:	729a      	strb	r2, [r3, #10]
+ 8004786:	4b5a      	ldr	r3, [pc, #360]	@ (80048f0 <App_SystemInit+0x18c>)
+ 8004788:	2202      	movs	r2, #2
+ 800478a:	729a      	strb	r2, [r3, #10]
     g_appSystemContext.lastLowPowerMode = APP_SYSTEM_LP_MODE_RUN;
- 8004788:	4b57      	ldr	r3, [pc, #348]	@ (80048e8 <App_SystemInit+0x188>)
- 800478a:	2240      	movs	r2, #64	@ 0x40
- 800478c:	2100      	movs	r1, #0
- 800478e:	5499      	strb	r1, [r3, r2]
+ 800478c:	4b58      	ldr	r3, [pc, #352]	@ (80048f0 <App_SystemInit+0x18c>)
+ 800478e:	2240      	movs	r2, #64	@ 0x40
+ 8004790:	2100      	movs	r1, #0
+ 8004792:	5499      	strb	r1, [r3, r2]
 
     APP_RETURN_IF_FALSE(App_ClockIsInitialized() == APP_TRUE, APP_STATUS_CLOCK_NOT_INITIALIZED);
- 8004790:	f7fb ffa2 	bl	80006d8 <App_ClockIsInitialized>
- 8004794:	0003      	movs	r3, r0
- 8004796:	2b01      	cmp	r3, #1
- 8004798:	d007      	beq.n	80047aa <App_SystemInit+0x4a>
- 800479a:	4a54      	ldr	r2, [pc, #336]	@ (80048ec <App_SystemInit+0x18c>)
- 800479c:	4b54      	ldr	r3, [pc, #336]	@ (80048f0 <App_SystemInit+0x190>)
- 800479e:	0019      	movs	r1, r3
- 80047a0:	2004      	movs	r0, #4
- 80047a2:	f7fc ff9b 	bl	80016dc <App_ErrorRecord>
- 80047a6:	2304      	movs	r3, #4
- 80047a8:	e09a      	b.n	80048e0 <App_SystemInit+0x180>
+ 8004794:	f7fb ffa0 	bl	80006d8 <App_ClockIsInitialized>
+ 8004798:	0003      	movs	r3, r0
+ 800479a:	2b01      	cmp	r3, #1
+ 800479c:	d008      	beq.n	80047b0 <App_SystemInit+0x4c>
+ 800479e:	23bd      	movs	r3, #189	@ 0xbd
+ 80047a0:	009a      	lsls	r2, r3, #2
+ 80047a2:	4b54      	ldr	r3, [pc, #336]	@ (80048f4 <App_SystemInit+0x190>)
+ 80047a4:	0019      	movs	r1, r3
+ 80047a6:	2004      	movs	r0, #4
+ 80047a8:	f7fc ff98 	bl	80016dc <App_ErrorRecord>
+ 80047ac:	2304      	movs	r3, #4
+ 80047ae:	e09a      	b.n	80048e6 <App_SystemInit+0x182>
 
     clockContext = App_ClockGetContext();
- 80047aa:	f7fb ff9f 	bl	80006ec <App_ClockGetContext>
- 80047ae:	0003      	movs	r3, r0
- 80047b0:	607b      	str	r3, [r7, #4]
+ 80047b0:	f7fb ff9c 	bl	80006ec <App_ClockGetContext>
+ 80047b4:	0003      	movs	r3, r0
+ 80047b6:	607b      	str	r3, [r7, #4]
     APP_RETURN_IF_FALSE(clockContext->initialized == APP_TRUE, APP_STATUS_CLOCK_NOT_INITIALIZED);
- 80047b2:	687b      	ldr	r3, [r7, #4]
- 80047b4:	781b      	ldrb	r3, [r3, #0]
- 80047b6:	2b01      	cmp	r3, #1
- 80047b8:	d007      	beq.n	80047ca <App_SystemInit+0x6a>
- 80047ba:	4a4e      	ldr	r2, [pc, #312]	@ (80048f4 <App_SystemInit+0x194>)
- 80047bc:	4b4c      	ldr	r3, [pc, #304]	@ (80048f0 <App_SystemInit+0x190>)
- 80047be:	0019      	movs	r1, r3
- 80047c0:	2004      	movs	r0, #4
- 80047c2:	f7fc ff8b 	bl	80016dc <App_ErrorRecord>
- 80047c6:	2304      	movs	r3, #4
- 80047c8:	e08a      	b.n	80048e0 <App_SystemInit+0x180>
+ 80047b8:	687b      	ldr	r3, [r7, #4]
+ 80047ba:	781b      	ldrb	r3, [r3, #0]
+ 80047bc:	2b01      	cmp	r3, #1
+ 80047be:	d007      	beq.n	80047d0 <App_SystemInit+0x6c>
+ 80047c0:	4a4d      	ldr	r2, [pc, #308]	@ (80048f8 <App_SystemInit+0x194>)
+ 80047c2:	4b4c      	ldr	r3, [pc, #304]	@ (80048f4 <App_SystemInit+0x190>)
+ 80047c4:	0019      	movs	r1, r3
+ 80047c6:	2004      	movs	r0, #4
+ 80047c8:	f7fc ff88 	bl	80016dc <App_ErrorRecord>
+ 80047cc:	2304      	movs	r3, #4
+ 80047ce:	e08a      	b.n	80048e6 <App_SystemInit+0x182>
 
     g_appSystemContext.bootSysClockHz = clockContext->sysclkHz;
- 80047ca:	687b      	ldr	r3, [r7, #4]
- 80047cc:	68da      	ldr	r2, [r3, #12]
- 80047ce:	4b46      	ldr	r3, [pc, #280]	@ (80048e8 <App_SystemInit+0x188>)
- 80047d0:	60da      	str	r2, [r3, #12]
+ 80047d0:	687b      	ldr	r3, [r7, #4]
+ 80047d2:	68da      	ldr	r2, [r3, #12]
+ 80047d4:	4b46      	ldr	r3, [pc, #280]	@ (80048f0 <App_SystemInit+0x18c>)
+ 80047d6:	60da      	str	r2, [r3, #12]
     g_appSystemContext.bootStage = APP_BOOT_STAGE_CLOCK_READY;
- 80047d2:	4b45      	ldr	r3, [pc, #276]	@ (80048e8 <App_SystemInit+0x188>)
- 80047d4:	2202      	movs	r2, #2
- 80047d6:	721a      	strb	r2, [r3, #8]
+ 80047d8:	4b45      	ldr	r3, [pc, #276]	@ (80048f0 <App_SystemInit+0x18c>)
+ 80047da:	2202      	movs	r2, #2
+ 80047dc:	721a      	strb	r2, [r3, #8]
 
     status = App_SystemValidateHandles();
- 80047d8:	1cfc      	adds	r4, r7, #3
- 80047da:	f7ff fb3b 	bl	8003e54 <App_SystemValidateHandles>
- 80047de:	0003      	movs	r3, r0
- 80047e0:	7023      	strb	r3, [r4, #0]
+ 80047de:	1cfc      	adds	r4, r7, #3
+ 80047e0:	f7ff fb38 	bl	8003e54 <App_SystemValidateHandles>
+ 80047e4:	0003      	movs	r3, r0
+ 80047e6:	7023      	strb	r3, [r4, #0]
     if (status != APP_STATUS_OK)
- 80047e2:	1cfb      	adds	r3, r7, #3
- 80047e4:	781b      	ldrb	r3, [r3, #0]
- 80047e6:	2b00      	cmp	r3, #0
- 80047e8:	d002      	beq.n	80047f0 <App_SystemInit+0x90>
+ 80047e8:	1cfb      	adds	r3, r7, #3
+ 80047ea:	781b      	ldrb	r3, [r3, #0]
+ 80047ec:	2b00      	cmp	r3, #0
+ 80047ee:	d002      	beq.n	80047f6 <App_SystemInit+0x92>
     {
         return status;
- 80047ea:	1cfb      	adds	r3, r7, #3
- 80047ec:	781b      	ldrb	r3, [r3, #0]
- 80047ee:	e077      	b.n	80048e0 <App_SystemInit+0x180>
+ 80047f0:	1cfb      	adds	r3, r7, #3
+ 80047f2:	781b      	ldrb	r3, [r3, #0]
+ 80047f4:	e077      	b.n	80048e6 <App_SystemInit+0x182>
     }
 
     g_appSystemContext.bootStage = APP_BOOT_STAGE_PERIPH_READY;
- 80047f0:	4b3d      	ldr	r3, [pc, #244]	@ (80048e8 <App_SystemInit+0x188>)
- 80047f2:	2203      	movs	r2, #3
- 80047f4:	721a      	strb	r2, [r3, #8]
+ 80047f6:	4b3e      	ldr	r3, [pc, #248]	@ (80048f0 <App_SystemInit+0x18c>)
+ 80047f8:	2203      	movs	r2, #3
+ 80047fa:	721a      	strb	r2, [r3, #8]
     App_SystemApplySafeOutputs();
- 80047f6:	f7ff fbef 	bl	8003fd8 <App_SystemApplySafeOutputs>
+ 80047fc:	f7ff fbec 	bl	8003fd8 <App_SystemApplySafeOutputs>
     App_SystemConfigureWakeupInterrupts();
- 80047fa:	f7ff fafd 	bl	8003df8 <App_SystemConfigureWakeupInterrupts>
+ 8004800:	f7ff fafa 	bl	8003df8 <App_SystemConfigureWakeupInterrupts>
 
     status = App_SystemInitRtcWakeup();
- 80047fe:	1cfc      	adds	r4, r7, #3
- 8004800:	f7ff fa06 	bl	8003c10 <App_SystemInitRtcWakeup>
- 8004804:	0003      	movs	r3, r0
- 8004806:	7023      	strb	r3, [r4, #0]
+ 8004804:	1cfc      	adds	r4, r7, #3
+ 8004806:	f7ff fa03 	bl	8003c10 <App_SystemInitRtcWakeup>
+ 800480a:	0003      	movs	r3, r0
+ 800480c:	7023      	strb	r3, [r4, #0]
     if (status != APP_STATUS_OK)
- 8004808:	1cfb      	adds	r3, r7, #3
- 800480a:	781b      	ldrb	r3, [r3, #0]
- 800480c:	2b00      	cmp	r3, #0
- 800480e:	d002      	beq.n	8004816 <App_SystemInit+0xb6>
+ 800480e:	1cfb      	adds	r3, r7, #3
+ 8004810:	781b      	ldrb	r3, [r3, #0]
+ 8004812:	2b00      	cmp	r3, #0
+ 8004814:	d002      	beq.n	800481c <App_SystemInit+0xb8>
     {
         return status;
- 8004810:	1cfb      	adds	r3, r7, #3
- 8004812:	781b      	ldrb	r3, [r3, #0]
- 8004814:	e064      	b.n	80048e0 <App_SystemInit+0x180>
+ 8004816:	1cfb      	adds	r3, r7, #3
+ 8004818:	781b      	ldrb	r3, [r3, #0]
+ 800481a:	e064      	b.n	80048e6 <App_SystemInit+0x182>
     }
 
     status = App_SystemInitLowPowerGpio();
- 8004816:	1cfc      	adds	r4, r7, #3
- 8004818:	f7ff fbec 	bl	8003ff4 <App_SystemInitLowPowerGpio>
- 800481c:	0003      	movs	r3, r0
- 800481e:	7023      	strb	r3, [r4, #0]
+ 800481c:	1cfc      	adds	r4, r7, #3
+ 800481e:	f7ff fbe9 	bl	8003ff4 <App_SystemInitLowPowerGpio>
+ 8004822:	0003      	movs	r3, r0
+ 8004824:	7023      	strb	r3, [r4, #0]
     if (status != APP_STATUS_OK)
- 8004820:	1cfb      	adds	r3, r7, #3
- 8004822:	781b      	ldrb	r3, [r3, #0]
- 8004824:	2b00      	cmp	r3, #0
- 8004826:	d002      	beq.n	800482e <App_SystemInit+0xce>
+ 8004826:	1cfb      	adds	r3, r7, #3
+ 8004828:	781b      	ldrb	r3, [r3, #0]
+ 800482a:	2b00      	cmp	r3, #0
+ 800482c:	d002      	beq.n	8004834 <App_SystemInit+0xd0>
     {
         return status;
- 8004828:	1cfb      	adds	r3, r7, #3
- 800482a:	781b      	ldrb	r3, [r3, #0]
- 800482c:	e058      	b.n	80048e0 <App_SystemInit+0x180>
+ 800482e:	1cfb      	adds	r3, r7, #3
+ 8004830:	781b      	ldrb	r3, [r3, #0]
+ 8004832:	e058      	b.n	80048e6 <App_SystemInit+0x182>
     }
 
     g_appSystemContext.bootStage = APP_BOOT_STAGE_GPIO_LP_READY;
- 800482e:	4b2e      	ldr	r3, [pc, #184]	@ (80048e8 <App_SystemInit+0x188>)
- 8004830:	2204      	movs	r2, #4
- 8004832:	721a      	strb	r2, [r3, #8]
+ 8004834:	4b2e      	ldr	r3, [pc, #184]	@ (80048f0 <App_SystemInit+0x18c>)
+ 8004836:	2204      	movs	r2, #4
+ 8004838:	721a      	strb	r2, [r3, #8]
 
     status = App_DebugConsoleInit();
- 8004834:	1cfc      	adds	r4, r7, #3
- 8004836:	f7fc fe57 	bl	80014e8 <App_DebugConsoleInit>
- 800483a:	0003      	movs	r3, r0
- 800483c:	7023      	strb	r3, [r4, #0]
+ 800483a:	1cfc      	adds	r4, r7, #3
+ 800483c:	f7fc fe54 	bl	80014e8 <App_DebugConsoleInit>
+ 8004840:	0003      	movs	r3, r0
+ 8004842:	7023      	strb	r3, [r4, #0]
     if (status != APP_STATUS_OK)
- 800483e:	1cfb      	adds	r3, r7, #3
- 8004840:	781b      	ldrb	r3, [r3, #0]
- 8004842:	2b00      	cmp	r3, #0
- 8004844:	d001      	beq.n	800484a <App_SystemInit+0xea>
+ 8004844:	1cfb      	adds	r3, r7, #3
+ 8004846:	781b      	ldrb	r3, [r3, #0]
+ 8004848:	2b00      	cmp	r3, #0
+ 800484a:	d001      	beq.n	8004850 <App_SystemInit+0xec>
     {
         return APP_STATUS_DEBUG_INIT_FAILED;
- 8004846:	2307      	movs	r3, #7
- 8004848:	e04a      	b.n	80048e0 <App_SystemInit+0x180>
+ 800484c:	2307      	movs	r3, #7
+ 800484e:	e04a      	b.n	80048e6 <App_SystemInit+0x182>
     }
 
     g_appSystemContext.debugReady = APP_TRUE;
- 800484a:	4b27      	ldr	r3, [pc, #156]	@ (80048e8 <App_SystemInit+0x188>)
- 800484c:	2201      	movs	r2, #1
- 800484e:	705a      	strb	r2, [r3, #1]
+ 8004850:	4b27      	ldr	r3, [pc, #156]	@ (80048f0 <App_SystemInit+0x18c>)
+ 8004852:	2201      	movs	r2, #1
+ 8004854:	705a      	strb	r2, [r3, #1]
     g_appSystemContext.bootStage = APP_BOOT_STAGE_DEBUG_READY;
- 8004850:	4b25      	ldr	r3, [pc, #148]	@ (80048e8 <App_SystemInit+0x188>)
- 8004852:	2205      	movs	r2, #5
- 8004854:	721a      	strb	r2, [r3, #8]
+ 8004856:	4b26      	ldr	r3, [pc, #152]	@ (80048f0 <App_SystemInit+0x18c>)
+ 8004858:	2205      	movs	r2, #5
+ 800485a:	721a      	strb	r2, [r3, #8]
 
     status = App_SystemPrintBootLogs();
- 8004856:	1cfc      	adds	r4, r7, #3
- 8004858:	f7ff fc26 	bl	80040a8 <App_SystemPrintBootLogs>
- 800485c:	0003      	movs	r3, r0
- 800485e:	7023      	strb	r3, [r4, #0]
+ 800485c:	1cfc      	adds	r4, r7, #3
+ 800485e:	f7ff fc23 	bl	80040a8 <App_SystemPrintBootLogs>
+ 8004862:	0003      	movs	r3, r0
+ 8004864:	7023      	strb	r3, [r4, #0]
     if (status != APP_STATUS_OK)
- 8004860:	1cfb      	adds	r3, r7, #3
- 8004862:	781b      	ldrb	r3, [r3, #0]
- 8004864:	2b00      	cmp	r3, #0
- 8004866:	d002      	beq.n	800486e <App_SystemInit+0x10e>
+ 8004866:	1cfb      	adds	r3, r7, #3
+ 8004868:	781b      	ldrb	r3, [r3, #0]
+ 800486a:	2b00      	cmp	r3, #0
+ 800486c:	d002      	beq.n	8004874 <App_SystemInit+0x110>
     {
         return status;
- 8004868:	1cfb      	adds	r3, r7, #3
- 800486a:	781b      	ldrb	r3, [r3, #0]
- 800486c:	e038      	b.n	80048e0 <App_SystemInit+0x180>
+ 800486e:	1cfb      	adds	r3, r7, #3
+ 8004870:	781b      	ldrb	r3, [r3, #0]
+ 8004872:	e038      	b.n	80048e6 <App_SystemInit+0x182>
     }
 
     status = App_SystemRunBootSelfTest();
- 800486e:	1cfc      	adds	r4, r7, #3
- 8004870:	f7ff fd0a 	bl	8004288 <App_SystemRunBootSelfTest>
- 8004874:	0003      	movs	r3, r0
- 8004876:	7023      	strb	r3, [r4, #0]
+ 8004874:	1cfc      	adds	r4, r7, #3
+ 8004876:	f7ff fd07 	bl	8004288 <App_SystemRunBootSelfTest>
+ 800487a:	0003      	movs	r3, r0
+ 800487c:	7023      	strb	r3, [r4, #0]
     if (status != APP_STATUS_OK)
- 8004878:	1cfb      	adds	r3, r7, #3
- 800487a:	781b      	ldrb	r3, [r3, #0]
- 800487c:	2b00      	cmp	r3, #0
- 800487e:	d002      	beq.n	8004886 <App_SystemInit+0x126>
+ 800487e:	1cfb      	adds	r3, r7, #3
+ 8004880:	781b      	ldrb	r3, [r3, #0]
+ 8004882:	2b00      	cmp	r3, #0
+ 8004884:	d002      	beq.n	800488c <App_SystemInit+0x128>
     {
         return status;
- 8004880:	1cfb      	adds	r3, r7, #3
- 8004882:	781b      	ldrb	r3, [r3, #0]
- 8004884:	e02c      	b.n	80048e0 <App_SystemInit+0x180>
+ 8004886:	1cfb      	adds	r3, r7, #3
+ 8004888:	781b      	ldrb	r3, [r3, #0]
+ 800488a:	e02c      	b.n	80048e6 <App_SystemInit+0x182>
     }
 
     status = App_SystemInitScheduler();
- 8004886:	1cfc      	adds	r4, r7, #3
- 8004888:	f7ff fd5c 	bl	8004344 <App_SystemInitScheduler>
- 800488c:	0003      	movs	r3, r0
- 800488e:	7023      	strb	r3, [r4, #0]
+ 800488c:	1cfc      	adds	r4, r7, #3
+ 800488e:	f7ff fd59 	bl	8004344 <App_SystemInitScheduler>
+ 8004892:	0003      	movs	r3, r0
+ 8004894:	7023      	strb	r3, [r4, #0]
     if (status != APP_STATUS_OK)
- 8004890:	1cfb      	adds	r3, r7, #3
- 8004892:	781b      	ldrb	r3, [r3, #0]
- 8004894:	2b00      	cmp	r3, #0
- 8004896:	d006      	beq.n	80048a6 <App_SystemInit+0x146>
+ 8004896:	1cfb      	adds	r3, r7, #3
+ 8004898:	781b      	ldrb	r3, [r3, #0]
+ 800489a:	2b00      	cmp	r3, #0
+ 800489c:	d006      	beq.n	80048ac <App_SystemInit+0x148>
     {
         g_appSystemContext.schedulerStatus = status;
- 8004898:	4b13      	ldr	r3, [pc, #76]	@ (80048e8 <App_SystemInit+0x188>)
- 800489a:	1cfa      	adds	r2, r7, #3
- 800489c:	7812      	ldrb	r2, [r2, #0]
- 800489e:	729a      	strb	r2, [r3, #10]
+ 800489e:	4b14      	ldr	r3, [pc, #80]	@ (80048f0 <App_SystemInit+0x18c>)
+ 80048a0:	1cfa      	adds	r2, r7, #3
+ 80048a2:	7812      	ldrb	r2, [r2, #0]
+ 80048a4:	729a      	strb	r2, [r3, #10]
         return status;
- 80048a0:	1cfb      	adds	r3, r7, #3
- 80048a2:	781b      	ldrb	r3, [r3, #0]
- 80048a4:	e01c      	b.n	80048e0 <App_SystemInit+0x180>
+ 80048a6:	1cfb      	adds	r3, r7, #3
+ 80048a8:	781b      	ldrb	r3, [r3, #0]
+ 80048aa:	e01c      	b.n	80048e6 <App_SystemInit+0x182>
     }
 
     g_appSystemContext.initialized = APP_TRUE;
- 80048a6:	4b10      	ldr	r3, [pc, #64]	@ (80048e8 <App_SystemInit+0x188>)
- 80048a8:	2201      	movs	r2, #1
- 80048aa:	701a      	strb	r2, [r3, #0]
+ 80048ac:	4b10      	ldr	r3, [pc, #64]	@ (80048f0 <App_SystemInit+0x18c>)
+ 80048ae:	2201      	movs	r2, #1
+ 80048b0:	701a      	strb	r2, [r3, #0]
     g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
- 80048ac:	4b0e      	ldr	r3, [pc, #56]	@ (80048e8 <App_SystemInit+0x188>)
- 80048ae:	2209      	movs	r2, #9
- 80048b0:	721a      	strb	r2, [r3, #8]
+ 80048b2:	4b0f      	ldr	r3, [pc, #60]	@ (80048f0 <App_SystemInit+0x18c>)
+ 80048b4:	2209      	movs	r2, #9
+ 80048b6:	721a      	strb	r2, [r3, #8]
 #ifdef DEBUG
     APP_RETURN_IF_FALSE(APP_LOGD("SYS", "Application ready: boot=%lu stop_req=%u",
- 80048b2:	4b0d      	ldr	r3, [pc, #52]	@ (80048e8 <App_SystemInit+0x188>)
- 80048b4:	7a1b      	ldrb	r3, [r3, #8]
- 80048b6:	0018      	movs	r0, r3
- 80048b8:	4b0b      	ldr	r3, [pc, #44]	@ (80048e8 <App_SystemInit+0x188>)
- 80048ba:	799b      	ldrb	r3, [r3, #6]
- 80048bc:	4a0e      	ldr	r2, [pc, #56]	@ (80048f8 <App_SystemInit+0x198>)
- 80048be:	490f      	ldr	r1, [pc, #60]	@ (80048fc <App_SystemInit+0x19c>)
- 80048c0:	9300      	str	r3, [sp, #0]
- 80048c2:	0003      	movs	r3, r0
- 80048c4:	2001      	movs	r0, #1
- 80048c6:	f7fd fe8d 	bl	80025e4 <App_LogPrintf>
- 80048ca:	1e03      	subs	r3, r0, #0
- 80048cc:	d007      	beq.n	80048de <App_SystemInit+0x17e>
- 80048ce:	4a0c      	ldr	r2, [pc, #48]	@ (8004900 <App_SystemInit+0x1a0>)
- 80048d0:	4b07      	ldr	r3, [pc, #28]	@ (80048f0 <App_SystemInit+0x190>)
- 80048d2:	0019      	movs	r1, r3
- 80048d4:	2009      	movs	r0, #9
- 80048d6:	f7fc ff01 	bl	80016dc <App_ErrorRecord>
- 80048da:	2309      	movs	r3, #9
- 80048dc:	e000      	b.n	80048e0 <App_SystemInit+0x180>
+ 80048b8:	4b0d      	ldr	r3, [pc, #52]	@ (80048f0 <App_SystemInit+0x18c>)
+ 80048ba:	7a1b      	ldrb	r3, [r3, #8]
+ 80048bc:	0018      	movs	r0, r3
+ 80048be:	4b0c      	ldr	r3, [pc, #48]	@ (80048f0 <App_SystemInit+0x18c>)
+ 80048c0:	799b      	ldrb	r3, [r3, #6]
+ 80048c2:	4a0e      	ldr	r2, [pc, #56]	@ (80048fc <App_SystemInit+0x198>)
+ 80048c4:	490e      	ldr	r1, [pc, #56]	@ (8004900 <App_SystemInit+0x19c>)
+ 80048c6:	9300      	str	r3, [sp, #0]
+ 80048c8:	0003      	movs	r3, r0
+ 80048ca:	2001      	movs	r0, #1
+ 80048cc:	f7fd fe8a 	bl	80025e4 <App_LogPrintf>
+ 80048d0:	1e03      	subs	r3, r0, #0
+ 80048d2:	d007      	beq.n	80048e4 <App_SystemInit+0x180>
+ 80048d4:	4a0b      	ldr	r2, [pc, #44]	@ (8004904 <App_SystemInit+0x1a0>)
+ 80048d6:	4b07      	ldr	r3, [pc, #28]	@ (80048f4 <App_SystemInit+0x190>)
+ 80048d8:	0019      	movs	r1, r3
+ 80048da:	2009      	movs	r0, #9
+ 80048dc:	f7fc fefe 	bl	80016dc <App_ErrorRecord>
+ 80048e0:	2309      	movs	r3, #9
+ 80048e2:	e000      	b.n	80048e6 <App_SystemInit+0x182>
                                  (unsigned long)g_appSystemContext.bootStage,
                                  (unsigned int)g_appSystemContext.stopRequested) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 #endif
     return APP_STATUS_OK;
- 80048de:	2300      	movs	r3, #0
+ 80048e4:	2300      	movs	r3, #0
 }
- 80048e0:	0018      	movs	r0, r3
- 80048e2:	46bd      	mov	sp, r7
- 80048e4:	b003      	add	sp, #12
- 80048e6:	bd90      	pop	{r4, r7, pc}
- 80048e8:	200006e4 	.word	0x200006e4
- 80048ec:	000002eb 	.word	0x000002eb
- 80048f0:	0800d22c 	.word	0x0800d22c
- 80048f4:	000002ee 	.word	0x000002ee
- 80048f8:	0800d5c8 	.word	0x0800d5c8
- 80048fc:	0800d2dc 	.word	0x0800d2dc
- 8004900:	0000032a 	.word	0x0000032a
+ 80048e6:	0018      	movs	r0, r3
+ 80048e8:	46bd      	mov	sp, r7
+ 80048ea:	b003      	add	sp, #12
+ 80048ec:	bd90      	pop	{r4, r7, pc}
+ 80048ee:	46c0      	nop			@ (mov r8, r8)
+ 80048f0:	200006e4 	.word	0x200006e4
+ 80048f4:	0800d22c 	.word	0x0800d22c
+ 80048f8:	000002f7 	.word	0x000002f7
+ 80048fc:	0800d5dc 	.word	0x0800d5dc
+ 8004900:	0800d2dc 	.word	0x0800d2dc
+ 8004904:	00000333 	.word	0x00000333
 
-08004904 <App_SystemProcess>:
+08004908 <App_SystemProcess>:
 
 void App_SystemProcess(void)
 {
- 8004904:	b590      	push	{r4, r7, lr}
- 8004906:	b085      	sub	sp, #20
- 8004908:	af02      	add	r7, sp, #8
+ 8004908:	b590      	push	{r4, r7, lr}
+ 800490a:	b085      	sub	sp, #20
+ 800490c:	af02      	add	r7, sp, #8
     AppStatus_t status;
     const AppSchedulerContext_t *p_schedulerContext;
 
     if (g_appSystemContext.initialized != APP_TRUE)
- 800490a:	4b30      	ldr	r3, [pc, #192]	@ (80049cc <App_SystemProcess+0xc8>)
- 800490c:	781b      	ldrb	r3, [r3, #0]
- 800490e:	2b01      	cmp	r3, #1
- 8004910:	d007      	beq.n	8004922 <App_SystemProcess+0x1e>
+ 800490e:	4b30      	ldr	r3, [pc, #192]	@ (80049d0 <App_SystemProcess+0xc8>)
+ 8004910:	781b      	ldrb	r3, [r3, #0]
+ 8004912:	2b01      	cmp	r3, #1
+ 8004914:	d007      	beq.n	8004926 <App_SystemProcess+0x1e>
     {
         App_ErrorRecord(APP_STATUS_NOT_INITIALIZED, __FILE__, __LINE__);
- 8004912:	4a2f      	ldr	r2, [pc, #188]	@ (80049d0 <App_SystemProcess+0xcc>)
- 8004914:	4b2f      	ldr	r3, [pc, #188]	@ (80049d4 <App_SystemProcess+0xd0>)
- 8004916:	0019      	movs	r1, r3
- 8004918:	2002      	movs	r0, #2
- 800491a:	f7fc fedf 	bl	80016dc <App_ErrorRecord>
+ 8004916:	4a2f      	ldr	r2, [pc, #188]	@ (80049d4 <App_SystemProcess+0xcc>)
+ 8004918:	4b2f      	ldr	r3, [pc, #188]	@ (80049d8 <App_SystemProcess+0xd0>)
+ 800491a:	0019      	movs	r1, r3
+ 800491c:	2002      	movs	r0, #2
+ 800491e:	f7fc fedd 	bl	80016dc <App_ErrorRecord>
         App_ErrorTrap();
- 800491e:	f7fc feff 	bl	8001720 <App_ErrorTrap>
+ 8004922:	f7fc fefd 	bl	8001720 <App_ErrorTrap>
     }
 
     status = App_SchedulerRunOnce();
- 8004922:	1dfc      	adds	r4, r7, #7
- 8004924:	f7fe f894 	bl	8002a50 <App_SchedulerRunOnce>
- 8004928:	0003      	movs	r3, r0
- 800492a:	7023      	strb	r3, [r4, #0]
+ 8004926:	1dfc      	adds	r4, r7, #7
+ 8004928:	f7fe f892 	bl	8002a50 <App_SchedulerRunOnce>
+ 800492c:	0003      	movs	r3, r0
+ 800492e:	7023      	strb	r3, [r4, #0]
     g_appSystemContext.schedulerStatus = status;
- 800492c:	4b27      	ldr	r3, [pc, #156]	@ (80049cc <App_SystemProcess+0xc8>)
- 800492e:	1dfa      	adds	r2, r7, #7
- 8004930:	7812      	ldrb	r2, [r2, #0]
- 8004932:	729a      	strb	r2, [r3, #10]
+ 8004930:	4b27      	ldr	r3, [pc, #156]	@ (80049d0 <App_SystemProcess+0xc8>)
+ 8004932:	1dfa      	adds	r2, r7, #7
+ 8004934:	7812      	ldrb	r2, [r2, #0]
+ 8004936:	729a      	strb	r2, [r3, #10]
     if (status != APP_STATUS_OK)
- 8004934:	1dfb      	adds	r3, r7, #7
- 8004936:	781b      	ldrb	r3, [r3, #0]
- 8004938:	2b00      	cmp	r3, #0
- 800493a:	d00d      	beq.n	8004958 <App_SystemProcess+0x54>
+ 8004938:	1dfb      	adds	r3, r7, #7
+ 800493a:	781b      	ldrb	r3, [r3, #0]
+ 800493c:	2b00      	cmp	r3, #0
+ 800493e:	d00d      	beq.n	800495c <App_SystemProcess+0x54>
     {
         App_ErrorRecord(status, __FILE__, __LINE__);
- 800493c:	4a26      	ldr	r2, [pc, #152]	@ (80049d8 <App_SystemProcess+0xd4>)
- 800493e:	4925      	ldr	r1, [pc, #148]	@ (80049d4 <App_SystemProcess+0xd0>)
- 8004940:	1dfb      	adds	r3, r7, #7
- 8004942:	781b      	ldrb	r3, [r3, #0]
- 8004944:	0018      	movs	r0, r3
- 8004946:	f7fc fec9 	bl	80016dc <App_ErrorRecord>
+ 8004940:	4a26      	ldr	r2, [pc, #152]	@ (80049dc <App_SystemProcess+0xd4>)
+ 8004942:	4925      	ldr	r1, [pc, #148]	@ (80049d8 <App_SystemProcess+0xd0>)
+ 8004944:	1dfb      	adds	r3, r7, #7
+ 8004946:	781b      	ldrb	r3, [r3, #0]
+ 8004948:	0018      	movs	r0, r3
+ 800494a:	f7fc fec7 	bl	80016dc <App_ErrorRecord>
 #ifdef DEBUG
         (void)APP_LOGE("SYS", "Scheduler run failed: status=%lu", (unsigned long)status);
- 800494a:	1dfb      	adds	r3, r7, #7
- 800494c:	781b      	ldrb	r3, [r3, #0]
- 800494e:	4a23      	ldr	r2, [pc, #140]	@ (80049dc <App_SystemProcess+0xd8>)
- 8004950:	4923      	ldr	r1, [pc, #140]	@ (80049e0 <App_SystemProcess+0xdc>)
- 8004952:	2004      	movs	r0, #4
- 8004954:	f7fd fe46 	bl	80025e4 <App_LogPrintf>
+ 800494e:	1dfb      	adds	r3, r7, #7
+ 8004950:	781b      	ldrb	r3, [r3, #0]
+ 8004952:	4a23      	ldr	r2, [pc, #140]	@ (80049e0 <App_SystemProcess+0xd8>)
+ 8004954:	4923      	ldr	r1, [pc, #140]	@ (80049e4 <App_SystemProcess+0xdc>)
+ 8004956:	2004      	movs	r0, #4
+ 8004958:	f7fd fe44 	bl	80025e4 <App_LogPrintf>
 #endif
     }
 
     p_schedulerContext = App_SchedulerGetContext();
- 8004958:	f7fe f914 	bl	8002b84 <App_SchedulerGetContext>
- 800495c:	0003      	movs	r3, r0
- 800495e:	603b      	str	r3, [r7, #0]
+ 800495c:	f7fe f912 	bl	8002b84 <App_SchedulerGetContext>
+ 8004960:	0003      	movs	r3, r0
+ 8004962:	603b      	str	r3, [r7, #0]
     if ((p_schedulerContext->lastDispatchCount == 0u) ||
- 8004960:	683b      	ldr	r3, [r7, #0]
- 8004962:	789b      	ldrb	r3, [r3, #2]
- 8004964:	2b00      	cmp	r3, #0
- 8004966:	d003      	beq.n	8004970 <App_SystemProcess+0x6c>
+ 8004964:	683b      	ldr	r3, [r7, #0]
+ 8004966:	789b      	ldrb	r3, [r3, #2]
+ 8004968:	2b00      	cmp	r3, #0
+ 800496a:	d003      	beq.n	8004974 <App_SystemProcess+0x6c>
         (g_appSystemContext.stopRequested == APP_TRUE))
- 8004968:	4b18      	ldr	r3, [pc, #96]	@ (80049cc <App_SystemProcess+0xc8>)
- 800496a:	799b      	ldrb	r3, [r3, #6]
+ 800496c:	4b18      	ldr	r3, [pc, #96]	@ (80049d0 <App_SystemProcess+0xc8>)
+ 800496e:	799b      	ldrb	r3, [r3, #6]
     if ((p_schedulerContext->lastDispatchCount == 0u) ||
- 800496c:	2b01      	cmp	r3, #1
- 800496e:	d11e      	bne.n	80049ae <App_SystemProcess+0xaa>
+ 8004970:	2b01      	cmp	r3, #1
+ 8004972:	d11e      	bne.n	80049b2 <App_SystemProcess+0xaa>
     {
 #ifdef DEBUG
         if ((p_schedulerContext->lastDispatchCount != 0u) &&
- 8004970:	683b      	ldr	r3, [r7, #0]
- 8004972:	789b      	ldrb	r3, [r3, #2]
- 8004974:	2b00      	cmp	r3, #0
- 8004976:	d017      	beq.n	80049a8 <App_SystemProcess+0xa4>
+ 8004974:	683b      	ldr	r3, [r7, #0]
+ 8004976:	789b      	ldrb	r3, [r3, #2]
+ 8004978:	2b00      	cmp	r3, #0
+ 800497a:	d017      	beq.n	80049ac <App_SystemProcess+0xa4>
             (g_appSystemContext.stopRequested == APP_TRUE) &&
- 8004978:	4b14      	ldr	r3, [pc, #80]	@ (80049cc <App_SystemProcess+0xc8>)
- 800497a:	799b      	ldrb	r3, [r3, #6]
+ 800497c:	4b14      	ldr	r3, [pc, #80]	@ (80049d0 <App_SystemProcess+0xc8>)
+ 800497e:	799b      	ldrb	r3, [r3, #6]
         if ((p_schedulerContext->lastDispatchCount != 0u) &&
- 800497c:	2b01      	cmp	r3, #1
- 800497e:	d113      	bne.n	80049a8 <App_SystemProcess+0xa4>
+ 8004980:	2b01      	cmp	r3, #1
+ 8004982:	d113      	bne.n	80049ac <App_SystemProcess+0xa4>
             (App_SystemCanDebugLog() == APP_TRUE))
- 8004980:	f7fe ffa0 	bl	80038c4 <App_SystemCanDebugLog>
- 8004984:	0003      	movs	r3, r0
+ 8004984:	f7fe ff9e 	bl	80038c4 <App_SystemCanDebugLog>
+ 8004988:	0003      	movs	r3, r0
             (g_appSystemContext.stopRequested == APP_TRUE) &&
- 8004986:	2b01      	cmp	r3, #1
- 8004988:	d10e      	bne.n	80049a8 <App_SystemProcess+0xa4>
+ 800498a:	2b01      	cmp	r3, #1
+ 800498c:	d10e      	bne.n	80049ac <App_SystemProcess+0xa4>
         {
             (void)APP_LOGD("LP",
- 800498a:	683b      	ldr	r3, [r7, #0]
- 800498c:	789b      	ldrb	r3, [r3, #2]
- 800498e:	001c      	movs	r4, r3
- 8004990:	f000 fce0 	bl	8005354 <App_TaskMainGetDecisionString>
- 8004994:	4b0d      	ldr	r3, [pc, #52]	@ (80049cc <App_SystemProcess+0xc8>)
- 8004996:	799b      	ldrb	r3, [r3, #6]
- 8004998:	4a12      	ldr	r2, [pc, #72]	@ (80049e4 <App_SystemProcess+0xe0>)
- 800499a:	4913      	ldr	r1, [pc, #76]	@ (80049e8 <App_SystemProcess+0xe4>)
- 800499c:	9301      	str	r3, [sp, #4]
- 800499e:	9000      	str	r0, [sp, #0]
- 80049a0:	0023      	movs	r3, r4
- 80049a2:	2001      	movs	r0, #1
- 80049a4:	f7fd fe1e 	bl	80025e4 <App_LogPrintf>
+ 800498e:	683b      	ldr	r3, [r7, #0]
+ 8004990:	789b      	ldrb	r3, [r3, #2]
+ 8004992:	001c      	movs	r4, r3
+ 8004994:	f000 fcde 	bl	8005354 <App_TaskMainGetDecisionString>
+ 8004998:	4b0d      	ldr	r3, [pc, #52]	@ (80049d0 <App_SystemProcess+0xc8>)
+ 800499a:	799b      	ldrb	r3, [r3, #6]
+ 800499c:	4a12      	ldr	r2, [pc, #72]	@ (80049e8 <App_SystemProcess+0xe0>)
+ 800499e:	4913      	ldr	r1, [pc, #76]	@ (80049ec <App_SystemProcess+0xe4>)
+ 80049a0:	9301      	str	r3, [sp, #4]
+ 80049a2:	9000      	str	r0, [sp, #0]
+ 80049a4:	0023      	movs	r3, r4
+ 80049a6:	2001      	movs	r0, #1
+ 80049a8:	f7fd fe1c 	bl	80025e4 <App_LogPrintf>
                            (unsigned int)p_schedulerContext->lastDispatchCount,
                            App_TaskMainGetDecisionString(),
                            (unsigned int)g_appSystemContext.stopRequested);
         }
 #endif
         App_SystemHandleIdle();
- 80049a8:	f7ff fdd8 	bl	800455c <App_SystemHandleIdle>
- 80049ac:	e005      	b.n	80049ba <App_SystemProcess+0xb6>
+ 80049ac:	f7ff fdd8 	bl	8004560 <App_SystemHandleIdle>
+ 80049b0:	e005      	b.n	80049be <App_SystemProcess+0xb6>
     }
     else
     {
         g_appSystemContext.lastLowPowerMode = APP_SYSTEM_LP_MODE_RUN;
- 80049ae:	4b07      	ldr	r3, [pc, #28]	@ (80049cc <App_SystemProcess+0xc8>)
- 80049b0:	2240      	movs	r2, #64	@ 0x40
- 80049b2:	2100      	movs	r1, #0
- 80049b4:	5499      	strb	r1, [r3, r2]
+ 80049b2:	4b07      	ldr	r3, [pc, #28]	@ (80049d0 <App_SystemProcess+0xc8>)
+ 80049b4:	2240      	movs	r2, #64	@ 0x40
+ 80049b6:	2100      	movs	r1, #0
+ 80049b8:	5499      	strb	r1, [r3, r2]
         App_SystemResetStopQualification();
- 80049b6:	f7fe ffa1 	bl	80038fc <App_SystemResetStopQualification>
+ 80049ba:	f7fe ff9f 	bl	80038fc <App_SystemResetStopQualification>
     }
 
     g_appSystemContext.loopCounter++;
- 80049ba:	4b04      	ldr	r3, [pc, #16]	@ (80049cc <App_SystemProcess+0xc8>)
- 80049bc:	691b      	ldr	r3, [r3, #16]
- 80049be:	1c5a      	adds	r2, r3, #1
- 80049c0:	4b02      	ldr	r3, [pc, #8]	@ (80049cc <App_SystemProcess+0xc8>)
- 80049c2:	611a      	str	r2, [r3, #16]
+ 80049be:	4b04      	ldr	r3, [pc, #16]	@ (80049d0 <App_SystemProcess+0xc8>)
+ 80049c0:	691b      	ldr	r3, [r3, #16]
+ 80049c2:	1c5a      	adds	r2, r3, #1
+ 80049c4:	4b02      	ldr	r3, [pc, #8]	@ (80049d0 <App_SystemProcess+0xc8>)
+ 80049c6:	611a      	str	r2, [r3, #16]
 }
- 80049c4:	46c0      	nop			@ (mov r8, r8)
- 80049c6:	46bd      	mov	sp, r7
- 80049c8:	b003      	add	sp, #12
- 80049ca:	bd90      	pop	{r4, r7, pc}
- 80049cc:	200006e4 	.word	0x200006e4
- 80049d0:	00000339 	.word	0x00000339
- 80049d4:	0800d22c 	.word	0x0800d22c
- 80049d8:	00000341 	.word	0x00000341
- 80049dc:	0800d5f0 	.word	0x0800d5f0
- 80049e0:	0800d2dc 	.word	0x0800d2dc
- 80049e4:	0800d614 	.word	0x0800d614
- 80049e8:	0800d478 	.word	0x0800d478
+ 80049c8:	46c0      	nop			@ (mov r8, r8)
+ 80049ca:	46bd      	mov	sp, r7
+ 80049cc:	b003      	add	sp, #12
+ 80049ce:	bd90      	pop	{r4, r7, pc}
+ 80049d0:	200006e4 	.word	0x200006e4
+ 80049d4:	00000342 	.word	0x00000342
+ 80049d8:	0800d22c 	.word	0x0800d22c
+ 80049dc:	0000034a 	.word	0x0000034a
+ 80049e0:	0800d604 	.word	0x0800d604
+ 80049e4:	0800d2dc 	.word	0x0800d2dc
+ 80049e8:	0800d628 	.word	0x0800d628
+ 80049ec:	0800d48c 	.word	0x0800d48c
 
-080049ec <App_SystemOnBeforeStopEnter>:
+080049f0 <App_SystemOnBeforeStopEnter>:
 
 AppStatus_t App_SystemOnBeforeStopEnter(void)
 {
- 80049ec:	b590      	push	{r4, r7, lr}
- 80049ee:	b083      	sub	sp, #12
- 80049f0:	af00      	add	r7, sp, #0
+ 80049f0:	b590      	push	{r4, r7, lr}
+ 80049f2:	b083      	sub	sp, #12
+ 80049f4:	af00      	add	r7, sp, #0
     AppStatus_t status;
 
     APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
- 80049f2:	4b11      	ldr	r3, [pc, #68]	@ (8004a38 <App_SystemOnBeforeStopEnter+0x4c>)
- 80049f4:	7a1b      	ldrb	r3, [r3, #8]
- 80049f6:	2b03      	cmp	r3, #3
- 80049f8:	d807      	bhi.n	8004a0a <App_SystemOnBeforeStopEnter+0x1e>
- 80049fa:	4a10      	ldr	r2, [pc, #64]	@ (8004a3c <App_SystemOnBeforeStopEnter+0x50>)
- 80049fc:	4b10      	ldr	r3, [pc, #64]	@ (8004a40 <App_SystemOnBeforeStopEnter+0x54>)
- 80049fe:	0019      	movs	r1, r3
- 8004a00:	2002      	movs	r0, #2
- 8004a02:	f7fc fe6b 	bl	80016dc <App_ErrorRecord>
- 8004a06:	2302      	movs	r3, #2
- 8004a08:	e012      	b.n	8004a30 <App_SystemOnBeforeStopEnter+0x44>
+ 80049f6:	4b11      	ldr	r3, [pc, #68]	@ (8004a3c <App_SystemOnBeforeStopEnter+0x4c>)
+ 80049f8:	7a1b      	ldrb	r3, [r3, #8]
+ 80049fa:	2b03      	cmp	r3, #3
+ 80049fc:	d807      	bhi.n	8004a0e <App_SystemOnBeforeStopEnter+0x1e>
+ 80049fe:	4a10      	ldr	r2, [pc, #64]	@ (8004a40 <App_SystemOnBeforeStopEnter+0x50>)
+ 8004a00:	4b10      	ldr	r3, [pc, #64]	@ (8004a44 <App_SystemOnBeforeStopEnter+0x54>)
+ 8004a02:	0019      	movs	r1, r3
+ 8004a04:	2002      	movs	r0, #2
+ 8004a06:	f7fc fe69 	bl	80016dc <App_ErrorRecord>
+ 8004a0a:	2302      	movs	r3, #2
+ 8004a0c:	e012      	b.n	8004a34 <App_SystemOnBeforeStopEnter+0x44>
     status = App_GpioLpOnBeforeStopEnter();
- 8004a0a:	1dfc      	adds	r4, r7, #7
- 8004a0c:	f7fd fba0 	bl	8002150 <App_GpioLpOnBeforeStopEnter>
- 8004a10:	0003      	movs	r3, r0
- 8004a12:	7023      	strb	r3, [r4, #0]
+ 8004a0e:	1dfc      	adds	r4, r7, #7
+ 8004a10:	f7fd fb9e 	bl	8002150 <App_GpioLpOnBeforeStopEnter>
+ 8004a14:	0003      	movs	r3, r0
+ 8004a16:	7023      	strb	r3, [r4, #0]
+#ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
- 8004a14:	f7fe ff56 	bl	80038c4 <App_SystemCanDebugLog>
- 8004a18:	0003      	movs	r3, r0
- 8004a1a:	2b01      	cmp	r3, #1
- 8004a1c:	d106      	bne.n	8004a2c <App_SystemOnBeforeStopEnter+0x40>
+ 8004a18:	f7fe ff54 	bl	80038c4 <App_SystemCanDebugLog>
+ 8004a1c:	0003      	movs	r3, r0
+ 8004a1e:	2b01      	cmp	r3, #1
+ 8004a20:	d106      	bne.n	8004a30 <App_SystemOnBeforeStopEnter+0x40>
     {
-        (void)APP_LOGI("LP", "before STOP status=%lu", (unsigned long)status);
- 8004a1e:	1dfb      	adds	r3, r7, #7
- 8004a20:	781b      	ldrb	r3, [r3, #0]
- 8004a22:	4a08      	ldr	r2, [pc, #32]	@ (8004a44 <App_SystemOnBeforeStopEnter+0x58>)
- 8004a24:	4908      	ldr	r1, [pc, #32]	@ (8004a48 <App_SystemOnBeforeStopEnter+0x5c>)
- 8004a26:	2002      	movs	r0, #2
- 8004a28:	f7fd fddc 	bl	80025e4 <App_LogPrintf>
+        (void)APP_LOGD("LP", "before STOP status=%lu", (unsigned long)status);
+ 8004a22:	1dfb      	adds	r3, r7, #7
+ 8004a24:	781b      	ldrb	r3, [r3, #0]
+ 8004a26:	4a08      	ldr	r2, [pc, #32]	@ (8004a48 <App_SystemOnBeforeStopEnter+0x58>)
+ 8004a28:	4908      	ldr	r1, [pc, #32]	@ (8004a4c <App_SystemOnBeforeStopEnter+0x5c>)
+ 8004a2a:	2001      	movs	r0, #1
+ 8004a2c:	f7fd fdda 	bl	80025e4 <App_LogPrintf>
     }
+#endif
     return status;
- 8004a2c:	1dfb      	adds	r3, r7, #7
- 8004a2e:	781b      	ldrb	r3, [r3, #0]
+ 8004a30:	1dfb      	adds	r3, r7, #7
+ 8004a32:	781b      	ldrb	r3, [r3, #0]
 }
- 8004a30:	0018      	movs	r0, r3
- 8004a32:	46bd      	mov	sp, r7
- 8004a34:	b003      	add	sp, #12
- 8004a36:	bd90      	pop	{r4, r7, pc}
- 8004a38:	200006e4 	.word	0x200006e4
- 8004a3c:	00000366 	.word	0x00000366
- 8004a40:	0800d22c 	.word	0x0800d22c
- 8004a44:	0800d64c 	.word	0x0800d64c
- 8004a48:	0800d478 	.word	0x0800d478
+ 8004a34:	0018      	movs	r0, r3
+ 8004a36:	46bd      	mov	sp, r7
+ 8004a38:	b003      	add	sp, #12
+ 8004a3a:	bd90      	pop	{r4, r7, pc}
+ 8004a3c:	200006e4 	.word	0x200006e4
+ 8004a40:	0000036f 	.word	0x0000036f
+ 8004a44:	0800d22c 	.word	0x0800d22c
+ 8004a48:	0800d660 	.word	0x0800d660
+ 8004a4c:	0800d48c 	.word	0x0800d48c
 
-08004a4c <App_SystemOnAfterStopExit>:
+08004a50 <App_SystemOnAfterStopExit>:
 
 AppStatus_t App_SystemOnAfterStopExit(void)
 {
- 8004a4c:	b590      	push	{r4, r7, lr}
- 8004a4e:	b085      	sub	sp, #20
- 8004a50:	af02      	add	r7, sp, #8
+ 8004a50:	b590      	push	{r4, r7, lr}
+ 8004a52:	b085      	sub	sp, #20
+ 8004a54:	af02      	add	r7, sp, #8
     AppStatus_t status;
 
     APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
- 8004a52:	4b14      	ldr	r3, [pc, #80]	@ (8004aa4 <App_SystemOnAfterStopExit+0x58>)
- 8004a54:	7a1b      	ldrb	r3, [r3, #8]
- 8004a56:	2b03      	cmp	r3, #3
- 8004a58:	d807      	bhi.n	8004a6a <App_SystemOnAfterStopExit+0x1e>
- 8004a5a:	4a13      	ldr	r2, [pc, #76]	@ (8004aa8 <App_SystemOnAfterStopExit+0x5c>)
- 8004a5c:	4b13      	ldr	r3, [pc, #76]	@ (8004aac <App_SystemOnAfterStopExit+0x60>)
- 8004a5e:	0019      	movs	r1, r3
- 8004a60:	2002      	movs	r0, #2
- 8004a62:	f7fc fe3b 	bl	80016dc <App_ErrorRecord>
- 8004a66:	2302      	movs	r3, #2
- 8004a68:	e017      	b.n	8004a9a <App_SystemOnAfterStopExit+0x4e>
+ 8004a56:	4b14      	ldr	r3, [pc, #80]	@ (8004aa8 <App_SystemOnAfterStopExit+0x58>)
+ 8004a58:	7a1b      	ldrb	r3, [r3, #8]
+ 8004a5a:	2b03      	cmp	r3, #3
+ 8004a5c:	d807      	bhi.n	8004a6e <App_SystemOnAfterStopExit+0x1e>
+ 8004a5e:	4a13      	ldr	r2, [pc, #76]	@ (8004aac <App_SystemOnAfterStopExit+0x5c>)
+ 8004a60:	4b13      	ldr	r3, [pc, #76]	@ (8004ab0 <App_SystemOnAfterStopExit+0x60>)
+ 8004a62:	0019      	movs	r1, r3
+ 8004a64:	2002      	movs	r0, #2
+ 8004a66:	f7fc fe39 	bl	80016dc <App_ErrorRecord>
+ 8004a6a:	2302      	movs	r3, #2
+ 8004a6c:	e017      	b.n	8004a9e <App_SystemOnAfterStopExit+0x4e>
     status = App_GpioLpOnAfterStopExit();
- 8004a6a:	1dfc      	adds	r4, r7, #7
- 8004a6c:	f7fd fc3a 	bl	80022e4 <App_GpioLpOnAfterStopExit>
- 8004a70:	0003      	movs	r3, r0
- 8004a72:	7023      	strb	r3, [r4, #0]
+ 8004a6e:	1dfc      	adds	r4, r7, #7
+ 8004a70:	f7fd fc38 	bl	80022e4 <App_GpioLpOnAfterStopExit>
+ 8004a74:	0003      	movs	r3, r0
+ 8004a76:	7023      	strb	r3, [r4, #0]
+#ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
- 8004a74:	f7fe ff26 	bl	80038c4 <App_SystemCanDebugLog>
- 8004a78:	0003      	movs	r3, r0
- 8004a7a:	2b01      	cmp	r3, #1
- 8004a7c:	d10b      	bne.n	8004a96 <App_SystemOnAfterStopExit+0x4a>
+ 8004a78:	f7fe ff24 	bl	80038c4 <App_SystemCanDebugLog>
+ 8004a7c:	0003      	movs	r3, r0
+ 8004a7e:	2b01      	cmp	r3, #1
+ 8004a80:	d10b      	bne.n	8004a9a <App_SystemOnAfterStopExit+0x4a>
     {
-        (void)APP_LOGI("LP", "after STOP status=%lu wake=%s", (unsigned long)status, App_SystemGetWakeSourceString());
- 8004a7e:	1dfb      	adds	r3, r7, #7
- 8004a80:	781c      	ldrb	r4, [r3, #0]
- 8004a82:	f7ff f917 	bl	8003cb4 <App_SystemGetWakeSourceString>
- 8004a86:	0003      	movs	r3, r0
- 8004a88:	4a09      	ldr	r2, [pc, #36]	@ (8004ab0 <App_SystemOnAfterStopExit+0x64>)
- 8004a8a:	490a      	ldr	r1, [pc, #40]	@ (8004ab4 <App_SystemOnAfterStopExit+0x68>)
- 8004a8c:	9300      	str	r3, [sp, #0]
- 8004a8e:	0023      	movs	r3, r4
- 8004a90:	2002      	movs	r0, #2
- 8004a92:	f7fd fda7 	bl	80025e4 <App_LogPrintf>
+        (void)APP_LOGD("LP", "after STOP status=%lu wake=%s", (unsigned long)status, App_SystemGetWakeSourceString());
+ 8004a82:	1dfb      	adds	r3, r7, #7
+ 8004a84:	781c      	ldrb	r4, [r3, #0]
+ 8004a86:	f7ff f915 	bl	8003cb4 <App_SystemGetWakeSourceString>
+ 8004a8a:	0003      	movs	r3, r0
+ 8004a8c:	4a09      	ldr	r2, [pc, #36]	@ (8004ab4 <App_SystemOnAfterStopExit+0x64>)
+ 8004a8e:	490a      	ldr	r1, [pc, #40]	@ (8004ab8 <App_SystemOnAfterStopExit+0x68>)
+ 8004a90:	9300      	str	r3, [sp, #0]
+ 8004a92:	0023      	movs	r3, r4
+ 8004a94:	2001      	movs	r0, #1
+ 8004a96:	f7fd fda5 	bl	80025e4 <App_LogPrintf>
     }
+#endif
     return status;
- 8004a96:	1dfb      	adds	r3, r7, #7
- 8004a98:	781b      	ldrb	r3, [r3, #0]
+ 8004a9a:	1dfb      	adds	r3, r7, #7
+ 8004a9c:	781b      	ldrb	r3, [r3, #0]
 }
- 8004a9a:	0018      	movs	r0, r3
- 8004a9c:	46bd      	mov	sp, r7
- 8004a9e:	b003      	add	sp, #12
- 8004aa0:	bd90      	pop	{r4, r7, pc}
- 8004aa2:	46c0      	nop			@ (mov r8, r8)
- 8004aa4:	200006e4 	.word	0x200006e4
- 8004aa8:	00000373 	.word	0x00000373
- 8004aac:	0800d22c 	.word	0x0800d22c
- 8004ab0:	0800d664 	.word	0x0800d664
- 8004ab4:	0800d478 	.word	0x0800d478
+ 8004a9e:	0018      	movs	r0, r3
+ 8004aa0:	46bd      	mov	sp, r7
+ 8004aa2:	b003      	add	sp, #12
+ 8004aa4:	bd90      	pop	{r4, r7, pc}
+ 8004aa6:	46c0      	nop			@ (mov r8, r8)
+ 8004aa8:	200006e4 	.word	0x200006e4
+ 8004aac:	0000037e 	.word	0x0000037e
+ 8004ab0:	0800d22c 	.word	0x0800d22c
+ 8004ab4:	0800d678 	.word	0x0800d678
+ 8004ab8:	0800d48c 	.word	0x0800d48c
 
-08004ab8 <App_SystemPrepareForStop>:
+08004abc <App_SystemPrepareForStop>:
 
 AppStatus_t App_SystemPrepareForStop(void)
 {
- 8004ab8:	b580      	push	{r7, lr}
- 8004aba:	af00      	add	r7, sp, #0
+ 8004abc:	b580      	push	{r7, lr}
+ 8004abe:	af00      	add	r7, sp, #0
     return App_SystemOnBeforeStopEnter();
- 8004abc:	f7ff ff96 	bl	80049ec <App_SystemOnBeforeStopEnter>
- 8004ac0:	0003      	movs	r3, r0
+ 8004ac0:	f7ff ff96 	bl	80049f0 <App_SystemOnBeforeStopEnter>
+ 8004ac4:	0003      	movs	r3, r0
 }
- 8004ac2:	0018      	movs	r0, r3
- 8004ac4:	46bd      	mov	sp, r7
- 8004ac6:	bd80      	pop	{r7, pc}
+ 8004ac6:	0018      	movs	r0, r3
+ 8004ac8:	46bd      	mov	sp, r7
+ 8004aca:	bd80      	pop	{r7, pc}
 
-08004ac8 <App_SystemRecoverFromStop>:
+08004acc <App_SystemRecoverFromStop>:
 
 AppStatus_t App_SystemRecoverFromStop(void)
 {
- 8004ac8:	b580      	push	{r7, lr}
- 8004aca:	af00      	add	r7, sp, #0
+ 8004acc:	b580      	push	{r7, lr}
+ 8004ace:	af00      	add	r7, sp, #0
     return App_SystemOnAfterStopExit();
- 8004acc:	f7ff ffbe 	bl	8004a4c <App_SystemOnAfterStopExit>
- 8004ad0:	0003      	movs	r3, r0
+ 8004ad0:	f7ff ffbe 	bl	8004a50 <App_SystemOnAfterStopExit>
+ 8004ad4:	0003      	movs	r3, r0
 }
- 8004ad2:	0018      	movs	r0, r3
- 8004ad4:	46bd      	mov	sp, r7
- 8004ad6:	bd80      	pop	{r7, pc}
+ 8004ad6:	0018      	movs	r0, r3
+ 8004ad8:	46bd      	mov	sp, r7
+ 8004ada:	bd80      	pop	{r7, pc}
 
-08004ad8 <App_SystemRequestLowPower>:
+08004adc <App_SystemRequestLowPower>:
     APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
     return App_GpioLpSetNbiotPowered(powered);
 }
 
 AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
 {
- 8004ad8:	b5f0      	push	{r4, r5, r6, r7, lr}
- 8004ada:	b089      	sub	sp, #36	@ 0x24
- 8004adc:	af04      	add	r7, sp, #16
- 8004ade:	0002      	movs	r2, r0
- 8004ae0:	1dfb      	adds	r3, r7, #7
- 8004ae2:	701a      	strb	r2, [r3, #0]
+ 8004adc:	b5f0      	push	{r4, r5, r6, r7, lr}
+ 8004ade:	b089      	sub	sp, #36	@ 0x24
+ 8004ae0:	af04      	add	r7, sp, #16
+ 8004ae2:	0002      	movs	r2, r0
+ 8004ae4:	1dfb      	adds	r3, r7, #7
+ 8004ae6:	701a      	strb	r2, [r3, #0]
     uint8_t previousRequest;
 #ifdef DEBUG
     const AppTaskMainSummary_t *p_mainSummary;
 #endif
 
     APP_RETURN_IF_FALSE((allowStop == APP_FALSE) || (allowStop == APP_TRUE), APP_STATUS_INVALID_PARAM);
- 8004ae4:	1dfb      	adds	r3, r7, #7
- 8004ae6:	781b      	ldrb	r3, [r3, #0]
- 8004ae8:	2b00      	cmp	r3, #0
- 8004aea:	d00b      	beq.n	8004b04 <App_SystemRequestLowPower+0x2c>
- 8004aec:	1dfb      	adds	r3, r7, #7
- 8004aee:	781b      	ldrb	r3, [r3, #0]
- 8004af0:	2b01      	cmp	r3, #1
- 8004af2:	d007      	beq.n	8004b04 <App_SystemRequestLowPower+0x2c>
- 8004af4:	4a24      	ldr	r2, [pc, #144]	@ (8004b88 <App_SystemRequestLowPower+0xb0>)
- 8004af6:	4b25      	ldr	r3, [pc, #148]	@ (8004b8c <App_SystemRequestLowPower+0xb4>)
- 8004af8:	0019      	movs	r1, r3
- 8004afa:	2001      	movs	r0, #1
- 8004afc:	f7fc fdee 	bl	80016dc <App_ErrorRecord>
- 8004b00:	2301      	movs	r3, #1
- 8004b02:	e03c      	b.n	8004b7e <App_SystemRequestLowPower+0xa6>
+ 8004ae8:	1dfb      	adds	r3, r7, #7
+ 8004aea:	781b      	ldrb	r3, [r3, #0]
+ 8004aec:	2b00      	cmp	r3, #0
+ 8004aee:	d00c      	beq.n	8004b0a <App_SystemRequestLowPower+0x2e>
+ 8004af0:	1dfb      	adds	r3, r7, #7
+ 8004af2:	781b      	ldrb	r3, [r3, #0]
+ 8004af4:	2b01      	cmp	r3, #1
+ 8004af6:	d008      	beq.n	8004b0a <App_SystemRequestLowPower+0x2e>
+ 8004af8:	23e8      	movs	r3, #232	@ 0xe8
+ 8004afa:	009a      	lsls	r2, r3, #2
+ 8004afc:	4b23      	ldr	r3, [pc, #140]	@ (8004b8c <App_SystemRequestLowPower+0xb0>)
+ 8004afe:	0019      	movs	r1, r3
+ 8004b00:	2001      	movs	r0, #1
+ 8004b02:	f7fc fdeb 	bl	80016dc <App_ErrorRecord>
+ 8004b06:	2301      	movs	r3, #1
+ 8004b08:	e03c      	b.n	8004b84 <App_SystemRequestLowPower+0xa8>
     previousRequest = g_appSystemContext.stopRequested;
- 8004b04:	230f      	movs	r3, #15
- 8004b06:	18fb      	adds	r3, r7, r3
- 8004b08:	4a21      	ldr	r2, [pc, #132]	@ (8004b90 <App_SystemRequestLowPower+0xb8>)
- 8004b0a:	7992      	ldrb	r2, [r2, #6]
- 8004b0c:	701a      	strb	r2, [r3, #0]
+ 8004b0a:	230f      	movs	r3, #15
+ 8004b0c:	18fb      	adds	r3, r7, r3
+ 8004b0e:	4a20      	ldr	r2, [pc, #128]	@ (8004b90 <App_SystemRequestLowPower+0xb4>)
+ 8004b10:	7992      	ldrb	r2, [r2, #6]
+ 8004b12:	701a      	strb	r2, [r3, #0]
     g_appSystemContext.stopRequested = allowStop;
- 8004b0e:	4b20      	ldr	r3, [pc, #128]	@ (8004b90 <App_SystemRequestLowPower+0xb8>)
- 8004b10:	1dfa      	adds	r2, r7, #7
- 8004b12:	7812      	ldrb	r2, [r2, #0]
- 8004b14:	719a      	strb	r2, [r3, #6]
+ 8004b14:	4b1e      	ldr	r3, [pc, #120]	@ (8004b90 <App_SystemRequestLowPower+0xb4>)
+ 8004b16:	1dfa      	adds	r2, r7, #7
+ 8004b18:	7812      	ldrb	r2, [r2, #0]
+ 8004b1a:	719a      	strb	r2, [r3, #6]
     if (allowStop == APP_TRUE)
- 8004b16:	1dfb      	adds	r3, r7, #7
- 8004b18:	781b      	ldrb	r3, [r3, #0]
- 8004b1a:	2b01      	cmp	r3, #1
- 8004b1c:	d105      	bne.n	8004b2a <App_SystemRequestLowPower+0x52>
+ 8004b1c:	1dfb      	adds	r3, r7, #7
+ 8004b1e:	781b      	ldrb	r3, [r3, #0]
+ 8004b20:	2b01      	cmp	r3, #1
+ 8004b22:	d105      	bne.n	8004b30 <App_SystemRequestLowPower+0x54>
     {
         g_appSystemContext.lastStopRequestTickMs = HAL_GetTick();
- 8004b1e:	f002 ff95 	bl	8007a4c <HAL_GetTick>
- 8004b22:	0002      	movs	r2, r0
- 8004b24:	4b1a      	ldr	r3, [pc, #104]	@ (8004b90 <App_SystemRequestLowPower+0xb8>)
- 8004b26:	635a      	str	r2, [r3, #52]	@ 0x34
- 8004b28:	e001      	b.n	8004b2e <App_SystemRequestLowPower+0x56>
+ 8004b24:	f002 ff92 	bl	8007a4c <HAL_GetTick>
+ 8004b28:	0002      	movs	r2, r0
+ 8004b2a:	4b19      	ldr	r3, [pc, #100]	@ (8004b90 <App_SystemRequestLowPower+0xb4>)
+ 8004b2c:	635a      	str	r2, [r3, #52]	@ 0x34
+ 8004b2e:	e001      	b.n	8004b34 <App_SystemRequestLowPower+0x58>
     }
     else
     {
         App_SystemResetStopQualification();
- 8004b2a:	f7fe fee7 	bl	80038fc <App_SystemResetStopQualification>
+ 8004b30:	f7fe fee4 	bl	80038fc <App_SystemResetStopQualification>
     }
 #ifdef DEBUG
     p_mainSummary = App_TaskMainGetSummary();
- 8004b2e:	f000 fbff 	bl	8005330 <App_TaskMainGetSummary>
- 8004b32:	0003      	movs	r3, r0
- 8004b34:	60bb      	str	r3, [r7, #8]
+ 8004b34:	f000 fbfc 	bl	8005330 <App_TaskMainGetSummary>
+ 8004b38:	0003      	movs	r3, r0
+ 8004b3a:	60bb      	str	r3, [r7, #8]
     if ((previousRequest != allowStop) && (App_SystemCanDebugLog() == APP_TRUE))
- 8004b36:	230f      	movs	r3, #15
- 8004b38:	18fa      	adds	r2, r7, r3
- 8004b3a:	1dfb      	adds	r3, r7, #7
- 8004b3c:	7812      	ldrb	r2, [r2, #0]
- 8004b3e:	781b      	ldrb	r3, [r3, #0]
- 8004b40:	429a      	cmp	r2, r3
- 8004b42:	d01b      	beq.n	8004b7c <App_SystemRequestLowPower+0xa4>
- 8004b44:	f7fe febe 	bl	80038c4 <App_SystemCanDebugLog>
- 8004b48:	0003      	movs	r3, r0
- 8004b4a:	2b01      	cmp	r3, #1
- 8004b4c:	d116      	bne.n	8004b7c <App_SystemRequestLowPower+0xa4>
+ 8004b3c:	230f      	movs	r3, #15
+ 8004b3e:	18fa      	adds	r2, r7, r3
+ 8004b40:	1dfb      	adds	r3, r7, #7
+ 8004b42:	7812      	ldrb	r2, [r2, #0]
+ 8004b44:	781b      	ldrb	r3, [r3, #0]
+ 8004b46:	429a      	cmp	r2, r3
+ 8004b48:	d01b      	beq.n	8004b82 <App_SystemRequestLowPower+0xa6>
+ 8004b4a:	f7fe febb 	bl	80038c4 <App_SystemCanDebugLog>
+ 8004b4e:	0003      	movs	r3, r0
+ 8004b50:	2b01      	cmp	r3, #1
+ 8004b52:	d116      	bne.n	8004b82 <App_SystemRequestLowPower+0xa6>
     {
         (void)APP_LOGD("LP",
- 8004b4e:	1dfb      	adds	r3, r7, #7
- 8004b50:	781c      	ldrb	r4, [r3, #0]
- 8004b52:	f000 fbff 	bl	8005354 <App_TaskMainGetDecisionString>
- 8004b56:	0005      	movs	r5, r0
- 8004b58:	68bb      	ldr	r3, [r7, #8]
- 8004b5a:	689a      	ldr	r2, [r3, #8]
- 8004b5c:	68bb      	ldr	r3, [r7, #8]
- 8004b5e:	68db      	ldr	r3, [r3, #12]
- 8004b60:	490b      	ldr	r1, [pc, #44]	@ (8004b90 <App_SystemRequestLowPower+0xb8>)
- 8004b62:	79c9      	ldrb	r1, [r1, #7]
- 8004b64:	000e      	movs	r6, r1
- 8004b66:	480b      	ldr	r0, [pc, #44]	@ (8004b94 <App_SystemRequestLowPower+0xbc>)
- 8004b68:	490b      	ldr	r1, [pc, #44]	@ (8004b98 <App_SystemRequestLowPower+0xc0>)
- 8004b6a:	9603      	str	r6, [sp, #12]
- 8004b6c:	9302      	str	r3, [sp, #8]
- 8004b6e:	9201      	str	r2, [sp, #4]
- 8004b70:	9500      	str	r5, [sp, #0]
- 8004b72:	0023      	movs	r3, r4
- 8004b74:	0002      	movs	r2, r0
- 8004b76:	2001      	movs	r0, #1
- 8004b78:	f7fd fd34 	bl	80025e4 <App_LogPrintf>
+ 8004b54:	1dfb      	adds	r3, r7, #7
+ 8004b56:	781c      	ldrb	r4, [r3, #0]
+ 8004b58:	f000 fbfc 	bl	8005354 <App_TaskMainGetDecisionString>
+ 8004b5c:	0005      	movs	r5, r0
+ 8004b5e:	68bb      	ldr	r3, [r7, #8]
+ 8004b60:	689a      	ldr	r2, [r3, #8]
+ 8004b62:	68bb      	ldr	r3, [r7, #8]
+ 8004b64:	68db      	ldr	r3, [r3, #12]
+ 8004b66:	490a      	ldr	r1, [pc, #40]	@ (8004b90 <App_SystemRequestLowPower+0xb4>)
+ 8004b68:	79c9      	ldrb	r1, [r1, #7]
+ 8004b6a:	000e      	movs	r6, r1
+ 8004b6c:	4809      	ldr	r0, [pc, #36]	@ (8004b94 <App_SystemRequestLowPower+0xb8>)
+ 8004b6e:	490a      	ldr	r1, [pc, #40]	@ (8004b98 <App_SystemRequestLowPower+0xbc>)
+ 8004b70:	9603      	str	r6, [sp, #12]
+ 8004b72:	9302      	str	r3, [sp, #8]
+ 8004b74:	9201      	str	r2, [sp, #4]
+ 8004b76:	9500      	str	r5, [sp, #0]
+ 8004b78:	0023      	movs	r3, r4
+ 8004b7a:	0002      	movs	r2, r0
+ 8004b7c:	2001      	movs	r0, #1
+ 8004b7e:	f7fd fd31 	bl	80025e4 <App_LogPrintf>
                        (unsigned long)p_mainSummary->busyCount,
                        (unsigned long)p_mainSummary->staleCount,
                        (unsigned int)g_appSystemContext.stopQualificationCount);
     }
 #endif
     return APP_STATUS_OK;
- 8004b7c:	2300      	movs	r3, #0
+ 8004b82:	2300      	movs	r3, #0
 }
- 8004b7e:	0018      	movs	r0, r3
- 8004b80:	46bd      	mov	sp, r7
- 8004b82:	b005      	add	sp, #20
- 8004b84:	bdf0      	pop	{r4, r5, r6, r7, pc}
- 8004b86:	46c0      	nop			@ (mov r8, r8)
- 8004b88:	00000393 	.word	0x00000393
+ 8004b84:	0018      	movs	r0, r3
+ 8004b86:	46bd      	mov	sp, r7
+ 8004b88:	b005      	add	sp, #20
+ 8004b8a:	bdf0      	pop	{r4, r5, r6, r7, pc}
  8004b8c:	0800d22c 	.word	0x0800d22c
  8004b90:	200006e4 	.word	0x200006e4
- 8004b94:	0800d684 	.word	0x0800d684
- 8004b98:	0800d478 	.word	0x0800d478
+ 8004b94:	0800d698 	.word	0x0800d698
+ 8004b98:	0800d48c 	.word	0x0800d48c
 
 08004b9c <App_SystemGetContext>:
 
@@ -11784,7 +11794,7 @@ const char *App_SystemGetVersionString(void)
  8004bb2:	0018      	movs	r0, r3
  8004bb4:	46bd      	mov	sp, r7
  8004bb6:	bd80      	pop	{r7, pc}
- 8004bb8:	0800dd3c 	.word	0x0800dd3c
+ 8004bb8:	0800dd50 	.word	0x0800dd50
 
 08004bbc <App_TaskAuxIf_InitBus>:
 #define APP_TASK_AUX_STATE_INIT                 (0u)
@@ -11966,7 +11976,7 @@ AppStatus_t App_TaskAux(void *p_context)
  8004cae:	46bd      	mov	sp, r7
  8004cb0:	b004      	add	sp, #16
  8004cb2:	bd80      	pop	{r7, pc}
- 8004cb4:	0800d6c0 	.word	0x0800d6c0
+ 8004cb4:	0800d6d4 	.word	0x0800d6d4
 
 08004cb8 <App_TaskDebugIf_ProcessConsole>:
 
@@ -12059,9 +12069,9 @@ AppStatus_t App_TaskDebug(void *p_context)
  8004d36:	b004      	add	sp, #16
  8004d38:	bdb0      	pop	{r4, r5, r7, pc}
  8004d3a:	46c0      	nop			@ (mov r8, r8)
- 8004d3c:	0800d6dc 	.word	0x0800d6dc
- 8004d40:	0800d6fc 	.word	0x0800d6fc
- 8004d44:	0800d71c 	.word	0x0800d71c
+ 8004d3c:	0800d6f0 	.word	0x0800d6f0
+ 8004d40:	0800d710 	.word	0x0800d710
+ 8004d44:	0800d730 	.word	0x0800d730
 
 08004d48 <App_HwReadEsiInterrupt>:
 {
@@ -12240,7 +12250,7 @@ AppStatus_t App_TaskEsi(void *p_context)
  8004e42:	b004      	add	sp, #16
  8004e44:	bd80      	pop	{r7, pc}
  8004e46:	46c0      	nop			@ (mov r8, r8)
- 8004e48:	0800d724 	.word	0x0800d724
+ 8004e48:	0800d738 	.word	0x0800d738
 
 08004e4c <App_TaskHousekeepingIf_SnapshotDiagnostics>:
 #include "app_build_config.h"
@@ -12393,7 +12403,7 @@ AppStatus_t App_TaskHousekeeping(void *p_context)
  8004f16:	b004      	add	sp, #16
  8004f18:	bd80      	pop	{r7, pc}
  8004f1a:	46c0      	nop			@ (mov r8, r8)
- 8004f1c:	0800d740 	.word	0x0800d740
+ 8004f1c:	0800d754 	.word	0x0800d754
 
 08004f20 <App_TaskMainGetTimeoutMs>:
 static AppTaskMainMonitor_t g_appTaskMainMonitors[APP_TASK_ID_COUNT];
@@ -13054,12 +13064,12 @@ AppStatus_t App_TaskMain(void *p_context)
  80052e2:	b00f      	add	sp, #60	@ 0x3c
  80052e4:	bdf0      	pop	{r4, r5, r6, r7, pc}
  80052e6:	46c0      	nop			@ (mov r8, r8)
- 80052e8:	0800d764 	.word	0x0800d764
+ 80052e8:	0800d778 	.word	0x0800d778
  80052ec:	20000778 	.word	0x20000778
  80052f0:	20000848 	.word	0x20000848
  80052f4:	20000860 	.word	0x20000860
- 80052f8:	0800d780 	.word	0x0800d780
- 80052fc:	0800d7b4 	.word	0x0800d7b4
+ 80052f8:	0800d794 	.word	0x0800d794
+ 80052fc:	0800d7c8 	.word	0x0800d7c8
 
 08005300 <App_TaskMainGetMonitor>:
 
@@ -13167,13 +13177,13 @@ const char *App_TaskMainGetDecisionString(void)
  8005384:	bd80      	pop	{r7, pc}
  8005386:	46c0      	nop			@ (mov r8, r8)
  8005388:	20000848 	.word	0x20000848
- 800538c:	0800dd44 	.word	0x0800dd44
- 8005390:	0800d7bc 	.word	0x0800d7bc
- 8005394:	0800d7c4 	.word	0x0800d7c4
- 8005398:	0800d7cc 	.word	0x0800d7cc
- 800539c:	0800d7d8 	.word	0x0800d7d8
- 80053a0:	0800d7e4 	.word	0x0800d7e4
- 80053a4:	0800d7f4 	.word	0x0800d7f4
+ 800538c:	0800dd58 	.word	0x0800dd58
+ 8005390:	0800d7d0 	.word	0x0800d7d0
+ 8005394:	0800d7d8 	.word	0x0800d7d8
+ 8005398:	0800d7e0 	.word	0x0800d7e0
+ 800539c:	0800d7ec 	.word	0x0800d7ec
+ 80053a0:	0800d7f8 	.word	0x0800d7f8
+ 80053a4:	0800d808 	.word	0x0800d808
 
 080053a8 <App_TaskMeterIf_InitProtocol>:
 
@@ -13378,7 +13388,7 @@ AppStatus_t App_TaskMeter(void *p_context)
  80054ba:	46bd      	mov	sp, r7
  80054bc:	b004      	add	sp, #16
  80054be:	bd80      	pop	{r7, pc}
- 80054c0:	0800d7fc 	.word	0x0800d7fc
+ 80054c0:	0800d810 	.word	0x0800d810
 
 080054c4 <App_TaskNbiotIf_InitContext>:
 #include "app_build_config.h"
@@ -13583,7 +13593,7 @@ AppStatus_t App_TaskNbiot(void *p_context)
  80055d6:	46bd      	mov	sp, r7
  80055d8:	b004      	add	sp, #16
  80055da:	bd80      	pop	{r7, pc}
- 80055dc:	0800d81c 	.word	0x0800d81c
+ 80055dc:	0800d830 	.word	0x0800d830
 
 080055e0 <App_HwReadNfcEvent>:
 {
@@ -13761,7 +13771,7 @@ AppStatus_t App_TaskNfc(void *p_context)
  80056d6:	b004      	add	sp, #16
  80056d8:	bd80      	pop	{r7, pc}
  80056da:	46c0      	nop			@ (mov r8, r8)
- 80056dc:	0800d83c 	.word	0x0800d83c
+ 80056dc:	0800d850 	.word	0x0800d850
 
 080056e0 <App_TaskPowerIf_LoadPolicy>:
 
@@ -13798,8 +13808,8 @@ static AppStatus_t App_TaskPowerIf_LoadPolicy(void)
  80056fe:	46bd      	mov	sp, r7
  8005700:	bd80      	pop	{r7, pc}
  8005702:	46c0      	nop			@ (mov r8, r8)
- 8005704:	0800d858 	.word	0x0800d858
- 8005708:	0800d898 	.word	0x0800d898
+ 8005704:	0800d86c 	.word	0x0800d86c
+ 8005708:	0800d8ac 	.word	0x0800d8ac
 
 0800570c <App_TaskPowerIf_EvaluatePowerConditions>:
 
@@ -13844,15 +13854,15 @@ static AppStatus_t App_TaskPowerIf_EvaluatePowerConditions(void)
  8005744:	1dbb      	adds	r3, r7, #6
  8005746:	781b      	ldrb	r3, [r3, #0]
  8005748:	0018      	movs	r0, r3
- 800574a:	f7ff f9c5 	bl	8004ad8 <App_SystemRequestLowPower>
+ 800574a:	f7ff f9c7 	bl	8004adc <App_SystemRequestLowPower>
  800574e:	0003      	movs	r3, r0
 }
  8005750:	0018      	movs	r0, r3
  8005752:	46bd      	mov	sp, r7
  8005754:	b003      	add	sp, #12
  8005756:	bd90      	pop	{r4, r7, pc}
- 8005758:	0800d8a0 	.word	0x0800d8a0
- 800575c:	0800d898 	.word	0x0800d898
+ 8005758:	0800d8b4 	.word	0x0800d8b4
+ 800575c:	0800d8ac 	.word	0x0800d8ac
 
 08005760 <App_TaskPower>:
 
@@ -14068,11 +14078,11 @@ AppStatus_t App_TaskPower(void *p_context)
  80058b6:	b006      	add	sp, #24
  80058b8:	bdb0      	pop	{r4, r5, r7, pc}
  80058ba:	46c0      	nop			@ (mov r8, r8)
- 80058bc:	0800d8c0 	.word	0x0800d8c0
- 80058c0:	0800d8e0 	.word	0x0800d8e0
- 80058c4:	0800d898 	.word	0x0800d898
- 80058c8:	0800d8f4 	.word	0x0800d8f4
- 80058cc:	0800d918 	.word	0x0800d918
+ 80058bc:	0800d8d4 	.word	0x0800d8d4
+ 80058c0:	0800d8f4 	.word	0x0800d8f4
+ 80058c4:	0800d8ac 	.word	0x0800d8ac
+ 80058c8:	0800d908 	.word	0x0800d908
+ 80058cc:	0800d92c 	.word	0x0800d92c
 
 080058d0 <App_TaskRtcIf_InitService>:
 #include "app_system.h"
@@ -14103,8 +14113,8 @@ static AppStatus_t App_TaskRtcIf_InitService(void)
  80058ee:	46c0      	nop			@ (mov r8, r8)
  80058f0:	20000864 	.word	0x20000864
  80058f4:	0000ea60 	.word	0x0000ea60
- 80058f8:	0800d944 	.word	0x0800d944
- 80058fc:	0800d968 	.word	0x0800d968
+ 80058f8:	0800d958 	.word	0x0800d958
+ 80058fc:	0800d97c 	.word	0x0800d97c
 
 08005900 <App_TaskRtcIf_CheckSchedule>:
 
@@ -14133,7 +14143,7 @@ static AppStatus_t App_TaskRtcIf_CheckSchedule(uint8_t eventPending)
  8005924:	1c5a      	adds	r2, r3, #1
  8005926:	4b09      	ldr	r3, [pc, #36]	@ (800594c <App_TaskRtcIf_CheckSchedule+0x4c>)
  8005928:	601a      	str	r2, [r3, #0]
-        APP_LOGI("RTC", "wake handled: count=%lu wake=%s",
+        APP_LOGD("RTC", "wake handled: count=%lu wake=%s",
  800592a:	4b08      	ldr	r3, [pc, #32]	@ (800594c <App_TaskRtcIf_CheckSchedule+0x4c>)
  800592c:	681c      	ldr	r4, [r3, #0]
  800592e:	f7fe f9c1 	bl	8003cb4 <App_SystemGetWakeSourceString>
@@ -14142,7 +14152,7 @@ static AppStatus_t App_TaskRtcIf_CheckSchedule(uint8_t eventPending)
  8005936:	4907      	ldr	r1, [pc, #28]	@ (8005954 <App_TaskRtcIf_CheckSchedule+0x54>)
  8005938:	9300      	str	r3, [sp, #0]
  800593a:	0023      	movs	r3, r4
- 800593c:	2002      	movs	r0, #2
+ 800593c:	2001      	movs	r0, #1
  800593e:	f7fc fe51 	bl	80025e4 <App_LogPrintf>
                              (unsigned long)g_appTaskRtcWakeHandleCount,
                              App_SystemGetWakeSourceString());
@@ -14156,8 +14166,8 @@ static AppStatus_t App_TaskRtcIf_CheckSchedule(uint8_t eventPending)
  8005948:	b003      	add	sp, #12
  800594a:	bd90      	pop	{r4, r7, pc}
  800594c:	20000864 	.word	0x20000864
- 8005950:	0800d96c 	.word	0x0800d96c
- 8005954:	0800d968 	.word	0x0800d968
+ 8005950:	0800d980 	.word	0x0800d980
+ 8005954:	0800d97c 	.word	0x0800d97c
 
 08005958 <App_TaskRtcIf_ApplySync>:
 
@@ -14170,11 +14180,11 @@ static AppStatus_t App_TaskRtcIf_ApplySync(void)
      * - compute next wake alarm policy
      * - current implementation uses fixed periodic RTC wake-up in system layer
      */
-    APP_LOGI("RTC", "schedule confirmed: periodic wake=%lu ms",
+    APP_LOGD("RTC", "schedule confirmed: periodic wake=%lu ms",
  800595c:	4b04      	ldr	r3, [pc, #16]	@ (8005970 <App_TaskRtcIf_ApplySync+0x18>)
  800595e:	4a05      	ldr	r2, [pc, #20]	@ (8005974 <App_TaskRtcIf_ApplySync+0x1c>)
  8005960:	4905      	ldr	r1, [pc, #20]	@ (8005978 <App_TaskRtcIf_ApplySync+0x20>)
- 8005962:	2002      	movs	r0, #2
+ 8005962:	2001      	movs	r0, #1
  8005964:	f7fc fe3e 	bl	80025e4 <App_LogPrintf>
                          (unsigned long)APP_RTC_WAKEUP_PERIOD_MS);
     return APP_STATUS_OK;
@@ -14184,8 +14194,8 @@ static AppStatus_t App_TaskRtcIf_ApplySync(void)
  800596c:	46bd      	mov	sp, r7
  800596e:	bd80      	pop	{r7, pc}
  8005970:	0000ea60 	.word	0x0000ea60
- 8005974:	0800d98c 	.word	0x0800d98c
- 8005978:	0800d968 	.word	0x0800d968
+ 8005974:	0800d9a0 	.word	0x0800d9a0
+ 8005978:	0800d97c 	.word	0x0800d97c
 
 0800597c <App_TaskRtc>:
 
@@ -14326,7 +14336,7 @@ AppStatus_t App_TaskRtc(void *p_context)
  8005a5e:	b004      	add	sp, #16
  8005a60:	bd80      	pop	{r7, pc}
  8005a62:	46c0      	nop			@ (mov r8, r8)
- 8005a64:	0800d9b8 	.word	0x0800d9b8
+ 8005a64:	0800d9cc 	.word	0x0800d9cc
 
 08005a68 <App_TaskServerIf_InitSession>:
 #include "app_task_state_defs.h"
@@ -14508,7 +14518,7 @@ AppStatus_t App_TaskServer(void *p_context)
  8005b5a:	46bd      	mov	sp, r7
  8005b5c:	b004      	add	sp, #16
  8005b5e:	bd80      	pop	{r7, pc}
- 8005b60:	0800d9d4 	.word	0x0800d9d4
+ 8005b60:	0800d9e8 	.word	0x0800d9e8
 
 08005b64 <App_TaskStorageIf_LoadParameterBlocks>:
 
@@ -14665,7 +14675,7 @@ AppStatus_t App_TaskStorage(void *p_context)
  8005c32:	46bd      	mov	sp, r7
  8005c34:	b004      	add	sp, #16
  8005c36:	bd80      	pop	{r7, pc}
- 8005c38:	0800d9f4 	.word	0x0800d9f4
+ 8005c38:	0800da08 	.word	0x0800da08
 
 08005c3c <App_TaskWatchdogIf_GetExternalPulseTicks>:
 #include "app_hw.h"
@@ -14823,7 +14833,7 @@ static AppStatus_t App_TaskWatchdogIf_InitExternalFeed(void)
  8005d0a:	bd80      	pop	{r7, pc}
  8005d0c:	20000da8 	.word	0x20000da8
  8005d10:	40011400 	.word	0x40011400
- 8005d14:	0800da14 	.word	0x0800da14
+ 8005d14:	0800da28 	.word	0x0800da28
  8005d18:	20000868 	.word	0x20000868
 
 08005d1c <App_TaskWatchdogIf_FeedExternalWatchdog>:
@@ -14925,7 +14935,7 @@ static AppStatus_t App_TaskWatchdogIf_FeedExternalWatchdog(void)
  8005dbe:	46c0      	nop			@ (mov r8, r8)
  8005dc0:	20000da8 	.word	0x20000da8
  8005dc4:	40011400 	.word	0x40011400
- 8005dc8:	0800da14 	.word	0x0800da14
+ 8005dc8:	0800da28 	.word	0x0800da28
 
 08005dcc <App_TaskWatchdogRecordExternalFeed>:
 
@@ -15278,12 +15288,12 @@ AppStatus_t App_TaskWatchdog(void *p_context)
  8005fbe:	46bd      	mov	sp, r7
  8005fc0:	b006      	add	sp, #24
  8005fc2:	bdb0      	pop	{r4, r5, r7, pc}
- 8005fc4:	0800da14 	.word	0x0800da14
+ 8005fc4:	0800da28 	.word	0x0800da28
  8005fc8:	20000868 	.word	0x20000868
- 8005fcc:	0800da34 	.word	0x0800da34
- 8005fd0:	0800da60 	.word	0x0800da60
- 8005fd4:	0800da68 	.word	0x0800da68
- 8005fd8:	0800da88 	.word	0x0800da88
+ 8005fcc:	0800da48 	.word	0x0800da48
+ 8005fd0:	0800da74 	.word	0x0800da74
+ 8005fd4:	0800da7c 	.word	0x0800da7c
+ 8005fd8:	0800da9c 	.word	0x0800da9c
 
 08005fdc <App_TasksMaxU32>:
 #include "app_msgq.h"
@@ -15377,21 +15387,21 @@ const char *App_TasksGetName(AppTaskId_t id)
  800604e:	46bd      	mov	sp, r7
  8006050:	b002      	add	sp, #8
  8006052:	bd80      	pop	{r7, pc}
- 8006054:	0800dd58 	.word	0x0800dd58
- 8006058:	0800daa4 	.word	0x0800daa4
- 800605c:	0800daac 	.word	0x0800daac
- 8006060:	0800dab8 	.word	0x0800dab8
- 8006064:	0800dac8 	.word	0x0800dac8
- 8006068:	0800dad0 	.word	0x0800dad0
- 800606c:	0800dad8 	.word	0x0800dad8
- 8006070:	0800dae0 	.word	0x0800dae0
- 8006074:	0800dae4 	.word	0x0800dae4
- 8006078:	0800dae8 	.word	0x0800dae8
- 800607c:	0800daec 	.word	0x0800daec
- 8006080:	0800daf4 	.word	0x0800daf4
- 8006084:	0800dafc 	.word	0x0800dafc
- 8006088:	0800db00 	.word	0x0800db00
- 800608c:	0800db08 	.word	0x0800db08
+ 8006054:	0800dd6c 	.word	0x0800dd6c
+ 8006058:	0800dab8 	.word	0x0800dab8
+ 800605c:	0800dac0 	.word	0x0800dac0
+ 8006060:	0800dacc 	.word	0x0800dacc
+ 8006064:	0800dadc 	.word	0x0800dadc
+ 8006068:	0800dae4 	.word	0x0800dae4
+ 800606c:	0800daec 	.word	0x0800daec
+ 8006070:	0800daf4 	.word	0x0800daf4
+ 8006074:	0800daf8 	.word	0x0800daf8
+ 8006078:	0800dafc 	.word	0x0800dafc
+ 800607c:	0800db00 	.word	0x0800db00
+ 8006080:	0800db08 	.word	0x0800db08
+ 8006084:	0800db10 	.word	0x0800db10
+ 8006088:	0800db14 	.word	0x0800db14
+ 800608c:	0800db1c 	.word	0x0800db1c
 
 08006090 <App_TasksGetStateName>:
 
@@ -15774,35 +15784,35 @@ const char *App_TasksGetStateName(AppTaskId_t id, uint8_t state)
  800628e:	46bd      	mov	sp, r7
  8006290:	b002      	add	sp, #8
  8006292:	bd80      	pop	{r7, pc}
- 8006294:	0800dd8c 	.word	0x0800dd8c
- 8006298:	0800db10 	.word	0x0800db10
- 800629c:	0800db18 	.word	0x0800db18
- 80062a0:	0800db20 	.word	0x0800db20
- 80062a4:	0800db30 	.word	0x0800db30
- 80062a8:	0800db38 	.word	0x0800db38
- 80062ac:	0800db44 	.word	0x0800db44
- 80062b0:	0800db4c 	.word	0x0800db4c
- 80062b4:	0800db58 	.word	0x0800db58
- 80062b8:	0800db64 	.word	0x0800db64
- 80062bc:	0800db70 	.word	0x0800db70
- 80062c0:	0800db7c 	.word	0x0800db7c
- 80062c4:	0800db8c 	.word	0x0800db8c
- 80062c8:	0800db9c 	.word	0x0800db9c
- 80062cc:	0800dba8 	.word	0x0800dba8
- 80062d0:	0800dbb4 	.word	0x0800dbb4
- 80062d4:	0800dbc0 	.word	0x0800dbc0
- 80062d8:	0800dbd0 	.word	0x0800dbd0
- 80062dc:	0800dbdc 	.word	0x0800dbdc
- 80062e0:	0800dbec 	.word	0x0800dbec
- 80062e4:	0800dbf8 	.word	0x0800dbf8
- 80062e8:	0800dc04 	.word	0x0800dc04
- 80062ec:	0800dc10 	.word	0x0800dc10
- 80062f0:	0800dc1c 	.word	0x0800dc1c
- 80062f4:	0800dc2c 	.word	0x0800dc2c
- 80062f8:	0800dc3c 	.word	0x0800dc3c
- 80062fc:	0800dc4c 	.word	0x0800dc4c
- 8006300:	0800dc58 	.word	0x0800dc58
- 8006304:	0800dc60 	.word	0x0800dc60
+ 8006294:	0800dda0 	.word	0x0800dda0
+ 8006298:	0800db24 	.word	0x0800db24
+ 800629c:	0800db2c 	.word	0x0800db2c
+ 80062a0:	0800db34 	.word	0x0800db34
+ 80062a4:	0800db44 	.word	0x0800db44
+ 80062a8:	0800db4c 	.word	0x0800db4c
+ 80062ac:	0800db58 	.word	0x0800db58
+ 80062b0:	0800db60 	.word	0x0800db60
+ 80062b4:	0800db6c 	.word	0x0800db6c
+ 80062b8:	0800db78 	.word	0x0800db78
+ 80062bc:	0800db84 	.word	0x0800db84
+ 80062c0:	0800db90 	.word	0x0800db90
+ 80062c4:	0800dba0 	.word	0x0800dba0
+ 80062c8:	0800dbb0 	.word	0x0800dbb0
+ 80062cc:	0800dbbc 	.word	0x0800dbbc
+ 80062d0:	0800dbc8 	.word	0x0800dbc8
+ 80062d4:	0800dbd4 	.word	0x0800dbd4
+ 80062d8:	0800dbe4 	.word	0x0800dbe4
+ 80062dc:	0800dbf0 	.word	0x0800dbf0
+ 80062e0:	0800dc00 	.word	0x0800dc00
+ 80062e4:	0800dc0c 	.word	0x0800dc0c
+ 80062e8:	0800dc18 	.word	0x0800dc18
+ 80062ec:	0800dc24 	.word	0x0800dc24
+ 80062f0:	0800dc30 	.word	0x0800dc30
+ 80062f4:	0800dc40 	.word	0x0800dc40
+ 80062f8:	0800dc50 	.word	0x0800dc50
+ 80062fc:	0800dc60 	.word	0x0800dc60
+ 8006300:	0800dc6c 	.word	0x0800dc6c
+ 8006304:	0800dc74 	.word	0x0800dc74
 
 08006308 <App_TasksFindIdBySchedulerHandle>:
 
@@ -15960,10 +15970,10 @@ AppStatus_t App_TasksDebugStateTransition(const AppTaskModuleContext_t *p_module
  80063ea:	46bd      	mov	sp, r7
  80063ec:	b007      	add	sp, #28
  80063ee:	bd90      	pop	{r4, r7, pc}
- 80063f0:	0800db08 	.word	0x0800db08
- 80063f4:	0800dc68 	.word	0x0800dc68
- 80063f8:	0800dc6c 	.word	0x0800dc6c
- 80063fc:	0800dc88 	.word	0x0800dc88
+ 80063f0:	0800db1c 	.word	0x0800db1c
+ 80063f4:	0800dc7c 	.word	0x0800dc7c
+ 80063f8:	0800dc80 	.word	0x0800dc80
+ 80063fc:	0800dc9c 	.word	0x0800dc9c
 
 08006400 <App_TasksPublishMessage>:
 
@@ -16205,10 +16215,10 @@ AppStatus_t App_TasksCompleteRun(AppTaskModuleContext_t *p_module, AppStatus_t s
  8006562:	b006      	add	sp, #24
  8006564:	bd80      	pop	{r7, pc}
  8006566:	46c0      	nop			@ (mov r8, r8)
- 8006568:	0800db08 	.word	0x0800db08
- 800656c:	0800dc90 	.word	0x0800dc90
- 8006570:	0800dc88 	.word	0x0800dc88
- 8006574:	0800dcac 	.word	0x0800dcac
+ 8006568:	0800db1c 	.word	0x0800db1c
+ 800656c:	0800dca4 	.word	0x0800dca4
+ 8006570:	0800dc9c 	.word	0x0800dc9c
+ 8006574:	0800dcc0 	.word	0x0800dcc0
 
 08006578 <App_TasksRegisterOne>:
 
@@ -16307,7 +16317,7 @@ static AppStatus_t App_TasksRegisterOne(AppTaskId_t id,
  800660e:	b007      	add	sp, #28
  8006610:	bdf0      	pop	{r4, r5, r6, r7, pc}
  8006612:	46c0      	nop			@ (mov r8, r8)
- 8006614:	0800dcc4 	.word	0x0800dcc4
+ 8006614:	0800dcd8 	.word	0x0800dcd8
  8006618:	2000087c 	.word	0x2000087c
 
 0800661c <App_TasksInit>:
@@ -16654,7 +16664,7 @@ AppStatus_t App_TasksRegisterAll(void)
  80068b0:	46bd      	mov	sp, r7
  80068b2:	bd80      	pop	{r7, pc}
  80068b4:	2000087c 	.word	0x2000087c
- 80068b8:	0800dcc4 	.word	0x0800dcc4
+ 80068b8:	0800dcd8 	.word	0x0800dcd8
  80068bc:	08004cc9 	.word	0x08004cc9
  80068c0:	00002710 	.word	0x00002710
  80068c4:	08005e01 	.word	0x08005e01
@@ -16809,7 +16819,7 @@ int main(void)
  80069a4:	f000 fae0 	bl	8006f68 <MX_TIM22_Init>
   /* USER CODE BEGIN 2 */
   if (App_SystemInit() != APP_STATUS_OK)
- 80069a8:	f7fd feda 	bl	8004760 <App_SystemInit>
+ 80069a8:	f7fd fedc 	bl	8004764 <App_SystemInit>
  80069ac:	1e03      	subs	r3, r0, #0
  80069ae:	d001      	beq.n	80069b4 <main+0x50>
   {
@@ -16821,7 +16831,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     App_SystemProcess();
- 80069b4:	f7fd ffa6 	bl	8004904 <App_SystemProcess>
+ 80069b4:	f7fd ffa8 	bl	8004908 <App_SystemProcess>
  80069b8:	e7fc      	b.n	80069b4 <main+0x50>
 	...
 
@@ -18308,7 +18318,7 @@ void Error_Handler(void)
  80071cc:	bd80      	pop	{r7, pc}
  80071ce:	46c0      	nop			@ (mov r8, r8)
  80071d0:	000002d5 	.word	0x000002d5
- 80071d4:	0800dcdc 	.word	0x0800dcdc
+ 80071d4:	0800dcf0 	.word	0x0800dcf0
 
 080071d8 <HAL_MspInit>:
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
@@ -19257,7 +19267,7 @@ void RTC_IRQHandler(void)
  80076fa:	b580      	push	{r7, lr}
  80076fc:	af00      	add	r7, sp, #0
   App_SystemHandleRtcIrq();
- 80076fe:	f7fc fff5 	bl	80046ec <App_SystemHandleRtcIrq>
+ 80076fe:	f7fc fff7 	bl	80046f0 <App_SystemHandleRtcIrq>
 }
  8007702:	46c0      	nop			@ (mov r8, r8)
  8007704:	46bd      	mov	sp, r7
@@ -19649,8 +19659,8 @@ void SystemCoreClockUpdate (void)
  8007918:	003d0900 	.word	0x003d0900
  800791c:	00f42400 	.word	0x00f42400
  8007920:	007a1200 	.word	0x007a1200
- 8007924:	0800ddd8 	.word	0x0800ddd8
- 8007928:	0800ddc0 	.word	0x0800ddc0
+ 8007924:	0800ddec 	.word	0x0800ddec
+ 8007928:	0800ddd4 	.word	0x0800ddd4
 
 0800792c <Reset_Handler>:
 
@@ -19745,7 +19755,7 @@ LoopForever:
   ldr r1, =_edata
  800796c:	20000068 	.word	0x20000068
   ldr r2, =_sidata
- 8007970:	0800de70 	.word	0x0800de70
+ 8007970:	0800de84 	.word	0x0800de84
   ldr r2, =_sbss
  8007974:	20000068 	.word	0x20000068
   ldr r4, =_ebss
@@ -25750,7 +25760,7 @@ HAL_StatusTypeDef HAL_RCC_OscConfig(const RCC_OscInitTypeDef  *RCC_OscInitStruct
  8009894:	fffeffff 	.word	0xfffeffff
  8009898:	fffbffff 	.word	0xfffbffff
  800989c:	ffffe0ff 	.word	0xffffe0ff
- 80098a0:	0800ddc0 	.word	0x0800ddc0
+ 80098a0:	0800ddd4 	.word	0x0800ddd4
  80098a4:	2000000c 	.word	0x2000000c
  80098a8:	20000010 	.word	0x20000010
  80098ac:	ffff1fff 	.word	0xffff1fff
@@ -27032,7 +27042,7 @@ HAL_StatusTypeDef HAL_RCC_ClockConfig(const RCC_ClkInitTypeDef  *RCC_ClkInitStru
  8009f74:	40021000 	.word	0x40021000
  8009f78:	fffff8ff 	.word	0xfffff8ff
  8009f7c:	ffffc7ff 	.word	0xffffc7ff
- 8009f80:	0800ddc0 	.word	0x0800ddc0
+ 8009f80:	0800ddd4 	.word	0x0800ddd4
  8009f84:	2000000c 	.word	0x2000000c
  8009f88:	20000010 	.word	0x20000010
 
@@ -27228,7 +27238,7 @@ uint32_t HAL_RCC_GetSysClockFreq(void)
  800a088:	003d0900 	.word	0x003d0900
  800a08c:	00f42400 	.word	0x00f42400
  800a090:	007a1200 	.word	0x007a1200
- 800a094:	0800ddd8 	.word	0x0800ddd8
+ 800a094:	0800ddec 	.word	0x0800ddec
 
 0800a098 <HAL_RCC_GetHCLKFreq>:
   * @note   The SystemCoreClock CMSIS variable is used to store System Clock Frequency
@@ -27277,7 +27287,7 @@ uint32_t HAL_RCC_GetPCLK1Freq(void)
  800a0cc:	bd80      	pop	{r7, pc}
  800a0ce:	46c0      	nop			@ (mov r8, r8)
  800a0d0:	40021000 	.word	0x40021000
- 800a0d4:	0800ddd0 	.word	0x0800ddd0
+ 800a0d4:	0800dde4 	.word	0x0800dde4
 
 0800a0d8 <HAL_RCC_GetPCLK2Freq>:
   * @note   Each time PCLK2 changes, this function must be called to update the
@@ -27307,7 +27317,7 @@ uint32_t HAL_RCC_GetPCLK2Freq(void)
  800a0f8:	bd80      	pop	{r7, pc}
  800a0fa:	46c0      	nop			@ (mov r8, r8)
  800a0fc:	40021000 	.word	0x40021000
- 800a100:	0800ddd0 	.word	0x0800ddd0
+ 800a100:	0800dde4 	.word	0x0800dde4
 
 0800a104 <HAL_RCC_GetOscConfig>:
   * @param  RCC_OscInitStruct pointer to an RCC_OscInitTypeDef structure that
@@ -31864,11 +31874,11 @@ HAL_StatusTypeDef UART_SetConfig(UART_HandleTypeDef *huart)
  800b982:	46bd      	mov	sp, r7
  800b984:	b00e      	add	sp, #56	@ 0x38
  800b986:	bdb0      	pop	{r4, r5, r7, pc}
- 800b988:	0800dde4 	.word	0x0800dde4
+ 800b988:	0800ddf8 	.word	0x0800ddf8
  800b98c:	40021000 	.word	0x40021000
  800b990:	003d0900 	.word	0x003d0900
  800b994:	00f42400 	.word	0x00f42400
- 800b998:	0800de08 	.word	0x0800de08
+ 800b998:	0800de1c 	.word	0x0800de1c
 
 0800b99c <UART_AdvFeatureConfig>:
   * @brief Configure the UART peripheral advanced features.
@@ -32843,10 +32853,10 @@ static void UART_EndRxTransfer(UART_HandleTypeDef *huart)
  800bf4e:	4798      	blx	r3
  800bf50:	3601      	adds	r6, #1
  800bf52:	e7f2      	b.n	800bf3a <__libc_init_array+0x1e>
- 800bf54:	0800de68 	.word	0x0800de68
- 800bf58:	0800de68 	.word	0x0800de68
- 800bf5c:	0800de6c 	.word	0x0800de6c
- 800bf60:	0800de68 	.word	0x0800de68
+ 800bf54:	0800de7c 	.word	0x0800de7c
+ 800bf58:	0800de7c 	.word	0x0800de7c
+ 800bf5c:	0800de80 	.word	0x0800de80
+ 800bf60:	0800de7c 	.word	0x0800de7c
 
 0800bf64 <__retarget_lock_acquire_recursive>:
  800bf64:	4770      	bx	lr
@@ -33429,9 +33439,9 @@ static void UART_EndRxTransfer(UART_HandleTypeDef *huart)
  800c400:	9802      	ldr	r0, [sp, #8]
  800c402:	f000 f87b 	bl	800c4fc <_printf_i>
  800c406:	e7ee      	b.n	800c3e6 <_svfiprintf_r+0x1be>
- 800c408:	0800de2c 	.word	0x0800de2c
- 800c40c:	0800de32 	.word	0x0800de32
- 800c410:	0800de36 	.word	0x0800de36
+ 800c408:	0800de40 	.word	0x0800de40
+ 800c40c:	0800de46 	.word	0x0800de46
+ 800c410:	0800de4a 	.word	0x0800de4a
  800c414:	00000000 	.word	0x00000000
  800c418:	0800c161 	.word	0x0800c161
 
@@ -33800,8 +33810,8 @@ static void UART_EndRxTransfer(UART_HandleTypeDef *huart)
  800c706:	e7e9      	b.n	800c6dc <_printf_i+0x1e0>
  800c708:	2500      	movs	r5, #0
  800c70a:	e7f7      	b.n	800c6fc <_printf_i+0x200>
- 800c70c:	0800de3d 	.word	0x0800de3d
- 800c710:	0800de4e 	.word	0x0800de4e
+ 800c70c:	0800de51 	.word	0x0800de51
+ 800c710:	0800de62 	.word	0x0800de62
 
 0800c714 <memmove>:
  800c714:	b510      	push	{r4, lr}

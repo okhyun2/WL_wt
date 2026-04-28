@@ -277,14 +277,16 @@ void App_SystemNotifyWakeSource(uint32_t sourceMask)
     g_appSystemContext.lastWakeTickMs = HAL_GetTick();
     g_appSystemContext.stopRequested = APP_FALSE;
     App_SystemResetStopQualification();
+#ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
-        (void)APP_LOGI("WAKE",
+        (void)APP_LOGD("WAKE",
                        "source=%s mask=0x%08lX tick=%lu",
                        App_SystemBuildWakeSourceString(g_appSystemContext.wakeSourceMask),
                        (unsigned long)g_appSystemContext.wakeSourceMask,
                        (unsigned long)g_appSystemContext.lastWakeTickMs);
     }
+#endif
 }
 
 static void App_SystemSetTaskWakeEvent(AppTaskId_t taskId)
@@ -539,7 +541,8 @@ static AppStatus_t App_SystemEnterStopMode(void)
 {
     AppStatus_t status;
 
-    (void)APP_LOGI("LP", "Enter STOP mode");
+    (void)APP_LOGI("LP", "Enter STOP mode(wake_period=%lu ms)",
+                         (unsigned long)APP_RTC_WAKEUP_PERIOD_MS);
 
     g_appSystemContext.stopCandidateCount++;
 
@@ -559,6 +562,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
     g_appSystemContext.lastStopEntryTickMs = HAL_GetTick();
     g_appSystemContext.wakeSourceMask = APP_SYSTEM_WAKE_SRC_NONE;
 
+#ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
         // this don't print because stopped external interface.
@@ -570,6 +574,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
                        (unsigned long)g_appSystemContext.stopEntryCount,
                        (unsigned int)APP_LP_STOP_DEBUG_DRY_RUN);
     }
+#endif
 
 #if (APP_LP_STOP_DEBUG_DRY_RUN == APP_TRUE)
     g_appSystemContext.stopDryRunCount++;
@@ -579,6 +584,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
     {
         return status;
     }
+#ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
         // this don't print because stopped external interface.
@@ -587,6 +593,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
                        (unsigned long)g_appSystemContext.stopDryRunCount,
                        App_SystemGetWakeSourceString());
     }
+#endif
     return APP_STATUS_OK;
 #else
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
@@ -640,9 +647,10 @@ static void App_SystemHandleIdle(void)
             g_appSystemContext.stopQualificationCount++;
         }
 
+#ifdef DEBUG
         if (App_SystemCanDebugLog() == APP_TRUE)
         {
-            (void)APP_LOGI("LP",
+            (void)APP_LOGD("LP",
                            "STOP qualify: step=%u/%u decision=%s idle=%lu dispatch=%u",
                            (unsigned int)g_appSystemContext.stopQualificationCount,
                            (unsigned int)APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT,
@@ -650,6 +658,7 @@ static void App_SystemHandleIdle(void)
                            (unsigned long)g_appSystemContext.idleCounter,
                            (unsigned int)((p_schedulerContext != NULL) ? p_schedulerContext->lastDispatchCount : 0u));
         }
+#endif
 
         if (g_appSystemContext.stopQualificationCount >= APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT)
         {
@@ -869,10 +878,12 @@ AppStatus_t App_SystemOnBeforeStopEnter(void)
 
     APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
     status = App_GpioLpOnBeforeStopEnter();
+#ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
-        (void)APP_LOGI("LP", "before STOP status=%lu", (unsigned long)status);
+        (void)APP_LOGD("LP", "before STOP status=%lu", (unsigned long)status);
     }
+#endif
     return status;
 }
 
@@ -882,10 +893,12 @@ AppStatus_t App_SystemOnAfterStopExit(void)
 
     APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
     status = App_GpioLpOnAfterStopExit();
+#ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
-        (void)APP_LOGI("LP", "after STOP status=%lu wake=%s", (unsigned long)status, App_SystemGetWakeSourceString());
+        (void)APP_LOGD("LP", "after STOP status=%lu wake=%s", (unsigned long)status, App_SystemGetWakeSourceString());
     }
+#endif
     return status;
 }
 
