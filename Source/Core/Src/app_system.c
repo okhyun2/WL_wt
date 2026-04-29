@@ -69,6 +69,11 @@ static const char *App_SystemBuildWakeSourceString(uint32_t wakeMask)
         APP_SYSTEM_APPEND_WAKE("RTC");
     }
 
+    if ((wakeMask & APP_SYSTEM_WAKE_SRC_LPTIM) != 0u)
+    {
+        APP_SYSTEM_APPEND_WAKE("LPTIM");
+    }
+
     if ((wakeMask & APP_SYSTEM_WAKE_SRC_DEBUG_DRYRUN) != 0u)
     {
         APP_SYSTEM_APPEND_WAKE("DEBUG_DRYRUN");
@@ -319,6 +324,17 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 #endif
         default:
             break;
+    }
+}
+void HAL_LPTIM_AutoReloadMatchCallback(LPTIM_HandleTypeDef *hlptim)
+{
+    if (hlptim->Instance == LPTIM1)
+    {
+        APP_LOGI("SYS", "timer 1sec");
+
+        g_appSystemContext.lptimWakeEventCount++;
+        App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_LPTIM);
+        App_SystemQueueStateCommand(APP_FSM_STATE_LPTIM_WAKE_SERVICE);
     }
 }
 

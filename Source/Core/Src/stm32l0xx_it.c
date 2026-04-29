@@ -56,7 +56,7 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-
+extern LPTIM_HandleTypeDef hlptim1;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -140,21 +140,19 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32l0xx.s).                    */
 /******************************************************************************/
-void RTC_IRQHandler(void)
-{
-  App_SystemHandleRtcIrq();
-}
 
-void EXTI0_1_IRQHandler(void)
+/**
+  * @brief This function handles LPTIM1 global interrupt / LPTIM1 wake-up interrupt through EXTI line 29.
+  */
+void LPTIM1_IRQHandler(void)
 {
-  HAL_GPIO_EXTI_IRQHandler(NBIoT_RI_Pin);
-}
+  /* USER CODE BEGIN LPTIM1_IRQn 0 */
 
-void EXTI2_3_IRQHandler(void)
-{
-#if 0
-  HAL_GPIO_EXTI_IRQHandler(ESI_Int_Pin);
-#endif
+  /* USER CODE END LPTIM1_IRQn 0 */
+  HAL_LPTIM_IRQHandler(&hlptim1);
+  /* USER CODE BEGIN LPTIM1_IRQn 1 */
+
+  /* USER CODE END LPTIM1_IRQn 1 */
 }
 
 void EXTI4_15_IRQHandler(void)

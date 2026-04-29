@@ -285,7 +285,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "lp=%s disp=%lu stop_req=%u qual=%u cand=%lu stop=%lu rtc=%lu sleep=%lu wake=%s req_tick=%lu wake_tick=%lu",
+                                   "lp=%s disp=%lu stop_req=%u qual=%u cand=%lu stop=%lu rtc=%lu lptim=%lu sleep=%lu wake=%s req_tick=%lu wake_tick=%lu",
                                    App_SystemGetLowPowerModeString(),
                                    (unsigned long)p_fsmSummary->lastLoopDispatchCount,
                                    (unsigned int)p_systemContext->stopRequested,
@@ -293,6 +293,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
                                    (unsigned long)p_systemContext->stopCandidateCount,
                                    (unsigned long)p_systemContext->stopEntryCount,
                                    (unsigned long)p_systemContext->rtcWakeEventCount,
+                                   (unsigned long)p_systemContext->lptimWakeEventCount,
                                    (unsigned long)p_systemContext->sleepEntryCount,
                                    App_SystemGetWakeSourceString(),
                                    (unsigned long)p_systemContext->lastStopRequestTickMs,

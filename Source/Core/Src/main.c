@@ -60,6 +60,8 @@ UART_HandleTypeDef huart2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim22;
 
+LPTIM_HandleTypeDef hlptim1;
+
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -78,6 +80,9 @@ static void MX_TIM3_Init(void);
 static void MX_ADC_Init(void);
 static void MX_TIM22_Init(void);
 static void MX_IWDG_InitStart(void);
+static void LPTIM1_Start(void);
+static void LPTIM1_Stop(void);
+static void MX_LPTIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -130,11 +135,15 @@ int main(void)
   MX_ADC_Init();
   MX_TIM22_Init();
   //MX_IWDG_InitStart();
+  MX_LPTIM1_Init();
   /* USER CODE BEGIN 2 */
   if (App_SystemInit() != APP_STATUS_OK)
   {
     Error_Handler();
   }
+
+  //LPTIM1_Start();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -182,8 +191,7 @@ void SystemClock_Config(void)
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
@@ -193,15 +201,16 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2
-                              |RCC_PERIPHCLK_LPUART1|RCC_PERIPHCLK_I2C1
-                              |RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2 |RCC_PERIPHCLK_LPUART1|RCC_PERIPHCLK_I2C1
+                              |RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_PCLK1;
   PeriphClkInit.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
   PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
+  PeriphClkInit.LptimClockSelection = RCC_LPTIM1CLKSOURCE_LSE;
+  
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -468,6 +477,83 @@ static void MX_IWDG_InitStart(void)
 
 }
 
+static void disable_lptim_wakeup(void)
+{
+    __HAL_LPTIM_WAKEUPTIMER_EXTI_DISABLE_IT();
+}
+
+static void enable_lptim_wakeup(void)
+{
+    __HAL_LPTIM_WAKEUPTIMER_EXTI_ENABLE_IT();
+}
+
+#define LPTIM1_ARR  (1023U)   // 32.768kHz / 32 / 1024 = 1Hz
+
+/**
+ * @brief  Start LPTIM1
+ */
+void LPTIM1_Start(void)
+{
+    if (HAL_LPTIM_GetState(&hlptim1) != HAL_LPTIM_STATE_READY)
+    {
+        HAL_LPTIM_Counter_Stop_IT(&hlptim1);
+    }
+
+    if (HAL_LPTIM_Counter_Start_IT(&hlptim1, LPTIM1_ARR) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    //enable_lptim_wakeup();
+    //disable_lptim_wakeup();
+
+}
+
+/**
+ * @brief  Stop LPTIM1 
+ */
+void LPTIM1_Stop(void)
+{
+    if (HAL_LPTIM_Counter_Stop_IT(&hlptim1) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    //disable_lptim_wakeup();
+}
+
+/**
+  * @brief LPTIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_LPTIM1_Init(void)
+{
+
+  /* USER CODE BEGIN LPTIM1_Init 0 */
+
+  /* USER CODE END LPTIM1_Init 0 */
+
+  /* USER CODE BEGIN LPTIM1_Init 1 */
+
+  /* USER CODE END LPTIM1_Init 1 */
+  hlptim1.Instance = LPTIM1;
+  hlptim1.Init.Clock.Source = LPTIM_CLOCKSOURCE_APBCLOCK_LPOSC;
+  hlptim1.Init.Clock.Prescaler = LPTIM_PRESCALER_DIV32;            // 32.768kHz / 32 = 1.024kHz
+  hlptim1.Init.Trigger.Source = LPTIM_TRIGSOURCE_SOFTWARE;
+  hlptim1.Init.OutputPolarity = LPTIM_OUTPUTPOLARITY_HIGH;
+  hlptim1.Init.UpdateMode      = LPTIM_UPDATE_IMMEDIATE;
+  hlptim1.Init.CounterSource = LPTIM_COUNTERSOURCE_INTERNAL;
+  if (HAL_LPTIM_Init(&hlptim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN LPTIM1_Init 2 */
+
+  /* USER CODE END LPTIM1_Init 2 */
+
+}
+
 /**
   * @brief LPUART1 Initialization Function
   * @param None
@@ -704,6 +790,7 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();

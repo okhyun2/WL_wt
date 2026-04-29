@@ -55,6 +55,9 @@ static uint8_t App_FsmIsValidState(uint8_t state)
         case APP_FSM_STATE_RTC_INIT:
         case APP_FSM_STATE_RTC_WAKE_SERVICE:
         case APP_FSM_STATE_RTC_APPLY_SYNC:
+        case APP_FSM_STATE_LPTIM_INIT:
+        case APP_FSM_STATE_LPTIM_WAKE_SERVICE:
+        case APP_FSM_STATE_LPTIM_APPLY_SYNC:
         case APP_FSM_STATE_FAULT:
             return APP_TRUE;
 
@@ -334,6 +337,15 @@ static uint8_t App_FsmMapComponentToState(AppFsmComponentId_t id)
                 default:                                    return APP_FSM_STATE_RTC_WAKE_SERVICE;
             }
 
+        case APP_FSM_COMPONENT_LPTIM:
+            switch (p_component->state)
+            {
+                case APP_FSM_STATE_LPTIM_INIT:                return APP_FSM_STATE_LPTIM_INIT;
+                case APP_FSM_STATE_LPTIM_APPLY_SYNC:          return APP_FSM_STATE_LPTIM_APPLY_SYNC;
+                case APP_FSM_STATE_LPTIM_WAKE_SERVICE:
+                default:                                    return APP_FSM_STATE_LPTIM_WAKE_SERVICE;
+            }
+
         default:
             return APP_FSM_STATE_FAULT;
     }
@@ -417,7 +429,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_SERVER, APP_FSM_STATE_SERVER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-
+            App_FsmMarkComponent(APP_FSM_COMPONENT_LPTIM, APP_FSM_STATE_LPTIM_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
 
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_DEBUG_POLL, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_HOUSEKEEPING_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
@@ -428,6 +440,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_SERVER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_RTC_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_LPTIM_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
 
             App_FsmSetDecision(APP_FSM_DECISION_BOOT);
             break;
@@ -629,6 +642,29 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
+        case APP_FSM_STATE_LPTIM_INIT:
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_RtcInit() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
+            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            break;
+
+        case APP_FSM_STATE_LPTIM_WAKE_SERVICE:
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_LPTIM_APPLY_SYNC, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            break;
+
+        case APP_FSM_STATE_LPTIM_APPLY_SYNC:
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
+            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            break;
+
         case APP_FSM_STATE_FAULT:
             App_FsmSetDecision(APP_FSM_DECISION_REQUIRE_SAFE);
             break;
@@ -803,6 +839,9 @@ const char *App_FsmGetStateName(uint8_t state)
         case APP_FSM_STATE_RTC_INIT:                return "RTC_INIT";
         case APP_FSM_STATE_RTC_WAKE_SERVICE:        return "RTC_WAKE_SERVICE";
         case APP_FSM_STATE_RTC_APPLY_SYNC:          return "RTC_APPLY_SYNC";
+        case APP_FSM_STATE_LPTIM_INIT:              return "LPTIM_INIT";
+        case APP_FSM_STATE_LPTIM_WAKE_SERVICE:      return "LPTIM_WAKE_SERVICE";
+        case APP_FSM_STATE_LPTIM_APPLY_SYNC:        return "LPTIM_APPLY_SYNC";
         case APP_FSM_STATE_FAULT:                   return "FAULT";
         default:                                    return "UNKNOWN";
     }

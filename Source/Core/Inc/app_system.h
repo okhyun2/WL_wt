@@ -43,6 +43,7 @@ typedef enum
     APP_SYSTEM_WAKE_SRC_ESI_INT      = 0x00000008u,
 #endif	
     APP_SYSTEM_WAKE_SRC_RTC          = 0x00000010u,
+    APP_SYSTEM_WAKE_SRC_LPTIM        = 0x00000020u,
     APP_SYSTEM_WAKE_SRC_DEBUG_DRYRUN = 0x40000000u,
     APP_SYSTEM_WAKE_SRC_UNKNOWN      = 0x80000000u
 } AppSystemWakeSource_t;
@@ -68,6 +69,7 @@ typedef struct
     uint32_t stopCandidateCount;
     uint32_t stopDryRunCount;
     uint32_t rtcWakeEventCount;
+    uint32_t lptimWakeEventCount;
     uint32_t wakeSourceMask;
     uint32_t lastWakeTickMs;
     uint32_t lastStopRequestTickMs;

@@ -115,7 +115,7 @@ extern "C" {
 #define APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT          (2u)
 #define APP_LP_STOP_DEBUG_DRY_RUN                   (APP_FALSE)
 
-#define APP_MSGQ_DEPTH                              (10u)
+#define APP_MSGQ_DEPTH                              (16u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)
 
 #define APP_STORAGE_LAYOUT_REV                      (1u)
