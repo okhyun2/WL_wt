@@ -13,10 +13,12 @@ extern "C" {
 #define APP_MSGQ_TYPE_STORAGE_REQUEST     (10u)
 #define APP_MSGQ_TYPE_STORAGE_RESPONSE    (11u)
 #define APP_MSGQ_TYPE_POWER_REQUEST       (12u)
+#define APP_MSGQ_TYPE_STATE_COMMAND       (20u)
 
 #define APP_MSGQ_MSG_TASK_HEARTBEAT       APP_MSGQ_TYPE_TASK_HEARTBEAT
 #define APP_MSGQ_MSG_TASK_EVENT           APP_MSGQ_TYPE_TASK_EVENT
 #define APP_MSGQ_MSG_TASK_ALERT           APP_MSGQ_TYPE_TASK_ALERT
+#define APP_MSGQ_MSG_STATE_COMMAND        APP_MSGQ_TYPE_STATE_COMMAND
 
 typedef struct
 {
@@ -37,15 +39,23 @@ typedef struct
     uint8_t head;
     uint8_t tail;
     uint8_t count;
-    uint32_t pushCount;
-    uint32_t popCount;
+    uint32_t pushFrontCount;
+    uint32_t pushBackCount;
+    uint32_t popFrontCount;
+    uint32_t popBackCount;
     uint32_t overflowCount;
 } AppMsgqContext_t;
 
 AppStatus_t App_MsgqInit(void);
+AppStatus_t App_MsgqPushFront(const AppMsgqMessage_t *p_message);
+AppStatus_t App_MsgqPushBack(const AppMsgqMessage_t *p_message);
+AppStatus_t App_MsgqPopFront(AppMsgqMessage_t *p_message);
+AppStatus_t App_MsgqPopBack(AppMsgqMessage_t *p_message);
 AppStatus_t App_MsgqPush(const AppMsgqMessage_t *p_message);
 AppStatus_t App_MsgqPop(AppMsgqMessage_t *p_message);
 AppStatus_t App_MsgqTakeFirstByType(uint8_t type, AppMsgqMessage_t *p_message);
+uint8_t App_MsgqIsEmpty(void);
+uint8_t App_MsgqGetCount(void);
 const AppMsgqContext_t *App_MsgqGetContext(void);
 
 #ifdef __cplusplus

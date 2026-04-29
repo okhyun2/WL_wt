@@ -18,7 +18,6 @@ typedef enum
     APP_TASK_ID_STORAGE,
     APP_TASK_ID_METER,
     APP_TASK_ID_NFC,
-    APP_TASK_ID_ESI,
     APP_TASK_ID_AUX,
     APP_TASK_ID_NBIOT,
     APP_TASK_ID_SERVER,
@@ -96,6 +95,16 @@ typedef struct
     uint32_t staleCount;
     uint32_t processedMessageCount;
     uint32_t lastEvaluationTickMs;
+    uint8_t currentState;
+    uint8_t lastQueuedState;
+    uint8_t lastDequeFromFront;
+    uint8_t lowPowerRequested;
+    uint32_t transitionCount;
+    uint32_t queueEmptyStopCount;
+    uint32_t lastCommandTickMs;
+    uint32_t lastStateTickMs;
+    uint32_t lastCommandParam0;
+    uint32_t lastCommandParam1;
 } AppTaskMainSummary_t;
 
 typedef struct
@@ -153,16 +162,21 @@ const char *App_TasksGetStateName(AppTaskId_t id, uint8_t state);
 AppTaskId_t App_TasksFindIdBySchedulerHandle(AppSchedulerTaskHandle_t handle);
 AppStatus_t App_TasksCompleteRun(AppTaskModuleContext_t *p_module, AppStatus_t status);
 AppStatus_t App_TasksPublishMessage(AppTaskId_t sourceId, uint8_t type, uint32_t param0, uint32_t param1);
+AppStatus_t App_TasksPublishStateCommand(AppTaskId_t sourceId, uint8_t nextState, uint8_t pushFront, uint32_t param0, uint32_t param1);
 AppStatus_t App_TasksDebugStateTransition(const AppTaskModuleContext_t *p_module, uint8_t nextState, const char *p_file, uint32_t line);
 
 const AppTaskMainMonitor_t *App_TaskMainGetMonitor(AppTaskId_t id);
 const AppTaskMainSummary_t *App_TaskMainGetSummary(void);
 AppTaskMainDecision_t App_TaskMainGetDecision(void);
 const char *App_TaskMainGetDecisionString(void);
+uint8_t App_TaskMainGetState(void);
+const char *App_TaskMainGetStateString(void);
 const AppTaskMainStorageResponse_t *App_TaskMainGetStorageResponse(void);
 AppStatus_t App_TaskMainRequestStorageSave(AppStorageTarget_t backend, uint32_t userData0, uint32_t userData1);
 AppStatus_t App_TaskMainRequestStorageLoad(AppStorageTarget_t backend);
 AppStatus_t App_TaskMainRequestPowerResetBoot(void);
+AppStatus_t App_TaskMainQueueStateCommandFront(uint8_t nextState, uint32_t param0, uint32_t param1);
+AppStatus_t App_TaskMainQueueStateCommandBack(uint8_t nextState, uint32_t param0, uint32_t param1);
 const AppTaskWatchdogSummary_t *App_TaskWatchdogGetSummary(void);
 const AppTaskStorageSummary_t *App_TaskStorageGetSummary(void);
 AppStatus_t App_TaskStorageRequestSave(void);
@@ -201,7 +215,6 @@ AppStatus_t App_TaskPower(void *p_context);
 AppStatus_t App_TaskStorage(void *p_context);
 AppStatus_t App_TaskMeter(void *p_context);
 AppStatus_t App_TaskNfc(void *p_context);
-AppStatus_t App_TaskEsi(void *p_context);
 AppStatus_t App_TaskAux(void *p_context);
 AppStatus_t App_TaskNbiot(void *p_context);
 AppStatus_t App_TaskServer(void *p_context);

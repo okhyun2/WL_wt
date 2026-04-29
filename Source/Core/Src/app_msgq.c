@@ -7,6 +7,16 @@
 static AppMsgqMessage_t g_appMsgqBuffer[APP_MSGQ_DEPTH];
 static AppMsgqContext_t g_appMsgqContext;
 
+static uint8_t App_MsgqIncIndex(uint8_t index)
+{
+    return (uint8_t)((index + 1u) % APP_MSGQ_DEPTH);
+}
+
+static uint8_t App_MsgqDecIndex(uint8_t index)
+{
+    return (index == 0u) ? (uint8_t)(APP_MSGQ_DEPTH - 1u) : (uint8_t)(index - 1u);
+}
+
 AppStatus_t App_MsgqInit(void)
 {
     (void)memset(g_appMsgqBuffer, 0, sizeof(g_appMsgqBuffer));
@@ -15,7 +25,25 @@ AppStatus_t App_MsgqInit(void)
     return APP_STATUS_OK;
 }
 
-AppStatus_t App_MsgqPush(const AppMsgqMessage_t *p_message)
+AppStatus_t App_MsgqPushFront(const AppMsgqMessage_t *p_message)
+{
+    APP_RETURN_IF_FALSE(g_appMsgqContext.initialized == APP_TRUE, APP_STATUS_MSGQ_NOT_INITIALIZED);
+    APP_RETURN_IF_FALSE((p_message != NULL), APP_STATUS_INVALID_PARAM);
+
+    if (g_appMsgqContext.count >= APP_MSGQ_DEPTH)
+    {
+        g_appMsgqContext.overflowCount++;
+        return APP_STATUS_MSGQ_FULL;
+    }
+
+    g_appMsgqContext.head = App_MsgqDecIndex(g_appMsgqContext.head);
+    g_appMsgqBuffer[g_appMsgqContext.head] = *p_message;
+    g_appMsgqContext.count++;
+    g_appMsgqContext.pushFrontCount++;
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_MsgqPushBack(const AppMsgqMessage_t *p_message)
 {
     APP_RETURN_IF_FALSE(g_appMsgqContext.initialized == APP_TRUE, APP_STATUS_MSGQ_NOT_INITIALIZED);
     APP_RETURN_IF_FALSE((p_message != NULL), APP_STATUS_INVALID_PARAM);
@@ -27,13 +55,13 @@ AppStatus_t App_MsgqPush(const AppMsgqMessage_t *p_message)
     }
 
     g_appMsgqBuffer[g_appMsgqContext.tail] = *p_message;
-    g_appMsgqContext.tail = (uint8_t)((g_appMsgqContext.tail + 1u) % APP_MSGQ_DEPTH);
+    g_appMsgqContext.tail = App_MsgqIncIndex(g_appMsgqContext.tail);
     g_appMsgqContext.count++;
-    g_appMsgqContext.pushCount++;
+    g_appMsgqContext.pushBackCount++;
     return APP_STATUS_OK;
 }
 
-AppStatus_t App_MsgqPop(AppMsgqMessage_t *p_message)
+AppStatus_t App_MsgqPopFront(AppMsgqMessage_t *p_message)
 {
     APP_RETURN_IF_FALSE(g_appMsgqContext.initialized == APP_TRUE, APP_STATUS_MSGQ_NOT_INITIALIZED);
     APP_RETURN_IF_FALSE((p_message != NULL), APP_STATUS_INVALID_PARAM);
@@ -44,19 +72,46 @@ AppStatus_t App_MsgqPop(AppMsgqMessage_t *p_message)
     }
 
     *p_message = g_appMsgqBuffer[g_appMsgqContext.head];
-    g_appMsgqContext.head = (uint8_t)((g_appMsgqContext.head + 1u) % APP_MSGQ_DEPTH);
+    g_appMsgqContext.head = App_MsgqIncIndex(g_appMsgqContext.head);
     g_appMsgqContext.count--;
-    g_appMsgqContext.popCount++;
+    g_appMsgqContext.popFrontCount++;
     return APP_STATUS_OK;
+}
+
+AppStatus_t App_MsgqPopBack(AppMsgqMessage_t *p_message)
+{
+    APP_RETURN_IF_FALSE(g_appMsgqContext.initialized == APP_TRUE, APP_STATUS_MSGQ_NOT_INITIALIZED);
+    APP_RETURN_IF_FALSE((p_message != NULL), APP_STATUS_INVALID_PARAM);
+
+    if (g_appMsgqContext.count == 0u)
+    {
+        return APP_STATUS_MSGQ_EMPTY;
+    }
+
+    g_appMsgqContext.tail = App_MsgqDecIndex(g_appMsgqContext.tail);
+    *p_message = g_appMsgqBuffer[g_appMsgqContext.tail];
+    g_appMsgqContext.count--;
+    g_appMsgqContext.popBackCount++;
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_MsgqPush(const AppMsgqMessage_t *p_message)
+{
+    return App_MsgqPushBack(p_message);
+}
+
+AppStatus_t App_MsgqPop(AppMsgqMessage_t *p_message)
+{
+    return App_MsgqPopFront(p_message);
 }
 
 AppStatus_t App_MsgqTakeFirstByType(uint8_t type, AppMsgqMessage_t *p_message)
 {
-    uint8_t foundIndex;
+    AppMsgqMessage_t compacted[APP_MSGQ_DEPTH];
+    uint8_t index;
     uint8_t readIndex;
-    uint8_t writeIndex;
-    uint8_t nextIndex;
-    uint8_t scanned;
+    uint8_t keptCount;
+    uint8_t found;
 
     APP_RETURN_IF_FALSE(g_appMsgqContext.initialized == APP_TRUE, APP_STATUS_MSGQ_NOT_INITIALIZED);
     APP_RETURN_IF_FALSE((p_message != NULL), APP_STATUS_INVALID_PARAM);
@@ -66,39 +121,51 @@ AppStatus_t App_MsgqTakeFirstByType(uint8_t type, AppMsgqMessage_t *p_message)
         return APP_STATUS_MSGQ_EMPTY;
     }
 
-    foundIndex = APP_MSGQ_DEPTH;
+    keptCount = 0u;
+    found = APP_FALSE;
     readIndex = g_appMsgqContext.head;
-    for (scanned = 0u; scanned < g_appMsgqContext.count; scanned++)
+
+    for (index = 0u; index < g_appMsgqContext.count; index++)
     {
-        if (g_appMsgqBuffer[readIndex].type == type)
+        if ((found == APP_FALSE) && (g_appMsgqBuffer[readIndex].type == type))
         {
-            foundIndex = readIndex;
-            break;
+            *p_message = g_appMsgqBuffer[readIndex];
+            found = APP_TRUE;
         }
-        readIndex = (uint8_t)((readIndex + 1u) % APP_MSGQ_DEPTH);
+        else
+        {
+            compacted[keptCount] = g_appMsgqBuffer[readIndex];
+            keptCount++;
+        }
+        readIndex = App_MsgqIncIndex(readIndex);
     }
 
-    if (foundIndex >= APP_MSGQ_DEPTH)
+    if (found == APP_FALSE)
     {
         return APP_STATUS_MSGQ_EMPTY;
     }
 
-    *p_message = g_appMsgqBuffer[foundIndex];
-
-    writeIndex = foundIndex;
-    readIndex = (uint8_t)((foundIndex + 1u) % APP_MSGQ_DEPTH);
-    while (readIndex != g_appMsgqContext.tail)
+    (void)memset(g_appMsgqBuffer, 0, sizeof(g_appMsgqBuffer));
+    for (index = 0u; index < keptCount; index++)
     {
-        g_appMsgqBuffer[writeIndex] = g_appMsgqBuffer[readIndex];
-        writeIndex = readIndex;
-        readIndex = (uint8_t)((readIndex + 1u) % APP_MSGQ_DEPTH);
+        g_appMsgqBuffer[index] = compacted[index];
     }
 
-    nextIndex = (g_appMsgqContext.tail == 0u) ? (uint8_t)(APP_MSGQ_DEPTH - 1u) : (uint8_t)(g_appMsgqContext.tail - 1u);
-    g_appMsgqContext.tail = nextIndex;
-    g_appMsgqContext.count--;
-    g_appMsgqContext.popCount++;
+    g_appMsgqContext.head = 0u;
+    g_appMsgqContext.tail = keptCount;
+    g_appMsgqContext.count = keptCount;
+    g_appMsgqContext.popFrontCount++;
     return APP_STATUS_OK;
+}
+
+uint8_t App_MsgqIsEmpty(void)
+{
+    return (g_appMsgqContext.count == 0u) ? APP_TRUE : APP_FALSE;
+}
+
+uint8_t App_MsgqGetCount(void)
+{
+    return g_appMsgqContext.count;
 }
 
 const AppMsgqContext_t *App_MsgqGetContext(void)

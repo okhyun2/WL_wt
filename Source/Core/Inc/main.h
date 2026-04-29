@@ -93,14 +93,8 @@ void Error_Handler(void);
 #define Debug_RX_GPIO_Port GPIOA
 #define REED_IN_Pin GPIO_PIN_15
 #define REED_IN_GPIO_Port GPIOA
-#define ESI_Int_Pin GPIO_PIN_2
-#define ESI_Int_GPIO_Port GPIOD
 #define WD_FEED_Pin GPIO_PIN_5
 #define WD_FEED_GPIO_Port GPIOB
-#define ESI_SCL_Pin GPIO_PIN_6
-#define ESI_SCL_GPIO_Port GPIOB
-#define ESI_SDA_Pin GPIO_PIN_7
-#define ESI_SDA_GPIO_Port GPIOB
 #define Charge_BOOT0_Pin GPIO_PIN_8
 #define Charge_BOOT0_GPIO_Port GPIOB
 

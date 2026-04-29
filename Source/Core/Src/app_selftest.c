@@ -42,9 +42,6 @@ static const char *App_SelfTestItemToString(AppSelfTestItem_t item)
         case APP_SELFTEST_ITEM_NBIOT_UART:
             return "NBIOT";
 
-        case APP_SELFTEST_ITEM_ESI_I2C:
-            return "ESI";
-
         case APP_SELFTEST_ITEM_NFC_I2C:
             return "NFC";
 
@@ -345,21 +342,6 @@ static AppStatus_t App_SelfTestCheckI2cDevice(I2C_HandleTypeDef *p_i2cHandle,
 }
 
 /**
- * @brief ESI I2C peripheral check.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
-static AppStatus_t App_SelfTestCheckEsiI2c(void)
-{
-    APP_RETURN_IF_FALSE(APP_I2C_ESI_HANDLE->Instance == I2C1, APP_STATUS_HW_HANDLE_INVALID);
-
-    return App_SelfTestCheckI2cDevice(APP_I2C_ESI_HANDLE,
-                                      "ESI",
-                                      APP_SELFTEST_ENABLE_REAL_ESI_PROBE,
-                                      APP_SELFTEST_ESI_I2C_ADDRESS_7BIT);
-}
-
-/**
  * @brief NFC I2C peripheral check.
  *
  * @return APP_STATUS_OK on success, error code otherwise.
@@ -425,18 +407,15 @@ static AppStatus_t App_SelfTestCheckInputLines(void)
 {
     GPIO_PinState riState;
     GPIO_PinState nfcEventState;
-    GPIO_PinState esiIntState;
     GPIO_PinState reedState;
 
     riState = App_HwReadNbiotRi();
     nfcEventState = App_HwReadNfcEvent();
-    esiIntState = App_HwReadEsiInterrupt();
     reedState = HAL_GPIO_ReadPin(REED_IN_GPIO_Port, REED_IN_Pin);
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "GPIO inputs RI=%u NFC_ED=%u ESI_INT=%u REED=%u",
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "GPIO inputs RI=%u NFC_ED=%u REED=%u",
                                  (unsigned int)riState,
                                  (unsigned int)nfcEventState,
-                                 (unsigned int)esiIntState,
                                  (unsigned int)reedState) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
@@ -503,7 +482,6 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_DEBUG_UART, App_SelfTestCheckDebugUart);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterUart);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiot);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_ESI_I2C, App_SelfTestCheckEsiI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);

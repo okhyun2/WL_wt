@@ -122,7 +122,7 @@ AppStatus_t App_SchedulerRunOnce(void)
             continue;
         }
 
-        taskStatus = p_task->handler(p_task->p_context);
+        taskStatus = p_task->handler(p_task->p_context); //Do task
         p_task->lastStatus = taskStatus;
         p_task->lastRunTickMs = nowTick;
         p_task->runCount++;

@@ -95,11 +95,10 @@ AppStatus_t App_ClockRecoverAfterStop(void)
     clkConfig.APB2CLKDivider = RCC_HCLK_DIV1;
     APP_RETURN_IF_HAL_ERROR(HAL_RCC_ClockConfig(&clkConfig, APP_CLOCK_FLASH_LATENCY_BOOT), APP_STATUS_CLOCK_VERIFY_FAILED);
 
-    periphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_USART2 | RCC_PERIPHCLK_LPUART1 | RCC_PERIPHCLK_I2C1 | RCC_PERIPHCLK_I2C3;
+    periphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_USART2 | RCC_PERIPHCLK_LPUART1 | RCC_PERIPHCLK_I2C3;
     periphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
     periphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
     periphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK1;
-    periphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_PCLK1;
     periphClkInit.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
     APP_RETURN_IF_HAL_ERROR(HAL_RCCEx_PeriphCLKConfig(&periphClkInit), APP_STATUS_CLOCK_VERIFY_FAILED);
 

@@ -150,11 +150,6 @@ void EXTI0_1_IRQHandler(void)
   HAL_GPIO_EXTI_IRQHandler(NBIoT_RI_Pin);
 }
 
-void EXTI2_3_IRQHandler(void)
-{
-  HAL_GPIO_EXTI_IRQHandler(ESI_Int_Pin);
-}
-
 void EXTI4_15_IRQHandler(void)
 {
   HAL_GPIO_EXTI_IRQHandler(NFC_ED_Pin);

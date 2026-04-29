@@ -75,16 +75,14 @@ extern "C" {
 
 #define APP_SELFTEST_ENABLE_REAL_METER_PROBE        (APP_FALSE)
 #define APP_SELFTEST_ENABLE_REAL_NBIOT_PROBE        (APP_FALSE)
-#define APP_SELFTEST_ENABLE_REAL_ESI_PROBE          (APP_FALSE)
 #define APP_SELFTEST_ENABLE_REAL_NFC_PROBE          (APP_FALSE)
 #define APP_SELFTEST_ENABLE_REAL_AUX_PROBE          (APP_FALSE)
 #define APP_SELFTEST_ENABLE_REAL_EXTERNAL_WD_PULSE  (APP_FALSE)
 
-#define APP_SELFTEST_ESI_I2C_ADDRESS_7BIT           (0x00u)
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x00u)
 #define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x00u)
 
-#define APP_SCHEDULER_MAX_TASKS                     (16u)
+#define APP_SCHEDULER_MAX_TASKS                     (10u)
 #define APP_SCHEDULER_RUN_IMMEDIATE                 (APP_TRUE)
 #define APP_SCHEDULER_USE_WFI_IDLE                  (APP_TRUE)
 #define APP_SCHEDULER_IDLE_DELAY_MS                 (1u)
@@ -96,7 +94,6 @@ extern "C" {
 #define APP_SCHEDULER_TASK_STORAGE_PERIOD_MS        (200u)
 #define APP_SCHEDULER_TASK_METER_PERIOD_MS          (500u)
 #define APP_SCHEDULER_TASK_NFC_PERIOD_MS            (250u)
-#define APP_SCHEDULER_TASK_ESI_PERIOD_MS            (500u)
 #define APP_SCHEDULER_TASK_AUX_PERIOD_MS            (1000u)
 #define APP_SCHEDULER_TASK_NBIOT_PERIOD_MS          (500u)
 #define APP_SCHEDULER_TASK_SERVER_PERIOD_MS         (1000u)
@@ -107,7 +104,8 @@ extern "C" {
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
 #define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
 #define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
-#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u)
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
+#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
 
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT     (50u)
@@ -116,7 +114,7 @@ extern "C" {
 #define APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT          (2u)
 #define APP_LP_STOP_DEBUG_DRY_RUN                   (APP_FALSE)
 
-#define APP_MSGQ_DEPTH                              (48u)
+#define APP_MSGQ_DEPTH                              (10u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)
 #define APP_MSGQ_MAIN_DRAIN_PER_RUN                 (12u)
 #define APP_TASK_HEARTBEAT_MIN_INTERVAL_MS          (100u)

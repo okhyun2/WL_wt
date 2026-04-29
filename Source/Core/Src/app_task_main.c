@@ -4,304 +4,628 @@
 #include <string.h>
 
 #include "app_build_config.h"
+#include "app_debug.h"
+#include "app_hw.h"
 #include "app_msgq.h"
-#include "app_scheduler.h"
 #include "app_system.h"
+
+#define APP_TASK_MAIN_RESET_HOLD_MS    (1000u)
 
 static AppTaskMainMonitor_t g_appTaskMainMonitors[APP_TASK_ID_COUNT];
 static AppTaskMainSummary_t g_appTaskMainSummary;
 static AppTaskMainStorageResponse_t g_appTaskMainStorageResponse;
-static uint8_t g_appTaskMainRequireSafe;
 
-static uint32_t App_TaskMainGetTimeoutMs(AppTaskId_t id)
+static AppTaskModuleContext_t *App_TaskMainGetVirtualModule(AppTaskId_t id)
 {
-    const AppTaskModuleContext_t *p_module;
-    const AppSchedulerTask_t *p_task;
-    uint32_t timeoutMs;
-    uint32_t candidate;
-
-    timeoutMs = APP_TASK_MAIN_HEARTBEAT_GRACE_MS;
-    p_module = App_TasksGetModuleContext(id);
-    if (p_module == NULL)
-    {
-        return timeoutMs;
-    }
-
-    p_task = App_SchedulerGetTask(p_module->schedulerHandle);
-    if (p_task != NULL)
-    {
-        candidate = (p_task->periodMs * APP_TASK_MAIN_STALE_FACTOR) + APP_TASK_MAIN_STALE_MARGIN_MS;
-        if (candidate > timeoutMs)
-        {
-            timeoutMs = candidate;
-        }
-    }
-
-    return timeoutMs;
+    return App_TasksGetModuleContextMutable(id);
 }
 
-static uint8_t App_TaskMainIsAlive(AppTaskId_t id, uint32_t nowTick)
+static void App_TaskMainUpdateMonitor(AppTaskId_t id)
 {
-    uint32_t timeoutMs;
-    const AppTaskMainMonitor_t *p_monitor;
+    AppTaskModuleContext_t *p_module;
+    AppTaskMainMonitor_t *p_monitor;
 
-    p_monitor = App_TaskMainGetMonitor(id);
-    if ((p_monitor == NULL) || (p_monitor->heartbeatCount == 0u))
+    if ((uint32_t)id >= (uint32_t)APP_TASK_ID_COUNT)
+    {
+        return;
+    }
+
+    p_module = App_TaskMainGetVirtualModule(id);
+    if (p_module == NULL)
+    {
+        return;
+    }
+
+    p_monitor = &g_appTaskMainMonitors[id];
+    p_monitor->state = p_module->state;
+    p_monitor->busy = p_module->busy;
+    p_monitor->eventPending = p_module->eventPending;
+    p_monitor->alive = APP_TRUE;
+    p_monitor->lastStatus = p_module->lastStatus;
+    p_monitor->lastHeartbeatTickMs = HAL_GetTick();
+    p_monitor->heartbeatCount++;
+}
+
+static void App_TaskMainSetDecision(AppTaskMainDecision_t decision, AppTaskModuleContext_t *p_mainModule)
+{
+    g_appTaskMainSummary.decision = decision;
+    g_appTaskMainSummary.lastEvaluationTickMs = HAL_GetTick();
+    g_appTaskMainSummary.currentState = (p_mainModule != NULL) ? p_mainModule->state : APP_TASK_MAIN_STATE_INIT;
+    g_appTaskMainSummary.lastStateTickMs = HAL_GetTick();
+    g_appTaskMainSummary.aliveCount = 1u;
+    g_appTaskMainSummary.busyCount = ((p_mainModule != NULL) && (p_mainModule->busy == APP_TRUE)) ? 1u : 0u;
+    g_appTaskMainSummary.staleCount = 0u;
+}
+
+static void App_TaskMainMarkVirtualState(AppTaskId_t id,
+                                         uint8_t nextState,
+                                         uint8_t busy,
+                                         uint8_t eventPending,
+                                         AppStatus_t status)
+{
+    AppTaskModuleContext_t *p_module;
+
+    p_module = App_TaskMainGetVirtualModule(id);
+    if (p_module == NULL)
+    {
+        return;
+    }
+
+    p_module->state = nextState;
+    p_module->busy = busy;
+    p_module->eventPending = eventPending;
+    p_module->lastActionTickMs = HAL_GetTick();
+    (void)App_TasksCompleteRun(p_module, status);
+    App_TaskMainUpdateMonitor(id);
+}
+
+static void App_TaskMainSignalEvent(AppTaskId_t id)
+{
+    AppTaskModuleContext_t *p_module;
+
+    p_module = App_TaskMainGetVirtualModule(id);
+    if (p_module != NULL)
+    {
+        p_module->eventPending = APP_TRUE;
+        p_module->lastActionTickMs = HAL_GetTick();
+        App_TaskMainUpdateMonitor(id);
+    }
+}
+
+static uint8_t App_TaskMainIsValidState(uint8_t state)
+{
+    switch (state)
+    {
+        case APP_TASK_MAIN_STATE_BOOT:
+        case APP_TASK_MAIN_STATE_IDLE:
+        case APP_TASK_MAIN_STATE_DEBUG_POLL:
+        case APP_TASK_MAIN_STATE_HOUSEKEEPING_INIT:
+        case APP_TASK_MAIN_STATE_HOUSEKEEPING_SNAPSHOT:
+        case APP_TASK_MAIN_STATE_HOUSEKEEPING_ROTATE:
+        case APP_TASK_MAIN_STATE_POWER_INIT:
+        case APP_TASK_MAIN_STATE_POWER_WAIT_REQUEST:
+        case APP_TASK_MAIN_STATE_METER_INIT:
+        case APP_TASK_MAIN_STATE_METER_WAIT_TRIGGER:
+        case APP_TASK_MAIN_STATE_METER_SEND_REQUEST:
+        case APP_TASK_MAIN_STATE_METER_PARSE_REPLY:
+        case APP_TASK_MAIN_STATE_NFC_INIT:
+        case APP_TASK_MAIN_STATE_NFC_WAIT_EVENT:
+        case APP_TASK_MAIN_STATE_NFC_EXCHANGE:
+        case APP_TASK_MAIN_STATE_AUX_INIT:
+        case APP_TASK_MAIN_STATE_AUX_TRIGGER_MEASURE:
+        case APP_TASK_MAIN_STATE_AUX_READ_RESULT:
+        case APP_TASK_MAIN_STATE_NBIOT_INIT:
+        case APP_TASK_MAIN_STATE_NBIOT_DECIDE_WAKE:
+        case APP_TASK_MAIN_STATE_NBIOT_POWER_ON:
+        case APP_TASK_MAIN_STATE_NBIOT_EXCHANGE_AT:
+        case APP_TASK_MAIN_STATE_SERVER_INIT:
+        case APP_TASK_MAIN_STATE_SERVER_PREPARE_PACKET:
+        case APP_TASK_MAIN_STATE_SERVER_REQUEST_SEND:
+        case APP_TASK_MAIN_STATE_RTC_INIT:
+        case APP_TASK_MAIN_STATE_RTC_CHECK_SCHEDULE:
+        case APP_TASK_MAIN_STATE_RTC_APPLY_SYNC:
+        case APP_TASK_MAIN_STATE_FAULT:
+            return APP_TRUE;
+
+        default:
+            return APP_FALSE;
+    }
+}
+
+static uint8_t App_TaskMainIsPeriodicDue(AppTaskId_t id)
+{
+    const AppTaskModuleContext_t *p_module;
+    uint32_t nowTick;
+
+    p_module = App_TasksGetModuleContext(id);
+    if ((p_module == NULL) || (p_module->periodMs == 0u))
     {
         return APP_FALSE;
     }
 
-    timeoutMs = App_TaskMainGetTimeoutMs(id);
-    return (((int32_t)(nowTick - p_monitor->lastHeartbeatTickMs)) <= (int32_t)timeoutMs) ? APP_TRUE : APP_FALSE;
-}
-
-static void App_TaskMainBeginStorageRequest(uint8_t operation,
-                                            uint8_t backend,
-                                            uint32_t requestTickMs,
-                                            uint32_t userData0,
-                                            uint32_t userData1)
-{
-    g_appTaskMainStorageResponse.initialized = APP_TRUE;
-    g_appTaskMainStorageResponse.responseReady = APP_FALSE;
-    g_appTaskMainStorageResponse.backend = backend;
-    g_appTaskMainStorageResponse.operation = operation;
-    g_appTaskMainStorageResponse.status = APP_STATUS_OK;
-    g_appTaskMainStorageResponse.requestTickMs = requestTickMs;
-    g_appTaskMainStorageResponse.userData0 = userData0;
-    g_appTaskMainStorageResponse.userData1 = userData1;
-    g_appTaskMainStorageResponse.sequence = 0u;
-}
-
-static void App_TaskMainHandleStorageResponse(const AppMsgqMessage_t *p_message)
-{
-    if (p_message == NULL)
+    nowTick = HAL_GetTick();
+    if (p_module->lastRunTickMs == 0u)
     {
-        return;
+        return APP_TRUE;
     }
 
-    g_appTaskMainStorageResponse.initialized = APP_TRUE;
-    g_appTaskMainStorageResponse.responseReady = APP_TRUE;
-    g_appTaskMainStorageResponse.backend = p_message->reserved1;
-    g_appTaskMainStorageResponse.operation = p_message->reserved0;
-    g_appTaskMainStorageResponse.status = (AppStatus_t)p_message->param0;
-    g_appTaskMainStorageResponse.requestTickMs = p_message->tickMs;
-    g_appTaskMainStorageResponse.userData0 = p_message->param1;
-    g_appTaskMainStorageResponse.userData1 = p_message->param2;
-    g_appTaskMainStorageResponse.sequence = p_message->param3;
-    g_appTaskMainStorageResponse.responseCount++;
+    return ((nowTick - p_module->lastRunTickMs) >= p_module->periodMs) ? APP_TRUE : APP_FALSE;
 }
 
-static void App_TaskMainHandleHeartbeat(const AppMsgqMessage_t *p_message)
+static uint8_t App_TaskMainMapVirtualToState(AppTaskId_t id, uint8_t virtualState)
 {
-    AppTaskMainMonitor_t *p_monitor;
-
-    if ((p_message == NULL) || ((uint32_t)p_message->sourceId >= (uint32_t)APP_TASK_ID_COUNT) ||
-        ((AppTaskId_t)p_message->sourceId == APP_TASK_ID_MAIN))
+    switch (id)
     {
-        return;
-    }
+        case APP_TASK_ID_DEBUG:
+            return APP_TASK_MAIN_STATE_DEBUG_POLL;
 
-    p_monitor = &g_appTaskMainMonitors[p_message->sourceId];
-    p_monitor->state = (uint8_t)(p_message->param0 & 0xFFu);
-    p_monitor->busy = ((p_message->param1 & 0x0001u) != 0u) ? APP_TRUE : APP_FALSE;
-    p_monitor->eventPending = ((p_message->param1 & 0x0002u) != 0u) ? APP_TRUE : APP_FALSE;
-    p_monitor->lastStatus = (AppStatus_t)((p_message->param1 >> 16) & 0xFFFFu);
-    p_monitor->lastHeartbeatTickMs = p_message->tickMs;
-    p_monitor->heartbeatCount++;
-    p_monitor->alive = APP_TRUE;
+        case APP_TASK_ID_HOUSEKEEPING:
+            switch (virtualState)
+            {
+                case APP_TASK_HOUSEKEEPING_STATE_INIT: return APP_TASK_MAIN_STATE_HOUSEKEEPING_INIT;
+                case APP_TASK_HOUSEKEEPING_STATE_ROTATE: return APP_TASK_MAIN_STATE_HOUSEKEEPING_ROTATE;
+                case APP_TASK_HOUSEKEEPING_STATE_SNAPSHOT:
+                default: return APP_TASK_MAIN_STATE_HOUSEKEEPING_SNAPSHOT;
+            }
+
+        case APP_TASK_ID_POWER:
+            return (virtualState == APP_TASK_POWER_STATE_INIT) ? APP_TASK_MAIN_STATE_POWER_INIT : APP_TASK_MAIN_STATE_POWER_WAIT_REQUEST;
+
+        case APP_TASK_ID_METER:
+            switch (virtualState)
+            {
+                case APP_TASK_METER_STATE_INIT: return APP_TASK_MAIN_STATE_METER_INIT;
+                case APP_TASK_METER_STATE_SEND_REQUEST: return APP_TASK_MAIN_STATE_METER_SEND_REQUEST;
+                case APP_TASK_METER_STATE_PARSE_REPLY: return APP_TASK_MAIN_STATE_METER_PARSE_REPLY;
+                case APP_TASK_METER_STATE_WAIT_TRIGGER:
+                default: return APP_TASK_MAIN_STATE_METER_WAIT_TRIGGER;
+            }
+
+        case APP_TASK_ID_NFC:
+            switch (virtualState)
+            {
+                case APP_TASK_NFC_STATE_INIT: return APP_TASK_MAIN_STATE_NFC_INIT;
+                case APP_TASK_NFC_STATE_EXCHANGE: return APP_TASK_MAIN_STATE_NFC_EXCHANGE;
+                case APP_TASK_NFC_STATE_WAIT_EVENT:
+                default: return APP_TASK_MAIN_STATE_NFC_WAIT_EVENT;
+            }
+
+        case APP_TASK_ID_AUX:
+            switch (virtualState)
+            {
+                case APP_TASK_AUX_STATE_INIT: return APP_TASK_MAIN_STATE_AUX_INIT;
+                case APP_TASK_AUX_STATE_READ_RESULT: return APP_TASK_MAIN_STATE_AUX_READ_RESULT;
+                case APP_TASK_AUX_STATE_TRIGGER_MEASURE:
+                default: return APP_TASK_MAIN_STATE_AUX_TRIGGER_MEASURE;
+            }
+
+        case APP_TASK_ID_NBIOT:
+            switch (virtualState)
+            {
+                case APP_TASK_NBIOT_STATE_INIT: return APP_TASK_MAIN_STATE_NBIOT_INIT;
+                case APP_TASK_NBIOT_STATE_POWER_ON: return APP_TASK_MAIN_STATE_NBIOT_POWER_ON;
+                case APP_TASK_NBIOT_STATE_EXCHANGE_AT: return APP_TASK_MAIN_STATE_NBIOT_EXCHANGE_AT;
+                case APP_TASK_NBIOT_STATE_DECIDE_WAKE:
+                default: return APP_TASK_MAIN_STATE_NBIOT_DECIDE_WAKE;
+            }
+
+        case APP_TASK_ID_SERVER:
+            switch (virtualState)
+            {
+                case APP_TASK_SERVER_STATE_INIT: return APP_TASK_MAIN_STATE_SERVER_INIT;
+                case APP_TASK_SERVER_STATE_REQUEST_SEND: return APP_TASK_MAIN_STATE_SERVER_REQUEST_SEND;
+                case APP_TASK_SERVER_STATE_PREPARE_PACKET:
+                default: return APP_TASK_MAIN_STATE_SERVER_PREPARE_PACKET;
+            }
+
+        case APP_TASK_ID_RTC:
+            switch (virtualState)
+            {
+                case APP_TASK_RTC_STATE_INIT: return APP_TASK_MAIN_STATE_RTC_INIT;
+                case APP_TASK_RTC_STATE_APPLY_SYNC: return APP_TASK_MAIN_STATE_RTC_APPLY_SYNC;
+                case APP_TASK_RTC_STATE_CHECK_SCHEDULE:
+                default: return APP_TASK_MAIN_STATE_RTC_CHECK_SCHEDULE;
+            }
+
+        default:
+            return APP_TASK_MAIN_STATE_FAULT;
+    }
 }
 
-static void App_TaskMainHandleEventLikeMessage(const AppMsgqMessage_t *p_message)
+static AppStatus_t App_TaskMainQueueInitialStates(void)
 {
-    AppTaskMainMonitor_t *p_monitor;
-
-    if ((p_message == NULL) || ((uint32_t)p_message->sourceId >= (uint32_t)APP_TASK_ID_COUNT) ||
-        ((AppTaskId_t)p_message->sourceId == APP_TASK_ID_MAIN))
-    {
-        return;
-    }
-
-    p_monitor = &g_appTaskMainMonitors[p_message->sourceId];
-    p_monitor->eventPending = APP_TRUE;
-    p_monitor->alive = APP_TRUE;
-    p_monitor->lastHeartbeatTickMs = p_message->tickMs;
-    p_monitor->heartbeatCount++;
+    APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandBack(APP_TASK_MAIN_STATE_POWER_INIT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+    APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandBack(APP_TASK_MAIN_STATE_HOUSEKEEPING_INIT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+    APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandBack(APP_TASK_MAIN_STATE_METER_INIT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+    APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandBack(APP_TASK_MAIN_STATE_NFC_INIT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+    APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandBack(APP_TASK_MAIN_STATE_AUX_INIT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+    APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandBack(APP_TASK_MAIN_STATE_NBIOT_INIT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+    APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandBack(APP_TASK_MAIN_STATE_SERVER_INIT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+    APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandBack(APP_TASK_MAIN_STATE_RTC_INIT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+    return APP_STATUS_OK;
 }
 
-static AppStatus_t App_TaskMainTakeRelevantMessage(AppMsgqMessage_t *p_message)
+static AppStatus_t App_TaskMainServiceDebugConsole(void)
 {
     AppStatus_t status;
 
-    status = App_MsgqTakeFirstByType(APP_MSGQ_TYPE_STORAGE_RESPONSE, p_message);
-    if (status == APP_STATUS_OK)
-    {
-        return APP_STATUS_OK;
-    }
-    APP_RETURN_IF_FALSE(status == APP_STATUS_MSGQ_EMPTY, status);
+    App_TaskMainMarkVirtualState(APP_TASK_ID_DEBUG, APP_TASK_DEBUG_STATE_POLL, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+    status = App_DebugConsoleProcess();
+    App_TaskMainMarkVirtualState(APP_TASK_ID_DEBUG, APP_TASK_DEBUG_STATE_POLL, APP_FALSE, APP_FALSE, status);
+    return status;
+}
 
-    status = App_MsgqTakeFirstByType(APP_MSGQ_MSG_TASK_HEARTBEAT, p_message);
-    if (status == APP_STATUS_OK)
+static AppStatus_t App_TaskMainScheduleOnePeriodicState(void)
+{
+    static const AppTaskId_t periodicOrder[] =
     {
-        return APP_STATUS_OK;
-    }
-    APP_RETURN_IF_FALSE(status == APP_STATUS_MSGQ_EMPTY, status);
+        APP_TASK_ID_HOUSEKEEPING,
+        APP_TASK_ID_METER,
+        APP_TASK_ID_NFC,
+        APP_TASK_ID_AUX,
+        APP_TASK_ID_NBIOT,
+        APP_TASK_ID_SERVER,
+        APP_TASK_ID_RTC
+    };
+    uint32_t index;
+    const AppTaskModuleContext_t *p_module;
+    uint8_t nextState;
 
-    status = App_MsgqTakeFirstByType(APP_MSGQ_MSG_TASK_EVENT, p_message);
-    if (status == APP_STATUS_OK)
+    for (index = 0u; index < (sizeof(periodicOrder) / sizeof(periodicOrder[0])); index++)
     {
-        return APP_STATUS_OK;
-    }
-    APP_RETURN_IF_FALSE(status == APP_STATUS_MSGQ_EMPTY, status);
+        if (App_TaskMainIsPeriodicDue(periodicOrder[index]) != APP_TRUE)
+        {
+            continue;
+        }
 
-    status = App_MsgqTakeFirstByType(APP_MSGQ_MSG_TASK_ALERT, p_message);
-    if (status == APP_STATUS_OK)
-    {
-        return APP_STATUS_OK;
+        p_module = App_TasksGetModuleContext(periodicOrder[index]);
+        if (p_module == NULL)
+        {
+            continue;
+        }
+
+        nextState = App_TaskMainMapVirtualToState(periodicOrder[index], p_module->state);
+        if (App_TaskMainIsValidState(nextState) != APP_TRUE)
+        {
+            nextState = APP_TASK_MAIN_STATE_FAULT;
+        }
+
+        return App_TaskMainQueueStateCommandBack(nextState, 0u, 0u);
     }
-    APP_RETURN_IF_FALSE(status == APP_STATUS_MSGQ_EMPTY, status);
 
     return APP_STATUS_MSGQ_EMPTY;
 }
 
+static void App_TaskMainExecuteResetBoot(void)
+{
+    (void)APP_LOGW("MAIN", "executing reset boot-hold=%lu ms",
+                         (unsigned long)APP_TASK_MAIN_RESET_HOLD_MS);
+    App_HwSetChargeBoot0(GPIO_PIN_SET);
+    HAL_Delay(APP_TASK_MAIN_RESET_HOLD_MS);
+    __disable_irq();
+    NVIC_SystemReset();
+    while (1)
+    {
+    }
+}
+
+static AppStatus_t App_TaskMainExecuteState(AppTaskModuleContext_t *p_mainModule, uint8_t currentState)
+{
+    AppStatus_t status;
+    AppTaskModuleContext_t *p_virtual;
+
+    APP_RETURN_IF_FALSE((p_mainModule != NULL), APP_STATUS_INVALID_PARAM);
+
+    p_mainModule->busy = (currentState == APP_TASK_MAIN_STATE_IDLE) ? APP_FALSE : APP_TRUE;
+    p_mainModule->eventPending = (currentState == APP_TASK_MAIN_STATE_IDLE) ? APP_FALSE : APP_TRUE;
+    p_mainModule->lastActionTickMs = HAL_GetTick();
+    g_appTaskMainSummary.currentState = currentState;
+    g_appTaskMainSummary.lastStateTickMs = HAL_GetTick();
+    g_appTaskMainSummary.lowPowerRequested = APP_FALSE;
+    APP_RETURN_IF_FALSE(App_SystemRequestLowPower(APP_FALSE) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+
+    switch (currentState)
+    {
+        case APP_TASK_MAIN_STATE_BOOT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_DEBUG, APP_TASK_DEBUG_STATE_POLL, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainMarkVirtualState(APP_TASK_ID_HOUSEKEEPING, APP_TASK_HOUSEKEEPING_STATE_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainMarkVirtualState(APP_TASK_ID_POWER, APP_TASK_POWER_STATE_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainMarkVirtualState(APP_TASK_ID_METER, APP_TASK_METER_STATE_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainMarkVirtualState(APP_TASK_ID_NFC, APP_TASK_NFC_STATE_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainMarkVirtualState(APP_TASK_ID_AUX, APP_TASK_AUX_STATE_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainMarkVirtualState(APP_TASK_ID_NBIOT, APP_TASK_NBIOT_STATE_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainMarkVirtualState(APP_TASK_ID_SERVER, APP_TASK_SERVER_STATE_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainMarkVirtualState(APP_TASK_ID_RTC, APP_TASK_RTC_STATE_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            APP_RETURN_IF_FALSE(App_TaskMainQueueInitialStates() == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_BOOT, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_DEBUG_POLL:
+            APP_RETURN_IF_FALSE(App_TaskMainServiceDebugConsole() == APP_STATUS_OK, APP_STATUS_UART_RX_FAILED);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_HOUSEKEEPING_INIT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_HOUSEKEEPING, APP_TASK_HOUSEKEEPING_STATE_SNAPSHOT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_HOUSEKEEPING_SNAPSHOT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_HOUSEKEEPING, APP_TASK_HOUSEKEEPING_STATE_ROTATE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+            APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandBack(APP_TASK_MAIN_STATE_HOUSEKEEPING_ROTATE, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_HOUSEKEEPING_ROTATE:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_HOUSEKEEPING, APP_TASK_HOUSEKEEPING_STATE_SNAPSHOT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_POWER_INIT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_POWER, APP_TASK_POWER_STATE_WAIT_REQUEST, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_POWER_WAIT_REQUEST:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_POWER, APP_TASK_POWER_STATE_WAIT_REQUEST, APP_TRUE, APP_TRUE, APP_STATUS_OK);
+            if (g_appTaskMainSummary.lastCommandParam0 == (uint32_t)APP_POWER_QUEUE_OP_RESET_BOOT)
+            {
+                App_TaskMainExecuteResetBoot();
+            }
+            App_TaskMainMarkVirtualState(APP_TASK_ID_POWER, APP_TASK_POWER_STATE_WAIT_REQUEST, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_METER_INIT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_METER, APP_TASK_METER_STATE_WAIT_TRIGGER, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_METER_WAIT_TRIGGER:
+            p_virtual = App_TaskMainGetVirtualModule(APP_TASK_ID_METER);
+            if ((p_virtual != NULL) && (p_virtual->eventPending == APP_TRUE))
+            {
+                App_TaskMainMarkVirtualState(APP_TASK_ID_METER, APP_TASK_METER_STATE_SEND_REQUEST, APP_TRUE, APP_TRUE, APP_STATUS_OK);
+                APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandFront(APP_TASK_MAIN_STATE_METER_SEND_REQUEST, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            }
+            else
+            {
+                App_TaskMainMarkVirtualState(APP_TASK_ID_METER, APP_TASK_METER_STATE_WAIT_TRIGGER, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            }
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_METER_SEND_REQUEST:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_METER, APP_TASK_METER_STATE_PARSE_REPLY, APP_TRUE, APP_TRUE, APP_STATUS_OK);
+            APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandFront(APP_TASK_MAIN_STATE_METER_PARSE_REPLY, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_METER_PARSE_REPLY:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_METER, APP_TASK_METER_STATE_WAIT_TRIGGER, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_NFC_INIT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_NFC, APP_TASK_NFC_STATE_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_NFC_WAIT_EVENT:
+            p_virtual = App_TaskMainGetVirtualModule(APP_TASK_ID_NFC);
+            if ((p_virtual != NULL) && (p_virtual->eventPending == APP_TRUE))
+            {
+                App_TaskMainMarkVirtualState(APP_TASK_ID_NFC, APP_TASK_NFC_STATE_EXCHANGE, APP_TRUE, APP_TRUE, APP_STATUS_OK);
+                APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandFront(APP_TASK_MAIN_STATE_NFC_EXCHANGE, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            }
+            else
+            {
+                App_TaskMainMarkVirtualState(APP_TASK_ID_NFC, APP_TASK_NFC_STATE_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            }
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_NFC_EXCHANGE:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_NFC, APP_TASK_NFC_STATE_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_AUX_INIT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_AUX, APP_TASK_AUX_STATE_TRIGGER_MEASURE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_AUX_TRIGGER_MEASURE:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_AUX, APP_TASK_AUX_STATE_READ_RESULT, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+            APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandFront(APP_TASK_MAIN_STATE_AUX_READ_RESULT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_AUX_READ_RESULT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_AUX, APP_TASK_AUX_STATE_TRIGGER_MEASURE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_NBIOT_INIT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_NBIOT, APP_TASK_NBIOT_STATE_DECIDE_WAKE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_NBIOT_DECIDE_WAKE:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_NBIOT, APP_TASK_NBIOT_STATE_POWER_ON, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+            APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandFront(APP_TASK_MAIN_STATE_NBIOT_POWER_ON, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_NBIOT_POWER_ON:
+            (void)App_SystemSetNbiotPowered(APP_TRUE);
+            App_TaskMainMarkVirtualState(APP_TASK_ID_NBIOT, APP_TASK_NBIOT_STATE_EXCHANGE_AT, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+            APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandFront(APP_TASK_MAIN_STATE_NBIOT_EXCHANGE_AT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_NBIOT_EXCHANGE_AT:
+            (void)App_SystemSetNbiotPowered(APP_FALSE);
+            App_TaskMainMarkVirtualState(APP_TASK_ID_NBIOT, APP_TASK_NBIOT_STATE_DECIDE_WAKE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_SERVER_INIT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_SERVER, APP_TASK_SERVER_STATE_PREPARE_PACKET, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_SERVER_PREPARE_PACKET:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_SERVER, APP_TASK_SERVER_STATE_REQUEST_SEND, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+            APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandFront(APP_TASK_MAIN_STATE_SERVER_REQUEST_SEND, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_SERVER_REQUEST_SEND:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_SERVER, APP_TASK_SERVER_STATE_PREPARE_PACKET, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_RTC_INIT:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_RTC, APP_TASK_RTC_STATE_CHECK_SCHEDULE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_RTC_CHECK_SCHEDULE:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_RTC, APP_TASK_RTC_STATE_APPLY_SYNC, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+            APP_RETURN_IF_FALSE(App_TaskMainQueueStateCommandFront(APP_TASK_MAIN_STATE_RTC_APPLY_SYNC, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_RTC_APPLY_SYNC:
+            App_TaskMainMarkVirtualState(APP_TASK_ID_RTC, APP_TASK_RTC_STATE_CHECK_SCHEDULE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_RUN_ACTIVE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_FAULT:
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_REQUIRE_SAFE, p_mainModule);
+            break;
+
+        case APP_TASK_MAIN_STATE_IDLE:
+        default:
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_ALLOW_IDLE, p_mainModule);
+            break;
+    }
+
+    p_mainModule->busy = APP_FALSE;
+    p_mainModule->eventPending = APP_FALSE;
+    APP_TASK_SET_STATE(p_mainModule, APP_TASK_MAIN_STATE_DISPATCH);
+    g_appTaskMainSummary.currentState = APP_TASK_MAIN_STATE_DISPATCH;
+    g_appTaskMainSummary.lastStateTickMs = HAL_GetTick();
+    return APP_STATUS_OK;
+}
+
 AppStatus_t App_TaskMain(void *p_context)
 {
-    AppTaskModuleContext_t *p_module;
+    AppTaskModuleContext_t *p_mainModule;
     AppMsgqMessage_t message;
-    AppStatus_t queueStatus;
-    uint32_t nowTick;
-    uint32_t id;
-    uint32_t drainedCount;
-    uint8_t anyEvent;
-    uint8_t requireSafe;
+    AppStatus_t status;
+    uint8_t nextState;
 
-    p_module = (AppTaskModuleContext_t *)p_context;
-    APP_RETURN_IF_FALSE((p_module != NULL), APP_STATUS_INVALID_PARAM);
+    p_mainModule = (AppTaskModuleContext_t *)p_context;
+    APP_RETURN_IF_FALSE((p_mainModule != NULL), APP_STATUS_INVALID_PARAM);
 
-    nowTick = HAL_GetTick();
-
-    switch (p_module->state)
+    switch (p_mainModule->state)
     {
         case APP_TASK_MAIN_STATE_INIT:
             (void)memset(g_appTaskMainMonitors, 0, sizeof(g_appTaskMainMonitors));
             (void)memset(&g_appTaskMainSummary, 0, sizeof(g_appTaskMainSummary));
             (void)memset(&g_appTaskMainStorageResponse, 0, sizeof(g_appTaskMainStorageResponse));
-            g_appTaskMainRequireSafe = APP_FALSE;
-            g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_BOOT;
-            APP_TASK_SET_STATE(p_module, APP_TASK_MAIN_STATE_COLLECT);
+            APP_TASK_SET_STATE(p_mainModule, APP_TASK_MAIN_STATE_DISPATCH);
+            g_appTaskMainSummary.currentState = APP_TASK_MAIN_STATE_DISPATCH;
+            g_appTaskMainSummary.lastStateTickMs = HAL_GetTick();
+            (void)App_TaskMainQueueStateCommandFront(APP_TASK_MAIN_STATE_BOOT, 0u, 0u);
             break;
 
-        case APP_TASK_MAIN_STATE_COLLECT:
-            drainedCount = 0u;
-            while (drainedCount < APP_MSGQ_MAIN_DRAIN_PER_RUN)
+        case APP_TASK_MAIN_STATE_DISPATCH:
+            APP_RETURN_IF_FALSE(App_TaskMainServiceDebugConsole() == APP_STATUS_OK, APP_STATUS_UART_RX_FAILED);
+
+            status = App_MsgqTakeFirstByType(APP_MSGQ_TYPE_STATE_COMMAND, &message);
+            if (status == APP_STATUS_OK)
             {
-                queueStatus = App_TaskMainTakeRelevantMessage(&message);
-                if (queueStatus == APP_STATUS_MSGQ_EMPTY)
+                nextState = message.reserved0;
+                if (App_TaskMainIsValidState(nextState) != APP_TRUE)
                 {
-                    break;
-                }
-                APP_RETURN_IF_FALSE(queueStatus == APP_STATUS_OK, queueStatus);
-
-                if ((message.type == APP_MSGQ_MSG_TASK_HEARTBEAT) &&
-                    ((uint32_t)message.sourceId < (uint32_t)APP_TASK_ID_COUNT) &&
-                    ((AppTaskId_t)message.sourceId != APP_TASK_ID_MAIN))
-                {
-                    App_TaskMainHandleHeartbeat(&message);
-                    g_appTaskMainSummary.processedMessageCount++;
-                }
-                else if ((message.type == APP_MSGQ_TYPE_STORAGE_RESPONSE) &&
-                         (message.sourceId == (uint8_t)APP_TASK_ID_STORAGE))
-                {
-                    App_TaskMainHandleStorageResponse(&message);
-                    g_appTaskMainSummary.processedMessageCount++;
-                }
-                else if ((message.type == APP_MSGQ_MSG_TASK_EVENT) || (message.type == APP_MSGQ_MSG_TASK_ALERT))
-                {
-                    App_TaskMainHandleEventLikeMessage(&message);
-                    g_appTaskMainSummary.processedMessageCount++;
+                    nextState = APP_TASK_MAIN_STATE_FAULT;
                 }
 
-                drainedCount++;
+                if (message.param0 != 0u)
+                {
+                    if ((nextState == APP_TASK_MAIN_STATE_METER_WAIT_TRIGGER) ||
+                        (nextState == APP_TASK_MAIN_STATE_METER_SEND_REQUEST) ||
+                        (nextState == APP_TASK_MAIN_STATE_METER_PARSE_REPLY))
+                    {
+                        App_TaskMainSignalEvent(APP_TASK_ID_METER);
+                    }
+                    else if ((nextState == APP_TASK_MAIN_STATE_NFC_WAIT_EVENT) ||
+                             (nextState == APP_TASK_MAIN_STATE_NFC_EXCHANGE))
+                    {
+                        App_TaskMainSignalEvent(APP_TASK_ID_NFC);
+                    }
+                    else if ((nextState == APP_TASK_MAIN_STATE_RTC_CHECK_SCHEDULE) ||
+                             (nextState == APP_TASK_MAIN_STATE_RTC_APPLY_SYNC))
+                    {
+                        App_TaskMainSignalEvent(APP_TASK_ID_RTC);
+                    }
+                    else if ((nextState == APP_TASK_MAIN_STATE_NBIOT_DECIDE_WAKE) ||
+                             (nextState == APP_TASK_MAIN_STATE_NBIOT_POWER_ON) ||
+                             (nextState == APP_TASK_MAIN_STATE_NBIOT_EXCHANGE_AT))
+                    {
+                        App_TaskMainSignalEvent(APP_TASK_ID_NBIOT);
+                    }
+                }
+
+                g_appTaskMainSummary.lastQueuedState = nextState;
+                g_appTaskMainSummary.lastDequeFromFront = message.reserved1;
+                g_appTaskMainSummary.lastCommandTickMs = message.tickMs;
+                g_appTaskMainSummary.lastCommandParam0 = message.param0;
+                g_appTaskMainSummary.lastCommandParam1 = message.param1;
+                g_appTaskMainSummary.processedMessageCount++;
+                g_appTaskMainSummary.transitionCount++;
+                APP_TASK_SET_STATE(p_mainModule, nextState);
+                APP_RETURN_IF_FALSE(App_TaskMainExecuteState(p_mainModule, nextState) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+                break;
             }
-            APP_TASK_SET_STATE(p_module, APP_TASK_MAIN_STATE_EVALUATE);
-            break;
+            APP_RETURN_IF_FALSE((status == APP_STATUS_MSGQ_EMPTY), status);
 
-        case APP_TASK_MAIN_STATE_EVALUATE:
-            g_appTaskMainSummary.aliveCount = 0u;
-            g_appTaskMainSummary.busyCount = 0u;
-            g_appTaskMainSummary.staleCount = 0u;
-            g_appTaskMainSummary.lastEvaluationTickMs = nowTick;
-            g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_MONITOR;
-            anyEvent = APP_FALSE;
-            requireSafe = APP_FALSE;
-
-            for (id = 0u; id < (uint32_t)APP_TASK_ID_COUNT; id++)
+            status = App_TaskMainScheduleOnePeriodicState();
+            if (status == APP_STATUS_OK)
             {
-                AppTaskId_t taskId;
-
-                taskId = (AppTaskId_t)id;
-                if (taskId == APP_TASK_ID_MAIN)
-                {
-                    continue;
-                }
-
-                g_appTaskMainMonitors[id].alive = App_TaskMainIsAlive(taskId, nowTick);
-                if (g_appTaskMainMonitors[id].alive == APP_TRUE)
-                {
-                    g_appTaskMainSummary.aliveCount++;
-                    if (g_appTaskMainMonitors[id].busy == APP_TRUE)
-                    {
-                        g_appTaskMainSummary.busyCount++;
-                    }
-                    if (g_appTaskMainMonitors[id].eventPending == APP_TRUE)
-                    {
-                        anyEvent = APP_TRUE;
-                    }
-                }
-                else
-                {
-                    g_appTaskMainSummary.staleCount++;
-                    if ((taskId == APP_TASK_ID_WATCHDOG) || (taskId == APP_TASK_ID_POWER))
-                    {
-                        requireSafe = APP_TRUE;
-                    }
-                }
+                break;
             }
+            #if (APP_RTC_WAKEUP_PERIOD_MS != 0)
+            APP_RETURN_IF_FALSE((status == APP_STATUS_MSGQ_EMPTY), status);
 
-            g_appTaskMainRequireSafe = requireSafe;
-            p_module->busy = (g_appTaskMainSummary.busyCount != 0u) ? APP_TRUE : APP_FALSE;
-            p_module->eventPending = anyEvent;
-            APP_TASK_SET_STATE(p_module, APP_TASK_MAIN_STATE_DECIDE);
+            g_appTaskMainSummary.queueEmptyStopCount++;
+            g_appTaskMainSummary.lowPowerRequested = APP_TRUE;
+            APP_RETURN_IF_FALSE(App_SystemRequestLowPower(APP_TRUE) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+            APP_TASK_SET_STATE(p_mainModule, APP_TASK_MAIN_STATE_IDLE);
+            g_appTaskMainSummary.currentState = APP_TASK_MAIN_STATE_IDLE;
+            g_appTaskMainSummary.lastStateTickMs = HAL_GetTick();
+            App_TaskMainSetDecision(APP_TASK_MAIN_DECISION_ALLOW_IDLE, p_mainModule);
+            #endif
             break;
 
-        case APP_TASK_MAIN_STATE_DECIDE:
+        case APP_TASK_MAIN_STATE_IDLE:
+            p_mainModule->busy = APP_FALSE;
+            p_mainModule->eventPending = APP_FALSE;
+            APP_TASK_SET_STATE(p_mainModule, APP_TASK_MAIN_STATE_DISPATCH);
+            g_appTaskMainSummary.currentState = APP_TASK_MAIN_STATE_DISPATCH;
+            g_appTaskMainSummary.lastStateTickMs = HAL_GetTick();
+            break;
+
         default:
-            if (g_appTaskMainRequireSafe == APP_TRUE)
-            {
-                g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_REQUIRE_SAFE;
-            }
-            else if ((g_appTaskMainSummary.busyCount == 0u) && (p_module->eventPending == APP_FALSE))
-            {
-                g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_ALLOW_IDLE;
-                //don't enter stop mode.
-                //g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_RUN_ACTIVE;
-            }
-            else
-            {
-                g_appTaskMainSummary.decision = APP_TASK_MAIN_DECISION_RUN_ACTIVE;
-            }
-
-            p_module->lastActionTickMs = nowTick;
-            APP_TASK_DEBUG_PRINT("MAIN", "decision=%s alive=%lu busy=%lu stale=%lu pending=%u",
-                                 App_TaskMainGetDecisionString(),
-                                 (unsigned long)g_appTaskMainSummary.aliveCount,
-                                 (unsigned long)g_appTaskMainSummary.busyCount,
-                                 (unsigned long)g_appTaskMainSummary.staleCount,
-                                 (unsigned int)p_module->eventPending);
-            APP_TASK_SET_STATE(p_module, APP_TASK_MAIN_STATE_COLLECT);
+            APP_RETURN_IF_FALSE(App_TaskMainExecuteState(p_mainModule, p_mainModule->state) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
             break;
     }
 
-    return App_TasksCompleteRun(p_module, APP_STATUS_OK);
+    App_TaskMainUpdateMonitor(APP_TASK_ID_MAIN);
+    return App_TasksCompleteRun(p_mainModule, APP_STATUS_OK);
 }
 
 const AppTaskMainMonitor_t *App_TaskMainGetMonitor(AppTaskId_t id)
@@ -337,6 +661,16 @@ const char *App_TaskMainGetDecisionString(void)
     }
 }
 
+uint8_t App_TaskMainGetState(void)
+{
+    return g_appTaskMainSummary.currentState;
+}
+
+const char *App_TaskMainGetStateString(void)
+{
+    return App_TasksGetStateName(APP_TASK_ID_MAIN, g_appTaskMainSummary.currentState);
+}
+
 const AppTaskMainStorageResponse_t *App_TaskMainGetStorageResponse(void)
 {
     return &g_appTaskMainStorageResponse;
@@ -344,60 +678,33 @@ const AppTaskMainStorageResponse_t *App_TaskMainGetStorageResponse(void)
 
 AppStatus_t App_TaskMainRequestStorageSave(AppStorageTarget_t backend, uint32_t userData0, uint32_t userData1)
 {
-    AppMsgqMessage_t message;
-    uint32_t requestTickMs;
-
-    APP_RETURN_IF_FALSE((backend == APP_STORAGE_TARGET_EEPROM) || (backend == APP_STORAGE_TARGET_FLASH) || (backend == APP_STORAGE_TARGET_BOTH), APP_STATUS_INVALID_PARAM);
-
-    requestTickMs = HAL_GetTick();
-    App_TaskMainBeginStorageRequest((uint8_t)APP_STORAGE_QUEUE_OP_SAVE,
-                                    (uint8_t)backend,
-                                    requestTickMs,
-                                    userData0,
-                                    userData1);
-
-    (void)memset(&message, 0, sizeof(message));
-    message.type = APP_MSGQ_TYPE_STORAGE_REQUEST;
-    message.sourceId = (uint8_t)APP_TASK_ID_MAIN;
-    message.reserved0 = (uint8_t)APP_STORAGE_QUEUE_OP_SAVE;
-    message.reserved1 = (uint8_t)backend;
-    message.tickMs = requestTickMs;
-    message.param0 = userData0;
-    message.param1 = userData1;
-    return App_MsgqPush(&message);
+    (void)backend;
+    (void)userData0;
+    (void)userData1;
+    return APP_STATUS_INVALID_PARAM;
 }
 
 AppStatus_t App_TaskMainRequestStorageLoad(AppStorageTarget_t backend)
 {
-    AppMsgqMessage_t message;
-    uint32_t requestTickMs;
-
-    APP_RETURN_IF_FALSE((backend == APP_STORAGE_TARGET_EEPROM) || (backend == APP_STORAGE_TARGET_FLASH), APP_STATUS_INVALID_PARAM);
-
-    requestTickMs = HAL_GetTick();
-    App_TaskMainBeginStorageRequest((uint8_t)APP_STORAGE_QUEUE_OP_LOAD,
-                                    (uint8_t)backend,
-                                    requestTickMs,
-                                    0u,
-                                    0u);
-
-    (void)memset(&message, 0, sizeof(message));
-    message.type = APP_MSGQ_TYPE_STORAGE_REQUEST;
-    message.sourceId = (uint8_t)APP_TASK_ID_MAIN;
-    message.reserved0 = (uint8_t)APP_STORAGE_QUEUE_OP_LOAD;
-    message.reserved1 = (uint8_t)backend;
-    message.tickMs = requestTickMs;
-    return App_MsgqPush(&message);
+    (void)backend;
+    return APP_STATUS_INVALID_PARAM;
 }
 
 AppStatus_t App_TaskMainRequestPowerResetBoot(void)
 {
-    AppMsgqMessage_t message;
+    return App_TaskMainQueueStateCommandFront(APP_TASK_MAIN_STATE_POWER_WAIT_REQUEST,
+                                              (uint32_t)APP_POWER_QUEUE_OP_RESET_BOOT,
+                                              0u);
+}
 
-    (void)memset(&message, 0, sizeof(message));
-    message.type = APP_MSGQ_TYPE_POWER_REQUEST;
-    message.sourceId = (uint8_t)APP_TASK_ID_MAIN;
-    message.reserved0 = (uint8_t)APP_POWER_QUEUE_OP_RESET_BOOT;
-    message.tickMs = HAL_GetTick();
-    return App_MsgqPush(&message);
+AppStatus_t App_TaskMainQueueStateCommandFront(uint8_t nextState, uint32_t param0, uint32_t param1)
+{
+    APP_RETURN_IF_FALSE(App_TaskMainIsValidState(nextState) == APP_TRUE, APP_STATUS_INVALID_PARAM);
+    return App_TasksPublishStateCommand(APP_TASK_ID_MAIN, nextState, APP_TRUE, param0, param1);
+}
+
+AppStatus_t App_TaskMainQueueStateCommandBack(uint8_t nextState, uint32_t param0, uint32_t param1)
+{
+    APP_RETURN_IF_FALSE(App_TaskMainIsValidState(nextState) == APP_TRUE, APP_STATUS_INVALID_PARAM);
+    return App_TasksPublishStateCommand(APP_TASK_ID_MAIN, nextState, APP_FALSE, param0, param1);
 }

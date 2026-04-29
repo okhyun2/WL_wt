@@ -1,12 +1,12 @@
 #include "app_debug.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "app_build_config.h"
 #include "app_clock.h"
 #include "app_hw.h"
+#include "app_msgq.h"
 #include "app_scheduler.h"
 #include "app_system.h"
 #include "app_tasks.h"
@@ -31,62 +31,52 @@ static AppStatus_t App_DebugConsolePrintTaskTable(void)
 {
     char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
     const AppSchedulerContext_t *p_schedulerContext;
-    const AppTaskMainSummary_t *p_mainSummary;
     uint32_t index;
     int32_t formattedLength;
     uint32_t nowTick;
 
     p_schedulerContext = App_SchedulerGetContext();
-    p_mainSummary = App_TaskMainGetSummary();
     nowTick = HAL_GetTick();
 
     formattedLength = snprintf(txBuffer,
                                sizeof(txBuffer),
-                               "sched tasks=%u dispatch=%u idle=%lu loop=%lu main=%s alive=%lu busy=%lu stale=%lu",
-                               (unsigned int)p_schedulerContext->taskCount,
-                               (unsigned int)p_schedulerContext->lastDispatchCount,
-                               (unsigned long)p_schedulerContext->idleCount,
-                               (unsigned long)p_schedulerContext->loopCount,
-                               App_TaskMainGetDecisionString(),
-                               (unsigned long)p_mainSummary->aliveCount,
-                               (unsigned long)p_mainSummary->busyCount,
-                               (unsigned long)p_mainSummary->staleCount);
+                               "sched tasks=%u dispatch=%u idle=%lu loop=%lu main=%s q=%u",
+                               (unsigned int)((p_schedulerContext != NULL) ? p_schedulerContext->taskCount : 0u),
+                               (unsigned int)((p_schedulerContext != NULL) ? p_schedulerContext->lastDispatchCount : 0u),
+                               (unsigned long)((p_schedulerContext != NULL) ? p_schedulerContext->idleCount : 0u),
+                               (unsigned long)((p_schedulerContext != NULL) ? p_schedulerContext->loopCount : 0u),
+                               App_TaskMainGetStateString(),
+                               (unsigned int)App_MsgqGetCount());
     APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
     APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
-    for (index = 0u; index < APP_SCHEDULER_MAX_TASKS; index++)
+    for (index = 0u; index < (uint32_t)APP_TASK_ID_COUNT; index++)
     {
-        const AppSchedulerTask_t *p_task;
-        AppTaskId_t taskId;
         const AppTaskModuleContext_t *p_module;
-        const AppTaskMainMonitor_t *p_monitor;
         const char *p_stateName;
         uint32_t ageMs;
 
-        p_task = App_SchedulerGetTask((AppSchedulerTaskHandle_t)index);
-        if (p_task == NULL)
+        p_module = App_TasksGetModuleContext((AppTaskId_t)index);
+        if (p_module == NULL)
         {
             continue;
         }
 
-        taskId = App_TasksFindIdBySchedulerHandle((AppSchedulerTaskHandle_t)index);
-        p_module = ((uint32_t)taskId < (uint32_t)APP_TASK_ID_COUNT) ? App_TasksGetModuleContext(taskId) : NULL;
-        p_monitor = ((uint32_t)taskId < (uint32_t)APP_TASK_ID_COUNT) ? App_TaskMainGetMonitor(taskId) : NULL;
-        p_stateName = ((p_module != NULL) && ((uint32_t)taskId < (uint32_t)APP_TASK_ID_COUNT)) ? App_TasksGetStateName(taskId, p_module->state) : "-";
-        ageMs = ((p_monitor != NULL) && (p_monitor->heartbeatCount != 0u)) ? (nowTick - p_monitor->lastHeartbeatTickMs) : 0u;
+        p_stateName = App_TasksGetStateName((AppTaskId_t)index, p_module->state);
+        ageMs = (p_module->lastRunTickMs != 0u) ? (nowTick - p_module->lastRunTickMs) : 0u;
 
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "[%02lu] %-12s en=%u run=%lu state=%-12s busy=%u alive=%u age=%lu last=%lu",
+                                   "[%02lu] %-12s run=%lu period=%lu state=%-20s busy=%u evt=%u age=%lu last=%lu",
                                    (unsigned long)index,
-                                   (p_task->p_name != NULL) ? p_task->p_name : "-",
-                                   (unsigned int)p_task->enabled,
-                                   (unsigned long)p_task->runCount,
+                                   (p_module->p_name != NULL) ? p_module->p_name : "-",
+                                   (unsigned long)p_module->runCount,
+                                   (unsigned long)p_module->periodMs,
                                    p_stateName,
-                                   (unsigned int)((p_module != NULL) ? p_module->busy : 0u),
-                                   (unsigned int)((p_monitor != NULL) ? p_monitor->alive : 0u),
+                                   (unsigned int)p_module->busy,
+                                   (unsigned int)p_module->eventPending,
                                    (unsigned long)ageMs,
-                                   (unsigned long)p_task->lastStatus);
+                                   (unsigned long)p_module->lastStatus);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
     }
@@ -94,49 +84,69 @@ static AppStatus_t App_DebugConsolePrintTaskTable(void)
     return APP_STATUS_OK;
 }
 
-static const char *App_DebugConsoleGetStorageBackendString(uint8_t backend)
-{
-    switch (backend)
-    {
-        case APP_STORAGE_TARGET_EEPROM: return "eeprom";
-        case APP_STORAGE_TARGET_FLASH:  return "flash";
-        case APP_STORAGE_TARGET_BOTH:   return "both";
-        default:                        return "unknown";
-    }
-}
-
-static const char *App_DebugConsoleGetStorageOperationString(uint8_t operation)
-{
-    switch (operation)
-    {
-        case APP_STORAGE_QUEUE_OP_SAVE: return "save";
-        case APP_STORAGE_QUEUE_OP_LOAD: return "load";
-        default:                        return "unknown";
-    }
-}
-
-static AppStatus_t App_DebugConsoleParseStorageBackend(const char *p_token,
-                                                       uint8_t allowBoth,
-                                                       AppStorageTarget_t *p_backend)
+static AppStatus_t App_DebugConsoleParseMainState(const char *p_token, uint8_t *p_state)
 {
     APP_RETURN_IF_FALSE((p_token != NULL), APP_STATUS_INVALID_PARAM);
-    APP_RETURN_IF_FALSE((p_backend != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_state != NULL), APP_STATUS_INVALID_PARAM);
 
-    if ((strcmp(p_token, "eep") == 0) || (strcmp(p_token, "eeprom") == 0))
+    if (strcmp(p_token, "boot") == 0)
     {
-        *p_backend = APP_STORAGE_TARGET_EEPROM;
+        *p_state = APP_TASK_MAIN_STATE_BOOT;
         return APP_STATUS_OK;
     }
-
-    if (strcmp(p_token, "flash") == 0)
+    if ((strcmp(p_token, "idle") == 0) || (strcmp(p_token, "stop") == 0))
     {
-        *p_backend = APP_STORAGE_TARGET_FLASH;
+        *p_state = APP_TASK_MAIN_STATE_IDLE;
         return APP_STATUS_OK;
     }
-
-    if ((allowBoth == APP_TRUE) && (strcmp(p_token, "both") == 0))
+    if ((strcmp(p_token, "debug") == 0) || (strcmp(p_token, "dbg") == 0))
     {
-        *p_backend = APP_STORAGE_TARGET_BOTH;
+        *p_state = APP_TASK_MAIN_STATE_DEBUG_POLL;
+        return APP_STATUS_OK;
+    }
+    if ((strcmp(p_token, "power") == 0) || (strcmp(p_token, "reset") == 0))
+    {
+        *p_state = APP_TASK_MAIN_STATE_POWER_WAIT_REQUEST;
+        return APP_STATUS_OK;
+    }
+    if ((strcmp(p_token, "hk") == 0) || (strcmp(p_token, "housekeeping") == 0))
+    {
+        *p_state = APP_TASK_MAIN_STATE_HOUSEKEEPING_SNAPSHOT;
+        return APP_STATUS_OK;
+    }
+    if (strcmp(p_token, "meter") == 0)
+    {
+        *p_state = APP_TASK_MAIN_STATE_METER_WAIT_TRIGGER;
+        return APP_STATUS_OK;
+    }
+    if (strcmp(p_token, "nfc") == 0)
+    {
+        *p_state = APP_TASK_MAIN_STATE_NFC_WAIT_EVENT;
+        return APP_STATUS_OK;
+    }
+    if (strcmp(p_token, "aux") == 0)
+    {
+        *p_state = APP_TASK_MAIN_STATE_AUX_TRIGGER_MEASURE;
+        return APP_STATUS_OK;
+    }
+    if (strcmp(p_token, "nbiot") == 0)
+    {
+        *p_state = APP_TASK_MAIN_STATE_NBIOT_DECIDE_WAKE;
+        return APP_STATUS_OK;
+    }
+    if (strcmp(p_token, "server") == 0)
+    {
+        *p_state = APP_TASK_MAIN_STATE_SERVER_PREPARE_PACKET;
+        return APP_STATUS_OK;
+    }
+    if (strcmp(p_token, "rtc") == 0)
+    {
+        *p_state = APP_TASK_MAIN_STATE_RTC_CHECK_SCHEDULE;
+        return APP_STATUS_OK;
+    }
+    if ((strcmp(p_token, "fault") == 0) || (strcmp(p_token, "safe") == 0))
+    {
+        *p_state = APP_TASK_MAIN_STATE_FAULT;
         return APP_STATUS_OK;
     }
 
@@ -149,12 +159,9 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     const AppSystemContext_t *p_systemContext;
     const AppClockContext_t *p_clockContext;
     const AppErrorRecord_t *p_errorRecord;
-    const AppDebugConsoleContext_t *p_debugContext;
-    const AppTaskMainSummary_t *p_mainSummary;
-    const AppTaskMainStorageResponse_t *p_storageResponse;
-    const AppTaskWatchdogSummary_t *p_watchdogSummary;
-    const AppTaskStorageSummary_t *p_storageSummary;
     const AppSchedulerContext_t *p_schedulerContext;
+    const AppTaskMainSummary_t *p_mainSummary;
+    const AppMsgqContext_t *p_msgqContext;
     int32_t formattedLength;
     AppStatus_t status;
 
@@ -166,13 +173,9 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     p_systemContext = App_SystemGetContext();
     p_clockContext = App_ClockGetContext();
     p_errorRecord = App_ErrorGetLast();
-    p_debugContext = App_DebugConsoleGetContext();
-    p_mainSummary = App_TaskMainGetSummary();
-    p_storageResponse = App_TaskMainGetStorageResponse();
-    p_watchdogSummary = App_TaskWatchdogGetSummary();
-    p_storageSummary = App_TaskStorageGetSummary();
     p_schedulerContext = App_SchedulerGetContext();
-    (void)p_debugContext;
+    p_mainSummary = App_TaskMainGetSummary();
+    p_msgqContext = App_MsgqGetContext();
 
     if (strcmp(p_command, "help") == 0)
     {
@@ -181,17 +184,14 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("status                   : show system/debug state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("clock                    : show boot clock summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("error                    : show last error record") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("tasks                    : show scheduler and task state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("main                     : show main-task decision summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("wdog                     : show watchdog service summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("tasks                    : show unified state-machine table") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("main                     : show main state-machine summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("q                        : show deque status") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("lp                       : show low-power state and wake source") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("resetboot                : queue resetboot via power task") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("stor                     : show storage summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("stor resp                : show last main/storage response") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("stor save                : request save with current active data to both") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("stor save <eep|flash|both> <d0> <d1> : queue save request") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("stor load <eep|flash>    : queue load request") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("stor def                 : load defaults and save") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("resetboot                : queue resetboot request") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("sm                       : show current state-machine state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("sm front <state>         : push state command to front") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("sm back <state>          : push state command to rear") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("echo on                  : enable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("echo off                 : disable console echo") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         return APP_STATUS_OK;
@@ -208,19 +208,16 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "boot=%lu loop=%lu idle=%lu dispatch=%u lp=%s stop_req=%u qual=%u cand=%lu stop=%lu dry=%lu rtc=%lu sleep=%lu wake=%s",
+                                   "boot=%lu loop=%lu idle=%lu dispatch=%u main=%s q=%u lp=%s stop_req=%u stop=%lu wake=%s",
                                    (unsigned long)p_systemContext->bootStage,
                                    (unsigned long)p_systemContext->loopCounter,
                                    (unsigned long)p_systemContext->idleCounter,
                                    (unsigned int)((p_schedulerContext != NULL) ? p_schedulerContext->lastDispatchCount : 0u),
+                                   App_TaskMainGetStateString(),
+                                   (unsigned int)App_MsgqGetCount(),
                                    App_SystemGetLowPowerModeString(),
                                    (unsigned int)p_systemContext->stopRequested,
-                                   (unsigned int)p_systemContext->stopQualificationCount,
-                                   (unsigned long)p_systemContext->stopCandidateCount,
                                    (unsigned long)p_systemContext->stopEntryCount,
-                                   (unsigned long)p_systemContext->stopDryRunCount,
-                                   (unsigned long)p_systemContext->rtcWakeEventCount,
-                                   (unsigned long)p_systemContext->sleepEntryCount,
                                    App_SystemGetWakeSourceString());
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
@@ -264,28 +261,29 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "main=%s alive=%lu busy=%lu stale=%lu msg=%lu tick=%lu",
+                                   "main=%s decision=%s trans=%lu msg=%lu qempty_stop=%lu cmd_tick=%lu state_tick=%lu",
+                                   App_TaskMainGetStateString(),
                                    App_TaskMainGetDecisionString(),
-                                   (unsigned long)p_mainSummary->aliveCount,
-                                   (unsigned long)p_mainSummary->busyCount,
-                                   (unsigned long)p_mainSummary->staleCount,
+                                   (unsigned long)p_mainSummary->transitionCount,
                                    (unsigned long)p_mainSummary->processedMessageCount,
-                                   (unsigned long)p_mainSummary->lastEvaluationTickMs);
+                                   (unsigned long)p_mainSummary->queueEmptyStopCount,
+                                   (unsigned long)p_mainSummary->lastCommandTickMs,
+                                   (unsigned long)p_mainSummary->lastStateTickMs);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
     }
 
-    if (strcmp(p_command, "wdog") == 0)
+    if ((strcmp(p_command, "q") == 0) || (strcmp(p_command, "queue") == 0))
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "wdog init=%u ok=%u ext=%lu last=%lu ext_last=%lu status=%lu",
-                                   (unsigned int)p_watchdogSummary->initialized,
-                                   (unsigned int)p_watchdogSummary->lastServiceOk,
-                                   (unsigned long)p_watchdogSummary->externalFeedCount,
-                                   (unsigned long)p_watchdogSummary->lastServiceTickMs,
-                                   (unsigned long)p_watchdogSummary->lastExternalFeedTickMs,
-                                   (unsigned long)p_watchdogSummary->lastStatus);
+                                   "q count=%u front_push=%lu back_push=%lu front_pop=%lu back_pop=%lu ovf=%lu",
+                                   (unsigned int)p_msgqContext->count,
+                                   (unsigned long)p_msgqContext->pushFrontCount,
+                                   (unsigned long)p_msgqContext->pushBackCount,
+                                   (unsigned long)p_msgqContext->popFrontCount,
+                                   (unsigned long)p_msgqContext->popBackCount,
+                                   (unsigned long)p_msgqContext->overflowCount);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
     }
@@ -294,14 +292,13 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "lp=%s dispatch=%u stop_req=%u qual=%u cand=%lu stop=%lu dry=%lu rtc=%lu sleep=%lu wake=%s req_tick=%lu wake_tick=%lu",
+                                   "lp=%s dispatch=%u stop_req=%u qual=%u cand=%lu stop=%lu rtc=%lu sleep=%lu wake=%s req_tick=%lu wake_tick=%lu",
                                    App_SystemGetLowPowerModeString(),
                                    (unsigned int)((p_schedulerContext != NULL) ? p_schedulerContext->lastDispatchCount : 0u),
                                    (unsigned int)p_systemContext->stopRequested,
                                    (unsigned int)p_systemContext->stopQualificationCount,
                                    (unsigned long)p_systemContext->stopCandidateCount,
                                    (unsigned long)p_systemContext->stopEntryCount,
-                                   (unsigned long)p_systemContext->stopDryRunCount,
                                    (unsigned long)p_systemContext->rtcWakeEventCount,
                                    (unsigned long)p_systemContext->sleepEntryCount,
                                    App_SystemGetWakeSourceString(),
@@ -311,7 +308,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         return App_DebugConsoleWriteLine(txBuffer);
     }
 
-    if ((strcmp(p_command, "resetboot") == 0) )
+    if (strcmp(p_command, "resetboot") == 0)
     {
         status = App_TaskMainRequestPowerResetBoot();
         if (status != APP_STATUS_OK)
@@ -323,170 +320,54 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         return App_DebugConsoleWriteLine("resetboot queued");
     }
 
-    if (strcmp(p_command, "stor") == 0)
+    if (strcmp(p_command, "sm") == 0)
     {
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "stor init=%u def=%u eep=%u flash=%u pend=%u fpend=%u seq=%lu",
-                                   (unsigned int)p_storageSummary->initialized,
-                                   (unsigned int)p_storageSummary->defaultsApplied,
-                                   (unsigned int)p_storageSummary->eepromValid,
-                                   (unsigned int)p_storageSummary->flashValid,
-                                   (unsigned int)p_storageSummary->commitPending,
-                                   (unsigned int)p_storageSummary->flashCommitPending,
-                                   (unsigned long)p_storageSummary->sequence);
-        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
-        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-
-        formattedLength = snprintf(txBuffer,
-                                   sizeof(txBuffer),
-                                   "stor data active=%08lX/%08lX eep=0x%08lX flash=0x%08lX",
-                                   (unsigned long)p_storageSummary->activeUserData0,
-                                   (unsigned long)p_storageSummary->activeUserData1,
-                                   (unsigned long)p_storageSummary->activeEepromAddress,
-                                   (unsigned long)p_storageSummary->activeFlashAddress);
-        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
-        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-
-        formattedLength = snprintf(txBuffer,
-                                   sizeof(txBuffer),
-                                   "stor wr=%lu/%lu last=%lu st=%lu/%lu resp=%u %s/%s",
-                                   (unsigned long)p_storageSummary->eepromWriteCount,
-                                   (unsigned long)p_storageSummary->flashWriteCount,
-                                   (unsigned long)p_storageSummary->lastCommitTickMs,
-                                   (unsigned long)p_storageSummary->lastLoadStatus,
-                                   (unsigned long)p_storageSummary->lastCommitStatus,
-                                   (unsigned int)p_storageResponse->responseReady,
-                                   App_DebugConsoleGetStorageOperationString(p_storageResponse->operation),
-                                   App_DebugConsoleGetStorageBackendString(p_storageResponse->backend));
+                                   "sm=%s queued=%u last=%u front=%u",
+                                   App_TaskMainGetStateString(),
+                                   (unsigned int)App_MsgqGetCount(),
+                                   (unsigned int)p_mainSummary->lastQueuedState,
+                                   (unsigned int)p_mainSummary->lastDequeFromFront);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
     }
 
-    if (strcmp(p_command, "stor resp") == 0)
+    if ((strncmp(p_command, "sm front ", 9) == 0) || (strncmp(p_command, "sm back ", 8) == 0))
     {
-        formattedLength = snprintf(txBuffer,
-                                   sizeof(txBuffer),
-                                   "stor resp ready=%u op=%s backend=%s status=%lu req=%lu data=%08lX/%08lX seq=%lu cnt=%lu",
-                                   (unsigned int)p_storageResponse->responseReady,
-                                   App_DebugConsoleGetStorageOperationString(p_storageResponse->operation),
-                                   App_DebugConsoleGetStorageBackendString(p_storageResponse->backend),
-                                   (unsigned long)p_storageResponse->status,
-                                   (unsigned long)p_storageResponse->requestTickMs,
-                                   (unsigned long)p_storageResponse->userData0,
-                                   (unsigned long)p_storageResponse->userData1,
-                                   (unsigned long)p_storageResponse->sequence,
-                                   (unsigned long)p_storageResponse->responseCount);
-        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
-        return App_DebugConsoleWriteLine(txBuffer);
-    }
+        char stateToken[24];
+        uint8_t nextState;
+        uint8_t pushFront;
 
-    if (strcmp(p_command, "stor save") == 0)
-    {
-        status = App_TaskMainRequestStorageSave(APP_STORAGE_TARGET_BOTH,
-                                                p_storageSummary->activeUserData0,
-                                                p_storageSummary->activeUserData1);
+        pushFront = (p_command[3] == 'f') ? APP_TRUE : APP_FALSE;
+        if (sscanf(p_command, pushFront == APP_TRUE ? "sm front %23s" : "sm back %23s", stateToken) != 1)
+        {
+            return App_DebugConsoleWriteLine("usage: sm <front|back> <boot|idle|debug|power|hk|meter|nfc|aux|nbiot|server|rtc|fault>");
+        }
+
+        status = App_DebugConsoleParseMainState(stateToken, &nextState);
         if (status != APP_STATUS_OK)
         {
-            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "stor save failed status=%lu", (unsigned long)status);
-            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
-            return App_DebugConsoleWriteLine(txBuffer);
-        }
-        return App_DebugConsoleWriteLine("stor save queued");
-    }
-
-    if (strncmp(p_command, "stor save ", 10) == 0)
-    {
-        char backendToken[16];
-        char data0Token[24];
-        char data1Token[24];
-        char *p_end;
-        unsigned long userData0;
-        unsigned long userData1;
-        AppStorageTarget_t backend;
-
-        if (sscanf(p_command, "stor save %15s %23s %23s", backendToken, data0Token, data1Token) != 3)
-        {
-            return App_DebugConsoleWriteLine("usage: stor save <eep|flash|both> <d0> <d1>");
+            return App_DebugConsoleWriteLine("state: boot, idle, debug, power, hk, meter, nfc, aux, nbiot, server, rtc, fault");
         }
 
-        status = App_DebugConsoleParseStorageBackend(backendToken, APP_TRUE, &backend);
+        status = (pushFront == APP_TRUE)
+                 ? App_TaskMainQueueStateCommandFront(nextState, 0u, 0u)
+                 : App_TaskMainQueueStateCommandBack(nextState, 0u, 0u);
         if (status != APP_STATUS_OK)
         {
-            return App_DebugConsoleWriteLine("backend: eep, flash, both");
-        }
-
-        userData0 = strtoul(data0Token, &p_end, 0);
-        if ((p_end == data0Token) || (*p_end != '\0'))
-        {
-            return App_DebugConsoleWriteLine("invalid d0");
-        }
-        userData1 = strtoul(data1Token, &p_end, 0);
-        if ((p_end == data1Token) || (*p_end != '\0'))
-        {
-            return App_DebugConsoleWriteLine("invalid d1");
-        }
-
-        status = App_TaskMainRequestStorageSave(backend, (uint32_t)userData0, (uint32_t)userData1);
-        if (status != APP_STATUS_OK)
-        {
-            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "stor save failed status=%lu", (unsigned long)status);
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "sm queue failed status=%lu", (unsigned long)status);
             APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
             return App_DebugConsoleWriteLine(txBuffer);
         }
 
         formattedLength = snprintf(txBuffer,
                                    sizeof(txBuffer),
-                                   "stor save queued backend=%s data=%08lX/%08lX",
-                                   App_DebugConsoleGetStorageBackendString((uint8_t)backend),
-                                   userData0,
-                                   userData1);
+                                   "sm queued mode=%s state=%s",
+                                   (pushFront == APP_TRUE) ? "front" : "back",
+                                   App_TasksGetStateName(APP_TASK_ID_MAIN, nextState));
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
-    }
-
-    if (strncmp(p_command, "stor load ", 10) == 0)
-    {
-        char backendToken[16];
-        AppStorageTarget_t backend;
-
-        if (sscanf(p_command, "stor load %15s", backendToken) != 1)
-        {
-            return App_DebugConsoleWriteLine("usage: stor load <eep|flash>");
-        }
-
-        status = App_DebugConsoleParseStorageBackend(backendToken, APP_FALSE, &backend);
-        if (status != APP_STATUS_OK)
-        {
-            return App_DebugConsoleWriteLine("backend: eep or flash");
-        }
-
-        status = App_TaskMainRequestStorageLoad(backend);
-        if (status != APP_STATUS_OK)
-        {
-            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "stor load failed status=%lu", (unsigned long)status);
-            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
-            return App_DebugConsoleWriteLine(txBuffer);
-        }
-
-        formattedLength = snprintf(txBuffer,
-                                   sizeof(txBuffer),
-                                   "stor load queued backend=%s",
-                                   App_DebugConsoleGetStorageBackendString((uint8_t)backend));
-        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
-        return App_DebugConsoleWriteLine(txBuffer);
-    }
-
-    if (strcmp(p_command, "stor def") == 0)
-    {
-        status = App_TaskStorageLoadDefaults();
-        if (status != APP_STATUS_OK)
-        {
-            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "stor def failed status=%lu", (unsigned long)status);
-            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
-            return App_DebugConsoleWriteLine(txBuffer);
-        }
-        return App_DebugConsoleWriteLine("stor defaults requested");
     }
 
     if (strcmp(p_command, "echo on") == 0)
@@ -617,6 +498,7 @@ AppStatus_t App_DebugConsoleProcess(void)
         }
         {
             AppStatus_t byteStatus;
+
             byteStatus = App_DebugConsoleHandleByte(rxByte);
             if (byteStatus != APP_STATUS_OK)
             {
