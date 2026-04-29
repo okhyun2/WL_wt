@@ -290,7 +290,7 @@ void App_SystemNotifyWakeSource(uint32_t sourceMask)
 
 static void App_SystemQueueStateCommand(uint8_t nextState)
 {
-    (void)App_FsmQueueStateFront(nextState, 0u, 1u);
+    (void)App_FsmQueueStateFront(nextState, 1u, 0u);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)

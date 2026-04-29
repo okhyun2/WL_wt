@@ -39,39 +39,6 @@ typedef enum {
     MAX_APP_FSM_STATE
 }APP_FSM_STATE_t;
 
-#if 0
-#define APP_FSM_STATE_INIT                           (0u)
-#define APP_FSM_STATE_BOOT                           (1u)
-#define APP_FSM_STATE_IDLE                           (2u)
-#define APP_FSM_STATE_DEBUG_POLL                     (3u)
-#define APP_FSM_STATE_HOUSEKEEPING_INIT              (4u)
-#define APP_FSM_STATE_HOUSEKEEPING_SNAPSHOT          (5u)
-#define APP_FSM_STATE_HOUSEKEEPING_ROTATE            (6u)
-#define APP_FSM_STATE_POWER_INIT                     (7u)
-#define APP_FSM_STATE_POWER_WAIT_REQUEST             (8u)
-#define APP_FSM_STATE_METER_INIT                     (9u)
-#define APP_FSM_STATE_METER_WAIT_TRIGGER             (10u)
-#define APP_FSM_STATE_METER_SEND_REQUEST             (11u)
-#define APP_FSM_STATE_METER_PARSE_REPLY              (12u)
-#define APP_FSM_STATE_NFC_INIT                       (13u)
-#define APP_FSM_STATE_NFC_WAIT_EVENT                 (14u)
-#define APP_FSM_STATE_NFC_EXCHANGE                   (15u)
-#define APP_FSM_STATE_AUX_INIT                       (16u)
-#define APP_FSM_STATE_AUX_TRIGGER_MEASURE            (17u)
-#define APP_FSM_STATE_AUX_READ_RESULT                (18u)
-#define APP_FSM_STATE_NBIOT_INIT                     (19u)
-#define APP_FSM_STATE_NBIOT_DECIDE_WAKE              (20u)
-#define APP_FSM_STATE_NBIOT_POWER_ON                 (21u)
-#define APP_FSM_STATE_NBIOT_EXCHANGE_AT              (22u)
-#define APP_FSM_STATE_SERVER_INIT                    (23u)
-#define APP_FSM_STATE_SERVER_PREPARE_PACKET          (24u)
-#define APP_FSM_STATE_SERVER_REQUEST_SEND            (25u)
-#define APP_FSM_STATE_RTC_INIT                       (26u)
-#define APP_FSM_STATE_RTC_WAKE_SERVICE             (27u)
-#define APP_FSM_STATE_RTC_APPLY_SYNC                 (28u)
-#define APP_FSM_STATE_FAULT                          (29u)
-#endif
-
 #ifdef __cplusplus
 }
 #endif

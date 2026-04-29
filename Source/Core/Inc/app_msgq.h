@@ -13,13 +13,13 @@ typedef struct
 {
     uint8_t type;
     uint8_t sourceId;
-    uint8_t reserved0;
-    uint8_t reserved1;
+    uint8_t nextState;
+    uint8_t pushFront;
     uint32_t tickMs;
+    uint32_t eventParam;
     uint32_t param0;
     uint32_t param1;
     uint32_t param2;
-    uint32_t param3;
 } AppMsgqMessage_t;
 
 typedef struct

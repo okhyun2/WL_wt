@@ -217,7 +217,7 @@ static void App_FsmSignalEventForState(uint8_t nextState)
     p_component->lastActionTickMs = HAL_GetTick();
 }
 
-static AppStatus_t App_FsmPublishStateCommand(uint8_t nextState, uint8_t pushFront, uint32_t param0, uint32_t param1)
+static AppStatus_t App_FsmPublishStateCommand(uint8_t nextState, uint8_t pushFront, uint32_t eventParam, uint32_t param0)
 {
     AppMsgqMessage_t message;
 
@@ -225,11 +225,11 @@ static AppStatus_t App_FsmPublishStateCommand(uint8_t nextState, uint8_t pushFro
 
     (void)memset(&message, 0, sizeof(message));
     message.type = APP_MSGQ_TYPE_STATE_COMMAND;
-    message.reserved0 = nextState;
-    message.reserved1 = pushFront;
+    message.nextState = nextState;
+    message.pushFront = pushFront;
     message.tickMs = HAL_GetTick();
+    message.eventParam = eventParam;
     message.param0 = param0;
-    message.param1 = param1;
 
     return (pushFront == APP_TRUE) ? App_MsgqPushFront(&message) : App_MsgqPushBack(&message);
 }
@@ -343,14 +343,14 @@ static AppStatus_t App_FsmFindDuePeriodicState(uint8_t *p_state)
 {
     static const AppFsmComponentId_t periodicOrder[] =
     {
-        APP_FSM_COMPONENT_POWER,
-        APP_FSM_COMPONENT_HOUSEKEEPING,
-        APP_FSM_COMPONENT_METER,
-        APP_FSM_COMPONENT_NFC,
-        APP_FSM_COMPONENT_AUX,
-        APP_FSM_COMPONENT_NBIOT,
-        APP_FSM_COMPONENT_SERVER,
-        APP_FSM_COMPONENT_RTC
+        //APP_FSM_COMPONENT_POWER,
+        APP_FSM_COMPONENT_HOUSEKEEPING
+        //APP_FSM_COMPONENT_METER,
+        //APP_FSM_COMPONENT_NFC,
+        //APP_FSM_COMPONENT_AUX,
+        //APP_FSM_COMPONENT_NBIOT,
+        //APP_FSM_COMPONENT_SERVER,
+        //APP_FSM_COMPONENT_RTC
     };
     uint32_t index;
 
@@ -395,10 +395,9 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 {
     AppFsmComponentContext_t *p_component;
 
-
     APP_RETURN_IF_FALSE(App_FsmIsValidState(currentState) == APP_TRUE, APP_STATUS_INVALID_PARAM);
 
-    (void)APP_LOGD("FSM", "executing state:%s", App_FsmGetStateName(currentState));
+    (void)APP_LOGD("FSM", "executing state:%s, commandParam:%d", App_FsmGetStateName(currentState), commandParam0);
 
     g_appFsmContext.summary.currentState = currentState;
     g_appFsmContext.summary.lastStateTickMs = HAL_GetTick();
@@ -418,6 +417,18 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_SERVER, APP_FSM_STATE_SERVER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+
+
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_DEBUG_POLL, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_HOUSEKEEPING_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_POWER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_METER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NFC_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_AUX_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_SERVER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_RTC_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+
             App_FsmSetDecision(APP_FSM_DECISION_BOOT);
             break;
 
@@ -432,8 +443,12 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_HOUSEKEEPING_SNAPSHOT:
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_HouseKeepingSnapshot() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmMarkComponent(APP_FSM_COMPONENT_HOUSEKEEPING, APP_FSM_STATE_HOUSEKEEPING_ROTATE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-            APP_RETURN_IF_FALSE(App_FsmQueueStateFront(APP_FSM_STATE_HOUSEKEEPING_ROTATE, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
@@ -443,22 +458,28 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_POWER_INIT:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_POWER, APP_FSM_STATE_POWER_WAIT_REQUEST, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_PowerInit() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_POWER_WAIT_REQUEST:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_POWER, APP_FSM_STATE_POWER_WAIT_REQUEST, APP_TRUE, APP_FALSE, APP_STATUS_OK);
             if (commandParam0 == (uint32_t)APP_FSM_CONTROL_RESET_BOOT)
             {
                 App_FsmExecuteResetBoot();
             }
-            App_FsmMarkComponent(APP_FSM_COMPONENT_POWER, APP_FSM_STATE_POWER_WAIT_REQUEST, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_METER_INIT:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_MeterInit() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
@@ -467,28 +488,31 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             if ((p_component != NULL) && (p_component->eventPending == APP_TRUE))
             {
                 App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_SEND_REQUEST, APP_TRUE, APP_TRUE, APP_STATUS_OK);
-                APP_RETURN_IF_FALSE(App_FsmQueueStateFront(APP_FSM_STATE_METER_SEND_REQUEST, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
-            }
-            else
-            {
-                App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+                APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_METER_SEND_REQUEST, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             }
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_METER_SEND_REQUEST:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_PARSE_REPLY, APP_TRUE, APP_TRUE, APP_STATUS_OK);
-            APP_RETURN_IF_FALSE(App_FsmQueueStateFront(APP_FSM_STATE_METER_PARSE_REPLY, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_METER_PARSE_REPLY, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_METER_PARSE_REPLY:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_MeterParseReplay() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_NFC_INIT:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_NfcInit() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
@@ -497,89 +521,111 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             if ((p_component != NULL) && (p_component->eventPending == APP_TRUE))
             {
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_EXCHANGE, APP_TRUE, APP_TRUE, APP_STATUS_OK);
-                APP_RETURN_IF_FALSE(App_FsmQueueStateFront(APP_FSM_STATE_NFC_EXCHANGE, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
-            }
-            else
-            {
-                App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+                APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NFC_EXCHANGE, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             }
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_NFC_EXCHANGE:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_NfcExchange() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_AUX_INIT:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_AUX, APP_FSM_STATE_AUX_TRIGGER_MEASURE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_AuxInit() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_AUX_TRIGGER_MEASURE:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_AUX, APP_FSM_STATE_AUX_READ_RESULT, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-            APP_RETURN_IF_FALSE(App_FsmQueueStateFront(APP_FSM_STATE_AUX_READ_RESULT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_AUX_READ_RESULT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_AUX_READ_RESULT:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_AUX, APP_FSM_STATE_AUX_TRIGGER_MEASURE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_AuxReadResult() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_NBIOT_INIT:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_NbiotInit() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_NBIOT_DECIDE_WAKE:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_POWER_ON, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-            APP_RETURN_IF_FALSE(App_FsmQueueStateFront(APP_FSM_STATE_NBIOT_POWER_ON, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_POWER_ON, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_NBIOT_POWER_ON:
             (void)App_SystemSetNbiotPowered(APP_TRUE);
-            App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_EXCHANGE_AT, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-            APP_RETURN_IF_FALSE(App_FsmQueueStateFront(APP_FSM_STATE_NBIOT_EXCHANGE_AT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_EXCHANGE_AT, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
             (void)App_SystemSetNbiotPowered(APP_FALSE);
-            App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_SERVER_INIT:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_SERVER, APP_FSM_STATE_SERVER_PREPARE_PACKET, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_ServerInit() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_SERVER_PREPARE_PACKET:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_SERVER, APP_FSM_STATE_SERVER_REQUEST_SEND, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-            APP_RETURN_IF_FALSE(App_FsmQueueStateFront(APP_FSM_STATE_SERVER_REQUEST_SEND, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_SERVER_REQUEST_SEND, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_SERVER_REQUEST_SEND:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_SERVER, APP_FSM_STATE_SERVER_PREPARE_PACKET, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_ServerRequestSend() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_RTC_INIT:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_WAKE_SERVICE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_RtcInit() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_RTC_WAKE_SERVICE:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_APPLY_SYNC, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-            APP_RETURN_IF_FALSE(App_FsmQueueStateFront(APP_FSM_STATE_RTC_APPLY_SYNC, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_RTC_APPLY_SYNC, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_RTC_APPLY_SYNC:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_WAKE_SERVICE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
@@ -616,7 +662,7 @@ AppStatus_t App_FsmInit(void)
     g_appFsmContext.summary.currentState = APP_FSM_STATE_INIT;
     g_appFsmContext.initialized = APP_TRUE;
 
-    return App_FsmQueueStateFront(APP_FSM_STATE_BOOT, 0u, 0u);
+    return App_FsmQueueStateBack(APP_FSM_STATE_BOOT, 0u, 0u);
 }
 
 AppStatus_t App_FsmRun(void)
@@ -636,22 +682,24 @@ AppStatus_t App_FsmRun(void)
     status = App_MsgqTakeFirstByType(APP_MSGQ_TYPE_STATE_COMMAND, &message);
     if (status == APP_STATUS_OK)
     {
-        nextState = message.reserved0;
+        nextState = message.nextState;
+        (void)APP_LOGI("FSM", "GetMsgq state:%s", App_FsmGetStateName(nextState));
+
         if (App_FsmIsValidState(nextState) != APP_TRUE)
         {
             nextState = APP_FSM_STATE_FAULT;
         }
 
-        if (message.param1 != 0u)
+        if (message.eventParam != 0u)
         {
             App_FsmSignalEventForState(nextState);
         }
 
         g_appFsmContext.summary.lastQueuedState = nextState;
-        g_appFsmContext.summary.lastDequeFromFront = message.reserved1;
+        g_appFsmContext.summary.lastDequeFromFront = message.pushFront;
         g_appFsmContext.summary.lastCommandTickMs = message.tickMs;
+        g_appFsmContext.summary.lastCommandEventParam = message.eventParam;
         g_appFsmContext.summary.lastCommandParam0 = message.param0;
-        g_appFsmContext.summary.lastCommandParam1 = message.param1;
         g_appFsmContext.summary.processedMessageCount++;
         g_appFsmContext.summary.transitionCount++;
         return App_FsmExecuteState(nextState, message.param0);
@@ -661,11 +709,12 @@ AppStatus_t App_FsmRun(void)
     status = App_FsmFindDuePeriodicState(&nextState);
     if (status == APP_STATUS_OK)
     {
+        (void)APP_LOGD("FSM", "Periodic state:%s", App_FsmGetStateName(nextState));
         g_appFsmContext.summary.lastQueuedState = nextState;
         g_appFsmContext.summary.lastDequeFromFront = APP_FALSE;
         g_appFsmContext.summary.lastCommandTickMs = HAL_GetTick();
+        g_appFsmContext.summary.lastCommandEventParam = 0u;
         g_appFsmContext.summary.lastCommandParam0 = 0u;
-        g_appFsmContext.summary.lastCommandParam1 = 0u;
         g_appFsmContext.summary.transitionCount++;
         return App_FsmExecuteState(nextState, 0u);
     }
@@ -679,21 +728,21 @@ AppStatus_t App_FsmRun(void)
     return App_SystemRequestLowPower(APP_TRUE);
 }
 
-AppStatus_t App_FsmQueueStateFront(uint8_t nextState, uint32_t param0, uint32_t param1)
+AppStatus_t App_FsmQueueStateFront(uint8_t nextState, uint32_t eventParam, uint32_t param0)
 {
-    return App_FsmPublishStateCommand(nextState, APP_TRUE, param0, param1);
+    return App_FsmPublishStateCommand(nextState, APP_TRUE, eventParam, param0);
 }
 
-AppStatus_t App_FsmQueueStateBack(uint8_t nextState, uint32_t param0, uint32_t param1)
+AppStatus_t App_FsmQueueStateBack(uint8_t nextState, uint32_t eventParam, uint32_t param0)
 {
-    return App_FsmPublishStateCommand(nextState, APP_FALSE, param0, param1);
+    return App_FsmPublishStateCommand(nextState, APP_FALSE, eventParam, param0);
 }
 
 AppStatus_t App_FsmRequestResetBoot(void)
 {
-    return App_FsmQueueStateFront(APP_FSM_STATE_POWER_WAIT_REQUEST,
-                                  (uint32_t)APP_FSM_CONTROL_RESET_BOOT,
-                                  0u);
+    return App_FsmQueueStateBack(APP_FSM_STATE_POWER_WAIT_REQUEST,
+                                  0u,
+                                  (uint32_t)APP_FSM_CONTROL_RESET_BOOT);
 }
 
 const AppFsmContext_t *App_FsmGetContext(void)

@@ -63,8 +63,8 @@ typedef struct
     uint32_t queueEmptyStopCount;
     uint32_t lastCommandTickMs;
     uint32_t lastStateTickMs;
+    uint32_t lastCommandEventParam;
     uint32_t lastCommandParam0;
-    uint32_t lastCommandParam1;
     uint32_t lastLoopDispatchCount;
     uint32_t loopCount;
 } AppFsmSummary_t;
@@ -78,8 +78,8 @@ typedef struct
 
 AppStatus_t App_FsmInit(void);
 AppStatus_t App_FsmRun(void);
-AppStatus_t App_FsmQueueStateFront(uint8_t nextState, uint32_t param0, uint32_t param1);
-AppStatus_t App_FsmQueueStateBack(uint8_t nextState, uint32_t param0, uint32_t param1);
+AppStatus_t App_FsmQueueStateFront(uint8_t nextState, uint32_t eventParam, uint32_t param0);
+AppStatus_t App_FsmQueueStateBack(uint8_t nextState, uint32_t eventParam, uint32_t param0);
 AppStatus_t App_FsmRequestResetBoot(void);
 const AppFsmContext_t *App_FsmGetContext(void);
 const AppFsmSummary_t *App_FsmGetSummary(void);
