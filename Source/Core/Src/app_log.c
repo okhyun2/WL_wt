@@ -45,6 +45,22 @@ static const char *App_LogLevelToString(AppLogLevel_t level)
     }
 }
 
+static const char* get_local_time_str(void)
+{
+    static char buf[16];  // "hhmmss.mmm\0" = 13 bytes, 여유있게 16
+
+    uint32_t tick = HAL_GetTick();
+
+    uint32_t ms   =  tick % 1000;
+    uint32_t sec  = (tick / 1000)    % 60;
+    uint32_t min  = (tick / 60000)   % 60;
+    uint32_t hour = (tick / 3600000) % 24;
+
+    snprintf(buf, sizeof(buf), "%02lu%02lu%02lu.%03lu", hour, min, sec, ms);
+
+    return buf;
+}
+
 AppStatus_t App_LogInit(void)
 {
     (void)memset(&g_appLogContext, 0, sizeof(g_appLogContext));
@@ -94,8 +110,8 @@ AppStatus_t App_LogWrite(AppLogLevel_t level, const char *p_module, const char *
 
     formattedLength = snprintf(txBuffer,
                                sizeof(txBuffer),
-                               "[%010lu][%s][%s] %s%s",
-                               (unsigned long)HAL_GetTick(),
+                               "[%s][%s][%s] %s%s",
+                                get_local_time_str(),
                                p_levelString,
                                p_safeModule,
                                p_safeMessage,
