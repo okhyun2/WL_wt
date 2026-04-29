@@ -7,18 +7,7 @@ extern "C" {
 
 #include "app_error.h"
 
-#define APP_MSGQ_TYPE_TASK_HEARTBEAT      (1u)
-#define APP_MSGQ_TYPE_TASK_EVENT          (2u)
-#define APP_MSGQ_TYPE_TASK_ALERT          (3u)
-#define APP_MSGQ_TYPE_STORAGE_REQUEST     (10u)
-#define APP_MSGQ_TYPE_STORAGE_RESPONSE    (11u)
-#define APP_MSGQ_TYPE_POWER_REQUEST       (12u)
-#define APP_MSGQ_TYPE_STATE_COMMAND       (20u)
-
-#define APP_MSGQ_MSG_TASK_HEARTBEAT       APP_MSGQ_TYPE_TASK_HEARTBEAT
-#define APP_MSGQ_MSG_TASK_EVENT           APP_MSGQ_TYPE_TASK_EVENT
-#define APP_MSGQ_MSG_TASK_ALERT           APP_MSGQ_TYPE_TASK_ALERT
-#define APP_MSGQ_MSG_STATE_COMMAND        APP_MSGQ_TYPE_STATE_COMMAND
+#define APP_MSGQ_TYPE_STATE_COMMAND       (1u)
 
 typedef struct
 {

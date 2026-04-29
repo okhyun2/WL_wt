@@ -8,13 +8,12 @@
 #include "app_gpio_lp.h"
 #include "app_hw.h"
 #include "app_log.h"
+#include "app_fsm.h"
 #include "app_msgq.h"
-#include "app_scheduler.h"
 #include "app_selftest.h"
-#include "app_tasks.h"
 
 static AppSystemContext_t g_appSystemContext;
-static const char g_appVersionString[] = "0.7.8";
+static const char g_appVersionString[] = "0.7.1";
 static AppGpioLpConfig_t g_appGpioLpConfig;
 static char g_appSystemWakeString[64];
 
@@ -59,7 +58,12 @@ static const char *App_SystemBuildWakeSourceString(uint32_t wakeMask)
     {
         APP_SYSTEM_APPEND_WAKE("REED");
     }
-
+#if 0
+    if ((wakeMask & APP_SYSTEM_WAKE_SRC_ESI_INT) != 0u)
+    {
+        APP_SYSTEM_APPEND_WAKE("ESI_INT");
+    }
+#endif
     if ((wakeMask & APP_SYSTEM_WAKE_SRC_RTC) != 0u)
     {
         APP_SYSTEM_APPEND_WAKE("RTC");
@@ -284,18 +288,9 @@ void App_SystemNotifyWakeSource(uint32_t sourceMask)
 #endif
 }
 
-static void App_SystemQueueStateCommand(AppTaskId_t taskId, uint8_t nextState)
+static void App_SystemQueueStateCommand(uint8_t nextState)
 {
-    AppTaskModuleContext_t *p_module;
-
-    p_module = App_TasksGetModuleContextMutable(taskId);
-    if (p_module != NULL)
-    {
-        p_module->eventPending = APP_TRUE;
-        p_module->lastActionTickMs = HAL_GetTick();
-    }
-
-    (void)App_TaskMainQueueStateCommandFront(nextState, 1u, 0u);
+    (void)App_FsmQueueStateFront(nextState, 0u, 1u);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -304,19 +299,24 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     {
         case NBIoT_RI_Pin:
             App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_NBIOT_RI);
-            App_SystemQueueStateCommand(APP_TASK_ID_NBIOT, APP_TASK_MAIN_STATE_NBIOT_DECIDE_WAKE);
+            App_SystemQueueStateCommand(APP_FSM_STATE_NBIOT_DECIDE_WAKE);
             break;
 
         case NFC_ED_Pin:
             App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_NFC_ED);
-            App_SystemQueueStateCommand(APP_TASK_ID_NFC, APP_TASK_MAIN_STATE_NFC_WAIT_EVENT);
+            App_SystemQueueStateCommand(APP_FSM_STATE_NFC_WAIT_EVENT);
             break;
 
         case REED_IN_Pin:
             App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_REED);
-            App_SystemQueueStateCommand(APP_TASK_ID_METER, APP_TASK_MAIN_STATE_METER_WAIT_TRIGGER);
+            App_SystemQueueStateCommand(APP_FSM_STATE_METER_WAIT_TRIGGER);
             break;
-
+#if 0
+        case ESI_Int_Pin:
+            App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_ESI_INT);
+            App_SystemQueueStateCommand(APP_FSM_STATE_HOUSEKEEPING_SNAPSHOT);
+            break;
+#endif
         default:
             break;
     }
@@ -340,6 +340,9 @@ static AppStatus_t App_SystemValidateHandles(void)
     APP_RETURN_IF_FALSE(APP_UART_DEBUG_HANDLE->Instance == USART1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
+    #if 0
+    APP_RETURN_IF_FALSE(APP_I2C_ESI_HANDLE->Instance == I2C1, APP_STATUS_HW_HANDLE_INVALID);
+    #endif
     APP_RETURN_IF_FALSE(APP_I2C_NFC_HANDLE->Instance == I2C2, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_I2C_AUX_HANDLE->Instance == I2C3, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
@@ -374,6 +377,9 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
 
     g_appGpioLpConfig.keepDebugUartPinsInStop = APP_FALSE;
     g_appGpioLpConfig.keepMeterUartPinsInStop = APP_FALSE;
+	#if 0
+    g_appGpioLpConfig.keepEsiI2cPinsInStop = APP_FALSE;
+	#endif
     g_appGpioLpConfig.keepNfcI2cPinsInStop = APP_FALSE;
     g_appGpioLpConfig.keepTempI2cPinsInStop = APP_FALSE;
     g_appGpioLpConfig.keepPiezoPinInStop = APP_FALSE;
@@ -389,6 +395,7 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
+        APP_GPIO_LP_CLK_I2C1 |
         APP_GPIO_LP_CLK_I2C2 |
         APP_GPIO_LP_CLK_I2C3;
 
@@ -487,15 +494,9 @@ static AppStatus_t App_SystemRunBootSelfTest(void)
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_SystemInitScheduler(void)
+static AppStatus_t App_SystemInitFsm(void)
 {
     AppStatus_t status;
-
-    status = App_SchedulerInit();
-    if (status != APP_STATUS_OK)
-    {
-        return APP_STATUS_SCHEDULER_INIT_FAILED;
-    }
 
     status = App_MsgqInit();
     if (status != APP_STATUS_OK)
@@ -503,25 +504,19 @@ static AppStatus_t App_SystemInitScheduler(void)
         return status;
     }
 
-    status = App_TasksInit();
-    if (status != APP_STATUS_OK)
-    {
-        return APP_STATUS_SCHEDULER_INIT_FAILED;
-    }
-
-    status = App_TasksRegisterAll();
+    status = App_FsmInit();
     if (status != APP_STATUS_OK)
     {
         return status;
     }
 
-    g_appSystemContext.schedulerReady = APP_TRUE;
-    g_appSystemContext.schedulerStatus = APP_STATUS_OK;
-    g_appSystemContext.bootStage = APP_BOOT_STAGE_SCHEDULER_READY;
+    g_appSystemContext.fsmReady = APP_TRUE;
+    g_appSystemContext.fsmStatus = APP_STATUS_OK;
+    g_appSystemContext.bootStage = APP_BOOT_STAGE_FSM_READY;
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SCH", "Scheduler ready: %u tasks registered, queue=%u",
-                                 (unsigned int)App_SchedulerGetContext()->taskCount,
-                                 (unsigned int)APP_MSGQ_CAPACITY) == APP_STATUS_OK,
+    APP_RETURN_IF_FALSE(APP_LOGI("FSM", "FSM ready: queue=%u state=%s",
+                                 (unsigned int)APP_MSGQ_CAPACITY,
+                                 App_FsmGetCurrentStateString()) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
     return APP_STATUS_OK;
@@ -625,9 +620,9 @@ static AppStatus_t App_SystemEnterStopMode(void)
 static void App_SystemHandleIdle(void)
 {
     AppStatus_t status;
-    const AppSchedulerContext_t *p_schedulerContext;
+    const AppFsmSummary_t *p_fsmSummary;
 
-    p_schedulerContext = App_SchedulerGetContext();
+    p_fsmSummary = App_FsmGetSummary();
     g_appSystemContext.idleCounter++;
 
     if (g_appSystemContext.stopRequested == APP_TRUE)
@@ -641,12 +636,12 @@ static void App_SystemHandleIdle(void)
         if (App_SystemCanDebugLog() == APP_TRUE)
         {
             (void)APP_LOGD("LP",
-                           "STOP qualify: step=%u/%u decision=%s idle=%lu dispatch=%u",
+                           "STOP qualify: step=%u/%u decision=%s idle=%lu dispatch=%lu",
                            (unsigned int)g_appSystemContext.stopQualificationCount,
                            (unsigned int)APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT,
-                           App_TaskMainGetDecisionString(),
+                           App_FsmGetDecisionString(),
                            (unsigned long)g_appSystemContext.idleCounter,
-                           (unsigned int)((p_schedulerContext != NULL) ? p_schedulerContext->lastDispatchCount : 0u));
+                           (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
         }
 #endif
 
@@ -657,7 +652,7 @@ static void App_SystemHandleIdle(void)
             status = App_SystemEnterStopMode();
             if (status != APP_STATUS_OK)
             {
-                g_appSystemContext.schedulerStatus = status;
+                g_appSystemContext.fsmStatus = status;
                 App_ErrorRecord(status, __FILE__, __LINE__);
                 (void)APP_LOGE("LP", "STOP entry/exit failed: status=%lu", (unsigned long)status);
             }
@@ -673,41 +668,25 @@ static void App_SystemHandleIdle(void)
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
         (void)APP_LOGD("SYS",
-                       "Entering idle path: mode=%s stop_req=%u idle=%lu dispatch=%u",
-                       (APP_SCHEDULER_USE_WFI_IDLE == APP_TRUE) ? "WFI" : "delay",
+                       "Entering idle path: mode=%s stop_req=%u idle=%lu dispatch=%lu",
+                       (APP_FSM_USE_WFI_IDLE == APP_TRUE) ? "WFI" : "delay",
                        (unsigned int)g_appSystemContext.stopRequested,
                        (unsigned long)g_appSystemContext.idleCounter,
-                       (unsigned int)((p_schedulerContext != NULL) ? p_schedulerContext->lastDispatchCount : 0u));
+                       (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
     }
 #endif
 
-    if (APP_SCHEDULER_USE_WFI_IDLE == APP_TRUE)
+    if (APP_FSM_USE_WFI_IDLE == APP_TRUE)
     {
         g_appSystemContext.lastLowPowerMode = APP_SYSTEM_LP_MODE_SLEEP;
         g_appSystemContext.lastSleepEntryTickMs = HAL_GetTick();
         g_appSystemContext.sleepEntryCount++;
-#ifdef DEBUG
-        if (App_SystemCanDebugLog() == APP_TRUE)
-        {
-            (void)APP_LOGD("LP", "SLEEP entry count=%lu tick=%lu",
-                           (unsigned long)g_appSystemContext.sleepEntryCount,
-                           (unsigned long)g_appSystemContext.lastSleepEntryTickMs);
-        }
-#endif
         __WFI();
-#ifdef DEBUG
-        if (App_SystemCanDebugLog() == APP_TRUE)
-        {
-            (void)APP_LOGD("LP", "SLEEP wake tick=%lu wake=%s",
-                           (unsigned long)HAL_GetTick(),
-                           App_SystemGetWakeSourceString());
-        }
-#endif
     }
     else
     {
         g_appSystemContext.lastLowPowerMode = APP_SYSTEM_LP_MODE_RUN;
-        HAL_Delay(APP_SCHEDULER_IDLE_DELAY_MS);
+        HAL_Delay(APP_FSM_IDLE_DELAY_MS);
     }
 }
 
@@ -722,7 +701,7 @@ void App_SystemHandleRtcIrq(void)
         EXTI->PR = EXTI_PR_PIF20;
         g_appSystemContext.rtcWakeEventCount++;
         App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_RTC);
-        App_SystemQueueStateCommand(APP_TASK_ID_RTC, APP_TASK_MAIN_STATE_RTC_CHECK_SCHEDULE);
+        App_SystemQueueStateCommand(APP_FSM_STATE_RTC_WAKE_SERVICE);
     }
     else
     {
@@ -740,7 +719,7 @@ AppStatus_t App_SystemInit(void)
 
     g_appSystemContext.bootStage = APP_BOOT_STAGE_HAL_READY;
     g_appSystemContext.selfTestStatus = APP_STATUS_NOT_INITIALIZED;
-    g_appSystemContext.schedulerStatus = APP_STATUS_NOT_INITIALIZED;
+    g_appSystemContext.fsmStatus = APP_STATUS_NOT_INITIALIZED;
     g_appSystemContext.lastLowPowerMode = APP_SYSTEM_LP_MODE_RUN;
 
     APP_RETURN_IF_FALSE(App_ClockIsInitialized() == APP_TRUE, APP_STATUS_CLOCK_NOT_INITIALIZED);
@@ -796,10 +775,10 @@ AppStatus_t App_SystemInit(void)
         return status;
     }
 
-    status = App_SystemInitScheduler();
+    status = App_SystemInitFsm();
     if (status != APP_STATUS_OK)
     {
-        g_appSystemContext.schedulerStatus = status;
+        g_appSystemContext.fsmStatus = status;
         return status;
     }
 
@@ -818,7 +797,7 @@ AppStatus_t App_SystemInit(void)
 void App_SystemProcess(void)
 {
     AppStatus_t status;
-    const AppSchedulerContext_t *p_schedulerContext;
+    const AppFsmSummary_t *p_fsmSummary;
 
     if (g_appSystemContext.initialized != APP_TRUE)
     {
@@ -826,29 +805,30 @@ void App_SystemProcess(void)
         App_ErrorTrap();
     }
 
-    status = App_SchedulerRunOnce();
-    g_appSystemContext.schedulerStatus = status;
+    status = App_FsmRun();
+    g_appSystemContext.fsmStatus = status;
     if (status != APP_STATUS_OK)
     {
         App_ErrorRecord(status, __FILE__, __LINE__);
 #ifdef DEBUG
-        (void)APP_LOGE("SYS", "Scheduler run failed: status=%lu", (unsigned long)status);
+        (void)APP_LOGE("SYS", "FSM run failed: status=%lu", (unsigned long)status);
 #endif
     }
 
-    p_schedulerContext = App_SchedulerGetContext();
-    if ((p_schedulerContext->lastDispatchCount == 0u) ||
+    p_fsmSummary = App_FsmGetSummary();
+    if (((p_fsmSummary != NULL) && (p_fsmSummary->lastLoopDispatchCount == 0u)) ||
         (g_appSystemContext.stopRequested == APP_TRUE))
     {
 #ifdef DEBUG
-        if ((p_schedulerContext->lastDispatchCount != 0u) &&
+        if ((p_fsmSummary != NULL) &&
+            (p_fsmSummary->lastLoopDispatchCount != 0u) &&
             (g_appSystemContext.stopRequested == APP_TRUE) &&
             (App_SystemCanDebugLog() == APP_TRUE))
         {
             (void)APP_LOGD("LP",
-                           "idle gate forced: dispatch=%u decision=%s stop_req=%u",
-                           (unsigned int)p_schedulerContext->lastDispatchCount,
-                           App_TaskMainGetDecisionString(),
+                           "idle gate forced: dispatch=%lu decision=%s stop_req=%u",
+                           (unsigned long)p_fsmSummary->lastLoopDispatchCount,
+                           App_FsmGetDecisionString(),
                            (unsigned int)g_appSystemContext.stopRequested);
         }
 #endif
@@ -913,7 +893,11 @@ AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
 {
     uint8_t previousRequest;
 #ifdef DEBUG
-    const AppTaskMainSummary_t *p_mainSummary;
+    const AppFsmSummary_t *p_fsmSummary;
+#endif
+
+#if (APP_RTC_WAKEUP_PERIOD_MS == 0) //don't enter stop mode
+    return APP_STATUS_OK;
 #endif
 
     APP_RETURN_IF_FALSE((allowStop == APP_FALSE) || (allowStop == APP_TRUE), APP_STATUS_INVALID_PARAM);
@@ -928,15 +912,14 @@ AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
         App_SystemResetStopQualification();
     }
 #ifdef DEBUG
-    p_mainSummary = App_TaskMainGetSummary();
+    p_fsmSummary = App_FsmGetSummary();
     if ((previousRequest != allowStop) && (App_SystemCanDebugLog() == APP_TRUE))
     {
         (void)APP_LOGD("LP",
-                       "stop_request=%u decision=%s busy=%lu stale=%lu qualify=%u",
+                       "stop_request=%u decision=%s dispatch=%lu qualify=%u",
                        (unsigned int)allowStop,
-                       App_TaskMainGetDecisionString(),
-                       (unsigned long)p_mainSummary->busyCount,
-                       (unsigned long)p_mainSummary->staleCount,
+                       App_FsmGetDecisionString(),
+                       (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u),
                        (unsigned int)g_appSystemContext.stopQualificationCount);
     }
 #endif

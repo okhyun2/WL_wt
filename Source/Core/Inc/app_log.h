@@ -28,7 +28,7 @@ typedef enum
 /**
  * define print log level. print >= defined_level
  */ 
-#define APP_LOG_LEVEL (APP_LOG_LEVEL_DEBUG)
+#define APP_LOG_LEVEL (APP_LOG_LEVEL_INFO)
 
 /**
  * @brief Logging runtime context.

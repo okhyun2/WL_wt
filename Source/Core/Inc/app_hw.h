@@ -15,6 +15,7 @@ extern "C" {
  *          - USART1  : Debug console
  *          - USART2  : Meter interface
  *          - LPUART1 : NB-IoT
+ *          - I2C1    : ESI
  *          - I2C2    : NFC
  *          - I2C3    : Temperature/auxiliary
  *          - TIM3 CH2  : Piezo PWM
@@ -24,6 +25,7 @@ extern "C" {
 /* Peripheral handles generated in main.c */
 extern ADC_HandleTypeDef hadc;
 extern CRC_HandleTypeDef hcrc;
+extern I2C_HandleTypeDef hi2c1;
 extern I2C_HandleTypeDef hi2c2;
 extern I2C_HandleTypeDef hi2c3;
 extern UART_HandleTypeDef hlpuart1;
@@ -37,6 +39,9 @@ extern TIM_HandleTypeDef htim22;
 #define APP_UART_METER_HANDLE           (&huart2)
 #define APP_UART_NBIOT_HANDLE           (&hlpuart1)
 
+#if 0
+#define APP_I2C_ESI_HANDLE              (&hi2c1)
+#endif
 #define APP_I2C_NFC_HANDLE              (&hi2c2)
 #define APP_I2C_AUX_HANDLE              (&hi2c3)
 
@@ -95,6 +100,18 @@ static inline GPIO_PinState App_HwReadNfcEvent(void)
 {
     return HAL_GPIO_ReadPin(NFC_ED_GPIO_Port, NFC_ED_Pin);
 }
+
+#if 0
+/**
+ * @brief Read ESI interrupt line state.
+ *
+ * @return Current ESI interrupt pin state.
+ */
+static inline GPIO_PinState App_HwReadEsiInterrupt(void)
+{
+    return HAL_GPIO_ReadPin(ESI_Int_GPIO_Port, ESI_Int_Pin);
+}
+#endif
 
 #ifdef __cplusplus
 }

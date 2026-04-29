@@ -22,7 +22,7 @@ typedef enum
     APP_BOOT_STAGE_DEBUG_READY,
     APP_BOOT_STAGE_LOG_READY,
     APP_BOOT_STAGE_SELFTEST_DONE,
-    APP_BOOT_STAGE_SCHEDULER_READY,
+    APP_BOOT_STAGE_FSM_READY,
     APP_BOOT_STAGE_APP_READY
 } AppBootStage_t;
 
@@ -39,6 +39,9 @@ typedef enum
     APP_SYSTEM_WAKE_SRC_NBIOT_RI     = 0x00000001u,
     APP_SYSTEM_WAKE_SRC_NFC_ED       = 0x00000002u,
     APP_SYSTEM_WAKE_SRC_REED         = 0x00000004u,
+#if 0	
+    APP_SYSTEM_WAKE_SRC_ESI_INT      = 0x00000008u,
+#endif	
     APP_SYSTEM_WAKE_SRC_RTC          = 0x00000010u,
     APP_SYSTEM_WAKE_SRC_DEBUG_DRYRUN = 0x40000000u,
     APP_SYSTEM_WAKE_SRC_UNKNOWN      = 0x80000000u
@@ -51,12 +54,12 @@ typedef struct
     uint8_t logReady;
     uint8_t selfTestCompleted;
     uint8_t selfTestFailed;
-    uint8_t schedulerReady;
+    uint8_t fsmReady;
     uint8_t stopRequested;
     uint8_t stopQualificationCount;
     AppBootStage_t bootStage;
     AppStatus_t selfTestStatus;
-    AppStatus_t schedulerStatus;
+    AppStatus_t fsmStatus;
     uint32_t bootSysClockHz;
     uint32_t loopCounter;
     uint32_t idleCounter;

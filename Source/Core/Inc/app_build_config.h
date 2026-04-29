@@ -18,10 +18,10 @@ extern "C" {
 #define APP_NAME_STRING                             "WaterLink WaterTerminal"
 
 #define APP_FW_VERSION_MAJOR                        (0u)
-#define APP_FW_VERSION_MINOR                        (6u)
-#define APP_FW_VERSION_PATCH                        (0u)
+#define APP_FW_VERSION_MINOR                        (7u)
+#define APP_FW_VERSION_PATCH                        (1u)
 
-#define APP_PROJECT_LAYOUT_REV                      (7u)
+#define APP_PROJECT_LAYOUT_REV                      (8u)
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
 
 #define APP_CLOCK_MSI_RANGE_BOOT                    RCC_MSIRANGE_5
@@ -75,30 +75,30 @@ extern "C" {
 
 #define APP_SELFTEST_ENABLE_REAL_METER_PROBE        (APP_FALSE)
 #define APP_SELFTEST_ENABLE_REAL_NBIOT_PROBE        (APP_FALSE)
+#if 0
+#define APP_SELFTEST_ENABLE_REAL_ESI_PROBE          (APP_FALSE)
+#endif
 #define APP_SELFTEST_ENABLE_REAL_NFC_PROBE          (APP_FALSE)
 #define APP_SELFTEST_ENABLE_REAL_AUX_PROBE          (APP_FALSE)
 #define APP_SELFTEST_ENABLE_REAL_EXTERNAL_WD_PULSE  (APP_FALSE)
 
+#if 0
+#define APP_SELFTEST_ESI_I2C_ADDRESS_7BIT           (0x00u)
+#endif
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x00u)
 #define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x00u)
 
-#define APP_SCHEDULER_MAX_TASKS                     (10u)
-#define APP_SCHEDULER_RUN_IMMEDIATE                 (APP_TRUE)
-#define APP_SCHEDULER_USE_WFI_IDLE                  (APP_TRUE)
-#define APP_SCHEDULER_IDLE_DELAY_MS                 (1u)
-
-#define APP_SCHEDULER_TASK_DEBUG_PERIOD_MS          (1u)
-#define APP_SCHEDULER_TASK_WATCHDOG_PERIOD_MS       (10000u)
-#define APP_SCHEDULER_TASK_HOUSEKEEPING_PERIOD_MS   (100u)
-#define APP_SCHEDULER_TASK_POWER_PERIOD_MS          (250u)
-#define APP_SCHEDULER_TASK_STORAGE_PERIOD_MS        (200u)
-#define APP_SCHEDULER_TASK_METER_PERIOD_MS          (500u)
-#define APP_SCHEDULER_TASK_NFC_PERIOD_MS            (250u)
-#define APP_SCHEDULER_TASK_AUX_PERIOD_MS            (1000u)
-#define APP_SCHEDULER_TASK_NBIOT_PERIOD_MS          (500u)
-#define APP_SCHEDULER_TASK_SERVER_PERIOD_MS         (1000u)
-#define APP_SCHEDULER_TASK_RTC_PERIOD_MS            (1000u)
-#define APP_SCHEDULER_TASK_MAIN_PERIOD_MS           (100u)
+#define APP_FSM_USE_WFI_IDLE                        (APP_TRUE)
+#define APP_FSM_IDLE_DELAY_MS                       (1u)
+#define APP_FSM_BOOT_RESET_HOLD_MS                  (1000u)
+#define APP_FSM_DEBUG_POLL_PERIOD_MS                (1u)
+#define APP_FSM_HOUSEKEEPING_PERIOD_MS              (100u)
+#define APP_FSM_METER_PERIOD_MS                     (500u)
+#define APP_FSM_NFC_PERIOD_MS                       (250u)
+#define APP_FSM_AUX_PERIOD_MS                       (1000u)
+#define APP_FSM_NBIOT_PERIOD_MS                     (500u)
+#define APP_FSM_SERVER_PERIOD_MS                    (1000u)
+#define APP_FSM_RTC_PERIOD_MS                       (1000u)
 
 #define APP_RTC_LSE_ASYNC_PREDIV                    (127u)
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
@@ -116,11 +116,6 @@ extern "C" {
 
 #define APP_MSGQ_DEPTH                              (10u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)
-#define APP_MSGQ_MAIN_DRAIN_PER_RUN                 (12u)
-#define APP_TASK_HEARTBEAT_MIN_INTERVAL_MS          (100u)
-#define APP_TASK_MAIN_STALE_FACTOR                  (3u)
-#define APP_TASK_MAIN_STALE_MARGIN_MS               (100u)
-#define APP_TASK_MAIN_HEARTBEAT_GRACE_MS            ((APP_TASK_MAIN_STALE_FACTOR * APP_SCHEDULER_TASK_MAIN_PERIOD_MS) + APP_TASK_MAIN_STALE_MARGIN_MS)
 
 #define APP_STORAGE_LAYOUT_REV                      (1u)
 #define APP_STORAGE_DATA_EEPROM_SLOT_COUNT          (2u)
