@@ -75,38 +75,25 @@ AppStatus_t App_ClockRecoverAfterStop(void)
 {
     RCC_OscInitTypeDef oscConfig;
     RCC_ClkInitTypeDef clkConfig;
-    RCC_PeriphCLKInitTypeDef periphClkInit;
 
     (void)memset(&oscConfig, 0, sizeof(oscConfig));
     (void)memset(&clkConfig, 0, sizeof(clkConfig));
-    (void)memset(&periphClkInit, 0, sizeof(periphClkInit));
 
     oscConfig.OscillatorType = RCC_OSCILLATORTYPE_MSI;
     oscConfig.MSIState = RCC_MSI_ON;
-    oscConfig.MSICalibrationValue = 0u;
+    oscConfig.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
     oscConfig.MSIClockRange = APP_CLOCK_MSI_RANGE_BOOT;
     oscConfig.PLL.PLLState = RCC_PLL_NONE;
     APP_RETURN_IF_HAL_ERROR(HAL_RCC_OscConfig(&oscConfig), APP_STATUS_CLOCK_VERIFY_FAILED);
 
-    clkConfig.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+    clkConfig.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK|RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
     clkConfig.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
     clkConfig.AHBCLKDivider = RCC_SYSCLK_DIV1;
     clkConfig.APB1CLKDivider = RCC_HCLK_DIV1;
     clkConfig.APB2CLKDivider = RCC_HCLK_DIV1;
     APP_RETURN_IF_HAL_ERROR(HAL_RCC_ClockConfig(&clkConfig, APP_CLOCK_FLASH_LATENCY_BOOT), APP_STATUS_CLOCK_VERIFY_FAILED);
 
-    periphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_USART2 | RCC_PERIPHCLK_LPUART1 | RCC_PERIPHCLK_I2C1 
-                                | RCC_PERIPHCLK_I2C3 | RCC_PERIPHCLK_RTC | RCC_PERIPHCLK_LPTIM1;
-    periphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
-    periphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
-    periphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK1;
-    periphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_PCLK1;
-    periphClkInit.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
-    periphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
-    periphClkInit.LptimClockSelection = RCC_LPTIM1CLKSOURCE_LSE;
-    APP_RETURN_IF_HAL_ERROR(HAL_RCCEx_PeriphCLKConfig(&periphClkInit), APP_STATUS_CLOCK_VERIFY_FAILED);
-
-    return App_ClockCaptureContext();
+    return APP_STATUS_OK;
 }
 
 uint8_t App_ClockIsInitialized(void)

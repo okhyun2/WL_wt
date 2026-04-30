@@ -25,6 +25,9 @@
 #include "app_clock.h"
 #include "app_error.h"
 #include "app_system.h"
+#include <string.h>
+#include "app_log.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,6 +46,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+RTC_HandleTypeDef hrtc;
 ADC_HandleTypeDef hadc;
 
 CRC_HandleTypeDef hcrc;
@@ -68,6 +72,7 @@ LPTIM_HandleTypeDef hlptim1;
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+static void MX_RTC_Init(void);
 static void MX_GPIO_Init(void);
 static void MX_CRC_Init(void);
 static void MX_I2C1_Init(void);
@@ -136,13 +141,14 @@ int main(void)
   MX_TIM22_Init();
   //MX_IWDG_InitStart();
   MX_LPTIM1_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
   if (App_SystemInit() != APP_STATUS_OK)
   {
     Error_Handler();
   }
 
-  //LPTIM1_Start();
+  LPTIM1_Start(); //add periodic wakeup source. max 4min
 
   /* USER CODE END 2 */
 
@@ -181,8 +187,8 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE|RCC_OSCILLATORTYPE_MSI;
   RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
-  RCC_OscInitStruct.MSICalibrationValue = 0;
-  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_5;
+  RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.MSIClockRange = APP_CLOCK_MSI_RANGE_BOOT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -191,7 +197,7 @@ void SystemClock_Config(void)
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK|RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
@@ -201,7 +207,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2 |RCC_PERIPHCLK_LPUART1|RCC_PERIPHCLK_I2C1
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1|RCC_PERIPHCLK_I2C1
                               |RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
@@ -477,17 +483,6 @@ static void MX_IWDG_InitStart(void)
 
 }
 
-static void disable_lptim_wakeup(void)
-{
-    __HAL_LPTIM_WAKEUPTIMER_EXTI_DISABLE_IT();
-}
-
-static void enable_lptim_wakeup(void)
-{
-    __HAL_LPTIM_WAKEUPTIMER_EXTI_ENABLE_IT();
-}
-
-#define LPTIM1_ARR  (1023U)   // 32.768kHz / 32 / 1024 = 1Hz
 
 /**
  * @brief  Start LPTIM1
@@ -499,14 +494,10 @@ void LPTIM1_Start(void)
         HAL_LPTIM_Counter_Stop_IT(&hlptim1);
     }
 
-    if (HAL_LPTIM_Counter_Start_IT(&hlptim1, LPTIM1_ARR) != HAL_OK)
+    if (HAL_LPTIM_Counter_Start_IT(&hlptim1, APP_SYSTEM_LPTIM1_ARR) != HAL_OK)
     {
         Error_Handler();
     }
-
-    //enable_lptim_wakeup();
-    //disable_lptim_wakeup();
-
 }
 
 /**
@@ -518,8 +509,6 @@ void LPTIM1_Stop(void)
     {
         Error_Handler();
     }
-
-    //disable_lptim_wakeup();
 }
 
 /**
@@ -539,7 +528,7 @@ static void MX_LPTIM1_Init(void)
   /* USER CODE END LPTIM1_Init 1 */
   hlptim1.Instance = LPTIM1;
   hlptim1.Init.Clock.Source = LPTIM_CLOCKSOURCE_APBCLOCK_LPOSC;
-  hlptim1.Init.Clock.Prescaler = LPTIM_PRESCALER_DIV32;            // 32.768kHz / 32 = 1.024kHz
+  hlptim1.Init.Clock.Prescaler = APP_SYSTEM_LPTIM1_PRESCALER;
   hlptim1.Init.Trigger.Source = LPTIM_TRIGSOURCE_SOFTWARE;
   hlptim1.Init.OutputPolarity = LPTIM_OUTPUTPOLARITY_HIGH;
   hlptim1.Init.UpdateMode      = LPTIM_UPDATE_IMMEDIATE;
@@ -655,6 +644,51 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+#if 0
+  /** Enable the WakeUp
+  */
+  if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, 0, RTC_WAKEUPCLOCK_RTCCLK_DIV16) != HAL_OK)
+  {
+    Error_Handler();
+  }
+#endif  
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
 
 }
 
@@ -811,11 +845,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : NBIoT_RI_Pin NFC_ED_Pin REED_IN_Pin */
-  GPIO_InitStruct.Pin = NBIoT_RI_Pin|NFC_ED_Pin|REED_IN_Pin;
+  /*Configure GPIO pin : NBIoT_RI_Pin */
+  GPIO_InitStruct.Pin = NBIoT_RI_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(NBIoT_RI_GPIO_Port, &GPIO_InitStruct);
 
 #if 0
   /*Configure GPIO pin : ESI_Int_Pin */
@@ -824,6 +858,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(ESI_Int_GPIO_Port, &GPIO_InitStruct);
 #endif
+
+  /*Configure GPIO pin : NFC_ED_Pin */
+  GPIO_InitStruct.Pin = NFC_ED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(NFC_ED_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : REED_IN_Pin */
+  GPIO_InitStruct.Pin = REED_IN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(REED_IN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : Charge_BOOT0_Pin */
   GPIO_InitStruct.Pin = Charge_BOOT0_Pin;
