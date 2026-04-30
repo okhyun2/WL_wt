@@ -148,7 +148,7 @@ int main(void)
     Error_Handler();
   }
 
-  LPTIM1_Start(); //add periodic wakeup source. max 4min
+  //LPTIM1_Start(); //add periodic wakeup source. max 4min
 
   /* USER CODE END 2 */
 

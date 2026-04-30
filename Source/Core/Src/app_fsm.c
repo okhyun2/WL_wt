@@ -58,6 +58,10 @@ static uint8_t App_FsmIsValidState(uint8_t state)
         case APP_FSM_STATE_LPTIM_INIT:
         case APP_FSM_STATE_LPTIM_WAKE_SERVICE:
         case APP_FSM_STATE_LPTIM_APPLY_SYNC:
+        case APP_FSM_STATE_WATCHDOG_INIT:
+        case APP_FSM_STATE_WATCHDOG_FEED_ON:
+        case APP_FSM_STATE_WATCHDOG_FEED_OFF:
+        case APP_FSM_STATE_WATCHDOG_RELEASE:
         case APP_FSM_STATE_FAULT:
             return APP_TRUE;
 
@@ -79,6 +83,7 @@ static const char *App_FsmGetComponentNameInternal(AppFsmComponentId_t id)
         case APP_FSM_COMPONENT_NBIOT:        return "nbiot";
         case APP_FSM_COMPONENT_SERVER:       return "server";
         case APP_FSM_COMPONENT_RTC:          return "rtc";
+        case APP_FSM_COMPONENT_WATCHDOG:     return "watchdog";
         default:                             return "unknown";
     }
 }
@@ -96,6 +101,7 @@ static uint32_t App_FsmGetComponentInterval(AppFsmComponentId_t id)
         case APP_FSM_COMPONENT_NBIOT:        return APP_FSM_NBIOT_PERIOD_MS;
         case APP_FSM_COMPONENT_SERVER:       return APP_FSM_SERVER_PERIOD_MS;
         case APP_FSM_COMPONENT_RTC:          return APP_FSM_RTC_PERIOD_MS;
+        case APP_FSM_COMPONENT_WATCHDOG:     return APP_FSM_WATCHDOG_PERIOD_MS;
         default:                             return 0u;
     }
 }
@@ -201,6 +207,12 @@ static void App_FsmSignalEventForState(uint8_t nextState)
             componentId = APP_FSM_COMPONENT_RTC;
             break;
 
+        case APP_FSM_STATE_WATCHDOG_INIT:
+        case APP_FSM_STATE_WATCHDOG_FEED_ON:
+        case APP_FSM_STATE_WATCHDOG_FEED_OFF:
+            componentId = APP_FSM_COMPONENT_WATCHDOG;
+            break;
+
         default:
             break;
     }
@@ -218,6 +230,25 @@ static void App_FsmSignalEventForState(uint8_t nextState)
 
     p_component->eventPending = APP_TRUE;
     p_component->lastActionTickMs = HAL_GetTick();
+}
+
+static uint8_t App_FsmIsSignalEventPending(void)
+{
+    AppFsmComponentContext_t *p_component;
+    AppFsmComponentId_t componentId;
+
+    //TODO
+    return APP_FALSE;
+    for (componentId = APP_FSM_COMPONENT_DEBUG; componentId < APP_FSM_COMPONENT_COUNT; componentId++)
+    {
+        p_component = App_FsmGetComponentMutable(componentId);
+        if (p_component->eventPending != 0)
+        {
+            (void)APP_LOGD("FSM", "%s is eventpending", App_FsmGetComponentNameInternal(componentId));
+            return APP_TRUE;
+        }
+    }
+    return APP_FALSE;
 }
 
 static AppStatus_t App_FsmPublishStateCommand(uint8_t nextState, uint8_t pushFront, uint32_t eventParam, uint32_t param0)
@@ -346,6 +377,16 @@ static uint8_t App_FsmMapComponentToState(AppFsmComponentId_t id)
                 default:                                    return APP_FSM_STATE_LPTIM_WAKE_SERVICE;
             }
 
+        case APP_FSM_COMPONENT_WATCHDOG:
+            switch (p_component->state)
+            {
+                case APP_FSM_STATE_WATCHDOG_INIT:               return APP_FSM_STATE_WATCHDOG_INIT;
+                case APP_FSM_STATE_WATCHDOG_FEED_ON:            return APP_FSM_STATE_WATCHDOG_FEED_ON;
+                case APP_FSM_STATE_WATCHDOG_FEED_OFF:           return APP_FSM_STATE_WATCHDOG_FEED_OFF;
+                case APP_FSM_STATE_WATCHDOG_RELEASE:
+                default:                                    return APP_FSM_STATE_WATCHDOG_RELEASE;
+            }
+
         default:
             return APP_FSM_STATE_FAULT;
     }
@@ -356,13 +397,14 @@ static AppStatus_t App_FsmFindDuePeriodicState(uint8_t *p_state)
     static const AppFsmComponentId_t periodicOrder[] =
     {
         //APP_FSM_COMPONENT_POWER,
-        APP_FSM_COMPONENT_HOUSEKEEPING
+        APP_FSM_COMPONENT_HOUSEKEEPING,
         //APP_FSM_COMPONENT_METER,
         //APP_FSM_COMPONENT_NFC,
         //APP_FSM_COMPONENT_AUX,
         //APP_FSM_COMPONENT_NBIOT,
         //APP_FSM_COMPONENT_SERVER,
         //APP_FSM_COMPONENT_RTC
+        APP_FSM_COMPONENT_WATCHDOG
     };
     uint32_t index;
 
@@ -430,6 +472,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmMarkComponent(APP_FSM_COMPONENT_SERVER, APP_FSM_STATE_SERVER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_LPTIM, APP_FSM_STATE_LPTIM_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            //App_FsmMarkComponent(APP_FSM_COMPONENT_WATCHDOG, APP_FSM_STATE_WATCHDOG_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
 
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_DEBUG_POLL, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_HOUSEKEEPING_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
@@ -441,6 +484,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_SERVER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_RTC_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_LPTIM_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            //APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_WATCHDOG_INIT, APP_TRUE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
 
             App_FsmSetDecision(APP_FSM_DECISION_BOOT);
             break;
@@ -665,6 +709,40 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
+        case APP_FSM_STATE_WATCHDOG_INIT:
+            (void)APP_LOGD("FSM", "state:%s", App_FsmGetStateName(currentState));
+            App_FsmMarkComponent(APP_FSM_COMPONENT_WATCHDOG, APP_FSM_STATE_WATCHDOG_FEED_ON, APP_FALSE, APP_TRUE, APP_STATUS_OK); //eventPending
+            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            break;
+
+        case APP_FSM_STATE_WATCHDOG_FEED_ON:
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
+            (void)APP_LOGD("FSM", "state:%s", App_FsmGetStateName(currentState));
+            App_FsmMarkComponent(APP_FSM_COMPONENT_WATCHDOG, APP_FSM_STATE_WATCHDOG_FEED_OFF, APP_FALSE, APP_TRUE, APP_STATUS_OK); //eventPending
+            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            break;
+
+        case APP_FSM_STATE_WATCHDOG_FEED_OFF:
+            /* pseudo code*/
+            /*
+                do something;
+                APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FAIL);
+            */
+            (void)APP_LOGD("FSM", "state:%s", App_FsmGetStateName(currentState));
+            App_FsmMarkComponent(APP_FSM_COMPONENT_WATCHDOG, APP_FSM_STATE_WATCHDOG_RELEASE, APP_FALSE, APP_TRUE, APP_STATUS_OK); //eventPending
+            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            break;
+
+        case APP_FSM_STATE_WATCHDOG_RELEASE:
+            (void)APP_LOGD("FSM", "state:%s", App_FsmGetStateName(currentState));
+            App_FsmMarkComponent(APP_FSM_COMPONENT_WATCHDOG, APP_FSM_STATE_WATCHDOG_FEED_ON, APP_FALSE, APP_FALSE, APP_STATUS_OK); //release eventPending. can entry stop mode
+            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            break;
+
         case APP_FSM_STATE_FAULT:
             App_FsmSetDecision(APP_FSM_DECISION_REQUIRE_SAFE);
             break;
@@ -754,12 +832,19 @@ AppStatus_t App_FsmRun(void)
         g_appFsmContext.summary.transitionCount++;
         return App_FsmExecuteState(nextState, 0u);
     }
+
+    if(App_FsmIsSignalEventPending())
+    {
+        return App_SystemRequestLowPower(APP_FALSE);
+    }
+
     APP_RETURN_IF_FALSE(status == APP_STATUS_MSGQ_EMPTY, status);
 
     g_appFsmContext.summary.currentState = APP_FSM_STATE_IDLE;
     g_appFsmContext.summary.lastStateTickMs = HAL_GetTick();
     g_appFsmContext.summary.queueEmptyStopCount++;
     g_appFsmContext.summary.lowPowerRequested = APP_TRUE;
+
     App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
     return App_SystemRequestLowPower(APP_TRUE);
 }
@@ -842,6 +927,10 @@ const char *App_FsmGetStateName(uint8_t state)
         case APP_FSM_STATE_LPTIM_INIT:              return "LPTIM_INIT";
         case APP_FSM_STATE_LPTIM_WAKE_SERVICE:      return "LPTIM_WAKE_SERVICE";
         case APP_FSM_STATE_LPTIM_APPLY_SYNC:        return "LPTIM_APPLY_SYNC";
+        case APP_FSM_STATE_WATCHDOG_INIT:           return "WATCHDOG_INIT";
+        case APP_FSM_STATE_WATCHDOG_FEED_ON:        return "WATCHDOG_FEED_ON";
+        case APP_FSM_STATE_WATCHDOG_FEED_OFF:       return "WATCHDOG_FEED_OFF";
+        case APP_FSM_STATE_WATCHDOG_RELEASE:        return "WATCHDOG_RELEASE";
         case APP_FSM_STATE_FAULT:                   return "FAULT";
         default:                                    return "UNKNOWN";
     }
