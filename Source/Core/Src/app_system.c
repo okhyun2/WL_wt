@@ -537,8 +537,9 @@ static AppStatus_t App_SystemPrintBootLogs(void)
                                  (unsigned long)g_appGpioLpConfig.swdPolicy,
                                  (unsigned int)g_appGpioLpConfig.keepNbiotRiWakeWhenPowered) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("RTC", "STOP wake period=%lu ms (LSE rtc wakeup)",
-                                 (unsigned long)APP_RTC_WAKEUP_PERIOD_MS) == APP_STATUS_OK,
+    APP_RETURN_IF_FALSE(APP_LOGI("RTC", "STOP wake period=%lu ms (%s)",
+                                 (unsigned long)APP_RTC_WAKEUP_PERIOD_MS,
+                                 (APP_RTC_WAKEUP_PERIOD_MS == 0) ? "Don't work stop":"LSE rtc wakeup") == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud",
                                  (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
@@ -633,7 +634,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
             return status;
         }
 
-        (void)APP_LOGI("LP", "STOP periodic:%ds", wakeupSeconds);
+        (void)APP_LOGI("RTC", "STOP periodic:%ds", wakeupSeconds);
     }
     else if(g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_LPTIM)
     {
@@ -644,7 +645,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
         fTemp = (((APP_SYSTEM_LPTIM1_ARR+1) * lptim1_prescaler)/32768) + 0.5;
         wakeupSeconds = (uint32_t)fTemp;
         g_appSystemContext.oldWakeSourceMask &= ~APP_SYSTEM_WAKE_SRC_LPTIM;
-        (void)APP_LOGI("LP", "STOP periodic:%ds", wakeupSeconds);
+        (void)APP_LOGI("LPTIM", "STOP periodic:%ds", wakeupSeconds);
     }
 
     status = App_SystemPrepareForStop();
@@ -749,7 +750,10 @@ static void App_SystemHandleIdle(void)
     {
         if (g_appSystemContext.stopQualificationCount < 0xFFu)
         {
-            g_appSystemContext.stopQualificationCount++;
+            if (APP_RTC_WAKEUP_PERIOD_MS > 0)
+            {
+                g_appSystemContext.stopQualificationCount++;
+            }
         }
 
 #ifdef DEBUG
