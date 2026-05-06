@@ -1,4 +1,5 @@
 #include "app_clock.h"
+#include "main.h"
 
 #include <string.h>
 
@@ -105,3 +106,25 @@ const AppClockContext_t *App_ClockGetContext(void)
 {
     return &g_appClockContext;
 }
+
+uint32_t CalcElapsedMs(uint64_t before_ms, uint64_t after_ms)
+{
+    int64_t elapsed = (int64_t)after_ms - (int64_t)before_ms;
+
+    // 자정을 넘긴 경우 보정 (24시간 = 86,400,000ms)
+    if (elapsed < 0) {
+        elapsed += 24ULL * 3600ULL * 1000ULL;
+    }
+
+    return (uint32_t)elapsed;
+}
+
+// 전역 보정값 (ms 단위)
+uint32_t g_tick_offset = 0;
+
+// 보정된 Tick 반환 함수
+uint32_t GetCorrectedTick(void)
+{
+    return HAL_GetTick() + g_tick_offset;
+}
+

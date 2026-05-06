@@ -6,6 +6,7 @@
 
 #include "app_build_config.h"
 #include "app_debug.h"
+#include "app_clock.h"
 
 /**
  * @file    app_log.c
@@ -49,14 +50,27 @@ static const char* get_local_time_str(void)
 {
     static char buf[16];  // "hhmmss.mmm\0" = 13 bytes, 여유있게 16
 
+    uint32_t total_ms = GetCorrectedTick();
+
+    uint32_t msec = total_ms % 1000;
+    uint32_t total_sec = total_ms / 1000;
+    uint32_t sec = total_sec % 60;
+    uint32_t total_min = total_sec / 60;
+    uint32_t min = total_min % 60;
+    uint32_t hour = total_min / 60;
+
+
+    #if 0
     uint32_t tick = HAL_GetTick();
 
-    uint32_t ms   =  tick % 1000;
+    uint32_t msec   =  tick % 1000;
     uint32_t sec  = (tick / 1000)    % 60;
     uint32_t min  = (tick / 60000)   % 60;
     uint32_t hour = (tick / 3600000) % 24;
+    snprintf(buf, sizeof(buf), "%02lu%02lu%02lu.%03lu", hour, min, sec, msec);
+    #endif
 
-    snprintf(buf, sizeof(buf), "%02lu%02lu%02lu.%03lu", hour, min, sec, ms);
+    snprintf(buf, sizeof(buf), "%02lu%02lu%02lu.%03lu", hour, min, sec, msec);
 
     return buf;
 }

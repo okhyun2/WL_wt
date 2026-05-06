@@ -68,6 +68,11 @@ uint8_t App_ClockIsInitialized(void);
  */
 const AppClockContext_t *App_ClockGetContext(void);
 
+// 전역 보정값 (ms 단위)
+extern uint32_t g_tick_offset;
+uint32_t CalcElapsedMs(uint64_t before_ms, uint64_t after_ms);
+uint32_t GetCorrectedTick(void);
+
 #ifdef __cplusplus
 }
 #endif

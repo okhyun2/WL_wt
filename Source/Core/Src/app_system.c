@@ -1,4 +1,5 @@
 #include "app_system.h"
+#include "main.h"
 
 #include <string.h>
 
@@ -613,6 +614,8 @@ static AppStatus_t App_SystemInitFsm(void)
     return APP_STATUS_OK;
 }
 
+static uint64_t rtc_time_before_stop = 0;
+
 static AppStatus_t App_SystemEnterStopMode(void)
 {
     AppStatus_t status;
@@ -693,6 +696,10 @@ static AppStatus_t App_SystemEnterStopMode(void)
 #endif
     return APP_STATUS_OK;
 #else
+
+    // Stop 진입 전 RTC 시간 저장
+    rtc_time_before_stop = RTC_GetTimeMs();
+
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
     HAL_SuspendTick();
     HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
@@ -711,6 +718,13 @@ static AppStatus_t App_SystemEnterStopMode(void)
     {
         return status;
     }
+
+    // Wake-up 후 경과 시간 계산 및 보정
+    uint64_t rtc_time_after = RTC_GetTimeMs();
+    uint32_t elapsed_ms = CalcElapsedMs(rtc_time_before_stop, rtc_time_after);
+    
+    // 전역 offset에 누락된 시간 누적
+    g_tick_offset += elapsed_ms;
 
     wakeup_process_all_pending();
 #ifdef DEBUG
@@ -826,6 +840,7 @@ void App_SystemHandleRtcCallBack(void)
     g_appSystemContext.rtcWakeEventCount++;
     App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_RTC);
     App_SystemQueueStateCommand(APP_FSM_STATE_RTC_WAKE_SERVICE);
+    App_SystemQueueStateCommand(APP_FSM_STATE_WATCHDOG_FEED);
 }
 
 void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)

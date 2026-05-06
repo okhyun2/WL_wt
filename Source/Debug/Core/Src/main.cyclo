@@ -12,8 +12,10 @@
 ../Core/Src/main.c:551:13:MX_LPUART1_UART_Init	2
 ../Core/Src/main.c:585:13:MX_USART1_UART_Init	2
 ../Core/Src/main.c:620:13:MX_USART2_UART_Init	2
-../Core/Src/main.c:655:13:MX_RTC_Init	2
-../Core/Src/main.c:700:13:MX_TIM3_Init	6
-../Core/Src/main.c:759:13:MX_TIM22_Init	6
-../Core/Src/main.c:818:13:MX_GPIO_Init	1
-../Core/Src/main.c:894:6:Error_Handler	1
+../Core/Src/main.c:650:6:RTC_SetTime	1
+../Core/Src/main.c:665:10:RTC_GetTimeMs	2
+../Core/Src/main.c:693:13:MX_RTC_Init	2
+../Core/Src/main.c:739:13:MX_TIM3_Init	6
+../Core/Src/main.c:798:13:MX_TIM22_Init	6
+../Core/Src/main.c:857:13:MX_GPIO_Init	1
+../Core/Src/main.c:933:6:Error_Handler	1

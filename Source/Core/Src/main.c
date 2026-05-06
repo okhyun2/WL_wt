@@ -647,11 +647,49 @@ static void MX_USART2_UART_Init(void)
 
 }
 
+void RTC_SetTime(int year, int month, int date, int hour, int min, int sec)
+{
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+  sTime.Hours = hour;
+  sTime.Minutes = min;
+  sTime.Seconds = sec;
+  sDate.Date = date;
+  sDate.Month = month;
+  sDate.Year = year;
+
+  HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+  HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+}
+
+uint64_t RTC_GetTimeMs(void)
+{
+    RTC_TimeTypeDef sTime;
+    RTC_DateTypeDef sDate;
+
+    HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+    HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);   // Time 읽은 후 Date도 반드시 읽어야 함
+
+    // 시/분/초를 밀리초로 변환
+    uint64_t ms = 0;
+    ms += (uint64_t)sTime.Hours   * 3600000ULL;
+    ms += (uint64_t)sTime.Minutes * 60000ULL;
+    ms += (uint64_t)sTime.Seconds * 1000ULL;
+
+    // SubSeconds를 이용한 밀리초 정밀도 향상
+    if (hrtc.Init.SynchPrediv > 0) {
+        ms += ((hrtc.Init.SynchPrediv - sTime.SubSeconds) * 1000) 
+              / (hrtc.Init.SynchPrediv + 1);
+    }
+
+    return ms;
+}
+
 /**
-  * @brief RTC Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief RTC Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_RTC_Init(void)
 {
 
@@ -687,6 +725,7 @@ static void MX_RTC_Init(void)
   }
 #endif  
   /* USER CODE BEGIN RTC_Init 2 */
+  RTC_SetTime(26, 1, 1, 0, 0, 0);
 
   /* USER CODE END RTC_Init 2 */
 
