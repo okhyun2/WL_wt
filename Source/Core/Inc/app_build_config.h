@@ -100,6 +100,7 @@ extern "C" {
 #define APP_FSM_SERVER_PERIOD_MS                    (1000u)
 #define APP_FSM_RTC_PERIOD_MS                       (1000u)
 #define APP_FSM_WATCHDOG_PERIOD_MS                  (100u)
+#define APP_FSM_STORAGE_PERIOD_MS                   (500u)
 
 #define APP_RTC_LSE_ASYNC_PREDIV                    (127u)
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
