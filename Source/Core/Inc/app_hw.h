@@ -18,7 +18,6 @@ extern "C" {
  *          - I2C1    : ESI
  *          - I2C2    : NFC
  *          - I2C3    : Temperature/auxiliary
- *          - TIM3 CH2  : Piezo PWM
  *          - TIM22 CH2 : External watchdog feed
  */
 
@@ -32,7 +31,6 @@ extern I2C_HandleTypeDef hi2c3;
 extern UART_HandleTypeDef hlpuart1;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
-extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim22;
 
 /** @brief Logical peripheral aliases. */
@@ -51,7 +49,6 @@ extern TIM_HandleTypeDef htim22;
 #define APP_ADC_BATTERY_HANDLE          (&hadc)
 #define APP_CRC_HANDLE                  (&hcrc)
 
-#define APP_TIM_PIEZO_HANDLE            (&htim3)
 #define APP_TIM_WD_FEED_HANDLE          (&htim22)
 
 /**

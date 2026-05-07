@@ -67,8 +67,6 @@ extern "C" {
 #define APP_SELFTEST_BUZZER_BEEP_OFF_MS             (50u)
 #define APP_SELFTEST_BUZZER_ERROR_ON_MS             (60u)
 #define APP_SELFTEST_BUZZER_ERROR_OFF_MS            (60u)
-#define APP_SELFTEST_PWM_SETTLE_DELAY_MS            (20u)
-#define APP_SELFTEST_BUZZER_DUTY_PERCENT            (50u)
 #define APP_SELFTEST_ADC_TIMEOUT_MS                 (20u)
 #define APP_SELFTEST_I2C_READY_TRIALS               (2u)
 #define APP_SELFTEST_I2C_READY_TIMEOUT_MS           (20u)

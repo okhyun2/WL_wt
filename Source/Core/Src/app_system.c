@@ -438,7 +438,6 @@ static AppStatus_t App_SystemValidateHandles(void)
     APP_RETURN_IF_FALSE(APP_I2C_AUX_HANDLE->Instance == I2C3, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_CRC_HANDLE->Instance == CRC, APP_STATUS_HW_HANDLE_INVALID);
-    APP_RETURN_IF_FALSE(APP_TIM_PIEZO_HANDLE->Instance == TIM3, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_TIM_WD_FEED_HANDLE->Instance == TIM22, APP_STATUS_HW_HANDLE_INVALID);
     return APP_STATUS_OK;
 }
@@ -481,7 +480,6 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
     g_appGpioLpConfig.stopClockDisableMask =
         APP_GPIO_LP_CLK_ADC1 |
         APP_GPIO_LP_CLK_CRC |
-        APP_GPIO_LP_CLK_TIM3 |
         APP_GPIO_LP_CLK_TIM22 |
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
@@ -545,8 +543,14 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud",
                                  (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("METER", "USART2 ready at %lu baud",
+                                 (unsigned long)APP_UART_METER_HANDLE->Init.BaudRate) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("NBIoT", "LPUART1 ready at %lu baud",
+                                 (unsigned long)APP_UART_NBIOT_HANDLE->Init.BaudRate) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(App_DebugConsolePrintPrompt() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGD("SYS", "Boot path complete: clock/log/debug ready") == APP_STATUS_OK,
+    APP_RETURN_IF_FALSE(APP_LOGI("SYS", "Boot path complete: clock/log/debug ready") == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
     return APP_STATUS_OK;

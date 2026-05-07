@@ -120,6 +120,25 @@ static void App_GpioLpConfigExtiRising(GPIO_TypeDef *gpioPort, uint32_t pinMask)
 }
 
 /**
+ * @brief Configure selected pins as rising-edge wake/event inputs.
+ *
+ * @param gpioPort GPIO port.
+ * @param pinMask Pin mask.
+ */
+static void App_GpioLpConfigExtiFalling(GPIO_TypeDef *gpioPort, uint32_t pinMask)
+{
+    GPIO_InitTypeDef gpioInit;
+
+    (void)memset(&gpioInit, 0, sizeof(gpioInit));
+    gpioInit.Pin = pinMask;
+    gpioInit.Mode = GPIO_MODE_IT_FALLING;
+    gpioInit.Pull = GPIO_NOPULL;
+
+    HAL_GPIO_Init(gpioPort, &gpioInit);
+}
+
+
+/**
  * @brief Restore debug UART pins.
  */
 static void App_GpioLpRestoreDebugUartPins(void)
@@ -223,22 +242,11 @@ static void App_GpioLpRestoreTempI2cPins(void)
 }
 
 /**
- * @brief Restore piezo PWM pin.
+ * @brief Restore piezo gpio pin.
  */
 static void App_GpioLpRestorePiezoPin(void)
 {
-    GPIO_InitTypeDef gpioInit;
-
-    __HAL_RCC_TIM3_CLK_ENABLE();
-
-    (void)memset(&gpioInit, 0, sizeof(gpioInit));
-    gpioInit.Pin = Piezo_PWM_Pin;
-    gpioInit.Mode = GPIO_MODE_AF_PP;
-    gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
-    gpioInit.Alternate = GPIO_AF2_TIM3;
-
-    HAL_GPIO_Init(Piezo_PWM_GPIO_Port, &gpioInit);
+    App_GpioLpConfigOutput(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
 }
 
 /**
@@ -283,7 +291,7 @@ static void App_GpioLpRestoreNbiotInterface(void)
 
     if (g_appGpioLpContext.config.keepNbiotRiWakeWhenPowered == APP_TRUE)
     {
-        App_GpioLpConfigExtiRising(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
+        App_GpioLpConfigExtiFalling(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
     }
     else
     {
@@ -347,10 +355,10 @@ static void App_GpioLpApplyStaticControlPins(void)
  */
 static void App_GpioLpRestoreWakeInputs(void)
 {
-    App_GpioLpConfigExtiRising(NFC_ED_GPIO_Port, NFC_ED_Pin);
+    App_GpioLpConfigExtiFalling(NFC_ED_GPIO_Port, NFC_ED_Pin);
     App_GpioLpConfigExtiRising(REED_IN_GPIO_Port, REED_IN_Pin);
 #if 0	
-    App_GpioLpConfigExtiRising(ESI_Int_GPIO_Port, ESI_Int_Pin);
+    App_GpioLpConfigExtiFalling(ESI_Int_GPIO_Port, ESI_Int_Pin);
 #endif	
 }
 
@@ -369,11 +377,6 @@ static void App_GpioLpDisablePeripheralClocks(uint32_t mask)
     if ((mask & APP_GPIO_LP_CLK_CRC) != 0u)
     {
         __HAL_RCC_CRC_CLK_DISABLE();
-    }
-
-    if ((mask & APP_GPIO_LP_CLK_TIM3) != 0u)
-    {
-        __HAL_RCC_TIM3_CLK_DISABLE();
     }
 
     if ((mask & APP_GPIO_LP_CLK_TIM22) != 0u)
@@ -432,11 +435,6 @@ static void App_GpioLpEnablePeripheralClocks(uint32_t mask)
     if ((mask & APP_GPIO_LP_CLK_CRC) != 0u)
     {
         __HAL_RCC_CRC_CLK_ENABLE();
-    }
-
-    if ((mask & APP_GPIO_LP_CLK_TIM3) != 0u)
-    {
-        __HAL_RCC_TIM3_CLK_ENABLE();
     }
 
     if ((mask & APP_GPIO_LP_CLK_TIM22) != 0u)
@@ -505,7 +503,6 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
     p_config->stopClockDisableMask =
         APP_GPIO_LP_CLK_ADC1 |
         APP_GPIO_LP_CLK_CRC |
-        APP_GPIO_LP_CLK_TIM3 |
         APP_GPIO_LP_CLK_TIM22 |
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
@@ -645,7 +642,7 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
     }
     else if (g_appGpioLpContext.config.keepNbiotRiWakeWhenPowered == 1u)
     {
-        App_GpioLpConfigExtiRising(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
+        App_GpioLpConfigExtiFalling(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
     }
     else
     {

@@ -91,7 +91,7 @@ static void App_SelfTestRecordResult(AppSelfTestItem_t item, AppStatus_t status)
 }
 
 /**
- * @brief Play a buzzer pattern using TIM3 PWM channel 2.
+ * @brief Play a buzzer pattern using gpio
  *
  * @param count Number of beeps.
  * @param onMs Active time per beep.
@@ -101,39 +101,14 @@ static void App_SelfTestRecordResult(AppSelfTestItem_t item, AppStatus_t status)
 static AppStatus_t App_SelfTestPlayBuzzerPattern(uint8_t count, uint32_t onMs, uint32_t offMs)
 {
     uint8_t index;
-    uint32_t periodTicks;
-    uint32_t pulseTicks;
-
-    APP_RETURN_IF_FALSE(APP_TIM_PIEZO_HANDLE->Instance == TIM3, APP_STATUS_HW_HANDLE_INVALID);
-
-    periodTicks = __HAL_TIM_GET_AUTORELOAD(APP_TIM_PIEZO_HANDLE);
-    if (periodTicks == 0u)
-    {
-        periodTicks = 1u;
-    }
-
-    pulseTicks = (((periodTicks + 1u) * APP_SELFTEST_BUZZER_DUTY_PERCENT) / 100u);
-    if ((pulseTicks == 0u) || (pulseTicks > periodTicks))
-    {
-        pulseTicks = periodTicks / 2u;
-        if (pulseTicks == 0u)
-        {
-            pulseTicks = 1u;
-        }
-    }
-
-    APP_RETURN_IF_HAL_ERROR(HAL_TIM_PWM_Start(APP_TIM_PIEZO_HANDLE, TIM_CHANNEL_2), APP_STATUS_SELFTEST_FAILED);
-    HAL_Delay(APP_SELFTEST_PWM_SETTLE_DELAY_MS);
 
     for (index = 0u; index < count; index++)
     {
-        __HAL_TIM_SET_COMPARE(APP_TIM_PIEZO_HANDLE, TIM_CHANNEL_2, pulseTicks);
+        HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_SET);
         HAL_Delay(onMs);
-        __HAL_TIM_SET_COMPARE(APP_TIM_PIEZO_HANDLE, TIM_CHANNEL_2, 0u);
+        HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
         HAL_Delay(offMs);
     }
-
-    APP_RETURN_IF_HAL_ERROR(HAL_TIM_PWM_Stop(APP_TIM_PIEZO_HANDLE, TIM_CHANNEL_2), APP_STATUS_SELFTEST_FAILED);
 
     return APP_STATUS_OK;
 }
