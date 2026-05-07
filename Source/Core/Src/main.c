@@ -651,6 +651,7 @@ void RTC_SetTime(int year, int month, int date, int hour, int min, int sec)
 {
   RTC_TimeTypeDef sTime = {0};
   RTC_DateTypeDef sDate = {0};
+
   sTime.Hours = hour;
   sTime.Minutes = min;
   sTime.Seconds = sec;
@@ -725,7 +726,7 @@ static void MX_RTC_Init(void)
   }
 #endif  
   /* USER CODE BEGIN RTC_Init 2 */
-  RTC_SetTime(26, 1, 1, 0, 0, 0);
+
 
   /* USER CODE END RTC_Init 2 */
 

@@ -947,6 +947,7 @@ AppStatus_t App_SystemInit(void)
 
     g_appSystemContext.initialized = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
+
 #ifdef DEBUG
     APP_RETURN_IF_FALSE(APP_LOGD("SYS", "Application ready: boot=%lu/%lu stop_req=%u",
                                  (unsigned long)g_appSystemContext.bootStage,
@@ -954,6 +955,12 @@ AppStatus_t App_SystemInit(void)
                                  (unsigned int)g_appSystemContext.stopRequested) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 #endif
+
+    APP_RETURN_IF_FALSE(APP_LOGI("SYS", "RTC Set(%04d-%02d-%02d %02d:%02d:%02d)",
+                        APP_DEFAULT_RTC_YEAR, APP_DEFAULT_RTC_MONTH, APP_DEFAULT_RTC_DAY, APP_DEFAULT_RTC_HOUR, APP_DEFAULT_RTC_MIN, APP_DEFAULT_RTC_SEC) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+    RTC_SetTime(APP_DEFAULT_RTC_YEAR, APP_DEFAULT_RTC_MONTH, APP_DEFAULT_RTC_DAY, APP_DEFAULT_RTC_HOUR, APP_DEFAULT_RTC_MIN, APP_DEFAULT_RTC_SEC);
+
     return APP_STATUS_OK;
 }
 

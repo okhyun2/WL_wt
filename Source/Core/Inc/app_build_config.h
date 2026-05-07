@@ -24,6 +24,13 @@ extern "C" {
 #define APP_PROJECT_LAYOUT_REV                      (8u)
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
 
+#define APP_DEFAULT_RTC_YEAR                        (2026)
+#define APP_DEFAULT_RTC_MONTH                       (1)
+#define APP_DEFAULT_RTC_DAY                         (1)
+#define APP_DEFAULT_RTC_HOUR                        (0)
+#define APP_DEFAULT_RTC_MIN                         (0)
+#define APP_DEFAULT_RTC_SEC                         (0)
+
 #define APP_CLOCK_MSI_RANGE_BOOT                    RCC_MSIRANGE_5
 #define APP_CLOCK_SYSCLK_BOOT_HZ                    (2097000u)
 #define APP_CLOCK_HCLK_BOOT_HZ                      (APP_CLOCK_SYSCLK_BOOT_HZ)
