@@ -1,6 +1,6 @@
-../Core/Inc/app_hw.h:59:20:App_HwSetNbiotEnable	1
-../Core/Inc/app_hw.h:69:20:App_HwSetNbiotReset	1
-../Core/Inc/app_hw.h:79:20:App_HwSetChargeBoot0	1
+../Core/Inc/app_hw.h:62:20:App_HwSetNbiotEnable	1
+../Core/Inc/app_hw.h:72:20:App_HwSetNbiotReset	1
+../Core/Inc/app_hw.h:82:20:App_HwSetChargeBoot0	1
 ../Core/Src/app_system.c:18:13:handle_lptim1_wakeup	2
 ../Core/Src/app_system.c:31:13:handle_rtc_alarm_wakeup	1
 ../Core/Src/app_system.c:44:13:handle_rtc_wut_wakeup	1
@@ -30,7 +30,7 @@
 ../Core/Src/app_system.c:555:20:App_SystemRunBootSelfTest	5
 ../Core/Src/app_system.c:589:20:App_SystemInitFsm	4
 ../Core/Src/app_system.c:619:20:App_SystemEnterStopMode	11
-../Core/Src/app_system.c:755:13:App_SystemHandleIdle	9
+../Core/Src/app_system.c:755:13:App_SystemHandleIdle	8
 ../Core/Src/app_system.c:831:6:App_SystemHandleLptim1AutoReloadMatchCallback	1
 ../Core/Src/app_system.c:838:6:App_SystemHandleRtcCallBack	1
 ../Core/Src/app_system.c:846:6:App_SystemHandleExtiCallBack	5

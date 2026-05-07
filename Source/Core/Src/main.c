@@ -628,7 +628,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = 1200;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -645,45 +645,6 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 2 */
 
-}
-
-void RTC_SetTime(int year, int month, int date, int hour, int min, int sec)
-{
-  RTC_TimeTypeDef sTime = {0};
-  RTC_DateTypeDef sDate = {0};
-
-  sTime.Hours = hour;
-  sTime.Minutes = min;
-  sTime.Seconds = sec;
-  sDate.Date = date;
-  sDate.Month = month;
-  sDate.Year = year;
-
-  HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
-  HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
-}
-
-uint64_t RTC_GetTimeMs(void)
-{
-    RTC_TimeTypeDef sTime;
-    RTC_DateTypeDef sDate;
-
-    HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
-    HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);   // Time 읽은 후 Date도 반드시 읽어야 함
-
-    // 시/분/초를 밀리초로 변환
-    uint64_t ms = 0;
-    ms += (uint64_t)sTime.Hours   * 3600000ULL;
-    ms += (uint64_t)sTime.Minutes * 60000ULL;
-    ms += (uint64_t)sTime.Seconds * 1000ULL;
-
-    // SubSeconds를 이용한 밀리초 정밀도 향상
-    if (hrtc.Init.SynchPrediv > 0) {
-        ms += ((hrtc.Init.SynchPrediv - sTime.SubSeconds) * 1000) 
-              / (hrtc.Init.SynchPrediv + 1);
-    }
-
-    return ms;
 }
 
 /**
@@ -886,8 +847,8 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : NBIoT_RI_Pin */
-  GPIO_InitStruct.Pin = NBIoT_RI_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pin = NBIoT_RI_Pin; //active low
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(NBIoT_RI_GPIO_Port, &GPIO_InitStruct);
 
@@ -900,13 +861,13 @@ static void MX_GPIO_Init(void)
 #endif
 
   /*Configure GPIO pin : NFC_ED_Pin */
-  GPIO_InitStruct.Pin = NFC_ED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pin = NFC_ED_Pin; //actvie low
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(NFC_ED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : REED_IN_Pin */
-  GPIO_InitStruct.Pin = REED_IN_Pin;
+  GPIO_InitStruct.Pin = REED_IN_Pin; //active high
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(REED_IN_GPIO_Port, &GPIO_InitStruct);

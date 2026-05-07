@@ -720,7 +720,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
     }
 
     // Wake-up 후 경과 시간 계산 및 보정
-    uint64_t rtc_time_after = RTC_GetTimeMs();
+    uint64_t rtc_time_after = RTC_GetTimeMs() + 100; //100msec tunnning
     uint32_t elapsed_ms = CalcElapsedMs(rtc_time_before_stop, rtc_time_after);
     
     // 전역 offset에 누락된 시간 누적

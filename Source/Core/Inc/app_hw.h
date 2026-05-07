@@ -23,6 +23,7 @@ extern "C" {
  */
 
 /* Peripheral handles generated in main.c */
+extern RTC_HandleTypeDef hrtc;
 extern ADC_HandleTypeDef hadc;
 extern CRC_HandleTypeDef hcrc;
 extern I2C_HandleTypeDef hi2c1;
@@ -35,6 +36,8 @@ extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim22;
 
 /** @brief Logical peripheral aliases. */
+#define APP_RTC_HANDLE           (&hrtc)
+
 #define APP_UART_DEBUG_HANDLE           (&huart1)
 #define APP_UART_METER_HANDLE           (&huart2)
 #define APP_UART_NBIOT_HANDLE           (&hlpuart1)

@@ -6,3 +6,5 @@
 ../Core/Src/app_clock.c:105:26:App_ClockGetContext	1
 ../Core/Src/app_clock.c:110:10:CalcElapsedMs	2
 ../Core/Src/app_clock.c:126:10:GetCorrectedTick	1
+../Core/Src/app_clock.c:131:6:RTC_SetTime	1
+../Core/Src/app_clock.c:147:10:RTC_GetTimeMs	2
