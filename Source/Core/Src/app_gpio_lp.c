@@ -335,7 +335,7 @@ static void App_GpioLpApplyStaticControlPins(void)
 static void App_GpioLpRestoreWakeInputs(void)
 {
     App_GpioLpConfigExtiFalling(NFC_ED_GPIO_Port, NFC_ED_Pin);
-    App_GpioLpConfigExtiRising(REED_IN_GPIO_Port, REED_IN_Pin);
+    App_GpioLpConfigExtiFalling(REED_IN_GPIO_Port, REED_IN_Pin);
 #if 0	
     App_GpioLpConfigExtiFalling(ESI_Int_GPIO_Port, ESI_Int_Pin);
 #endif	

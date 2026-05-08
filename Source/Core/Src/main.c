@@ -769,8 +769,8 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(NFC_ED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : REED_IN_Pin */
-  GPIO_InitStruct.Pin = REED_IN_Pin; //active high
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pin = REED_IN_Pin; //active low
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(REED_IN_GPIO_Port, &GPIO_InitStruct);
 
