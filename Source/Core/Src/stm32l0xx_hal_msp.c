@@ -243,6 +243,7 @@ void HAL_I2C_MspInit(I2C_HandleTypeDef* hi2c)
 
     /* USER CODE END I2C2_MspInit 1 */
   }
+#if 0	//Temp support
   else if(hi2c->Instance==I2C3)
   {
     /* USER CODE BEGIN I2C3_MspInit 0 */
@@ -275,6 +276,7 @@ void HAL_I2C_MspInit(I2C_HandleTypeDef* hi2c)
 
     /* USER CODE END I2C3_MspInit 1 */
   }
+#endif
 
 }
 
@@ -326,6 +328,7 @@ void HAL_I2C_MspDeInit(I2C_HandleTypeDef* hi2c)
 
     /* USER CODE END I2C2_MspDeInit 1 */
   }
+#if 0	//Temp support
   else if(hi2c->Instance==I2C3)
   {
     /* USER CODE BEGIN I2C3_MspDeInit 0 */
@@ -346,6 +349,7 @@ void HAL_I2C_MspDeInit(I2C_HandleTypeDef* hi2c)
 
     /* USER CODE END I2C3_MspDeInit 1 */
   }
+#endif
 
 }
 

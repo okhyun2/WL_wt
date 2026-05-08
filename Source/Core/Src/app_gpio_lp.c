@@ -216,6 +216,7 @@ static void App_GpioLpRestoreNfcI2cPins(void)
     HAL_GPIO_Init(GPIOB, &gpioInit);
 }
 
+#if 0	//Temp support
 /**
  * @brief Restore auxiliary temperature I2C pins.
  */
@@ -240,6 +241,7 @@ static void App_GpioLpRestoreTempI2cPins(void)
     gpioInit.Alternate = GPIO_AF7_I2C3;
     HAL_GPIO_Init(Temp_SDA_GPIO_Port, &gpioInit);
 }
+#endif
 
 /**
  * @brief Restore piezo gpio pin.
@@ -373,20 +375,24 @@ static void App_GpioLpDisablePeripheralClocks(uint32_t mask)
         __HAL_RCC_LPUART1_CLK_DISABLE();
     }
 
+#if 0	//ESI support
     if ((mask & APP_GPIO_LP_CLK_I2C1) != 0u)
     {
         __HAL_RCC_I2C1_CLK_DISABLE();
     }
+#endif
 
     if ((mask & APP_GPIO_LP_CLK_I2C2) != 0u)
     {
         __HAL_RCC_I2C2_CLK_DISABLE();
     }
 
+#if 0	//Temp support
     if ((mask & APP_GPIO_LP_CLK_I2C3) != 0u)
     {
         __HAL_RCC_I2C3_CLK_DISABLE();
     }
+#endif
 
     if ((mask & APP_GPIO_LP_CLK_SYSCFG) != 0u)
     {
@@ -426,20 +432,24 @@ static void App_GpioLpEnablePeripheralClocks(uint32_t mask)
         __HAL_RCC_LPUART1_CLK_ENABLE();
     }
 
+#if 0	//ESI support
     if ((mask & APP_GPIO_LP_CLK_I2C1) != 0u)
     {
         __HAL_RCC_I2C1_CLK_ENABLE();
     }
+#endif
 
     if ((mask & APP_GPIO_LP_CLK_I2C2) != 0u)
     {
         __HAL_RCC_I2C2_CLK_ENABLE();
     }
 
+#if 0	//Temp support
     if ((mask & APP_GPIO_LP_CLK_I2C3) != 0u)
     {
         __HAL_RCC_I2C3_CLK_ENABLE();
     }
+#endif
 
     if ((mask & APP_GPIO_LP_CLK_SYSCFG) != 0u)
     {
@@ -463,7 +473,9 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
     p_config->keepEsiI2cPinsInStop = 0u;
 #endif	
     p_config->keepNfcI2cPinsInStop = 0u;
+#if 0	//Temp support
     p_config->keepTempI2cPinsInStop = 0u;
+#endif
     p_config->keepPiezoPinInStop = 0u;
     p_config->keepExternalWatchdogPinInStop = 0u;
     p_config->stopClockDisableMask =
@@ -475,8 +487,10 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
 #if 0	//ESI support
         APP_GPIO_LP_CLK_I2C1 |
 #endif
-        APP_GPIO_LP_CLK_I2C2 |
+        APP_GPIO_LP_CLK_I2C2;
+#if 0	//Temp support
         APP_GPIO_LP_CLK_I2C3;
+#endif
 }
 
 AppStatus_t App_GpioLpInit(const AppGpioLpConfig_t *p_config)
@@ -580,11 +594,13 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         App_GpioLpConfigAnalogNoPull(NFC_SCL_GPIO_Port, NFC_SCL_Pin | NFC_SDA_Pin);
     }
 
+#if 0	//Temp support
     if (g_appGpioLpContext.config.keepTempI2cPinsInStop != 1u)
     {
         App_GpioLpConfigAnalogNoPull(Temp_SCL_GPIO_Port, Temp_SCL_Pin);
         App_GpioLpConfigAnalogNoPull(Temp_SDA_GPIO_Port, Temp_SDA_Pin);
     }
+#endif
 
     if (g_appGpioLpContext.config.keepPiezoPinInStop != 1u)
     {
@@ -653,10 +669,12 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
         App_GpioLpRestoreNfcI2cPins();
     }
 
+#if 0	//Temp support
     if (g_appGpioLpContext.config.keepTempI2cPinsInStop != 1u)
     {
         App_GpioLpRestoreTempI2cPins();
     }
+#endif
 
     if (g_appGpioLpContext.config.keepPiezoPinInStop != 1u)
     {

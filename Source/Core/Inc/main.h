@@ -84,10 +84,12 @@ uint64_t RTC_GetTimeMs(void);
 #define NFC_SCL_GPIO_Port GPIOB
 #define NFC_SDA_Pin GPIO_PIN_11
 #define NFC_SDA_GPIO_Port GPIOB
+#if 0	//Temp support
 #define Temp_SDA_Pin GPIO_PIN_9
 #define Temp_SDA_GPIO_Port GPIOC
 #define Temp_SCL_Pin GPIO_PIN_8
 #define Temp_SCL_GPIO_Port GPIOA
+#endif
 #define Debug_TX_Pin GPIO_PIN_9
 #define Debug_TX_GPIO_Port GPIOA
 #define Debug_RX_Pin GPIO_PIN_10

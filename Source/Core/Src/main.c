@@ -51,9 +51,13 @@ ADC_HandleTypeDef hadc;
 
 CRC_HandleTypeDef hcrc;
 
+#if 0	//ESI support
 I2C_HandleTypeDef hi2c1;
+#endif
 I2C_HandleTypeDef hi2c2;
+#if 0	//Temp support
 I2C_HandleTypeDef hi2c3;
+#endif
 
 IWDG_HandleTypeDef hiwdg;
 
@@ -72,9 +76,13 @@ void SystemClock_Config(void);
 static void MX_RTC_Init(void);
 static void MX_GPIO_Init(void);
 static void MX_CRC_Init(void);
+#if 0	//ESI support
 static void MX_I2C1_Init(void);
+#endif
 static void MX_I2C2_Init(void);
+#if 0	//Temp support
 static void MX_I2C3_Init(void);
+#endif
 static void MX_LPUART1_UART_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
@@ -125,9 +133,13 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_CRC_Init();
-  //MX_I2C1_Init();
+#if 0	//ESI support
+  MX_I2C1_Init();
+#endif
   MX_I2C2_Init();
+#if 0	//Temp support
   MX_I2C3_Init();
+#endif
   MX_LPUART1_UART_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
@@ -214,12 +226,23 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1|RCC_PERIPHCLK_I2C1|RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1
+#if 0	//ESI support
+  |RCC_PERIPHCLK_I2C1
+#endif
+#if 0	//Temp support
+  |RCC_PERIPHCLK_I2C3
+#endif
+  |RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_LSE;
+#if 0	//ESI support
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_PCLK1;
+#endif
+#if 0	//Temp support
   PeriphClkInit.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
+#endif
   PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
   PeriphClkInit.LptimClockSelection = RCC_LPTIM1CLKSOURCE_LSE;
   
@@ -316,6 +339,7 @@ static void MX_CRC_Init(void)
 
 }
 
+#if 0	//ESI support
 /**
   * @brief I2C1 Initialization Function
   * @param None
@@ -363,6 +387,7 @@ static void MX_I2C1_Init(void)
   /* USER CODE END I2C1_Init 2 */
 
 }
+#endif
 
 /**
   * @brief I2C2 Initialization Function
@@ -412,6 +437,7 @@ static void MX_I2C2_Init(void)
 
 }
 
+#if 0	//Temp support
 /**
   * @brief I2C3 Initialization Function
   * @param None
@@ -459,6 +485,7 @@ static void MX_I2C3_Init(void)
   /* USER CODE END I2C3_Init 2 */
 
 }
+#endif
 
 /**
   * @brief IWDG Initialization Function

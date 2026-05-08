@@ -435,7 +435,9 @@ static AppStatus_t App_SystemValidateHandles(void)
     APP_RETURN_IF_FALSE(APP_I2C_ESI_HANDLE->Instance == I2C1, APP_STATUS_HW_HANDLE_INVALID);
     #endif
     APP_RETURN_IF_FALSE(APP_I2C_NFC_HANDLE->Instance == I2C2, APP_STATUS_HW_HANDLE_INVALID);
+#if 0	//Temp support
     APP_RETURN_IF_FALSE(APP_I2C_AUX_HANDLE->Instance == I2C3, APP_STATUS_HW_HANDLE_INVALID);
+#endif
     APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_CRC_HANDLE->Instance == CRC, APP_STATUS_HW_HANDLE_INVALID);
     return APP_STATUS_OK;
@@ -470,7 +472,9 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
     g_appGpioLpConfig.keepEsiI2cPinsInStop = APP_FALSE;
 	#endif
     g_appGpioLpConfig.keepNfcI2cPinsInStop = APP_FALSE;
+#if 0	//Temp support
     g_appGpioLpConfig.keepTempI2cPinsInStop = APP_FALSE;
+#endif
     g_appGpioLpConfig.keepPiezoPinInStop = APP_FALSE;
     g_appGpioLpConfig.keepExternalWatchdogPinInStop = APP_FALSE;
     g_appGpioLpConfig.stopClockDisableMask =
@@ -479,9 +483,13 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
+#if 0	//ESI support
         APP_GPIO_LP_CLK_I2C1 |
-        APP_GPIO_LP_CLK_I2C2 |
+#endif
+        APP_GPIO_LP_CLK_I2C2;
+#if 0	//Temp support
         APP_GPIO_LP_CLK_I2C3;
+#endif
 
     status = App_GpioLpInit(&g_appGpioLpConfig);
     if (status != APP_STATUS_OK)
@@ -537,10 +545,10 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud",
                                  (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("METER", "USART2 ready at %lu baud",
+    APP_RETURN_IF_FALSE(APP_LOGI("METER", "USART2 meter ready at %lu baud",
                                  (unsigned long)APP_UART_METER_HANDLE->Init.BaudRate) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("NBIoT", "LPUART1 ready at %lu baud",
+    APP_RETURN_IF_FALSE(APP_LOGI("NBIoT", "LPUART1 NBIoT ready at %lu baud",
                                  (unsigned long)APP_UART_NBIOT_HANDLE->Init.BaudRate) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(App_DebugConsolePrintPrompt() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);

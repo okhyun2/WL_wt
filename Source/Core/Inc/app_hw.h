@@ -19,16 +19,22 @@ extern "C" {
  *          - I2C1    : ESI
 #endif
  *          - I2C2    : NFC
+#if 0	//Temp support
  *          - I2C3    : Temperature/auxiliary
+#endif
  */
 
 /* Peripheral handles generated in main.c */
 extern RTC_HandleTypeDef hrtc;
 extern ADC_HandleTypeDef hadc;
 extern CRC_HandleTypeDef hcrc;
+#if 0	//ESI support
 extern I2C_HandleTypeDef hi2c1;
+#endif
 extern I2C_HandleTypeDef hi2c2;
+#if 0	//Temp support
 extern I2C_HandleTypeDef hi2c3;
+#endif
 extern UART_HandleTypeDef hlpuart1;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
@@ -44,7 +50,9 @@ extern UART_HandleTypeDef huart2;
 #define APP_I2C_ESI_HANDLE              (&hi2c1)
 #endif
 #define APP_I2C_NFC_HANDLE              (&hi2c2)
+#if 0	//Temp support
 #define APP_I2C_AUX_HANDLE              (&hi2c3)
+#endif
 
 #define APP_ADC_BATTERY_HANDLE          (&hadc)
 #define APP_CRC_HANDLE                  (&hcrc)

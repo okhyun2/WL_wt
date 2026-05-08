@@ -81,7 +81,9 @@ extern "C" {
 #define APP_SELFTEST_EXTERNAL_WD_PULSE_MS           (50u)
 
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x54u)
+#if 0	//Temp support
 #define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x70u)
+#endif
 
 #define APP_FSM_USE_WFI_IDLE                        (APP_TRUE)
 #define APP_FSM_IDLE_DELAY_MS                       (1u)
@@ -90,7 +92,9 @@ extern "C" {
 #define APP_FSM_HOUSEKEEPING_PERIOD_MS              (100u)
 #define APP_FSM_METER_PERIOD_MS                     (500u)
 #define APP_FSM_NFC_PERIOD_MS                       (250u)
+#if 0	//Temp support
 #define APP_FSM_AUX_PERIOD_MS                       (1000u)
+#endif
 #define APP_FSM_NBIOT_PERIOD_MS                     (500u)
 #define APP_FSM_SERVER_PERIOD_MS                    (1000u)
 #define APP_FSM_RTC_PERIOD_MS                       (1000u)

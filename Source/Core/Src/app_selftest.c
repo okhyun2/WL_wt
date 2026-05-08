@@ -49,8 +49,10 @@ static const char *App_SelfTestItemToString(AppSelfTestItem_t item)
         case APP_SELFTEST_ITEM_NFC_I2C:
             return "NFC";
 
+#if 0	//Temp support
         case APP_SELFTEST_ITEM_AUX_I2C:
             return "TEMP";
+#endif
 
         case APP_SELFTEST_ITEM_EXT_WATCHDOG:
             return "EWDT";
@@ -351,6 +353,7 @@ static AppStatus_t App_SelfTestCheckNfcI2c(void)
                                       APP_SELFTEST_NFC_I2C_ADDRESS_7BIT);
 }
 
+#if 0	//Temp support
 /**
  * @brief Auxiliary temperature/sensor I2C peripheral check.
  *
@@ -364,6 +367,7 @@ static AppStatus_t App_SelfTestCheckAuxI2c(void)
                                       "TEMP",
                                       APP_SELFTEST_AUX_I2C_ADDRESS_7BIT);
 }
+#endif
 
 /**
  * @brief External watchdog output pseudo check.
@@ -478,7 +482,9 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_ESI_I2C, App_SelfTestCheckEsiI2c);
 #endif	
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
+#if 0	//Temp support
     App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
+#endif
     App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_GPIO_INPUTS, App_SelfTestCheckInputLines);
 
