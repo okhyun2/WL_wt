@@ -5,6 +5,7 @@
 #include "app_build_config.h"
 #include "app_hw.h"
 #include "app_gpio_lp.h"
+#include "app_meter.h"
 #include "app_log.h"
 
 /**
@@ -206,10 +207,13 @@ static AppStatus_t App_SelfTestCheckDebugUart(void)
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
+#if 0
+//Read protocols meter(Normal)
 static AppStatus_t App_SelfTestCheckMeterUart(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
 
+    AppStatus_t status = APP_STATUS_OK;
     static const uint8_t meterWakeFrame[] = {0x10, 0x5B, 0x01, 0x5C, 0x16};
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {
         0,
@@ -217,9 +221,9 @@ static AppStatus_t App_SelfTestCheckMeterUart(void)
     const uint8_t SYNC_START = 0x68;
     const uint8_t SYNC_STOP = 0x16;
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter UART real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter(Normal) UART real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
-    //Read protocols meter
+    //Read protocols meter(Normal)
     {
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
         HAL_Delay(50); //>= 50ms
@@ -231,30 +235,72 @@ static AppStatus_t App_SelfTestCheckMeterUart(void)
                                 APP_STATUS_SELFTEST_DEVICE_NOT_READY);
         APP_RETURN_IF_HAL_ERROR(HAL_UART_Receive(APP_UART_METER_HANDLE,
                                                  meterReply,
-                                                 APP_SELFTEST_UART_METER_EXPECTED_RX_MIN_LEN,
-                                                 APP_SELFTEST_UART_REPLY_TIMEOUT_MS),
+                                                 APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
+                                                 APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS),
                                 APP_STATUS_SELFTEST_TIMEOUT);
 
         HAL_Delay(100); //>= 100ms
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
-        HAL_Delay(10); //>= 10ms
+        HAL_Delay(100); 
     }
 
-    App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_EXPECTED_RX_MIN_LEN);
+    App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
 
     APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter UART reply received (%u bytes minimum)",
-                                 (unsigned int)APP_SELFTEST_UART_METER_EXPECTED_RX_MIN_LEN) == APP_STATUS_OK,
+                                 (unsigned int)APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
-    if ((meterReply[0] == SYNC_START) && (meterReply[3] == SYNC_START) && (meterReply[APP_SELFTEST_UART_METER_EXPECTED_RX_MIN_LEN-1] == SYNC_STOP))
-    {
-        return APP_STATUS_OK;
-    }
-    else
-    {
-        return APP_STATUS_FATAL;
-    }
+    status = App_MeterProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+    return (status);
 }
+#else
+//Read protocols meter(SC1xxx)
+static AppStatus_t App_SelfTestCheckMeterUart(void)
+{
+    APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
+
+    AppStatus_t status = APP_STATUS_OK;
+    uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {
+        0,
+    };
+    const uint8_t SYNC_START = 0x02;
+    const uint8_t SYNC_STOP = 0x03;
+    int i; 
+
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter(SC1xxx) UART real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+    //Read protocols meter(SC1xxx)
+    //for(i = 0; i < 100; i++)
+    {
+        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+        HAL_Delay(125);
+        HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
+        HAL_Delay(125);
+        HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+        HAL_Delay(125);
+        HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
+        HAL_Delay(125);
+        HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+        HAL_Delay(300);
+        App_GpioLpRestoreMeterUartPins();
+        APP_RETURN_IF_HAL_ERROR(HAL_UART_Receive(APP_UART_METER_HANDLE,
+                                                 meterReply,
+                                                 APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN,
+                                                 APP_SELFTEST_UART_REPLY_METER_SC1xxx_TIMEOUT_MS),
+                                APP_STATUS_SELFTEST_TIMEOUT);
+
+        HAL_Delay(125);
+        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+        HAL_Delay(125);
+        App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
+    }
+
+    App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
+
+    status = App_MeterSC1xxxProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
+    return (status);
+}
+#endif
 
 /**
  * @brief NB-IoT pseudo connectivity probe.

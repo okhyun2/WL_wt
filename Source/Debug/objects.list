@@ -4,6 +4,7 @@
 "./Core/Src/app_fsm.o"
 "./Core/Src/app_gpio_lp.o"
 "./Core/Src/app_log.o"
+"./Core/Src/app_meter.o"
 "./Core/Src/app_msgq.o"
 "./Core/Src/app_selftest.o"
 "./Core/Src/app_storage.o"
