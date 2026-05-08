@@ -254,21 +254,6 @@ static void App_GpioLpRestorePiezoPin(void)
  */
 static void App_GpioLpRestoreExternalWatchdogPin(void)
 {
-//wd pwm -> gpio TODO
-#if 0
-    GPIO_InitTypeDef gpioInit;
-
-    __HAL_RCC_TIM22_CLK_ENABLE();
-
-    (void)memset(&gpioInit, 0, sizeof(gpioInit));
-    gpioInit.Pin = WD_FEED_Pin;
-    gpioInit.Mode = GPIO_MODE_AF_PP;
-    gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
-    gpioInit.Alternate = GPIO_AF4_TIM22;
-
-    HAL_GPIO_Init(WD_FEED_GPIO_Port, &gpioInit);
-#endif
     App_GpioLpConfigOutput(WD_FEED_GPIO_Port, WD_FEED_Pin, GPIO_PIN_RESET);
 }
 
@@ -302,10 +287,6 @@ static void App_GpioLpIsolateNbiotInterface(void)
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
     App_GpioLpConfigAnalogNoPull(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin);
     App_GpioLpConfigAnalogNoPull(NBIoT_RX_GPIO_Port, NBIoT_RX_Pin | NBIoT_TX_Pin);
-//ri pin -> gpio TODO
-#if 0
-    App_GpioLpConfigAnalogNoPull(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
-#endif
 }
 
 /**
@@ -377,14 +358,6 @@ static void App_GpioLpDisablePeripheralClocks(uint32_t mask)
         __HAL_RCC_CRC_CLK_DISABLE();
     }
 
-//wd pwm -> gpio TODO
-#if 0
-    if ((mask & APP_GPIO_LP_CLK_TIM22) != 0u)
-    {
-        __HAL_RCC_TIM22_CLK_DISABLE();
-    }
-#endif
-
     if ((mask & APP_GPIO_LP_CLK_USART1) != 0u)
     {
         __HAL_RCC_USART1_CLK_DISABLE();
@@ -437,14 +410,6 @@ static void App_GpioLpEnablePeripheralClocks(uint32_t mask)
     {
         __HAL_RCC_CRC_CLK_ENABLE();
     }
-
-//wd pwm -> gpio TODO
-#if 0
-    if ((mask & APP_GPIO_LP_CLK_TIM22) != 0u)
-    {
-        __HAL_RCC_TIM22_CLK_ENABLE();
-    }
-#endif
 
     if ((mask & APP_GPIO_LP_CLK_USART1) != 0u)
     {
@@ -504,10 +469,6 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
     p_config->stopClockDisableMask =
         APP_GPIO_LP_CLK_ADC1 |
         APP_GPIO_LP_CLK_CRC |
-//wd pwm -> gpio TODO
-#if 0
-        APP_GPIO_LP_CLK_TIM22 |
-#endif
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |

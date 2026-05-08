@@ -223,23 +223,6 @@ void LPTIM1_IRQHandler(void)
 void EXTI0_1_IRQHandler(void)
 {
 
-//ri pin -> gpio TODO
-#if 0
-  uint32_t pr = EXTI->PR & 0x00000003U; // bit0, bit1만 마스킹
-
-  if (pr)
-  {
-    g_wakeup_ctx.raw_exti_pr |= pr;
-
-    /* Pin 0 ~ Pin 1 처리 */
-    if (pr & NBIoT_RI_Pin)
-    {
-      g_wakeup_ctx.pending_flags |= WAKEUP_FLAG_EXTI_PIN0;
-    }
-
-    EXTI->PR = pr;
-  }
-#endif
 }
 
 void EXTI2_3_IRQHandler(void)

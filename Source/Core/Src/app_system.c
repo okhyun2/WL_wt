@@ -438,10 +438,6 @@ static AppStatus_t App_SystemValidateHandles(void)
     APP_RETURN_IF_FALSE(APP_I2C_AUX_HANDLE->Instance == I2C3, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_CRC_HANDLE->Instance == CRC, APP_STATUS_HW_HANDLE_INVALID);
-//wd pwm -> gpio TODO
-#if 0
-    APP_RETURN_IF_FALSE(APP_TIM_WD_FEED_HANDLE->Instance == TIM22, APP_STATUS_HW_HANDLE_INVALID);
-#endif
     return APP_STATUS_OK;
 }
 
@@ -480,10 +476,6 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
     g_appGpioLpConfig.stopClockDisableMask =
         APP_GPIO_LP_CLK_ADC1 |
         APP_GPIO_LP_CLK_CRC |
-//wd pwm -> gpio TODO
-#if 0
-        APP_GPIO_LP_CLK_TIM22 |
-#endif
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
@@ -853,14 +845,6 @@ void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
 {
     switch (GPIO_Pin)
     {
-//ri pin -> gpio TODO
-#if 0
-        case NBIoT_RI_Pin:
-            App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_NBIOT_RI);
-            App_SystemQueueStateCommand(APP_FSM_STATE_NBIOT_DECIDE_WAKE);
-            break;
-#endif
-
         case NFC_ED_Pin:
             App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_NFC_ED);
             App_SystemQueueStateCommand(APP_FSM_STATE_NFC_WAIT_EVENT);

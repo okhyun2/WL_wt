@@ -374,15 +374,6 @@ static AppStatus_t App_SelfTestCheckAuxI2c(void)
  */
 static AppStatus_t App_SelfTestCheckExternalWatchdog(void)
 {
-//wd pwm -> gpio TODO
-#if 0
-    APP_RETURN_IF_FALSE(APP_TIM_WD_FEED_HANDLE->Instance == TIM22, APP_STATUS_HW_HANDLE_INVALID);
-
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "External watchdog pulse test start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_HAL_ERROR(HAL_TIM_PWM_Start(APP_TIM_WD_FEED_HANDLE, TIM_CHANNEL_2), APP_STATUS_SELFTEST_FAILED);
-    HAL_Delay(APP_SELFTEST_EXTERNAL_WD_PULSE_MS);
-    APP_RETURN_IF_HAL_ERROR(HAL_TIM_PWM_Stop(APP_TIM_WD_FEED_HANDLE, TIM_CHANNEL_2), APP_STATUS_SELFTEST_FAILED);
-    #endif
     App_HwFeedEWD();
 
     return APP_STATUS_OK;
@@ -395,20 +386,12 @@ static AppStatus_t App_SelfTestCheckExternalWatchdog(void)
  */
 static AppStatus_t App_SelfTestCheckInputLines(void)
 {
-//ri pin -> gpio TODO
-#if 0
-    GPIO_PinState riState;
-#endif
     GPIO_PinState nfcEventState;
 #if 0
     GPIO_PinState esiIntState;
 #endif
     GPIO_PinState reedState;
 
-//ri pin -> gpio TODO
-#if 0
-    riState = App_HwReadNbiotRi();
-#endif
     nfcEventState = App_HwReadNfcEvent();
 #if 0
     esiIntState = App_HwReadEsiInterrupt();
