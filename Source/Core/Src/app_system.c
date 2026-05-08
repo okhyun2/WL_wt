@@ -168,7 +168,7 @@ static const char *App_SystemBuildWakeSourceString(uint32_t wakeMask)
     {
         APP_SYSTEM_APPEND_WAKE("REED");
     }
-#if 0
+#if 0	//ESI support
     if ((wakeMask & APP_SYSTEM_WAKE_SRC_ESI_INT) != 0u)
     {
         APP_SYSTEM_APPEND_WAKE("ESI_INT");
@@ -431,7 +431,7 @@ static AppStatus_t App_SystemValidateHandles(void)
     APP_RETURN_IF_FALSE(APP_UART_DEBUG_HANDLE->Instance == USART1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
-    #if 0
+    #if 0	//ESI support
     APP_RETURN_IF_FALSE(APP_I2C_ESI_HANDLE->Instance == I2C1, APP_STATUS_HW_HANDLE_INVALID);
     #endif
     APP_RETURN_IF_FALSE(APP_I2C_NFC_HANDLE->Instance == I2C2, APP_STATUS_HW_HANDLE_INVALID);
@@ -466,7 +466,7 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
 
     g_appGpioLpConfig.keepDebugUartPinsInStop = APP_FALSE;
     g_appGpioLpConfig.keepMeterUartPinsInStop = APP_FALSE;
-	#if 0
+    #if 0	//ESI support
     g_appGpioLpConfig.keepEsiI2cPinsInStop = APP_FALSE;
 	#endif
     g_appGpioLpConfig.keepNfcI2cPinsInStop = APP_FALSE;
@@ -854,7 +854,7 @@ void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
             App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_REED);
             App_SystemQueueStateCommand(APP_FSM_STATE_METER_WAIT_TRIGGER);
             break;
-#if 0
+#if 0	//ESI support
         case ESI_Int_Pin:
             App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_ESI_INT);
             App_SystemQueueStateCommand(APP_FSM_STATE_HOUSEKEEPING_SNAPSHOT);

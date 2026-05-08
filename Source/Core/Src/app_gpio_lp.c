@@ -176,7 +176,7 @@ static void App_GpioLpRestoreMeterUartPins(void)
     HAL_GPIO_Init(GPIOA, &gpioInit);
 }
 
-#if 0
+#if 0	//ESI support
 /**
  * @brief Restore ESI I2C pins.
  */
@@ -336,7 +336,7 @@ static void App_GpioLpRestoreWakeInputs(void)
 {
     App_GpioLpConfigExtiFalling(NFC_ED_GPIO_Port, NFC_ED_Pin);
     App_GpioLpConfigExtiFalling(REED_IN_GPIO_Port, REED_IN_Pin);
-#if 0	
+#if 0	//ESI support
     App_GpioLpConfigExtiFalling(ESI_Int_GPIO_Port, ESI_Int_Pin);
 #endif	
 }
@@ -459,7 +459,7 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
     p_config->swdPolicy = APP_GPIO_LP_SWD_KEEP;
     p_config->keepDebugUartPinsInStop = 0u;
     p_config->keepMeterUartPinsInStop = 0u;
-#if 0	
+#if 0	//ESI support
     p_config->keepEsiI2cPinsInStop = 0u;
 #endif	
     p_config->keepNfcI2cPinsInStop = 0u;
@@ -472,7 +472,9 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
+#if 0	//ESI support
         APP_GPIO_LP_CLK_I2C1 |
+#endif
         APP_GPIO_LP_CLK_I2C2 |
         APP_GPIO_LP_CLK_I2C3;
 }
@@ -566,7 +568,7 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         App_GpioLpConfigAnalogNoPull(Meter_TX_GPIO_Port, Meter_TX_Pin | Meter_RX_Pin);
     }
 
-#if 0
+#if 0	//ESI support
     if (g_appGpioLpContext.config.keepEsiI2cPinsInStop != 1u)
     {
         App_GpioLpConfigAnalogNoPull(ESI_SCL_GPIO_Port, ESI_SCL_Pin | ESI_SDA_Pin);
@@ -639,7 +641,7 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
         App_GpioLpRestoreMeterUartPins();
     }
 
-#if 0
+#if 0	//ESI support
     if (g_appGpioLpContext.config.keepEsiI2cPinsInStop != 1u)
     {
         App_GpioLpRestoreEsiI2cPins();

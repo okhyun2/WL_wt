@@ -754,7 +754,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(WD_FEED_GPIO_Port, &GPIO_InitStruct);
 
-#if 0
+#if 0	//ESI support
   /*Configure GPIO pin : ESI_Int_Pin */
   GPIO_InitStruct.Pin = ESI_Int_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;

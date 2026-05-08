@@ -104,7 +104,7 @@ typedef enum
     APP_SYSTEM_WAKE_SRC_NBIOT_RI     = 0x00000001u,
     APP_SYSTEM_WAKE_SRC_NFC_ED       = 0x00000002u,
     APP_SYSTEM_WAKE_SRC_REED         = 0x00000004u,
-#if 0	
+#if 0	//ESI support
     APP_SYSTEM_WAKE_SRC_ESI_INT      = 0x00000008u,
 #endif	
     APP_SYSTEM_WAKE_SRC_RTC          = 0x00000010u,

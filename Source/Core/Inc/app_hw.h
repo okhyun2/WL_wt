@@ -15,7 +15,9 @@ extern "C" {
  *          - USART1  : Debug console
  *          - USART2  : Meter interface
  *          - LPUART1 : NB-IoT
+#if 0	//ESI support
  *          - I2C1    : ESI
+#endif
  *          - I2C2    : NFC
  *          - I2C3    : Temperature/auxiliary
  */
@@ -38,7 +40,7 @@ extern UART_HandleTypeDef huart2;
 #define APP_UART_METER_HANDLE           (&huart2)
 #define APP_UART_NBIOT_HANDLE           (&hlpuart1)
 
-#if 0
+#if 0	//ESI support
 #define APP_I2C_ESI_HANDLE              (&hi2c1)
 #endif
 #define APP_I2C_NFC_HANDLE              (&hi2c2)
@@ -99,7 +101,7 @@ static inline GPIO_PinState App_HwReadNfcEvent(void)
     return HAL_GPIO_ReadPin(NFC_ED_GPIO_Port, NFC_ED_Pin);
 }
 
-#if 0
+#if 0	//ESI support
 /**
  * @brief Read ESI interrupt line state.
  *

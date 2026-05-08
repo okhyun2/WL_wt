@@ -47,7 +47,7 @@ typedef struct
     AppGpioLpSwdPolicy_t swdPolicy;
     uint8_t keepDebugUartPinsInStop;
     uint8_t keepMeterUartPinsInStop;
-#if 0	
+#if 0	//ESI support
     uint8_t keepEsiI2cPinsInStop;
 #endif	
     uint8_t keepNfcI2cPinsInStop;
