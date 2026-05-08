@@ -266,6 +266,7 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
 
     App_HwSetNbiotEnable(GPIO_PIN_SET);
     HAL_Delay(APP_SELFTEST_NBIOT_BOOT_DELAY_MS);
+    App_HwSetNbiotReset(GPIO_PIN_RESET);
     App_HwSetNbiotReset(GPIO_PIN_SET);
     HAL_Delay(APP_SELFTEST_NBIOT_RESET_RELEASE_DELAY_MS);
 

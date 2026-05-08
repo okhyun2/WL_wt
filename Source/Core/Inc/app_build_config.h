@@ -51,14 +51,12 @@ extern "C" {
 #define APP_LOG_BUFFER_SIZE                         (192u)
 #define APP_LOG_HEXDUMP_BYTES_PER_LINE              (16u)
 
-#define APP_BUILD_IS_PRODUCTION                     (APP_FALSE)
+#define APP_BUILD_IS_PRODUCTION                     (APP_FALSE) //if true. change swd pin -> analog input.(=disable swd).
 #ifdef DEBUG
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #else
 #define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE)
 #endif
-
-#define APP_GPIO_LP_DISABLE_SWD_IN_PRODUCTION       (APP_TRUE)
 
 #define APP_SELFTEST_FAIL_STOPS_BOOT                (APP_FALSE)
 #define APP_SELFTEST_BUZZER_BOOT_BEEP_COUNT         (2u)
@@ -76,8 +74,7 @@ extern "C" {
 #define APP_SELFTEST_UART_METER_EXPECTED_RX_MIN_LEN (21u)
 #define APP_SELFTEST_UART_RX_BUFFER_SIZE            (32u)
 #define APP_SELFTEST_NBIOT_BOOT_DELAY_MS            (500u)
-//#define APP_SELFTEST_NBIOT_RESET_RELEASE_DELAY_MS   (100u)
-#define APP_SELFTEST_NBIOT_RESET_RELEASE_DELAY_MS   (5000u)
+#define APP_SELFTEST_NBIOT_RESET_RELEASE_DELAY_MS   (100u)
 #define APP_SELFTEST_EXTERNAL_WD_PULSE_MS           (50u)
 
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x54u)

@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "app_build_config.h"
+#include "app_hw.h"
 #include "app_log.h"
 
 /**
@@ -12,7 +13,7 @@
 
 /** @brief Truly unconnected pins on GPIOA based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTA_MASK \
-    (GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_11 | GPIO_PIN_12)
+    (GPIO_PIN_0 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_8 | GPIO_PIN_11 | GPIO_PIN_12)
 
 /** @brief Truly unconnected pins on GPIOB based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTB_MASK \
@@ -21,7 +22,7 @@
 
 /** @brief Truly unconnected pins on GPIOC based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTC_MASK \
-    (GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | \
+    (GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 | \
      GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13)
 
 /** @brief Truly unconnected pins on GPIOD based on current board pin map. */
@@ -29,11 +30,6 @@
     (GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5 | \
      GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | \
      GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15)
-
-/** @brief AF speed used when restoring communication pins. */
-#define APP_GPIO_LP_AF_SPEED                      GPIO_SPEED_FREQ_VERY_HIGH
-/** @brief Output speed used for static control pins. */
-#define APP_GPIO_LP_OUTPUT_SPEED                  GPIO_SPEED_FREQ_LOW
 
 /** @brief Runtime context instance. */
 static AppGpioLpContext_t g_appGpioLpContext;
@@ -96,7 +92,7 @@ static void App_GpioLpConfigOutput(GPIO_TypeDef *gpioPort,
     gpioInit.Pin = pinMask;
     gpioInit.Mode = GPIO_MODE_OUTPUT_PP;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = APP_GPIO_LP_OUTPUT_SPEED;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
 
     HAL_GPIO_Init(gpioPort, &gpioInit);
 }
@@ -147,14 +143,21 @@ static void App_GpioLpRestoreDebugUartPins(void)
 
     __HAL_RCC_USART1_CLK_ENABLE();
 
+    /* 모든 에러 플래그 및 RX 버퍼 클리어 */
+    __HAL_UART_CLEAR_FLAG(APP_UART_DEBUG_HANDLE, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF  | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(APP_UART_DEBUG_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
     (void)memset(&gpioInit, 0, sizeof(gpioInit));
     gpioInit.Pin = Debug_TX_Pin | Debug_RX_Pin;
     gpioInit.Mode = GPIO_MODE_AF_PP;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = APP_GPIO_LP_AF_SPEED;
+    gpioInit.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpioInit.Alternate = GPIO_AF4_USART1;
 
     HAL_GPIO_Init(GPIOA, &gpioInit);
+
+    /* USART1 수신(RX) 재활성화 */
+    USART1->CR1 |= USART_CR1_RE;
 }
 
 /**
@@ -166,14 +169,21 @@ static void App_GpioLpRestoreMeterUartPins(void)
 
     __HAL_RCC_USART2_CLK_ENABLE();
 
+    /* 모든 에러 플래그 및 RX 버퍼 클리어 */
+    __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF  | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
     (void)memset(&gpioInit, 0, sizeof(gpioInit));
     gpioInit.Pin = Meter_TX_Pin | Meter_RX_Pin;
     gpioInit.Mode = GPIO_MODE_AF_PP;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = APP_GPIO_LP_AF_SPEED;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
     gpioInit.Alternate = GPIO_AF4_USART2;
 
     HAL_GPIO_Init(GPIOA, &gpioInit);
+
+    /* USART2 수신(RX) 재활성화 */
+    USART2->CR1 |= USART_CR1_RE;
 }
 
 #if 0	//ESI support
@@ -190,7 +200,7 @@ static void App_GpioLpRestoreEsiI2cPins(void)
     gpioInit.Pin = ESI_SCL_Pin | ESI_SDA_Pin;
     gpioInit.Mode = GPIO_MODE_AF_OD;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = APP_GPIO_LP_AF_SPEED;
+    gpioInit.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpioInit.Alternate = GPIO_AF1_I2C1;
 
     HAL_GPIO_Init(GPIOB, &gpioInit);
@@ -210,7 +220,7 @@ static void App_GpioLpRestoreNfcI2cPins(void)
     gpioInit.Pin = NFC_SCL_Pin | NFC_SDA_Pin;
     gpioInit.Mode = GPIO_MODE_AF_OD;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = APP_GPIO_LP_AF_SPEED;
+    gpioInit.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpioInit.Alternate = GPIO_AF6_I2C2;
 
     HAL_GPIO_Init(GPIOB, &gpioInit);
@@ -230,14 +240,14 @@ static void App_GpioLpRestoreTempI2cPins(void)
     gpioInit.Pin = Temp_SCL_Pin;
     gpioInit.Mode = GPIO_MODE_AF_OD;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = APP_GPIO_LP_AF_SPEED;
+    gpioInit.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpioInit.Alternate = GPIO_AF7_I2C3;
     HAL_GPIO_Init(Temp_SCL_GPIO_Port, &gpioInit);
 
     gpioInit.Pin = Temp_SDA_Pin;
     gpioInit.Mode = GPIO_MODE_AF_OD;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = APP_GPIO_LP_AF_SPEED;
+    gpioInit.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpioInit.Alternate = GPIO_AF7_I2C3;
     HAL_GPIO_Init(Temp_SDA_GPIO_Port, &gpioInit);
 }
@@ -259,6 +269,7 @@ static void App_GpioLpRestoreExternalWatchdogPin(void)
     App_GpioLpConfigOutput(WD_FEED_GPIO_Port, WD_FEED_Pin, GPIO_PIN_RESET);
 }
 
+extern UART_HandleTypeDef hlpuart1;
 /**
  * @brief Restore NB-IoT interface when the module is powered.
  */
@@ -271,14 +282,21 @@ static void App_GpioLpRestoreNbiotInterface(void)
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_SET);
     App_GpioLpConfigOutput(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin, GPIO_PIN_SET);
 
+    /* 모든 에러 플래그 및 RX 버퍼 클리어 */
+    __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF  | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(APP_UART_NBIOT_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
     (void)memset(&gpioInit, 0, sizeof(gpioInit));
     gpioInit.Pin = NBIoT_RX_Pin | NBIoT_TX_Pin;
     gpioInit.Mode = GPIO_MODE_AF_PP;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = APP_GPIO_LP_AF_SPEED;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
     gpioInit.Alternate = GPIO_AF6_LPUART1;
 
     HAL_GPIO_Init(NBIoT_RX_GPIO_Port, &gpioInit);
+
+    /* LPUART1 수신(RX) 재활성화 */
+    LPUART1->CR1 |= USART_CR1_RE;
 }
 
 /**
@@ -288,6 +306,13 @@ static void App_GpioLpIsolateNbiotInterface(void)
 {
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
     App_GpioLpConfigAnalogNoPull(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin);
+
+    /* 진행 중인 송신 완료 대기 */
+    while (!(LPUART1->ISR & USART_ISR_TC))
+        ;
+    /* LPUART1 수신(RX) 비활성화 - 핵심! */
+    LPUART1->CR1 &= ~USART_CR1_RE; // 가짜 신호 차단
+
     App_GpioLpConfigAnalogNoPull(NBIoT_RX_GPIO_Port, NBIoT_RX_Pin | NBIoT_TX_Pin);
 }
 
@@ -298,7 +323,7 @@ static void App_GpioLpApplySwdPolicy(void)
 {
     if (g_appGpioLpContext.config.swdPolicy == APP_GPIO_LP_SWD_DISABLE_IN_PRODUCTION)
     {
-        App_GpioLpConfigAnalogNoPull(GPIOA, GPIO_PIN_13 | GPIO_PIN_14);
+        App_GpioLpConfigAnalogNoPull(GPIOA, GPIO_PIN_13 | GPIO_PIN_14); //pin13:swdio, pin14:swdclk
     }
 }
 
@@ -574,11 +599,23 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
 
     if (g_appGpioLpContext.config.keepDebugUartPinsInStop != 1u)
     {
+        /* 진행 중인 송신 완료 대기 */
+        while (!(USART1->ISR & USART_ISR_TC))
+            ;
+        /* USART1 수신(RX) 비활성화 - 핵심! */
+        USART1->CR1 &= ~USART_CR1_RE; // 가짜 신호 차단
+
         App_GpioLpConfigAnalogNoPull(Debug_TX_GPIO_Port, Debug_TX_Pin | Debug_RX_Pin);
     }
 
     if (g_appGpioLpContext.config.keepMeterUartPinsInStop != 1u)
     {
+        /* 진행 중인 송신 완료 대기 */
+        while (!(USART2->ISR & USART_ISR_TC))
+            ;
+        /* USART2 수신(RX) 비활성화 - 핵심! */
+        USART2->CR1 &= ~USART_CR1_RE; // 가짜 신호 차단
+
         App_GpioLpConfigAnalogNoPull(Meter_TX_GPIO_Port, Meter_TX_Pin | Meter_RX_Pin);
     }
 

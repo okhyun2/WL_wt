@@ -456,8 +456,7 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
 
     App_GpioLpGetDefaultConfig(&g_appGpioLpConfig);
 
-    if ((APP_BUILD_IS_PRODUCTION == APP_TRUE) &&
-        (APP_GPIO_LP_DISABLE_SWD_IN_PRODUCTION == APP_TRUE))
+    if(APP_BUILD_IS_PRODUCTION == APP_TRUE)
     {
         g_appGpioLpConfig.swdPolicy = APP_GPIO_LP_SWD_DISABLE_IN_PRODUCTION;
     }
