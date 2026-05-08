@@ -177,6 +177,7 @@ const AppSystemContext_t *App_SystemGetContext(void);
 const char *App_SystemGetVersionString(void);
 const char *App_SystemGetWakeSourceString(void);
 const char *App_SystemGetLowPowerModeString(void);
+AppStatus_t App_SystemRunBootSelfTest(void);
 
 #ifdef __cplusplus
 }

@@ -75,6 +75,10 @@ typedef struct
     AppGpioLpConfig_t config;
 } AppGpioLpContext_t;
 
+void App_GpioLpConfigAnalogNoPull(GPIO_TypeDef *gpioPort, uint32_t pinMask);
+void App_GpioLpConfigOutput(GPIO_TypeDef *gpioPort, uint32_t pinMask, GPIO_PinState pinState);
+void App_GpioLpRestoreMeterUartPins(void);
+
 /**
  * @brief Fill default board-specific low-power policy.
  *

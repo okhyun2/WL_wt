@@ -724,6 +724,8 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_RTC_APPLY_SYNC:
             /* pseudo code*/
+            APP_LOGI("FSM", "########################kiki000");
+            App_SystemRunBootSelfTest();
             /*
                 do something;
                 APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FATAL);

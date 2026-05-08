@@ -557,7 +557,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_SystemRunBootSelfTest(void)
+AppStatus_t App_SystemRunBootSelfTest(void)
 {
     AppStatus_t status;
 

@@ -61,7 +61,7 @@ static void App_GpioLpEnablePortClocks(void)
  * @param gpioPort GPIO port.
  * @param pinMask Pin mask.
  */
-static void App_GpioLpConfigAnalogNoPull(GPIO_TypeDef *gpioPort, uint32_t pinMask)
+void App_GpioLpConfigAnalogNoPull(GPIO_TypeDef *gpioPort, uint32_t pinMask)
 {
     GPIO_InitTypeDef gpioInit;
 
@@ -80,9 +80,7 @@ static void App_GpioLpConfigAnalogNoPull(GPIO_TypeDef *gpioPort, uint32_t pinMas
  * @param pinMask Pin mask.
  * @param pinState Initial output state.
  */
-static void App_GpioLpConfigOutput(GPIO_TypeDef *gpioPort,
-                                   uint32_t pinMask,
-                                   GPIO_PinState pinState)
+void App_GpioLpConfigOutput(GPIO_TypeDef *gpioPort, uint32_t pinMask, GPIO_PinState pinState)
 {
     GPIO_InitTypeDef gpioInit;
 
@@ -143,10 +141,6 @@ static void App_GpioLpRestoreDebugUartPins(void)
 
     __HAL_RCC_USART1_CLK_ENABLE();
 
-    /* 모든 에러 플래그 및 RX 버퍼 클리어 */
-    __HAL_UART_CLEAR_FLAG(APP_UART_DEBUG_HANDLE, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF  | UART_CLEAR_PEF);
-    __HAL_UART_SEND_REQ(APP_UART_DEBUG_HANDLE, UART_RXDATA_FLUSH_REQUEST);
-
     (void)memset(&gpioInit, 0, sizeof(gpioInit));
     gpioInit.Pin = Debug_TX_Pin | Debug_RX_Pin;
     gpioInit.Mode = GPIO_MODE_AF_PP;
@@ -158,20 +152,34 @@ static void App_GpioLpRestoreDebugUartPins(void)
 
     /* USART1 수신(RX) 재활성화 */
     USART1->CR1 |= USART_CR1_RE;
+
+    // wait stable condition. if not, received first byte is gabage data.
+    {
+        /* 핀 안정화 대기 */
+        HAL_Delay(10);
+
+        /* 모든 에러 플래그 클리어 */
+        __HAL_UART_CLEAR_FLAG(APP_UART_DEBUG_HANDLE, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+
+        /* 수신 버퍼 강제 플러시 */
+        __HAL_UART_SEND_REQ(APP_UART_DEBUG_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
+        /* IDLE 플래그 클리어 */
+        __HAL_UART_CLEAR_IDLEFLAG(APP_UART_DEBUG_HANDLE);
+
+        /* 최종 안정화 */
+        HAL_Delay(5);
+    }
 }
 
 /**
  * @brief Restore meter UART pins.
  */
-static void App_GpioLpRestoreMeterUartPins(void)
+void App_GpioLpRestoreMeterUartPins(void)
 {
     GPIO_InitTypeDef gpioInit;
 
     __HAL_RCC_USART2_CLK_ENABLE();
-
-    /* 모든 에러 플래그 및 RX 버퍼 클리어 */
-    __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF  | UART_CLEAR_PEF);
-    __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
 
     (void)memset(&gpioInit, 0, sizeof(gpioInit));
     gpioInit.Pin = Meter_TX_Pin | Meter_RX_Pin;
@@ -184,6 +192,24 @@ static void App_GpioLpRestoreMeterUartPins(void)
 
     /* USART2 수신(RX) 재활성화 */
     USART2->CR1 |= USART_CR1_RE;
+
+    // wait stable condition. if not, received first byte is gabage data.
+    {
+        /* 핀 안정화 대기 */
+        HAL_Delay(10);
+
+        /* 모든 에러 플래그 클리어 */
+        __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+
+        /* 수신 버퍼 강제 플러시 */
+        __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
+        /* IDLE 플래그 클리어 */
+        __HAL_UART_CLEAR_IDLEFLAG(APP_UART_METER_HANDLE);
+
+        /* 최종 안정화 */
+        HAL_Delay(5);
+    }
 }
 
 #if 0	//ESI support
@@ -282,10 +308,6 @@ static void App_GpioLpRestoreNbiotInterface(void)
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_SET);
     App_GpioLpConfigOutput(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin, GPIO_PIN_SET);
 
-    /* 모든 에러 플래그 및 RX 버퍼 클리어 */
-    __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF  | UART_CLEAR_PEF);
-    __HAL_UART_SEND_REQ(APP_UART_NBIOT_HANDLE, UART_RXDATA_FLUSH_REQUEST);
-
     (void)memset(&gpioInit, 0, sizeof(gpioInit));
     gpioInit.Pin = NBIoT_RX_Pin | NBIoT_TX_Pin;
     gpioInit.Mode = GPIO_MODE_AF_PP;
@@ -297,6 +319,24 @@ static void App_GpioLpRestoreNbiotInterface(void)
 
     /* LPUART1 수신(RX) 재활성화 */
     LPUART1->CR1 |= USART_CR1_RE;
+
+    // wait stable condition. if not, received first byte is gabage data.
+    {
+        /* 핀 안정화 대기 */
+        HAL_Delay(10);
+
+        /* 모든 에러 플래그 클리어 */
+        __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+
+        /* 수신 버퍼 강제 플러시 */
+        __HAL_UART_SEND_REQ(APP_UART_NBIOT_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
+        /* IDLE 플래그 클리어 */
+        __HAL_UART_CLEAR_IDLEFLAG(APP_UART_NBIOT_HANDLE);
+
+        /* 최종 안정화 */
+        HAL_Delay(5);
+    }
 }
 
 /**

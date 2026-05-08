@@ -8,8 +8,8 @@
 ../Core/Src/main.c:539:6:LPTIM1_Stop	2
 ../Core/Src/main.c:552:13:MX_LPTIM1_Init	2
 ../Core/Src/main.c:584:13:MX_LPUART1_UART_Init	2
-../Core/Src/main.c:618:13:MX_USART1_UART_Init	2
-../Core/Src/main.c:653:13:MX_USART2_UART_Init	2
-../Core/Src/main.c:688:13:MX_RTC_Init	2
-../Core/Src/main.c:734:13:MX_GPIO_Init	1
-../Core/Src/main.c:824:6:Error_Handler	1
+../Core/Src/main.c:636:13:MX_USART1_UART_Init	2
+../Core/Src/main.c:689:13:MX_USART2_UART_Init	2
+../Core/Src/main.c:742:13:MX_RTC_Init	2
+../Core/Src/main.c:788:13:MX_GPIO_Init	1
+../Core/Src/main.c:878:6:Error_Handler	1

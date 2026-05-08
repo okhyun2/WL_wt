@@ -606,6 +606,24 @@ static void MX_LPUART1_UART_Init(void)
   }
   /* USER CODE BEGIN LPUART1_Init 2 */
 
+  // wait stable condition. if not, received first byte is gabage data.
+  {
+    /* 핀 안정화 대기 */
+    HAL_Delay(10);
+
+    /* 모든 에러 플래그 클리어 */
+    __HAL_UART_CLEAR_FLAG(&hlpuart1, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+
+    /* 수신 버퍼 강제 플러시 */
+    __HAL_UART_SEND_REQ(&hlpuart1, UART_RXDATA_FLUSH_REQUEST);
+
+    /* IDLE 플래그 클리어 */
+    __HAL_UART_CLEAR_IDLEFLAG(&hlpuart1);
+
+    /* 최종 안정화 */
+    HAL_Delay(5);
+  }
+
   /* USER CODE END LPUART1_Init 2 */
 
 }
@@ -641,6 +659,24 @@ static void MX_USART1_UART_Init(void)
   }
   /* USER CODE BEGIN USART1_Init 2 */
 
+  // wait stable condition. if not, received first byte is gabage data.
+  {
+    /* 핀 안정화 대기 */
+    HAL_Delay(10);
+
+    /* 모든 에러 플래그 클리어 */
+    __HAL_UART_CLEAR_FLAG(&huart1, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+
+    /* 수신 버퍼 강제 플러시 */
+    __HAL_UART_SEND_REQ(&huart1, UART_RXDATA_FLUSH_REQUEST);
+
+    /* IDLE 플래그 클리어 */
+    __HAL_UART_CLEAR_IDLEFLAG(&huart1);
+
+    /* 최종 안정화 */
+    HAL_Delay(5);
+  }
+
   /* USER CODE END USART1_Init 2 */
 
 }
@@ -675,6 +711,24 @@ static void MX_USART2_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART2_Init 2 */
+
+  // wait stable condition. if not, received first byte is gabage data.
+  {
+    /* 핀 안정화 대기 */
+    HAL_Delay(10);
+
+    /* 모든 에러 플래그 클리어 */
+    __HAL_UART_CLEAR_FLAG(&huart2, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+
+    /* 수신 버퍼 강제 플러시 */
+    __HAL_UART_SEND_REQ(&huart2, UART_RXDATA_FLUSH_REQUEST);
+
+    /* IDLE 플래그 클리어 */
+    __HAL_UART_CLEAR_IDLEFLAG(&huart2);
+
+    /* 최종 안정화 */
+    HAL_Delay(5);
+  }
 
   /* USER CODE END USART2_Init 2 */
 
