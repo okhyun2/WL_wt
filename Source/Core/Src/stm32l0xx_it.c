@@ -222,6 +222,9 @@ void LPTIM1_IRQHandler(void)
 
 void EXTI0_1_IRQHandler(void)
 {
+
+//ri pin -> gpio TODO
+#if 0
   uint32_t pr = EXTI->PR & 0x00000003U; // bit0, bit1만 마스킹
 
   if (pr)
@@ -236,6 +239,7 @@ void EXTI0_1_IRQHandler(void)
 
     EXTI->PR = pr;
   }
+#endif
 }
 
 void EXTI2_3_IRQHandler(void)

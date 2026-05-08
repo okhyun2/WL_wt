@@ -61,7 +61,10 @@ UART_HandleTypeDef hlpuart1;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
+//wd pwm -> gpio TODO
+#if 0
 TIM_HandleTypeDef htim22;
+#endif
 
 LPTIM_HandleTypeDef hlptim1;
 
@@ -81,7 +84,10 @@ static void MX_LPUART1_UART_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC_Init(void);
+//wd pwm -> gpio TODO
+#if 0
 static void MX_TIM22_Init(void);
+#endif
 static void MX_IWDG_InitStart(void);
 static void LPTIM1_Start(void);
 static void LPTIM1_Stop(void);
@@ -135,7 +141,10 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_ADC_Init();
+//wd pwm -> gpio TODO
+#if 0
   MX_TIM22_Init();
+#endif
   //MX_IWDG_InitStart();
   MX_LPTIM1_Init();
   MX_RTC_Init();
@@ -178,8 +187,11 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
+  __HAL_RCC_PWR_CLK_ENABLE();
+
   HAL_PWR_EnableBkUpAccess();
   __HAL_RCC_LSEDRIVE_CONFIG(APP_CLOCK_LSE_DRIVE);
+
 
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE|RCC_OSCILLATORTYPE_MSI;
   RCC_OscInitStruct.LSEState = RCC_LSE_ON;
@@ -190,6 +202,17 @@ void SystemClock_Config(void)
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
+  }
+
+  //wait stable LSE
+  uint32_t tickstart = HAL_GetTick();
+  while (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
+  {
+    if ((HAL_GetTick() - tickstart) > 5000U)  // timeout 5sec
+    {
+      // fail start LSE
+      Error_Handler();
+    }
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
@@ -204,11 +227,10 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1|RCC_PERIPHCLK_I2C1
-                              |RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1|RCC_PERIPHCLK_I2C1|RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
-  PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK1;
+  PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_LSE;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_PCLK1;
   PeriphClkInit.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
   PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
@@ -556,8 +578,8 @@ static void MX_LPUART1_UART_Init(void)
 
   /* USER CODE END LPUART1_Init 1 */
   hlpuart1.Instance = LPUART1;
-  hlpuart1.Init.BaudRate = 209700;
-  hlpuart1.Init.WordLength = UART_WORDLENGTH_7B;
+  hlpuart1.Init.BaudRate = 9600;
+  hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
   hlpuart1.Init.StopBits = UART_STOPBITS_1;
   hlpuart1.Init.Parity = UART_PARITY_NONE;
   hlpuart1.Init.Mode = UART_MODE_TX_RX;
@@ -690,6 +712,8 @@ static void MX_RTC_Init(void)
 
 }
 
+//wd pwm -> gpio TODO
+#if 0
 /**
   * @brief TIM22 Initialization Function
   * @param None
@@ -748,6 +772,7 @@ static void MX_TIM22_Init(void)
   HAL_TIM_MspPostInit(&htim22);
 
 }
+#endif
 
 /**
   * @brief GPIO Initialization Function
@@ -780,6 +805,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(WD_FEED_GPIO_Port, WD_FEED_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pins : NBIoT_EN_Pin NBIoT_RST_Pin */
   GPIO_InitStruct.Pin = NBIoT_EN_Pin|NBIoT_RST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -794,12 +822,21 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(Piezo_PWM_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : WD_FEED_Pin */
+  GPIO_InitStruct.Pin = WD_FEED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(WD_FEED_GPIO_Port, &GPIO_InitStruct);
 
+//ri pin -> gpio TODO
+#if 0
   /*Configure GPIO pin : NBIoT_RI_Pin */
   GPIO_InitStruct.Pin = NBIoT_RI_Pin; //active low
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(NBIoT_RI_GPIO_Port, &GPIO_InitStruct);
+#endif
 
 #if 0
   /*Configure GPIO pin : ESI_Int_Pin */

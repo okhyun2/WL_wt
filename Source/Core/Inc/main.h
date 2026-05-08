@@ -70,8 +70,11 @@ uint64_t RTC_GetTimeMs(void);
 #define NBIoT_EN_GPIO_Port GPIOC
 #define NBIoT_RST_Pin GPIO_PIN_3
 #define NBIoT_RST_GPIO_Port GPIOC
+//ri pin -> gpio TODO
+#if 0
 #define NBIoT_RI_Pin GPIO_PIN_0
 #define NBIoT_RI_GPIO_Port GPIOA
+#endif
 #define BAT_LEVEL_Pin GPIO_PIN_1
 #define BAT_LEVEL_GPIO_Port GPIOA
 #define Meter_TX_Pin GPIO_PIN_2

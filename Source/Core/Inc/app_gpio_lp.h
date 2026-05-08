@@ -30,7 +30,10 @@ typedef enum
     APP_GPIO_LP_CLK_NONE      = 0x00000000u,
     APP_GPIO_LP_CLK_ADC1      = 0x00000001u,
     APP_GPIO_LP_CLK_CRC       = 0x00000002u,
+//wd pwm -> gpio TODO
+#if 0
     APP_GPIO_LP_CLK_TIM22     = 0x00000004u,
+#endif
     APP_GPIO_LP_CLK_USART1    = 0x00000008u,
     APP_GPIO_LP_CLK_USART2    = 0x00000010u,
     APP_GPIO_LP_CLK_LPUART1   = 0x00000020u,
@@ -55,9 +58,6 @@ typedef struct
     uint8_t keepTempI2cPinsInStop;
     uint8_t keepPiezoPinInStop;
     uint8_t keepExternalWatchdogPinInStop;
-    uint8_t keepNbiotRiWakeWhenPowered;
-    uint8_t isolateNbiotInterfaceWhenPoweredOff;
-    uint8_t restoreNbiotInterfaceAfterWake;
     uint32_t stopClockDisableMask;
 } AppGpioLpConfig_t;
 

@@ -4,6 +4,7 @@
 
 #include "app_build_config.h"
 #include "app_hw.h"
+#include "app_gpio_lp.h"
 #include "app_log.h"
 
 /**
@@ -120,14 +121,14 @@ static AppStatus_t App_SelfTestPlayBuzzerPattern(uint8_t count, uint32_t onMs, u
  */
 static AppStatus_t App_SelfTestCheckBuzzer(void)
 {
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "[1st] Buzzer test start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Buzzer test start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
     APP_RETURN_IF_FALSE(App_SelfTestPlayBuzzerPattern(APP_SELFTEST_BUZZER_BOOT_BEEP_COUNT,
                                                       APP_SELFTEST_BUZZER_BEEP_ON_MS,
                                                       APP_SELFTEST_BUZZER_BEEP_OFF_MS) == APP_STATUS_OK,
                         APP_STATUS_SELFTEST_FAILED);
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "[1st] Buzzer test pass") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Buzzer test pass") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
     return APP_STATUS_OK;
 }
@@ -140,6 +141,7 @@ static AppStatus_t App_SelfTestCheckBuzzer(void)
 static AppStatus_t App_SelfTestCheckCrc(void)
 {
     uint32_t testVector[2] = {0x12345678u, 0xA55AA55Au};
+    const uint32_t result = 0x995A00E3;
     uint32_t crcValue;
 
     APP_RETURN_IF_FALSE(APP_CRC_HANDLE->Instance == CRC, APP_STATUS_HW_HANDLE_INVALID);
@@ -148,7 +150,12 @@ static AppStatus_t App_SelfTestCheckCrc(void)
     APP_RETURN_IF_FALSE(APP_LOGI("SELF", "CRC sanity value = 0x%08lX", (unsigned long)crcValue) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
-    return APP_STATUS_OK;
+    if(crcValue == result) {
+        return APP_STATUS_OK;
+    }
+    else {
+        return APP_STATUS_FATAL;
+    }
 }
 
 /**
@@ -201,34 +208,39 @@ static AppStatus_t App_SelfTestCheckMeterUart(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
 
-    if (APP_SELFTEST_ENABLE_REAL_METER_PROBE == APP_TRUE)
+    static const uint8_t meterWakeFrame[] = {0x10, 0x5B, 0x01, 0x5C, 0x16};
+    uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {
+        0,
+    };
+    const uint8_t SYNC_START = 0x68;
+    const uint8_t SYNC_STOP = 0x16;
+
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter UART real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_METER_HANDLE,
+                                              (uint8_t *)meterWakeFrame,
+                                              (uint16_t)sizeof(meterWakeFrame),
+                                              APP_SELFTEST_UART_TIMEOUT_MS),
+                            APP_STATUS_SELFTEST_DEVICE_NOT_READY);
+    APP_RETURN_IF_HAL_ERROR(HAL_UART_Receive(APP_UART_METER_HANDLE,
+                                             meterReply,
+                                             APP_SELFTEST_UART_METER_EXPECTED_RX_MIN_LEN,
+                                             APP_SELFTEST_UART_REPLY_TIMEOUT_MS),
+                            APP_STATUS_SELFTEST_TIMEOUT);
+
+    App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_EXPECTED_RX_MIN_LEN);
+
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter UART reply received (%u bytes minimum)",
+                                 (unsigned int)APP_SELFTEST_UART_METER_EXPECTED_RX_MIN_LEN) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+
+    if ((meterReply[0] == SYNC_START) && (meterReply[3] == SYNC_START) && (meterReply[APP_SELFTEST_UART_METER_EXPECTED_RX_MIN_LEN] == SYNC_STOP))
     {
-        static const uint8_t meterWakeFrame[] = {0x2Fu, 0x3Fu, 0x21u, 0x0Du, 0x0Au};
-        uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE];
-
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter UART real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-        APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_METER_HANDLE,
-                                                  (uint8_t *)meterWakeFrame,
-                                                  (uint16_t)sizeof(meterWakeFrame),
-                                                  APP_SELFTEST_UART_TIMEOUT_MS),
-                                APP_STATUS_SELFTEST_DEVICE_NOT_READY);
-        APP_RETURN_IF_HAL_ERROR(HAL_UART_Receive(APP_UART_METER_HANDLE,
-                                                 meterReply,
-                                                 APP_SELFTEST_UART_EXPECTED_RX_MIN_LEN,
-                                                 APP_SELFTEST_UART_REPLY_TIMEOUT_MS),
-                                APP_STATUS_SELFTEST_TIMEOUT);
-
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter UART reply received (%u bytes minimum)",
-                                     (unsigned int)APP_SELFTEST_UART_EXPECTED_RX_MIN_LEN) == APP_STATUS_OK,
-                            APP_STATUS_UART_TX_FAILED);
+        return APP_STATUS_OK;
     }
     else
     {
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter UART probe pseudo only: TODO wake meter, send request, validate frame") == APP_STATUS_OK,
-                            APP_STATUS_UART_TX_FAILED);
+        return APP_STATUS_FATAL;
     }
-
-    return APP_STATUS_OK;
 }
 
 /**
@@ -243,40 +255,37 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
 
-    if (APP_SELFTEST_ENABLE_REAL_NBIOT_PROBE == APP_TRUE)
-    {
-        static const uint8_t atCommand[] = {'A', 'T', '\r', '\n'};
-        uint8_t replyBuffer[APP_SELFTEST_UART_RX_BUFFER_SIZE];
+    static const uint8_t atCommand[] = {'A', 'T', '\r', '\n'};
+    uint8_t replyBuffer[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0, };
 
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "NB-IoT real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "NB-IoT real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
-        App_HwSetNbiotEnable(GPIO_PIN_SET);
-        HAL_Delay(APP_SELFTEST_NBIOT_BOOT_DELAY_MS);
-        App_HwSetNbiotReset(GPIO_PIN_SET);
-        HAL_Delay(APP_SELFTEST_NBIOT_RESET_RELEASE_DELAY_MS);
+    APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
-        APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_NBIOT_HANDLE,
-                                                  (uint8_t *)atCommand,
-                                                  (uint16_t)sizeof(atCommand),
-                                                  APP_SELFTEST_UART_TIMEOUT_MS),
-                                APP_STATUS_SELFTEST_DEVICE_NOT_READY);
-        APP_RETURN_IF_HAL_ERROR(HAL_UART_Receive(APP_UART_NBIOT_HANDLE,
-                                                 replyBuffer,
-                                                 APP_SELFTEST_UART_EXPECTED_RX_MIN_LEN,
-                                                 APP_SELFTEST_UART_REPLY_TIMEOUT_MS),
-                                APP_STATUS_SELFTEST_TIMEOUT);
+    App_HwSetNbiotEnable(GPIO_PIN_SET);
+    HAL_Delay(APP_SELFTEST_NBIOT_BOOT_DELAY_MS);
+    App_HwSetNbiotReset(GPIO_PIN_SET);
+    HAL_Delay(APP_SELFTEST_NBIOT_RESET_RELEASE_DELAY_MS);
 
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "NB-IoT AT reply received (%u bytes minimum)",
-                                     (unsigned int)APP_SELFTEST_UART_EXPECTED_RX_MIN_LEN) == APP_STATUS_OK,
-                            APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_NBIOT_HANDLE,
+                                              (uint8_t *)atCommand,
+                                              (uint16_t)sizeof(atCommand),
+                                              APP_SELFTEST_UART_TIMEOUT_MS),
+                            APP_STATUS_SELFTEST_DEVICE_NOT_READY);
+    APP_RETURN_IF_HAL_ERROR(HAL_UART_Receive(APP_UART_NBIOT_HANDLE,
+                                             replyBuffer,
+                                             APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN,
+                                             APP_SELFTEST_UART_REPLY_TIMEOUT_MS),
+                            APP_STATUS_SELFTEST_TIMEOUT);
 
-        App_HwSetNbiotEnable(GPIO_PIN_RESET);
-    }
-    else
-    {
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "NB-IoT probe pseudo only: TODO power on BC95, send AT, parse OK, power off") == APP_STATUS_OK,
-                            APP_STATUS_UART_TX_FAILED);
-    }
+    App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)replyBuffer, APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN);
+
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "NB-IoT AT reply received (%u bytes minimum)",
+                                 (unsigned int)APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+
+    App_HwSetNbiotEnable(GPIO_PIN_RESET);
+    APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_FALSE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
     return APP_STATUS_OK;
 }
@@ -286,18 +295,16 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
  *
  * @param p_i2cHandle I2C handle.
  * @param itemName Log label.
- * @param realProbeEnabled APP_TRUE to execute HAL_I2C_IsDeviceReady.
  * @param address7bit 7-bit target address. Use 0 to skip real ready check.
  * @return APP_STATUS_OK on success, error code otherwise.
  */
 static AppStatus_t App_SelfTestCheckI2cDevice(I2C_HandleTypeDef *p_i2cHandle,
                                               const char *p_itemName,
-                                              uint8_t realProbeEnabled,
                                               uint8_t address7bit)
 {
     APP_RETURN_IF_FALSE((p_i2cHandle != NULL), APP_STATUS_INVALID_PARAM);
 
-    if ((realProbeEnabled == APP_TRUE) && (address7bit != 0u))
+    if (address7bit != 0u)
     {
         APP_RETURN_IF_FALSE(APP_LOGI("SELF", "%s I2C real probe start: addr=0x%02X",
                                      p_itemName,
@@ -309,11 +316,6 @@ static AppStatus_t App_SelfTestCheckI2cDevice(I2C_HandleTypeDef *p_i2cHandle,
                                                   APP_SELFTEST_I2C_READY_TRIALS,
                                                   APP_SELFTEST_I2C_READY_TIMEOUT_MS) == HAL_OK,
                             APP_STATUS_SELFTEST_DEVICE_NOT_READY);
-    }
-    else
-    {
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "%s I2C probe pseudo only: TODO read WHOAMI / config register", p_itemName) == APP_STATUS_OK,
-                            APP_STATUS_UART_TX_FAILED);
     }
 
     return APP_STATUS_OK;
@@ -331,7 +333,6 @@ static AppStatus_t App_SelfTestCheckEsiI2c(void)
 
     return App_SelfTestCheckI2cDevice(APP_I2C_ESI_HANDLE,
                                       "ESI",
-                                      APP_SELFTEST_ENABLE_REAL_ESI_PROBE,
                                       APP_SELFTEST_ESI_I2C_ADDRESS_7BIT);
 }
 #endif
@@ -347,7 +348,6 @@ static AppStatus_t App_SelfTestCheckNfcI2c(void)
 
     return App_SelfTestCheckI2cDevice(APP_I2C_NFC_HANDLE,
                                       "NFC",
-                                      APP_SELFTEST_ENABLE_REAL_NFC_PROBE,
                                       APP_SELFTEST_NFC_I2C_ADDRESS_7BIT);
 }
 
@@ -362,7 +362,6 @@ static AppStatus_t App_SelfTestCheckAuxI2c(void)
 
     return App_SelfTestCheckI2cDevice(APP_I2C_AUX_HANDLE,
                                       "TEMP",
-                                      APP_SELFTEST_ENABLE_REAL_AUX_PROBE,
                                       APP_SELFTEST_AUX_I2C_ADDRESS_7BIT);
 }
 
@@ -375,20 +374,16 @@ static AppStatus_t App_SelfTestCheckAuxI2c(void)
  */
 static AppStatus_t App_SelfTestCheckExternalWatchdog(void)
 {
+//wd pwm -> gpio TODO
+#if 0
     APP_RETURN_IF_FALSE(APP_TIM_WD_FEED_HANDLE->Instance == TIM22, APP_STATUS_HW_HANDLE_INVALID);
 
-    if (APP_SELFTEST_ENABLE_REAL_EXTERNAL_WD_PULSE == APP_TRUE)
-    {
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "External watchdog pulse test start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-        APP_RETURN_IF_HAL_ERROR(HAL_TIM_PWM_Start(APP_TIM_WD_FEED_HANDLE, TIM_CHANNEL_2), APP_STATUS_SELFTEST_FAILED);
-        HAL_Delay(APP_SELFTEST_EXTERNAL_WD_PULSE_MS);
-        APP_RETURN_IF_HAL_ERROR(HAL_TIM_PWM_Stop(APP_TIM_WD_FEED_HANDLE, TIM_CHANNEL_2), APP_STATUS_SELFTEST_FAILED);
-    }
-    else
-    {
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "External watchdog output path ready; runtime feed handled by watchdog FSM") == APP_STATUS_OK,
-                            APP_STATUS_UART_TX_FAILED);
-    }
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "External watchdog pulse test start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_HAL_ERROR(HAL_TIM_PWM_Start(APP_TIM_WD_FEED_HANDLE, TIM_CHANNEL_2), APP_STATUS_SELFTEST_FAILED);
+    HAL_Delay(APP_SELFTEST_EXTERNAL_WD_PULSE_MS);
+    APP_RETURN_IF_HAL_ERROR(HAL_TIM_PWM_Stop(APP_TIM_WD_FEED_HANDLE, TIM_CHANNEL_2), APP_STATUS_SELFTEST_FAILED);
+    #endif
+    App_HwFeedEWD();
 
     return APP_STATUS_OK;
 }
@@ -400,22 +395,27 @@ static AppStatus_t App_SelfTestCheckExternalWatchdog(void)
  */
 static AppStatus_t App_SelfTestCheckInputLines(void)
 {
+//ri pin -> gpio TODO
+#if 0
     GPIO_PinState riState;
+#endif
     GPIO_PinState nfcEventState;
 #if 0
     GPIO_PinState esiIntState;
 #endif
     GPIO_PinState reedState;
 
+//ri pin -> gpio TODO
+#if 0
     riState = App_HwReadNbiotRi();
+#endif
     nfcEventState = App_HwReadNfcEvent();
 #if 0
     esiIntState = App_HwReadEsiInterrupt();
 #endif
     reedState = HAL_GPIO_ReadPin(REED_IN_GPIO_Port, REED_IN_Pin);
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "GPIO inputs RI=%u NFC_ED=%u REED=%u",
-                                 (unsigned int)riState,
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "GPIO inputs NFC_ED=%u REED=%u",
                                  (unsigned int)nfcEventState,
                                  (unsigned int)reedState) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);

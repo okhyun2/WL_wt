@@ -438,7 +438,10 @@ static AppStatus_t App_SystemValidateHandles(void)
     APP_RETURN_IF_FALSE(APP_I2C_AUX_HANDLE->Instance == I2C3, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_CRC_HANDLE->Instance == CRC, APP_STATUS_HW_HANDLE_INVALID);
+//wd pwm -> gpio TODO
+#if 0
     APP_RETURN_IF_FALSE(APP_TIM_WD_FEED_HANDLE->Instance == TIM22, APP_STATUS_HW_HANDLE_INVALID);
+#endif
     return APP_STATUS_OK;
 }
 
@@ -474,13 +477,13 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
     g_appGpioLpConfig.keepTempI2cPinsInStop = APP_FALSE;
     g_appGpioLpConfig.keepPiezoPinInStop = APP_FALSE;
     g_appGpioLpConfig.keepExternalWatchdogPinInStop = APP_FALSE;
-    g_appGpioLpConfig.keepNbiotRiWakeWhenPowered = APP_TRUE;
-    g_appGpioLpConfig.isolateNbiotInterfaceWhenPoweredOff = APP_TRUE;
-    g_appGpioLpConfig.restoreNbiotInterfaceAfterWake = APP_TRUE;
     g_appGpioLpConfig.stopClockDisableMask =
         APP_GPIO_LP_CLK_ADC1 |
         APP_GPIO_LP_CLK_CRC |
+//wd pwm -> gpio TODO
+#if 0
         APP_GPIO_LP_CLK_TIM22 |
+#endif
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
@@ -532,9 +535,8 @@ static AppStatus_t App_SystemPrintBootLogs(void)
                                  (unsigned long)p_clockContext->msiRange,
                                  (unsigned int)p_clockContext->lseReady) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("GPIO", "LP policy ready: SWD=%lu NB-IoT-wake=%u",
-                                 (unsigned long)g_appGpioLpConfig.swdPolicy,
-                                 (unsigned int)g_appGpioLpConfig.keepNbiotRiWakeWhenPowered) == APP_STATUS_OK,
+    APP_RETURN_IF_FALSE(APP_LOGI("GPIO", "LP policy ready: SWD=%lu",
+                                 (unsigned long)g_appGpioLpConfig.swdPolicy) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
     APP_RETURN_IF_FALSE(APP_LOGI("RTC", "STOP wake period=%lu ms (%s)",
                                  (unsigned long)APP_RTC_WAKEUP_PERIOD_MS,
@@ -851,10 +853,13 @@ void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
 {
     switch (GPIO_Pin)
     {
+//ri pin -> gpio TODO
+#if 0
         case NBIoT_RI_Pin:
             App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_NBIOT_RI);
             App_SystemQueueStateCommand(APP_FSM_STATE_NBIOT_DECIDE_WAKE);
             break;
+#endif
 
         case NFC_ED_Pin:
             App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_NFC_ED);

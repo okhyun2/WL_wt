@@ -254,6 +254,8 @@ static void App_GpioLpRestorePiezoPin(void)
  */
 static void App_GpioLpRestoreExternalWatchdogPin(void)
 {
+//wd pwm -> gpio TODO
+#if 0
     GPIO_InitTypeDef gpioInit;
 
     __HAL_RCC_TIM22_CLK_ENABLE();
@@ -266,6 +268,8 @@ static void App_GpioLpRestoreExternalWatchdogPin(void)
     gpioInit.Alternate = GPIO_AF4_TIM22;
 
     HAL_GPIO_Init(WD_FEED_GPIO_Port, &gpioInit);
+#endif
+    App_GpioLpConfigOutput(WD_FEED_GPIO_Port, WD_FEED_Pin, GPIO_PIN_RESET);
 }
 
 /**
@@ -288,15 +292,6 @@ static void App_GpioLpRestoreNbiotInterface(void)
     gpioInit.Alternate = GPIO_AF6_LPUART1;
 
     HAL_GPIO_Init(NBIoT_RX_GPIO_Port, &gpioInit);
-
-    if (g_appGpioLpContext.config.keepNbiotRiWakeWhenPowered == APP_TRUE)
-    {
-        App_GpioLpConfigExtiFalling(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
-    }
-    else
-    {
-        App_GpioLpConfigAnalogNoPull(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
-    }
 }
 
 /**
@@ -307,7 +302,10 @@ static void App_GpioLpIsolateNbiotInterface(void)
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
     App_GpioLpConfigAnalogNoPull(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin);
     App_GpioLpConfigAnalogNoPull(NBIoT_RX_GPIO_Port, NBIoT_RX_Pin | NBIoT_TX_Pin);
+//ri pin -> gpio TODO
+#if 0
     App_GpioLpConfigAnalogNoPull(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
+#endif
 }
 
 /**
@@ -379,10 +377,13 @@ static void App_GpioLpDisablePeripheralClocks(uint32_t mask)
         __HAL_RCC_CRC_CLK_DISABLE();
     }
 
+//wd pwm -> gpio TODO
+#if 0
     if ((mask & APP_GPIO_LP_CLK_TIM22) != 0u)
     {
         __HAL_RCC_TIM22_CLK_DISABLE();
     }
+#endif
 
     if ((mask & APP_GPIO_LP_CLK_USART1) != 0u)
     {
@@ -437,10 +438,13 @@ static void App_GpioLpEnablePeripheralClocks(uint32_t mask)
         __HAL_RCC_CRC_CLK_ENABLE();
     }
 
+//wd pwm -> gpio TODO
+#if 0
     if ((mask & APP_GPIO_LP_CLK_TIM22) != 0u)
     {
         __HAL_RCC_TIM22_CLK_ENABLE();
     }
+#endif
 
     if ((mask & APP_GPIO_LP_CLK_USART1) != 0u)
     {
@@ -497,13 +501,13 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
     p_config->keepTempI2cPinsInStop = 0u;
     p_config->keepPiezoPinInStop = 0u;
     p_config->keepExternalWatchdogPinInStop = 0u;
-    p_config->keepNbiotRiWakeWhenPowered = 0u;
-    p_config->isolateNbiotInterfaceWhenPoweredOff = 1u;
-    p_config->restoreNbiotInterfaceAfterWake = 1u;
     p_config->stopClockDisableMask =
         APP_GPIO_LP_CLK_ADC1 |
         APP_GPIO_LP_CLK_CRC |
+//wd pwm -> gpio TODO
+#if 0
         APP_GPIO_LP_CLK_TIM22 |
+#endif
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
@@ -534,8 +538,7 @@ AppStatus_t App_GpioLpApplyRunBaseState(void)
     App_GpioLpRestoreWakeInputs();
     App_GpioLpApplySwdPolicy();
 
-    if ((g_appGpioLpContext.nbiotPowered == 0u) &&
-        (g_appGpioLpContext.config.isolateNbiotInterfaceWhenPoweredOff == 1u))
+    if(g_appGpioLpContext.nbiotPowered == 0u)
     {
         App_GpioLpIsolateNbiotInterface();
     }
@@ -556,11 +559,11 @@ AppStatus_t App_GpioLpSetNbiotPowered(uint8_t powered)
 
     App_GpioLpEnablePortClocks();
 
-    if ((powered == 0u) && (g_appGpioLpContext.config.isolateNbiotInterfaceWhenPoweredOff == 1u))
+    if (powered == 0u)
     {
         App_GpioLpIsolateNbiotInterface();
     }
-    else if ((powered == 1u) && (g_appGpioLpContext.config.restoreNbiotInterfaceAfterWake == 1u))
+    else if (powered == 1u)
     {
         App_GpioLpRestoreNbiotInterface();
     }
@@ -568,12 +571,7 @@ AppStatus_t App_GpioLpSetNbiotPowered(uint8_t powered)
 #ifdef DEBUG
     if (App_GpioLpCanDebugLog() == 1u)
     {
-        (void)APP_LOGD("GPIO",
-                       "NB-IoT power=%u isolate=%u restore=%u keep_ri=%u",
-                       (unsigned int)powered,
-                       (unsigned int)g_appGpioLpContext.config.isolateNbiotInterfaceWhenPoweredOff,
-                       (unsigned int)g_appGpioLpContext.config.restoreNbiotInterfaceAfterWake,
-                       (unsigned int)g_appGpioLpContext.config.keepNbiotRiWakeWhenPowered);
+        (void)APP_LOGD("GPIO", "NB-IoT power=%u", (unsigned int)powered);
     }
 #endif
 
@@ -635,18 +633,9 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         App_GpioLpConfigAnalogNoPull(WD_FEED_GPIO_Port, WD_FEED_Pin);
     }
 
-    if ((g_appGpioLpContext.nbiotPowered == 0u) &&
-        (g_appGpioLpContext.config.isolateNbiotInterfaceWhenPoweredOff == 1u))
+    if(g_appGpioLpContext.nbiotPowered == 0u)
     {
         App_GpioLpIsolateNbiotInterface();
-    }
-    else if (g_appGpioLpContext.config.keepNbiotRiWakeWhenPowered == 1u)
-    {
-        App_GpioLpConfigExtiFalling(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
-    }
-    else
-    {
-        App_GpioLpConfigAnalogNoPull(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
     }
 
     App_GpioLpDisablePeripheralClocks(g_appGpioLpContext.config.stopClockDisableMask);
@@ -716,14 +705,9 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
         App_GpioLpRestoreExternalWatchdogPin();
     }
 
-    if ((g_appGpioLpContext.nbiotPowered == 0u) &&
-        (g_appGpioLpContext.config.isolateNbiotInterfaceWhenPoweredOff == 1u))
+    if(g_appGpioLpContext.nbiotPowered == 0u)
     {
         App_GpioLpIsolateNbiotInterface();
-    }
-    else if (g_appGpioLpContext.config.restoreNbiotInterfaceAfterWake == 1u)
-    {
-        App_GpioLpRestoreNbiotInterface();
     }
 
     App_GpioLpApplySwdPolicy();

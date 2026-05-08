@@ -607,6 +607,8 @@ void HAL_RTC_MspDeInit(RTC_HandleTypeDef* hrtc)
   */
 void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim_base)
 {
+//wd pwm -> gpio TODO
+#if 0
   if(htim_base->Instance==TIM22)
   {
     /* USER CODE BEGIN TIM22_MspInit 0 */
@@ -618,11 +620,14 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim_base)
 
     /* USER CODE END TIM22_MspInit 1 */
   }
+#endif
 
 }
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
 {
+//wd pwm -> gpio TODO
+#if 0
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   if(htim->Instance==TIM22)
   {
@@ -645,6 +650,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
 
     /* USER CODE END TIM22_MspPostInit 1 */
   }
+#endif
 
 }
 /**
@@ -655,6 +661,8 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
   */
 void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* htim_base)
 {
+//wd pwm -> gpio TODO
+#if 0
   if(htim_base->Instance==TIM22)
   {
     /* USER CODE BEGIN TIM22_MspDeInit 0 */
@@ -666,6 +674,7 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* htim_base)
 
     /* USER CODE END TIM22_MspDeInit 1 */
   }
+#endif
 
 }
 

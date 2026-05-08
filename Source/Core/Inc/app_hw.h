@@ -18,7 +18,10 @@ extern "C" {
  *          - I2C1    : ESI
  *          - I2C2    : NFC
  *          - I2C3    : Temperature/auxiliary
+//wd pwm -> gpio TODO
+#if 0
  *          - TIM22 CH2 : External watchdog feed
+#endif
  */
 
 /* Peripheral handles generated in main.c */
@@ -31,7 +34,10 @@ extern I2C_HandleTypeDef hi2c3;
 extern UART_HandleTypeDef hlpuart1;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
+//wd pwm -> gpio TODO
+#if 0
 extern TIM_HandleTypeDef htim22;
+#endif
 
 /** @brief Logical peripheral aliases. */
 #define APP_RTC_HANDLE           (&hrtc)
@@ -49,7 +55,22 @@ extern TIM_HandleTypeDef htim22;
 #define APP_ADC_BATTERY_HANDLE          (&hadc)
 #define APP_CRC_HANDLE                  (&hcrc)
 
+//wd pwm -> gpio TODO
+#if 0
 #define APP_TIM_WD_FEED_HANDLE          (&htim22)
+#endif
+
+/**
+ * @brief Set EWD module feed pin.
+ *
+ */
+static inline void App_HwFeedEWD(void)
+{
+    HAL_GPIO_WritePin(WD_FEED_GPIO_Port, WD_FEED_Pin, GPIO_PIN_SET);
+    HAL_Delay(1); //>=100ns
+    HAL_GPIO_WritePin(WD_FEED_GPIO_Port, WD_FEED_Pin, GPIO_PIN_RESET);
+}
+
 
 /**
  * @brief Set NB-IoT module power control pin.
@@ -81,6 +102,8 @@ static inline void App_HwSetChargeBoot0(GPIO_PinState state)
     HAL_GPIO_WritePin(Charge_BOOT0_GPIO_Port, Charge_BOOT0_Pin, state);
 }
 
+//ri pin -> gpio TODO
+#if 0
 /**
  * @brief Read NB-IoT RI line state.
  *
@@ -90,6 +113,7 @@ static inline GPIO_PinState App_HwReadNbiotRi(void)
 {
     return HAL_GPIO_ReadPin(NBIoT_RI_GPIO_Port, NBIoT_RI_Pin);
 }
+#endif
 
 /**
  * @brief Read NFC event-detect interrupt line state.
