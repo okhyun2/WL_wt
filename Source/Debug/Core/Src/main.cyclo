@@ -10,6 +10,6 @@
 ../Core/Src/main.c:585:13:MX_LPUART1_UART_Init	2
 ../Core/Src/main.c:637:13:MX_USART1_UART_Init	2
 ../Core/Src/main.c:690:13:MX_USART2_UART_Init	2
-../Core/Src/main.c:744:13:MX_RTC_Init	2
-../Core/Src/main.c:790:13:MX_GPIO_Init	1
-../Core/Src/main.c:880:6:Error_Handler	1
+../Core/Src/main.c:748:13:MX_RTC_Init	2
+../Core/Src/main.c:794:13:MX_GPIO_Init	1
+../Core/Src/main.c:884:6:Error_Handler	1

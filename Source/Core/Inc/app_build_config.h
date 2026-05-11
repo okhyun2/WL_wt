@@ -127,6 +127,9 @@ extern "C" {
 #define APP_STORAGE_FLASH_RECORD_STRIDE_BYTES       (FLASH_PAGE_SIZE)
 #define APP_STORAGE_PARAM_FLAGS_VALID               (0x00000001u)
 
+#define APP_METER_SUPPORT_NORMAL
+#undef APP_METER_SUPPORT_SC1xxx
+
 #if !defined(STM32L073xx)
 #error "This project requires STM32L073xx device support."
 #endif
