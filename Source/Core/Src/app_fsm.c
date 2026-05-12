@@ -598,7 +598,7 @@ static AppStatus_t App_FsmFindDuePeriodicState(uint8_t *p_state)
         //APP_FSM_COMPONENT_POWER,
         APP_FSM_COMPONENT_HOUSEKEEPING,
         //APP_FSM_COMPONENT_METER,
-        APP_FSM_COMPONENT_NFC,
+        //APP_FSM_COMPONENT_NFC,
 #if 0	//Temp support
         //APP_FSM_COMPONENT_AUX,
 #endif
@@ -705,7 +705,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_HOUSEKEEPING_INIT:
             App_FsmMarkComponent(APP_FSM_COMPONENT_HOUSEKEEPING, APP_FSM_STATE_HOUSEKEEPING_SNAPSHOT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_HOUSEKEEPING_SNAPSHOT:
@@ -729,7 +729,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 do something;
                 APP_RETURN_IF_FALSE(App_PowerInit() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_POWER_WAIT_REQUEST:
@@ -746,7 +746,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 do something;
                 APP_RETURN_IF_FALSE(App_MeterInit() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_METER_WAIT_TRIGGER:
@@ -770,7 +770,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 APP_RETURN_IF_FALSE(App_MeterParseReplay() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
             App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_NFC_INIT:
@@ -780,7 +780,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                                  APP_FALSE,
                                  APP_FALSE,
                                  APP_STATUS_OK);
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_NFC_WAIT_EVENT:
@@ -801,7 +801,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                                  APP_FALSE,
                                  APP_FALSE,
                                  APP_STATUS_OK);
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
 #if 0	//Temp support
@@ -836,7 +836,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 do something;
                 APP_RETURN_IF_FALSE(App_NbiotInit() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_NBIOT_DECIDE_WAKE:
@@ -853,7 +853,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
             (void)App_SystemSetNbiotPowered(APP_FALSE);
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_SERVER_INIT:
@@ -862,7 +862,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 do something;
                 APP_RETURN_IF_FALSE(App_ServerInit() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_SERVER_PREPARE_PACKET:
@@ -886,7 +886,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 do something;
                 APP_RETURN_IF_FALSE(App_RtcInit() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_RTC_WAKE_SERVICE:
@@ -896,7 +896,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_RTC_APPLY_SYNC:
             /* pseudo code*/
-            APP_LOGI("FSM", "########################kiki000");
+            APP_LOGI("FSM", "########################kiki000. run selftest");
             App_SystemRunBootSelfTest();
             /*
                 do something;
@@ -908,7 +908,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_RTC_READY:
             App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_LPTIM_INIT:
@@ -917,7 +917,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 do something;
                 APP_RETURN_IF_FALSE(App_RtcInit() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_LPTIM_WAKE_SERVICE:
@@ -932,7 +932,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
             App_FsmMarkComponent(APP_FSM_COMPONENT_LPTIM, APP_FSM_STATE_LPTIM_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_WATCHDOG_INIT:
@@ -954,7 +954,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_WATCHDOG_RELEASE:
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
             break;
 
         case APP_FSM_STATE_STORAGE_INIT:
@@ -975,7 +975,8 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_STORAGE_RELEASE:
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
+            break;
 
         case APP_FSM_STATE_FAULT:
             App_FsmSetDecision(APP_FSM_DECISION_REQUIRE_SAFE);
@@ -1069,7 +1070,12 @@ AppStatus_t App_FsmRun(void)
 
     if(App_FsmIsSignalEventPending())
     {
+        (void)APP_LOGI("FSM", "EventPending. don't stop allow");
         return App_SystemRequestLowPower(APP_FALSE);
+    }
+    else
+    {
+        (void)APP_LOGI("FSM", "No EventPending. stop allow");
     }
 
     APP_RETURN_IF_FALSE(status == APP_STATUS_MSGQ_EMPTY, status);

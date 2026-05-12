@@ -793,18 +793,13 @@ static void App_SystemHandleIdle(void)
             }
         }
 
-#ifdef DEBUG
-        if (App_SystemCanDebugLog() == APP_TRUE)
-        {
-            (void)APP_LOGD("LP",
-                           "STOP qualify: step=%u/%u decision=%s idle=%lu dispatch=%lu",
-                           (unsigned int)g_appSystemContext.stopQualificationCount,
-                           (unsigned int)APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT,
-                           App_FsmGetDecisionString(),
-                           (unsigned long)g_appSystemContext.idleCounter,
-                           (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
-        }
-#endif
+        (void)APP_LOGI("LP",
+                       "STOP qualify: step=%u/%u decision=%s idle=%lu dispatch=%lu",
+                       (unsigned int)g_appSystemContext.stopQualificationCount,
+                       (unsigned int)APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT,
+                       App_FsmGetDecisionString(),
+                       (unsigned long)g_appSystemContext.idleCounter,
+                       (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
 
         if (g_appSystemContext.stopQualificationCount >= APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT)
         {
