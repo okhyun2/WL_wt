@@ -207,9 +207,7 @@ static AppStatus_t App_SelfTestCheckDebugUart(void)
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
-#ifdef APP_METER_SUPPORT_NORMAL
-//Read protocols meter(Normal)
-static AppStatus_t App_SelfTestCheckMeterUart(void)
+static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
 
@@ -245,7 +243,6 @@ static AppStatus_t App_SelfTestCheckMeterUart(void)
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
         HAL_Delay(100); 
         App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
-        APP_LOGI("SELF", "%d", i);
     }
 
     APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter UART reply received (%u bytes minimum)",
@@ -255,9 +252,8 @@ static AppStatus_t App_SelfTestCheckMeterUart(void)
     status = App_MeterProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
     return (status);
 }
-#else
-//Read protocols meter(SC1xxx)
-static AppStatus_t App_SelfTestCheckMeterUart(void)
+
+static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
 
@@ -295,13 +291,11 @@ static AppStatus_t App_SelfTestCheckMeterUart(void)
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
         HAL_Delay(100); 
         App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
-        APP_LOGI("SELF", "%d", i);
     }
 
     status = App_MeterSC1xxxProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
     return (status);
 }
-#endif
 
 /**
  * @brief NB-IoT pseudo connectivity probe.
@@ -323,16 +317,18 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
     APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
     App_HwSetNbiotEnable(GPIO_PIN_SET);
-    HAL_Delay(APP_SELFTEST_NBIOT_BOOT_DELAY_MS);
+    HAL_Delay(APP_SELFTEST_NBIOT_PWR_STABLE_DELAY_MS);
     App_HwSetNbiotReset(GPIO_PIN_RESET);
+    HAL_Delay(APP_SELFTEST_NBIOT_RESET_SIGNAL_DELAY_MS);
     App_HwSetNbiotReset(GPIO_PIN_SET);
-    HAL_Delay(APP_SELFTEST_NBIOT_RESET_RELEASE_DELAY_MS);
+    HAL_Delay(APP_SELFTEST_NBIOT_BOOT_DELAY_MS);
 
     APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_NBIOT_HANDLE,
                                               (uint8_t *)atCommand,
                                               (uint16_t)sizeof(atCommand),
                                               APP_SELFTEST_UART_TIMEOUT_MS),
                             APP_STATUS_SELFTEST_DEVICE_NOT_READY);
+
     APP_RETURN_IF_HAL_ERROR(HAL_UART_Receive(APP_UART_NBIOT_HANDLE,
                                              replyBuffer,
                                              APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN,
@@ -535,7 +531,8 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_CRC, App_SelfTestCheckCrc);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_DEBUG_UART, App_SelfTestCheckDebugUart);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterUart);
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
+    //App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiot);
 #if 0	//ESI support
     App_SelfTestRunItem(APP_SELFTEST_ITEM_ESI_I2C, App_SelfTestCheckEsiI2c);

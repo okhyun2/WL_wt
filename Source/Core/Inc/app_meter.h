@@ -13,6 +13,7 @@ extern "C" {
 
 #define APP_METER_BAUDRATE_NORMAL (1200)
 #define APP_METER_BAUDRATE_SC1xxx (600)
+#define APP_METER_BAUDRATE APP_METER_BAUDRATE_NORMAL
 
 typedef enum {
     APP_METER_OK = 0,

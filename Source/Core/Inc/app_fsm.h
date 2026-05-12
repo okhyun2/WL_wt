@@ -94,6 +94,9 @@ const char *App_FsmGetStateName(uint8_t state);
 const char *App_FsmGetCurrentStateString(void);
 AppFsmDecision_t App_FsmGetDecision(void);
 const char *App_FsmGetDecisionString(void);
+AppStatus_t App_FsmNfcCliExecute(const char *p_subcommand,
+                                 char *p_response,
+                                 uint16_t response_length);
 
 #ifdef DEBUG
 #define APP_FSM_DEBUG_PRINT(module, fmt, ...)                         \

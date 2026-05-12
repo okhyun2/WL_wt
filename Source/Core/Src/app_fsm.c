@@ -1,5 +1,6 @@
 #include "app_fsm.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "app_build_config.h"
@@ -8,8 +9,137 @@
 #include "app_msgq.h"
 #include "app_storage.h"
 #include "app_system.h"
+#include "main.h"
+#include "nfc_lowpower.h"
+#include "nfc_secure_auth.h"
+#include "nfc_user_command.h"
 
 static AppFsmContext_t g_appFsmContext;
+
+
+extern I2C_HandleTypeDef hi2c2;
+
+NFC_NTP53321_Handle_t g_nfcTagHandle;
+NFC_AUTH_Handle_t g_nfcAuthHandle;
+NFC_CMD_Handle_t g_nfcCmdHandle;
+NFC_LP_Handle_t g_nfcLpHandle;
+static volatile uint8_t g_nfcIrqPending;
+static volatile NFC_WakeupEvent_t g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
+static uint8_t g_nfcReady = APP_FALSE;
+
+static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTES;
+static const uint8_t g_nfcAdminKey[NFC_AUTH_KEY_SIZE] = APP_NFC_ADMIN_KEY_BYTES;
+
+#if (APP_BUILD_IS_PRODUCTION == APP_TRUE) && (APP_NFC_KEY_ALLOW_DEFAULTS == APP_TRUE)
+#error "Production build must replace default NFC keys and disable APP_NFC_KEY_ALLOW_DEFAULTS."
+#endif
+
+static void App_FsmNfcWakeupCallback(NFC_WakeupEvent_t event)
+{
+    g_nfcWakeEvent = event;
+}
+
+static AppStatus_t App_FsmNfcInitModule(void)
+{
+    if (g_nfcReady == APP_TRUE)
+    {
+        return APP_STATUS_OK;
+    }
+
+    if (NFC_NTP53321_Init(&g_nfcTagHandle, &hi2c2) != NFC_RESULT_OK)
+    {
+        return APP_STATUS_INIT_FAILED;
+    }
+
+    //useless. use factory value: E1 40 10 00
+    (void)NFC_NTP53321_ConfigureCC(&g_nfcTagHandle);
+    (void)NFC_NTP53321_EnableSRAMMirror(&g_nfcTagHandle, true);
+
+    if (NFC_AUTH_Init(&g_nfcAuthHandle,
+                      &g_nfcTagHandle,
+                      g_nfcMasterKey,
+                      g_nfcAdminKey) != NFC_AUTH_RESULT_OK)
+    {
+        return APP_STATUS_INIT_FAILED;
+    }
+
+    if (NFC_CMD_Init(&g_nfcCmdHandle,
+                     &g_nfcTagHandle,
+                     &g_nfcAuthHandle) != NFC_CMD_RESULT_OK)
+    {
+        return APP_STATUS_INIT_FAILED;
+    }
+
+    if (NFC_LP_Init(&g_nfcLpHandle, &g_nfcTagHandle) != NFC_RESULT_OK)
+    {
+        return APP_STATUS_INIT_FAILED;
+    }
+
+    NFC_LP_RegisterCallbacks(&g_nfcLpHandle, App_FsmNfcWakeupCallback, NULL);
+    g_nfcIrqPending = APP_FALSE;
+    g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
+    g_nfcReady = APP_TRUE;
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmNfcProcessWakeEvent(void)
+{
+    NFC_AUTH_Result_t authStatus;
+    NFC_CMD_Result_t cmdStatus;
+
+    if (g_nfcReady != APP_TRUE)
+    {
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    if (g_nfcIrqPending == APP_TRUE)
+    {
+        g_nfcIrqPending = APP_FALSE;
+        NFC_NTP53321_NotifyDeferredEdEvent(&g_nfcTagHandle);
+        if (NFC_LP_HandleWakeup(&g_nfcLpHandle) != NFC_RESULT_OK)
+        {
+            return APP_STATUS_FATAL;
+        }
+    }
+
+    if (g_nfcWakeEvent != NFC_WAKEUP_EVENT_ED_PIN)
+    {
+        return APP_STATUS_OK;
+    }
+
+    g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
+
+    if (NFC_AUTH_IsSessionValid(&g_nfcAuthHandle) == true)
+    {
+        cmdStatus = NFC_CMD_Process(&g_nfcCmdHandle);
+        if ((cmdStatus != NFC_CMD_RESULT_OK) &&
+            (cmdStatus != NFC_CMD_RESULT_NOT_AUTH) &&
+            (cmdStatus != NFC_CMD_RESULT_INVALID_CMD) &&
+            (cmdStatus != NFC_CMD_RESULT_INVALID_LEN) &&
+            (cmdStatus != NFC_CMD_RESULT_INVALID_MAGIC))
+        {
+            return APP_STATUS_FATAL;
+        }
+    }
+    else
+    {
+        authStatus = NFC_AUTH_ProcessNFCEvent(&g_nfcAuthHandle, NFC_WAKEUP_EVENT_ED_PIN);
+        if ((authStatus != NFC_AUTH_RESULT_OK) &&
+            (authStatus != NFC_AUTH_RESULT_FAIL) &&
+            (authStatus != NFC_AUTH_RESULT_LOCKED) &&
+            (authStatus != NFC_AUTH_RESULT_INVALID_STATE))
+        {
+            return APP_STATUS_FATAL;
+        }
+    }
+
+    return APP_STATUS_OK;
+}
+
+void App_FsmNfcEdIrqHandler(void)
+{
+    g_nfcIrqPending = APP_TRUE;
+}
 
 static const char *App_FsmGetDecisionNameInternal(AppFsmDecision_t decision)
 {
@@ -20,6 +150,45 @@ static const char *App_FsmGetDecisionNameInternal(AppFsmDecision_t decision)
         case APP_FSM_DECISION_ALLOW_IDLE:   return "ALLOW_IDLE";
         case APP_FSM_DECISION_REQUIRE_SAFE: return "REQUIRE_SAFE";
         default:                            return "UNKNOWN";
+    }
+}
+
+static const char *App_FsmNfcGetWakeEventName(NFC_WakeupEvent_t event)
+{
+    switch (event)
+    {
+        case NFC_WAKEUP_EVENT_ED_PIN:  return "ED_PIN";
+        case NFC_WAKEUP_EVENT_RTC:     return "RTC";
+        case NFC_WAKEUP_EVENT_UNKNOWN: return "UNKNOWN";
+        default:                       return "UNSPEC";
+    }
+}
+
+static const char *App_FsmNfcGetDriverStateName(NFC_DriverState_t state)
+{
+    switch (state)
+    {
+        case NFC_STATE_UNINITIALIZED: return "UNINITIALIZED";
+        case NFC_STATE_IDLE:          return "IDLE";
+        case NFC_STATE_ACTIVE:        return "ACTIVE";
+        case NFC_STATE_STOP:          return "STOP";
+        case NFC_STATE_ERROR:         return "ERROR";
+        default:                      return "UNKNOWN";
+    }
+}
+
+static const char *App_FsmNfcGetAuthStateName(NFC_AUTH_State_t state)
+{
+    switch (state)
+    {
+        case NFC_AUTH_STATE_IDLE:          return "IDLE";
+        case NFC_AUTH_STATE_CONNECTING:    return "CONNECTING";
+        case NFC_AUTH_STATE_CHALLENGING:   return "CHALLENGING";
+        case NFC_AUTH_STATE_VERIFYING:     return "VERIFYING";
+        case NFC_AUTH_STATE_AUTHENTICATED: return "AUTHENTICATED";
+        case NFC_AUTH_STATE_FAILED:        return "FAILED";
+        case NFC_AUTH_STATE_LOCKED:        return "LOCKED";
+        default:                           return "UNKNOWN";
     }
 }
 
@@ -429,7 +598,7 @@ static AppStatus_t App_FsmFindDuePeriodicState(uint8_t *p_state)
         //APP_FSM_COMPONENT_POWER,
         APP_FSM_COMPONENT_HOUSEKEEPING,
         //APP_FSM_COMPONENT_METER,
-        //APP_FSM_COMPONENT_NFC,
+        APP_FSM_COMPONENT_NFC,
 #if 0	//Temp support
         //APP_FSM_COMPONENT_AUX,
 #endif
@@ -500,7 +669,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmMarkComponent(APP_FSM_COMPONENT_HOUSEKEEPING, APP_FSM_STATE_HOUSEKEEPING_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_POWER, APP_FSM_STATE_POWER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-            App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            //App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
 #if 0	//Temp support
             App_FsmMarkComponent(APP_FSM_COMPONENT_AUX, APP_FSM_STATE_AUX_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
 #endif
@@ -605,17 +774,19 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_NFC_INIT:
-            /* pseudo code*/
-            /*
-                do something;
-                APP_RETURN_IF_FALSE(App_NfcInit() == APP_STATUS_OK, APP_STATUS_FATAL);
-            */
+            APP_RETURN_IF_FALSE(App_FsmNfcInitModule() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+            App_FsmMarkComponent(APP_FSM_COMPONENT_NFC,
+                                 APP_FSM_STATE_NFC_WAIT_EVENT,
+                                 APP_FALSE,
+                                 APP_FALSE,
+                                 APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_NFC_WAIT_EVENT:
             p_component = App_FsmGetComponentMutable(APP_FSM_COMPONENT_NFC);
-            if ((p_component != NULL) && (p_component->eventPending == APP_TRUE))
+            if ((p_component != NULL) &&
+                ((p_component->eventPending == APP_TRUE) || (g_nfcIrqPending == APP_TRUE)))
             {
                 APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NFC_EXCHANGE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             }
@@ -623,12 +794,13 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_NFC_EXCHANGE:
-            /* pseudo code*/
-            /*
-                do something;
-                APP_RETURN_IF_FALSE(App_NfcExchange() == APP_STATUS_OK, APP_STATUS_FATAL);
-            */
-            App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            APP_RETURN_IF_FALSE(App_FsmNfcInitModule() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+            APP_RETURN_IF_FALSE(App_FsmNfcProcessWakeEvent() == APP_STATUS_OK, APP_STATUS_FATAL);
+            App_FsmMarkComponent(APP_FSM_COMPONENT_NFC,
+                                 APP_FSM_STATE_NFC_WAIT_EVENT,
+                                 APP_FALSE,
+                                 APP_FALSE,
+                                 APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
@@ -1016,4 +1188,192 @@ AppFsmDecision_t App_FsmGetDecision(void)
 const char *App_FsmGetDecisionString(void)
 {
     return App_FsmGetDecisionNameInternal(g_appFsmContext.summary.decision);
+}
+
+AppStatus_t App_FsmNfcCliExecute(const char *p_subcommand,
+                                 char *p_response,
+                                 uint16_t response_length)
+{
+    const char *subcommand;
+    int32_t written;
+
+    APP_RETURN_IF_FALSE((p_response != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((response_length > 0u), APP_STATUS_INVALID_PARAM);
+
+    p_response[0] = '\0';
+    subcommand = (p_subcommand != NULL) ? p_subcommand : "";
+    while (*subcommand == ' ')
+    {
+        subcommand++;
+    }
+
+    if ((subcommand[0] == '\0') || (strcmp(subcommand, "help") == 0))
+    {
+        written = snprintf(p_response, response_length,
+                           "nfc: help|status|init|uid|driver|auth|cmd|lp|wake|exchange|logout");
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return APP_STATUS_OK;
+    }
+
+    if (strcmp(subcommand, "init") == 0)
+    {
+        AppStatus_t initStatus;
+
+        initStatus = App_FsmNfcInitModule();
+        written = snprintf(p_response, response_length,
+                           (initStatus == APP_STATUS_OK) ? "nfc init ok ready=%u" : "nfc init failed status=%lu",
+                           (initStatus == APP_STATUS_OK) ? (unsigned int)g_nfcReady : (unsigned long)initStatus);
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return initStatus;
+    }
+
+    if (strcmp(subcommand, "wake") == 0)
+    {
+        AppStatus_t queueStatus;
+
+        queueStatus = App_FsmQueueStateBack(APP_FSM_STATE_NFC_WAIT_EVENT, APP_TRUE, 0u);
+        written = snprintf(p_response, response_length,
+                           (queueStatus == APP_STATUS_OK) ? "nfc wait-event queued" : "nfc wait-event queue failed status=%lu",
+                           (queueStatus == APP_STATUS_OK) ? 0ul : (unsigned long)queueStatus);
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return queueStatus;
+    }
+
+    if (strcmp(subcommand, "exchange") == 0)
+    {
+        AppStatus_t queueStatus;
+
+        queueStatus = App_FsmQueueStateBack(APP_FSM_STATE_NFC_EXCHANGE, APP_TRUE, 0u);
+        written = snprintf(p_response, response_length,
+                           (queueStatus == APP_STATUS_OK) ? "nfc exchange queued" : "nfc exchange queue failed status=%lu",
+                           (queueStatus == APP_STATUS_OK) ? 0ul : (unsigned long)queueStatus);
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return queueStatus;
+    }
+
+    if (strcmp(subcommand, "status") == 0)
+    {
+        written = snprintf(p_response, response_length,
+                           "nfc ready=%u irq=%u wake=%s driver=%s auth=%s session=%u ed=%u",
+                           (unsigned int)g_nfcReady,
+                           (unsigned int)g_nfcIrqPending,
+                           App_FsmNfcGetWakeEventName(g_nfcWakeEvent),
+                           App_FsmNfcGetDriverStateName(g_nfcTagHandle.state),
+                           App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
+                           (unsigned int)NFC_AUTH_IsSessionValid(&g_nfcAuthHandle),
+                           (unsigned int)NFC_NTP53321_IsEDTriggered(&g_nfcTagHandle));
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return APP_STATUS_OK;
+    }
+
+    if (g_nfcReady != APP_TRUE)
+    {
+        written = snprintf(p_response, response_length, "nfc not ready; run 'nfc init'");
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    if (strcmp(subcommand, "uid") == 0)
+    {
+        uint8_t uid[7] = {0};
+        NFC_Result_t uidStatus;
+
+        uidStatus = NFC_NTP53321_GetUID(&g_nfcTagHandle, uid);
+        if (uidStatus != NFC_RESULT_OK)
+        {
+            written = snprintf(p_response, response_length, "nfc uid read failed status=%u", (unsigned int)uidStatus);
+            APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+            return APP_STATUS_FATAL;
+        }
+
+        written = snprintf(p_response, response_length,
+                           "nfc uid=%02X%02X%02X%02X%02X%02X%02X",
+                           uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return APP_STATUS_OK;
+    }
+
+    if (strcmp(subcommand, "driver") == 0)
+    {
+        NFC_NTP53321_Stats_t stats;
+
+        memset(&stats, 0, sizeof(stats));
+        NFC_NTP53321_GetStats(&g_nfcTagHandle, &stats);
+        written = snprintf(p_response, response_length,
+                           "nfc drv=%s mode=%u wake=%lu i2c_err=%lu last=%lu",
+                           App_FsmNfcGetDriverStateName(g_nfcTagHandle.state),
+                           (unsigned int)g_nfcTagHandle.ed_mode,
+                           (unsigned long)stats.wakeup_count,
+                           (unsigned long)stats.i2c_error_count,
+                           (unsigned long)stats.last_wakeup_tick);
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return APP_STATUS_OK;
+    }
+
+    if (strcmp(subcommand, "auth") == 0)
+    {
+        NFC_AUTH_Stats_t stats;
+
+        memset(&stats, 0, sizeof(stats));
+        NFC_AUTH_GetStats(&g_nfcAuthHandle, &stats);
+        written = snprintf(p_response, response_length,
+                           "nfc auth=%s session=%u fail_now=%u att=%lu ok=%lu fail=%lu lock=%lu",
+                           App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
+                           (unsigned int)NFC_AUTH_IsSessionValid(&g_nfcAuthHandle),
+                           (unsigned int)g_nfcAuthHandle.fail_count,
+                           (unsigned long)stats.total_attempts,
+                           (unsigned long)stats.success_count,
+                           (unsigned long)stats.fail_count,
+                           (unsigned long)stats.lock_count);
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return APP_STATUS_OK;
+    }
+
+    if (strcmp(subcommand, "cmd") == 0)
+    {
+        written = snprintf(p_response, response_length,
+                           "nfc cmd ok=%lu fail=%lu noauth=%lu interval=%us thr=%d.%dC",
+                           (unsigned long)g_nfcCmdHandle.cmd_success_count,
+                           (unsigned long)g_nfcCmdHandle.cmd_fail_count,
+                           (unsigned long)g_nfcCmdHandle.cmd_no_auth_count,
+                           (unsigned int)g_nfcCmdHandle.config.report_interval_sec,
+                           (int)(g_nfcCmdHandle.config.temp_threshold_x10 / 10),
+                           (int)(g_nfcCmdHandle.config.temp_threshold_x10 % 10));
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return APP_STATUS_OK;
+    }
+
+    if (strcmp(subcommand, "lp") == 0)
+    {
+        NFC_LP_Stats_t stats;
+
+        memset(&stats, 0, sizeof(stats));
+        NFC_LP_GetStats(&g_nfcLpHandle, &stats);
+        written = snprintf(p_response, response_length,
+                           "nfc lp wake=%lu active=%lu sleep=%lu avg=%lu.%02luuA",
+                           (unsigned long)stats.total_wakeups,
+                           (unsigned long)stats.total_active_ms,
+                           (unsigned long)stats.total_sleep_ms,
+                           (unsigned long)(stats.avg_current_x100 / 100u),
+                           (unsigned long)(stats.avg_current_x100 % 100u));
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return APP_STATUS_OK;
+    }
+
+    if (strcmp(subcommand, "logout") == 0)
+    {
+        NFC_AUTH_Result_t authStatus;
+
+        authStatus = NFC_AUTH_InvalidateSession(&g_nfcAuthHandle);
+        written = snprintf(p_response, response_length,
+                           (authStatus == NFC_AUTH_RESULT_OK) ? "nfc session cleared" : "nfc logout failed status=%u",
+                           (unsigned int)authStatus);
+        APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+        return (authStatus == NFC_AUTH_RESULT_OK) ? APP_STATUS_OK : APP_STATUS_FATAL;
+    }
+
+    written = snprintf(p_response, response_length,
+                       "unknown nfc command; use: status|init|uid|driver|auth|cmd|lp|wake|exchange|logout");
+    APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
+    return APP_STATUS_INVALID_PARAM;
 }

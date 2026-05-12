@@ -1,0 +1,118 @@
+/**
+ * @file    nfc_secure_auth.h
+ * @brief   NFC Secure Authentication Header  [v2.2.0]
+ */
+
+#ifndef NFC_SECURE_AUTH_H
+#define NFC_SECURE_AUTH_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "nfc_ntag5_ntp53321.h"
+#include <stdint.h>
+#include <stdbool.h>
+
+#define NFC_AUTH_KEY_SIZE               16U
+#define NFC_AUTH_CHALLENGE_SIZE         16U
+#define NFC_AUTH_RESPONSE_SIZE          16U
+#define NFC_AUTH_SESSION_TIMEOUT_MS     300000U   /* 5 min */
+#define NFC_AUTH_MAX_FAIL_COUNT         5U
+#define NFC_AUTH_TOKEN_SIZE             16U
+
+/* CMD values */
+#define NFC_AUTH_CMD_CONNECT            0x01U
+#define NFC_AUTH_CMD_CHALLENGE_READY    0x02U
+#define NFC_AUTH_CMD_RESPONSE           0x03U
+#define NFC_AUTH_CMD_CONFIRM            0x04U
+
+/* STATUS values */
+#define NFC_AUTH_STATUS_IDLE            0x00U
+#define NFC_AUTH_STATUS_CONNECTED       0x01U
+#define NFC_AUTH_STATUS_CHALLENGE_SENT  0x02U
+#define NFC_AUTH_STATUS_SUCCESS         0x03U
+#define NFC_AUTH_STATUS_FAIL            0x05U
+#define NFC_AUTH_STATUS_LOCKED          0x06U
+
+typedef enum {
+    NFC_AUTH_STATE_IDLE          = 0x00,
+    NFC_AUTH_STATE_CONNECTING    = 0x01,
+    NFC_AUTH_STATE_CHALLENGING   = 0x02,
+    NFC_AUTH_STATE_VERIFYING     = 0x03,
+    NFC_AUTH_STATE_AUTHENTICATED = 0x04,
+    NFC_AUTH_STATE_FAILED        = 0x05,
+    NFC_AUTH_STATE_LOCKED        = 0x06,
+} NFC_AUTH_State_t;
+
+typedef enum {
+    NFC_AUTH_RESULT_OK            = 0x00,
+    NFC_AUTH_RESULT_FAIL          = 0x01,
+    NFC_AUTH_RESULT_LOCKED        = 0x02,
+    NFC_AUTH_RESULT_TIMEOUT       = 0x03,
+    NFC_AUTH_RESULT_INVALID_STATE = 0x04,
+    NFC_AUTH_RESULT_I2C_ERROR     = 0x05,
+    NFC_AUTH_RESULT_INVALID_PARAM = 0x06,
+} NFC_AUTH_Result_t;
+
+typedef struct {
+    uint8_t  challenge[NFC_AUTH_CHALLENGE_SIZE];
+    uint8_t  token[NFC_AUTH_TOKEN_SIZE];
+    uint32_t start_tick;
+    uint32_t timeout_ms;
+    bool     active;
+} NFC_AUTH_Session_t;
+
+typedef struct {
+    uint32_t total_attempts;
+    uint32_t success_count;
+    uint32_t fail_count;
+    uint32_t lock_count;
+    uint32_t last_success_tick;
+    uint32_t last_fail_tick;
+} NFC_AUTH_Stats_t;
+
+typedef struct {
+    NFC_NTP53321_Handle_t *hntag;
+    NFC_AUTH_State_t       state;
+    NFC_AUTH_Session_t     session;
+    NFC_AUTH_Stats_t       stats;
+    uint8_t                master_key[NFC_AUTH_KEY_SIZE];
+    uint8_t                admin_key[NFC_AUTH_KEY_SIZE];
+    uint8_t                fail_count;
+    bool                   initialized;
+
+    void (*OnAuthSuccess_Callback)(uint8_t *token);
+    void (*OnAuthFail_Callback)(uint8_t fail_count);
+    void (*OnAuthLocked_Callback)(void);
+} NFC_AUTH_Handle_t;
+
+NFC_AUTH_Result_t NFC_AUTH_Init(NFC_AUTH_Handle_t *hauth,
+                                 NFC_NTP53321_Handle_t *hntag,
+                                 const uint8_t *master_key,
+                                 const uint8_t *admin_key);
+
+NFC_AUTH_Result_t NFC_AUTH_ProcessNFCEvent(NFC_AUTH_Handle_t *hauth,
+                                            NFC_WakeupEvent_t event);
+
+bool              NFC_AUTH_IsSessionValid(NFC_AUTH_Handle_t *hauth);
+NFC_AUTH_Result_t NFC_AUTH_InvalidateSession(NFC_AUTH_Handle_t *hauth);
+NFC_AUTH_Result_t NFC_AUTH_UnlockDevice(NFC_AUTH_Handle_t *hauth,
+                                         const uint8_t *admin_key);
+NFC_AUTH_Result_t NFC_AUTH_UpdateMasterKey(NFC_AUTH_Handle_t *hauth,
+                                            const uint8_t *new_key,
+                                            const uint8_t *admin_key);
+void              NFC_AUTH_RegisterCallbacks(NFC_AUTH_Handle_t *hauth,
+                                              void (*OnSuccess)(uint8_t *),
+                                              void (*OnFail)(uint8_t),
+                                              void (*OnLocked)(void));
+void              NFC_AUTH_GetStats(NFC_AUTH_Handle_t *hauth,
+                                     NFC_AUTH_Stats_t *stats);
+void              NFC_AUTH_PrintStats(NFC_AUTH_Handle_t *hauth);
+void              NFC_AUTH_Reset(NFC_AUTH_Handle_t *hauth);
+
+#ifdef __cplusplus
+}
+#endif
+#endif /* NFC_SECURE_AUTH_H */
+

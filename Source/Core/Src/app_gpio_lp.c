@@ -246,7 +246,7 @@ static void App_GpioLpRestoreNfcI2cPins(void)
     gpioInit.Pin = NFC_SCL_Pin | NFC_SDA_Pin;
     gpioInit.Mode = GPIO_MODE_AF_OD;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
     gpioInit.Alternate = GPIO_AF6_I2C2;
 
     HAL_GPIO_Init(GPIOB, &gpioInit);
@@ -266,14 +266,14 @@ static void App_GpioLpRestoreTempI2cPins(void)
     gpioInit.Pin = Temp_SCL_Pin;
     gpioInit.Mode = GPIO_MODE_AF_OD;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
     gpioInit.Alternate = GPIO_AF7_I2C3;
     HAL_GPIO_Init(Temp_SCL_GPIO_Port, &gpioInit);
 
     gpioInit.Pin = Temp_SDA_Pin;
     gpioInit.Mode = GPIO_MODE_AF_OD;
     gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
     gpioInit.Alternate = GPIO_AF7_I2C3;
     HAL_GPIO_Init(Temp_SDA_GPIO_Port, &gpioInit);
 }

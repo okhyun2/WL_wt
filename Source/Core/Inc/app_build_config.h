@@ -58,6 +58,12 @@ extern "C" {
 #define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE)
 #endif
 
+#if (APP_BUILD_IS_PRODUCTION == APP_TRUE)
+#define APP_BUILD_CLI_ENABLED                       (APP_FALSE)
+#else
+#define APP_BUILD_CLI_ENABLED                       (APP_BUILD_DEBUG_ENABLED)
+#endif
+
 #define APP_SELFTEST_FAIL_STOPS_BOOT                (APP_FALSE)
 #define APP_SELFTEST_BUZZER_BOOT_BEEP_COUNT         (2u)
 #define APP_SELFTEST_BUZZER_ERROR_BEEP_COUNT        (3u)
@@ -76,11 +82,21 @@ extern "C" {
 #define APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN (21u)
 #define APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN (15u)
 #define APP_SELFTEST_UART_RX_BUFFER_SIZE            (32u)
-#define APP_SELFTEST_NBIOT_BOOT_DELAY_MS            (500u)
-#define APP_SELFTEST_NBIOT_RESET_RELEASE_DELAY_MS   (100u)
+#define APP_SELFTEST_NBIOT_PWR_STABLE_DELAY_MS      (200u)
+#define APP_SELFTEST_NBIOT_RESET_SIGNAL_DELAY_MS    (50u)
+#define APP_SELFTEST_NBIOT_BOOT_DELAY_MS            (2500u) //reset release + nbiot booting.
 #define APP_SELFTEST_EXTERNAL_WD_PULSE_MS           (50u)
 
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x54u)
+
+/* NFC production hardening */
+#define APP_NFC_KEY_ALLOW_DEFAULTS                    (APP_TRUE)
+#define APP_NFC_MASTER_KEY_BYTES                      { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C }
+#define APP_NFC_ADMIN_KEY_BYTES                       { 0x60, 0x3D, 0xEB, 0x10, 0x15, 0xCA, 0x71, 0xBE, 0x2B, 0x73, 0xAE, 0xF0, 0x85, 0x7D, 0x77, 0x81 }
+#define APP_NFC_TEMP_THRESHOLD_MIN_X10               (-400)
+#define APP_NFC_TEMP_THRESHOLD_MAX_X10               (1250)
+#define APP_NFC_REPORT_INTERVAL_MIN_SEC              (10u)
+#define APP_NFC_REPORT_INTERVAL_MAX_SEC              (86400u)
 #if 0	//Temp support
 #define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x70u)
 #endif
@@ -107,8 +123,8 @@ extern "C" {
 #define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
 #define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
-#define APP_RTC_WAKEUP_PERIOD_MS                    (5*1000u) //0:don't stop
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (20*1000u) //0:don't stop
+#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
 
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT     (50u)
@@ -126,9 +142,6 @@ extern "C" {
 #define APP_STORAGE_FLASH_PARTITION_PAGE_COUNT      (8u)
 #define APP_STORAGE_FLASH_RECORD_STRIDE_BYTES       (FLASH_PAGE_SIZE)
 #define APP_STORAGE_PARAM_FLAGS_VALID               (0x00000001u)
-
-#define APP_METER_SUPPORT_NORMAL
-#undef APP_METER_SUPPORT_SC1xxx
 
 #if !defined(STM32L073xx)
 #error "This project requires STM32L073xx device support."

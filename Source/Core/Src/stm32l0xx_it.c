@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app_system.h"
+extern void App_FsmNfcEdIrqHandler(void);
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -254,6 +255,7 @@ void EXTI4_15_IRQHandler(void)
     /* Pin 4 ~ Pin 15 처리 */
     if (pr & NFC_ED_Pin)
     {
+      App_FsmNfcEdIrqHandler();
       g_wakeup_ctx.pending_flags |= WAKEUP_FLAG_EXTI_PIN4;
     }
     if (pr & REED_IN_Pin)

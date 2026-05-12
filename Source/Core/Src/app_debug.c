@@ -9,10 +9,39 @@
 #include "app_hw.h"
 #include "app_msgq.h"
 #include "app_system.h"
+#include "app_selftest.h"
 
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
 static const char g_appDebugPrompt[] = APP_DEBUG_CONSOLE_PROMPT;
+#endif
 static AppDebugConsoleContext_t g_appDebugConsoleContext;
 
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
+static AppStatus_t App_DebugConsoleWriteLine(const char *p_text);
+static AppStatus_t App_DebugConsolePrintSelfTestSummary(const char *p_prefix)
+{
+    char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
+    const AppSelfTestContext_t *p_context;
+    int32_t formattedLength;
+
+    p_context = App_SelfTestGetContext();
+    APP_RETURN_IF_FALSE((p_context != NULL), APP_STATUS_NOT_INITIALIZED);
+
+    formattedLength = snprintf(txBuffer,
+                               sizeof(txBuffer),
+                               "%s status=%lu pass=%lu fail=%lu last_tick=%lu running=%u",
+                               (p_prefix != NULL) ? p_prefix : "selftest",
+                               (unsigned long)p_context->lastSequenceStatus,
+                               (unsigned long)p_context->passCount,
+                               (unsigned long)p_context->failCount,
+                               (unsigned long)p_context->lastRunTickMs,
+                               (unsigned int)p_context->running);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    return App_DebugConsoleWriteLine(txBuffer);
+}
+#endif
+
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
 static AppStatus_t App_DebugConsoleWriteLine(const char *p_text)
 {
     AppStatus_t status;
@@ -183,6 +212,13 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("components               : show component table") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("q                        : show queue status") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("lp                       : show low-power state and wake source") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("nfc help                 : show NFC CLI commands") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("nfc status|driver|auth   : show NFC state/statistics") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("nfc cmd|lp|uid           : show NFC command/lp/uid info") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("nfc init|wake|exchange   : control NFC FSM/module") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("nfc logout               : invalidate NFC session") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("selftest                 : run self-test sequence") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("selftest status          : show last self-test summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("resetboot                : queue resetboot request") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("sm                       : show current FSM state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("sm front <state>         : push state command to front") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
@@ -304,6 +340,21 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         return App_DebugConsoleWriteLine(txBuffer);
     }
 
+    if (strcmp(p_command, "selftest") == 0)
+    {
+        status = App_SelfTestRunBootSequence();
+        if (status != APP_STATUS_OK)
+        {
+            return App_DebugConsolePrintSelfTestSummary("selftest done");
+        }
+        return App_DebugConsolePrintSelfTestSummary("selftest done");
+    }
+
+    if (strcmp(p_command, "selftest status") == 0)
+    {
+        return App_DebugConsolePrintSelfTestSummary("selftest");
+    }
+
     if (strcmp(p_command, "resetboot") == 0)
     {
         status = App_FsmRequestResetBoot();
@@ -314,6 +365,20 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
             return App_DebugConsoleWriteLine(txBuffer);
         }
         return App_DebugConsoleWriteLine("resetboot queued");
+    }
+
+    if ((strcmp(p_command, "nfc") == 0) || (strncmp(p_command, "nfc ", 4) == 0))
+    {
+        const char *p_subcommand;
+
+        p_subcommand = (p_command[3] == '\0') ? "" : &p_command[4];
+        status = App_FsmNfcCliExecute(p_subcommand, txBuffer, (uint16_t)sizeof(txBuffer));
+        if ((status != APP_STATUS_OK) && (txBuffer[0] == '\0'))
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "nfc command failed status=%lu", (unsigned long)status);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        }
+        return App_DebugConsoleWriteLine(txBuffer);
     }
 
     if (strcmp(p_command, "sm") == 0)
@@ -471,17 +536,24 @@ static AppStatus_t App_DebugConsoleHandleByte(uint8_t rxByte)
     return APP_STATUS_OK;
 }
 
+#endif
+
 AppStatus_t App_DebugConsoleInit(void)
 {
     (void)memset(&g_appDebugConsoleContext, 0, sizeof(g_appDebugConsoleContext));
     APP_RETURN_IF_FALSE(APP_UART_DEBUG_HANDLE->Instance == USART1, APP_STATUS_HW_HANDLE_INVALID);
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
     g_appDebugConsoleContext.echoEnabled = APP_TRUE;
+#else
+    g_appDebugConsoleContext.echoEnabled = APP_FALSE;
+#endif
     g_appDebugConsoleContext.initialized = APP_TRUE;
     return APP_STATUS_OK;
 }
 
 AppStatus_t App_DebugConsoleProcess(void)
 {
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
     HAL_StatusTypeDef halStatus;
     uint8_t rxByte;
 
@@ -508,6 +580,7 @@ AppStatus_t App_DebugConsoleProcess(void)
             }
         }
     }
+#endif
 
     return APP_STATUS_OK;
 }
@@ -538,7 +611,11 @@ AppStatus_t App_DebugConsoleWriteString(const char *p_text)
 
 AppStatus_t App_DebugConsolePrintPrompt(void)
 {
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
     return App_DebugConsoleWrite((const uint8_t *)g_appDebugPrompt, (uint16_t)(sizeof(g_appDebugPrompt) - 1u));
+#else
+    return APP_STATUS_OK;
+#endif
 }
 
 const AppDebugConsoleContext_t *App_DebugConsoleGetContext(void)

@@ -357,7 +357,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x00000608;
+  hi2c1.Init.Timing = 0x00000708; //PCLK1-2Mhz. 708:100Khz
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -406,7 +406,7 @@ static void MX_I2C2_Init(void)
 
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
-  hi2c2.Init.Timing = 0x00000608;
+  hi2c2.Init.Timing = 0x00000708; //PCLK1-2Mhz. 708:100Khz
   hi2c2.Init.OwnAddress1 = 0;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -455,7 +455,7 @@ static void MX_I2C3_Init(void)
 
   /* USER CODE END I2C3_Init 1 */
   hi2c3.Instance = I2C3;
-  hi2c3.Init.Timing = 0x00000608;
+  hi2c3.Init.Timing = 0x00000708; //PCLK1-2Mhz. 708:100Khz
   hi2c3.Init.OwnAddress1 = 0;
   hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -698,12 +698,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-#ifdef APP_METER_SUPPORT_NORMAL
-  huart2.Init.BaudRate = APP_METER_BAUDRATE_NORMAL;
-#else
- // APP_METER_SUPPORT_SC1xxx
-  huart2.Init.BaudRate = APP_METER_BAUDRATE_SC1xxx;
-#endif // APP_METER_SUPPORT_NORMAL
+  huart2.Init.BaudRate = APP_METER_BAUDRATE;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;

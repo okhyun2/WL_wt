@@ -12,8 +12,11 @@
 #include "app_fsm.h"
 #include "app_msgq.h"
 #include "app_selftest.h"
+#include "nfc_ntag5_ntp53321.h"
 
 wakeup_context_t g_wakeup_ctx = {0};
+extern NFC_NTP53321_Handle_t g_nfcTagHandle;
+
 
 static void handle_lptim1_wakeup(uint32_t flags)
 {
@@ -517,8 +520,10 @@ static AppStatus_t App_SystemPrintBootLogs(void)
 
     p_clockContext = App_ClockGetContext();
 
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
     APP_RETURN_IF_FALSE(App_DebugConsoleWriteString(APP_DEBUG_CONSOLE_BANNER APP_DEBUG_CONSOLE_EOL) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
+#endif
     APP_RETURN_IF_FALSE(App_LogInit() == APP_STATUS_OK, APP_STATUS_LOG_INIT_FAILED);
 
     g_appSystemContext.logReady = APP_TRUE;
@@ -550,7 +555,12 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     APP_RETURN_IF_FALSE(APP_LOGI("NBIoT", "LPUART1 NBIoT ready at %lu baud",
                                  (unsigned long)APP_UART_NBIOT_HANDLE->Init.BaudRate) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(APP_LOGI("NFC", "I2C2 NFC ready at %sKhz",
+                                 (((unsigned long)APP_I2C_NFC_HANDLE->Init.Timing == 0x00000708)?"100":"unknown")) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
     APP_RETURN_IF_FALSE(App_DebugConsolePrintPrompt() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+#endif
     APP_RETURN_IF_FALSE(APP_LOGI("SYS", "Boot path complete: clock/log/debug ready") == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
@@ -702,6 +712,9 @@ static AppStatus_t App_SystemEnterStopMode(void)
     return APP_STATUS_OK;
 #else
 
+    g_nfcTagHandle.sleep_enter_tick = HAL_GetTick();
+    g_nfcTagHandle.state            = NFC_STATE_STOP;
+
     // Stop 진입 전 RTC 시간 저장
     rtc_time_before_stop = RTC_GetTimeMs();
 
@@ -732,6 +745,11 @@ static AppStatus_t App_SystemEnterStopMode(void)
     g_tick_offset += elapsed_ms;
 
     wakeup_process_all_pending();
+
+    //nfc
+    g_nfcTagHandle.stats.total_sleep_ticks += (HAL_GetTick() - g_nfcTagHandle.sleep_enter_tick);
+    g_nfcTagHandle.state = NFC_STATE_ACTIVE;
+
 #ifdef DEBUG
     debug_print_wakeup_info();
 #endif
