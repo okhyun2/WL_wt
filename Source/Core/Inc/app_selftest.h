@@ -86,6 +86,20 @@ AppStatus_t App_SelfTestRunBootSequence(void);
 AppStatus_t App_SelfTestSignalErrorBuzzer(void);
 
 /**
+ * @brief Route UART RX complete interrupt to self-test receive helper.
+ *
+ * @param p_huart UART handle from HAL callback.
+ */
+void App_SelfTestOnUartRxCompleteIsr(UART_HandleTypeDef *p_huart);
+
+/**
+ * @brief Route UART error interrupt to self-test receive helper.
+ *
+ * @param p_huart UART handle from HAL callback.
+ */
+void App_SelfTestOnUartErrorIsr(UART_HandleTypeDef *p_huart);
+
+/**
  * @brief Get immutable self-test runtime context.
  *
  * @return Pointer to internal context.

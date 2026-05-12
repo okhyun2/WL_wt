@@ -16,6 +16,69 @@
 /** @brief Internal runtime context. */
 static AppSelfTestContext_t g_appSelfTestContext;
 
+typedef struct
+{
+    UART_HandleTypeDef *p_huart;
+    uint8_t *p_buffer;
+    uint16_t targetLength;
+    volatile uint16_t receivedLength;
+    volatile uint8_t active;
+    volatile uint8_t completed;
+    volatile uint8_t error;
+} AppSelfTestUartRxItContext_t;
+
+static AppSelfTestUartRxItContext_t g_appSelfTestUartRxItContext;
+
+static AppStatus_t App_SelfTestUartReceiveIt(UART_HandleTypeDef *p_huart,
+                                             uint8_t *p_buffer,
+                                             uint16_t length,
+                                             uint32_t timeoutMs)
+{
+    HAL_StatusTypeDef halStatus;
+    uint32_t startTick;
+
+    APP_RETURN_IF_FALSE((p_huart != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_buffer != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((length > 0u), APP_STATUS_INVALID_PARAM);
+
+    g_appSelfTestUartRxItContext.p_huart = p_huart;
+    g_appSelfTestUartRxItContext.p_buffer = p_buffer;
+    g_appSelfTestUartRxItContext.targetLength = length;
+    g_appSelfTestUartRxItContext.receivedLength = 0u;
+    g_appSelfTestUartRxItContext.active = APP_TRUE;
+    g_appSelfTestUartRxItContext.completed = APP_FALSE;
+    g_appSelfTestUartRxItContext.error = APP_FALSE;
+
+    __HAL_UART_CLEAR_FLAG(p_huart, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
+
+    halStatus = HAL_UART_Receive_IT(p_huart, &p_buffer[0], 1u);
+    APP_RETURN_IF_FALSE((halStatus == HAL_OK), APP_STATUS_UART_RX_FAILED);
+
+    startTick = HAL_GetTick();
+    while (g_appSelfTestUartRxItContext.completed != APP_TRUE)
+    {
+        if (g_appSelfTestUartRxItContext.error == APP_TRUE)
+        {
+            (void)HAL_UART_AbortReceive_IT(p_huart);
+            g_appSelfTestUartRxItContext.active = APP_FALSE;
+            return APP_STATUS_UART_RX_FAILED;
+        }
+
+        if ((HAL_GetTick() - startTick) >= timeoutMs)
+        {
+            (void)HAL_UART_AbortReceive_IT(p_huart);
+            __HAL_UART_CLEAR_FLAG(p_huart, UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+            __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
+            g_appSelfTestUartRxItContext.active = APP_FALSE;
+            return APP_STATUS_SELFTEST_TIMEOUT;
+        }
+    }
+
+    g_appSelfTestUartRxItContext.active = APP_FALSE;
+    return APP_STATUS_OK;
+}
+
 /**
  * @brief Convert self-test item to short text label.
  *
@@ -223,8 +286,10 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
     APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter(Normal) UART real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
     //Read protocols meter(Normal)
-    //for(i = 0; i < 100; i++)
+    //for(i = 0; i < 1000; i++)
     {
+        //memset(meterReply, 0xFF, sizeof(meterReply));
+
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
         HAL_Delay(50); //>= 50ms
         App_GpioLpRestoreMeterUartPins();
@@ -233,11 +298,11 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
                                                   (uint16_t)sizeof(meterWakeFrame),
                                                   APP_SELFTEST_UART_TIMEOUT_MS),
                                 APP_STATUS_SELFTEST_DEVICE_NOT_READY);
-        APP_RETURN_IF_HAL_ERROR(HAL_UART_Receive(APP_UART_METER_HANDLE,
-                                                 meterReply,
-                                                 APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
-                                                 APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS),
-                                APP_STATUS_SELFTEST_TIMEOUT);
+        status = App_SelfTestUartReceiveIt(APP_UART_METER_HANDLE,
+                                           meterReply,
+                                           APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
+                                           APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS);
+        APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
 
         HAL_Delay(100); //>= 100ms
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
@@ -281,11 +346,11 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
         HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
         HAL_Delay(300);
         App_GpioLpRestoreMeterUartPins();
-        APP_RETURN_IF_HAL_ERROR(HAL_UART_Receive(APP_UART_METER_HANDLE,
-                                                 meterReply,
-                                                 APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN,
-                                                 APP_SELFTEST_UART_REPLY_METER_SC1xxx_TIMEOUT_MS),
-                                APP_STATUS_SELFTEST_TIMEOUT);
+        status = App_SelfTestUartReceiveIt(APP_UART_METER_HANDLE,
+                                           meterReply,
+                                           APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN,
+                                           APP_SELFTEST_UART_REPLY_METER_SC1xxx_TIMEOUT_MS);
+        APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
 
         HAL_Delay(100); //>= 100ms
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
@@ -307,10 +372,12 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
  */
 static AppStatus_t App_SelfTestCheckNbiot(void)
 {
+    AppStatus_t status = APP_STATUS_OK;
     APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
 
     static const uint8_t atCommand[] = {'A', 'T', '\r', '\n'};
     uint8_t replyBuffer[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0, };
+    int i = 0; 
 
     APP_RETURN_IF_FALSE(APP_LOGI("SELF", "NB-IoT real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
@@ -323,19 +390,24 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
     App_HwSetNbiotReset(GPIO_PIN_SET);
     HAL_Delay(APP_SELFTEST_NBIOT_BOOT_DELAY_MS);
 
-    APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_NBIOT_HANDLE,
-                                              (uint8_t *)atCommand,
-                                              (uint16_t)sizeof(atCommand),
-                                              APP_SELFTEST_UART_TIMEOUT_MS),
-                            APP_STATUS_SELFTEST_DEVICE_NOT_READY);
+    //for (i = 0; i < 1000; i++)
+    {
+        // memset(replyBuffer, 0xFF, sizeof(replyBuffer));
 
-    APP_RETURN_IF_HAL_ERROR(HAL_UART_Receive(APP_UART_NBIOT_HANDLE,
+        APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_NBIOT_HANDLE,
+                                                  (uint8_t *)atCommand,
+                                                  (uint16_t)sizeof(atCommand),
+                                                  APP_SELFTEST_UART_TIMEOUT_MS),
+                                APP_STATUS_SELFTEST_DEVICE_NOT_READY);
+
+        status = App_SelfTestUartReceiveIt(APP_UART_NBIOT_HANDLE,
                                              replyBuffer,
                                              APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN,
-                                             APP_SELFTEST_UART_REPLY_TIMEOUT_MS),
-                            APP_STATUS_SELFTEST_TIMEOUT);
+                                             APP_SELFTEST_UART_REPLY_TIMEOUT_MS);
+        APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
 
-    App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)replyBuffer, APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN);
+        App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)replyBuffer, APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN);
+    }
 
     APP_RETURN_IF_FALSE(APP_LOGI("SELF", "NB-IoT AT reply received (%u bytes minimum)",
                                  (unsigned int)APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN) == APP_STATUS_OK,
@@ -560,6 +632,56 @@ AppStatus_t App_SelfTestSignalErrorBuzzer(void)
     return App_SelfTestPlayBuzzerPattern(APP_SELFTEST_BUZZER_ERROR_BEEP_COUNT,
                                          APP_SELFTEST_BUZZER_ERROR_ON_MS,
                                          APP_SELFTEST_BUZZER_ERROR_OFF_MS);
+}
+
+void App_SelfTestOnUartRxCompleteIsr(UART_HandleTypeDef *p_huart)
+{
+    HAL_StatusTypeDef halStatus;
+    uint16_t nextIndex;
+
+    if ((p_huart == NULL) || (g_appSelfTestUartRxItContext.active != APP_TRUE))
+    {
+        return;
+    }
+
+    if (p_huart != g_appSelfTestUartRxItContext.p_huart)
+    {
+        return;
+    }
+
+    nextIndex = (uint16_t)(g_appSelfTestUartRxItContext.receivedLength + 1u);
+    g_appSelfTestUartRxItContext.receivedLength = nextIndex;
+    if (nextIndex >= g_appSelfTestUartRxItContext.targetLength)
+    {
+        g_appSelfTestUartRxItContext.completed = APP_TRUE;
+        return;
+    }
+
+    halStatus = HAL_UART_Receive_IT(p_huart,
+                                    &g_appSelfTestUartRxItContext.p_buffer[nextIndex],
+                                    1u);
+    if (halStatus != HAL_OK)
+    {
+        g_appSelfTestUartRxItContext.error = APP_TRUE;
+    }
+}
+
+void App_SelfTestOnUartErrorIsr(UART_HandleTypeDef *p_huart)
+{
+    if ((p_huart == NULL) || (g_appSelfTestUartRxItContext.active != APP_TRUE))
+    {
+        return;
+    }
+
+    if (p_huart != g_appSelfTestUartRxItContext.p_huart)
+    {
+        return;
+    }
+
+    __HAL_UART_CLEAR_FLAG(p_huart,
+                          UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
+    g_appSelfTestUartRxItContext.error = APP_TRUE;
 }
 
 const AppSelfTestContext_t *App_SelfTestGetContext(void)

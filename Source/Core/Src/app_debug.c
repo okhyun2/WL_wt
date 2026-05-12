@@ -13,11 +13,21 @@
 
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
 static const char g_appDebugPrompt[] = APP_DEBUG_CONSOLE_PROMPT;
+#define APP_DEBUG_CONSOLE_RX_FIFO_SIZE    (128u)
+static volatile uint8_t g_appDebugRxItByte;
+static volatile uint8_t g_appDebugRxFifo[APP_DEBUG_CONSOLE_RX_FIFO_SIZE];
+static volatile uint16_t g_appDebugRxFifoHead;
+static volatile uint16_t g_appDebugRxFifoTail;
+static volatile uint32_t g_appDebugRxFifoOverflowCount;
+static volatile uint8_t g_appDebugRxInterruptArmed;
 #endif
 static AppDebugConsoleContext_t g_appDebugConsoleContext;
 
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
 static AppStatus_t App_DebugConsoleWriteLine(const char *p_text);
+static AppStatus_t App_DebugConsoleStartRxInterrupt(void);
+static uint8_t App_DebugConsolePopRxByte(uint8_t *p_rxByte);
+static void App_DebugConsolePushRxByteFromIsr(uint8_t rxByte);
 static AppStatus_t App_DebugConsolePrintSelfTestSummary(const char *p_prefix)
 {
     char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
@@ -42,6 +52,82 @@ static AppStatus_t App_DebugConsolePrintSelfTestSummary(const char *p_prefix)
 #endif
 
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
+static AppStatus_t App_DebugConsoleStartRxInterrupt(void)
+{
+    HAL_StatusTypeDef halStatus;
+
+    if (g_appDebugConsoleContext.initialized != APP_TRUE)
+    {
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    if (g_appDebugRxInterruptArmed == APP_TRUE)
+    {
+        return APP_STATUS_OK;
+    }
+
+    __HAL_UART_CLEAR_FLAG(APP_UART_DEBUG_HANDLE,
+                          UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(APP_UART_DEBUG_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
+    halStatus = HAL_UART_Receive_IT(APP_UART_DEBUG_HANDLE, (uint8_t *)&g_appDebugRxItByte, 1u);
+    if ((halStatus != HAL_OK) && (halStatus != HAL_BUSY))
+    {
+        return APP_STATUS_UART_RX_FAILED;
+    }
+
+    g_appDebugRxInterruptArmed = APP_TRUE;
+    return APP_STATUS_OK;
+}
+
+static uint8_t App_DebugConsolePopRxByte(uint8_t *p_rxByte)
+{
+    uint16_t tail;
+    uint16_t nextTail;
+
+    if (p_rxByte == NULL)
+    {
+        return APP_FALSE;
+    }
+
+    tail = g_appDebugRxFifoTail;
+    if (tail == g_appDebugRxFifoHead)
+    {
+        return APP_FALSE;
+    }
+
+    *p_rxByte = g_appDebugRxFifo[tail];
+    nextTail = (uint16_t)(tail + 1u);
+    if (nextTail >= APP_DEBUG_CONSOLE_RX_FIFO_SIZE)
+    {
+        nextTail = 0u;
+    }
+    g_appDebugRxFifoTail = nextTail;
+    return APP_TRUE;
+}
+
+static void App_DebugConsolePushRxByteFromIsr(uint8_t rxByte)
+{
+    uint16_t head;
+    uint16_t nextHead;
+
+    head = g_appDebugRxFifoHead;
+    nextHead = (uint16_t)(head + 1u);
+    if (nextHead >= APP_DEBUG_CONSOLE_RX_FIFO_SIZE)
+    {
+        nextHead = 0u;
+    }
+
+    if (nextHead == g_appDebugRxFifoTail)
+    {
+        g_appDebugRxFifoOverflowCount++;
+        return;
+    }
+
+    g_appDebugRxFifo[head] = rxByte;
+    g_appDebugRxFifoHead = nextHead;
+}
+
 static AppStatus_t App_DebugConsoleWriteLine(const char *p_text)
 {
     AppStatus_t status;
@@ -544,40 +630,44 @@ AppStatus_t App_DebugConsoleInit(void)
     APP_RETURN_IF_FALSE(APP_UART_DEBUG_HANDLE->Instance == USART1, APP_STATUS_HW_HANDLE_INVALID);
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
     g_appDebugConsoleContext.echoEnabled = APP_TRUE;
+    g_appDebugRxItByte = 0u;
+    g_appDebugRxFifoHead = 0u;
+    g_appDebugRxFifoTail = 0u;
+    g_appDebugRxFifoOverflowCount = 0u;
+    g_appDebugRxInterruptArmed = APP_FALSE;
 #else
     g_appDebugConsoleContext.echoEnabled = APP_FALSE;
 #endif
     g_appDebugConsoleContext.initialized = APP_TRUE;
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
+    return App_DebugConsoleStartRxInterrupt();
+#else
     return APP_STATUS_OK;
+#endif
 }
 
 AppStatus_t App_DebugConsoleProcess(void)
 {
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
-    HAL_StatusTypeDef halStatus;
+    AppStatus_t status;
     uint8_t rxByte;
 
     APP_RETURN_IF_FALSE(g_appDebugConsoleContext.initialized == APP_TRUE, APP_STATUS_NOT_INITIALIZED);
 
-    while (1)
+    status = App_DebugConsoleStartRxInterrupt();
+    if (status != APP_STATUS_OK)
     {
-        halStatus = HAL_UART_Receive(APP_UART_DEBUG_HANDLE, &rxByte, 1u, 0u);
-        if (halStatus == HAL_TIMEOUT)
-        {
-            break;
-        }
-        if (halStatus != HAL_OK)
-        {
-            return APP_STATUS_UART_RX_FAILED;
-        }
-        {
-            AppStatus_t byteStatus;
+        return status;
+    }
 
-            byteStatus = App_DebugConsoleHandleByte(rxByte);
-            if (byteStatus != APP_STATUS_OK)
-            {
-                return byteStatus;
-            }
+    while (App_DebugConsolePopRxByte(&rxByte) == APP_TRUE)
+    {
+        AppStatus_t byteStatus;
+
+        byteStatus = App_DebugConsoleHandleByte(rxByte);
+        if (byteStatus != APP_STATUS_OK)
+        {
+            return byteStatus;
         }
     }
 #endif
@@ -615,6 +705,53 @@ AppStatus_t App_DebugConsolePrintPrompt(void)
     return App_DebugConsoleWrite((const uint8_t *)g_appDebugPrompt, (uint16_t)(sizeof(g_appDebugPrompt) - 1u));
 #else
     return APP_STATUS_OK;
+#endif
+}
+
+
+void App_DebugConsoleOnUartRxCompleteIsr(UART_HandleTypeDef *p_huart)
+{
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
+    HAL_StatusTypeDef halStatus;
+
+    if ((p_huart == NULL) || (p_huart != APP_UART_DEBUG_HANDLE))
+    {
+        return;
+    }
+
+    App_DebugConsolePushRxByteFromIsr(g_appDebugRxItByte);
+    g_appDebugRxInterruptArmed = APP_FALSE;
+    halStatus = HAL_UART_Receive_IT(APP_UART_DEBUG_HANDLE, (uint8_t *)&g_appDebugRxItByte, 1u);
+    if ((halStatus == HAL_OK) || (halStatus == HAL_BUSY))
+    {
+        g_appDebugRxInterruptArmed = APP_TRUE;
+    }
+#else
+    (void)p_huart;
+#endif
+}
+
+void App_DebugConsoleOnUartErrorIsr(UART_HandleTypeDef *p_huart)
+{
+#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
+    HAL_StatusTypeDef halStatus;
+
+    if ((p_huart == NULL) || (p_huart != APP_UART_DEBUG_HANDLE))
+    {
+        return;
+    }
+
+    __HAL_UART_CLEAR_FLAG(APP_UART_DEBUG_HANDLE,
+                          UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(APP_UART_DEBUG_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+    g_appDebugRxInterruptArmed = APP_FALSE;
+    halStatus = HAL_UART_Receive_IT(APP_UART_DEBUG_HANDLE, (uint8_t *)&g_appDebugRxItByte, 1u);
+    if ((halStatus == HAL_OK) || (halStatus == HAL_BUSY))
+    {
+        g_appDebugRxInterruptArmed = APP_TRUE;
+    }
+#else
+    (void)p_huart;
 #endif
 }
 

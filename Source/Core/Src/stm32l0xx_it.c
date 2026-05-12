@@ -23,6 +23,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app_system.h"
+#include "app_hw.h"
+#include "app_debug.h"
+#include "app_selftest.h"
 extern void App_FsmNfcEdIrqHandler(void);
 /* USER CODE END Includes */
 
@@ -55,6 +58,18 @@ extern void App_FsmNfcEdIrqHandler(void);
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  App_DebugConsoleOnUartRxCompleteIsr(huart);
+  App_SelfTestOnUartRxCompleteIsr(huart);
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  App_DebugConsoleOnUartErrorIsr(huart);
+  App_SelfTestOnUartErrorIsr(huart);
+}
 
 /* External variables --------------------------------------------------------*/
 extern LPTIM_HandleTypeDef hlptim1;
@@ -267,3 +282,39 @@ void EXTI4_15_IRQHandler(void)
   }
 }
 
+
+
+void USART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART1_IRQn 0 */
+
+  /* USER CODE END USART1_IRQn 0 */
+  HAL_UART_IRQHandler(APP_UART_DEBUG_HANDLE);
+  /* USER CODE BEGIN USART1_IRQn 1 */
+
+  /* USER CODE END USART1_IRQn 1 */
+}
+
+
+void USART2_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART2_IRQn 0 */
+
+  /* USER CODE END USART2_IRQn 0 */
+  HAL_UART_IRQHandler(APP_UART_METER_HANDLE);
+  /* USER CODE BEGIN USART2_IRQn 1 */
+
+  /* USER CODE END USART2_IRQn 1 */
+}
+
+
+void RNG_LPUART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN RNG_LPUART1_IRQn 0 */
+
+  /* USER CODE END RNG_LPUART1_IRQn 0 */
+  HAL_UART_IRQHandler(APP_UART_NBIOT_HANDLE);
+  /* USER CODE BEGIN RNG_LPUART1_IRQn 1 */
+
+  /* USER CODE END RNG_LPUART1_IRQn 1 */
+}

@@ -66,6 +66,20 @@ AppStatus_t App_DebugConsoleWriteString(const char *p_text);
 AppStatus_t App_DebugConsolePrintPrompt(void);
 
 /**
+ * @brief Route USART1 RX complete interrupt to debug console.
+ *
+ * @param p_huart UART handle from HAL callback.
+ */
+void App_DebugConsoleOnUartRxCompleteIsr(UART_HandleTypeDef *p_huart);
+
+/**
+ * @brief Route USART1 UART error interrupt to debug console.
+ *
+ * @param p_huart UART handle from HAL callback.
+ */
+void App_DebugConsoleOnUartErrorIsr(UART_HandleTypeDef *p_huart);
+
+/**
  * @brief Get immutable debug console context.
  *
  * @return Pointer to internal context.

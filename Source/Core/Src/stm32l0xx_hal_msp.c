@@ -434,6 +434,8 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
     /* USER CODE BEGIN LPUART1_MspInit 1 */
+    HAL_NVIC_SetPriority(RNG_LPUART1_IRQn, 1, 0);
+    HAL_NVIC_EnableIRQ(RNG_LPUART1_IRQn);
 
     /* USER CODE END LPUART1_MspInit 1 */
   }
@@ -458,6 +460,8 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* USER CODE BEGIN USART1_MspInit 1 */
+    HAL_NVIC_SetPriority(USART1_IRQn, 1, 0);
+    HAL_NVIC_EnableIRQ(USART1_IRQn);
 
     /* USER CODE END USART1_MspInit 1 */
   }
@@ -482,6 +486,8 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* USER CODE BEGIN USART2_MspInit 1 */
+    HAL_NVIC_SetPriority(USART2_IRQn, 1, 0);
+    HAL_NVIC_EnableIRQ(USART2_IRQn);
 
     /* USER CODE END USART2_MspInit 1 */
   }
@@ -511,6 +517,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
     HAL_GPIO_DeInit(GPIOC, NBIoT_RX_Pin|NBIoT_TX_Pin);
 
     /* USER CODE BEGIN LPUART1_MspDeInit 1 */
+    HAL_NVIC_DisableIRQ(RNG_LPUART1_IRQn);
 
     /* USER CODE END LPUART1_MspDeInit 1 */
   }
@@ -529,6 +536,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
     HAL_GPIO_DeInit(GPIOA, Debug_TX_Pin|Debug_RX_Pin);
 
     /* USER CODE BEGIN USART1_MspDeInit 1 */
+    HAL_NVIC_DisableIRQ(USART1_IRQn);
 
     /* USER CODE END USART1_MspDeInit 1 */
   }
@@ -547,6 +555,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
     HAL_GPIO_DeInit(GPIOA, Meter_TX_Pin|Meter_RX_Pin);
 
     /* USER CODE BEGIN USART2_MspDeInit 1 */
+    HAL_NVIC_DisableIRQ(USART2_IRQn);
 
     /* USER CODE END USART2_MspDeInit 1 */
   }
