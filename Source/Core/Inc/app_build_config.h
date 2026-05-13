@@ -17,6 +17,28 @@ extern "C" {
 
 #define APP_NAME_STRING                             "WaterLink WaterTerminal"
 
+/* 128KB dual-boot flash layout */
+#define APP_FLASH_TARGET_SIZE_BYTES                 (128u * 1024u)
+#define APP_BOOTLOADER_BASE_ADDR                    (0x08000000u)
+#define APP_BOOTLOADER_SIZE_BYTES                   (8u * 1024u)
+#define APP_SLOT1_BASE_ADDR                         (0x08002000u)
+#define APP_SLOT2_BASE_ADDR                         (0x08010000u)
+#define APP_SLOT_SIZE_BYTES                         (56u * 1024u)
+#define APP_BOOT_INFO_BASE_ADDR                     (0x0801E000u)
+#define APP_DUALBOOT_TRIAL_CONFIRM_MS               (60000u)
+
+#ifndef APP_SLOT_ID
+#define APP_SLOT_ID                                 (1u)
+#endif
+
+#if (APP_SLOT_ID == 1u)
+#define APP_SLOT_NAME                               "slot1"
+#elif (APP_SLOT_ID == 2u)
+#define APP_SLOT_NAME                               "slot2"
+#else
+#error "APP_SLOT_ID must be 1 or 2."
+#endif
+
 #define APP_FW_VERSION_MAJOR                        (0u)
 #define APP_FW_VERSION_MINOR                        (7u)
 #define APP_FW_VERSION_PATCH                        (1u)
@@ -123,8 +145,8 @@ extern "C" {
 #define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
 #define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
-#define APP_RTC_WAKEUP_PERIOD_MS                    (5*1000u) //0:don't stop
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (5*1000u) //0:don't stop
+#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
 
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT     (50u)

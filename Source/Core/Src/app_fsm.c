@@ -1107,12 +1107,12 @@ AppStatus_t App_FsmRun(void)
 
     if(App_FsmIsSignalEventPending())
     {
-        (void)APP_LOGI("FSM", "EventPending. don't stop allow");
+        (void)APP_LOGD("FSM", "EventPending. don't stop allow");
         return App_SystemRequestLowPower(APP_FALSE);
     }
     else
     {
-        (void)APP_LOGI("FSM", "No EventPending. stop allow");
+        (void)APP_LOGD("FSM", "No EventPending. stop allow");
     }
 
 

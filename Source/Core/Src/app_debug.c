@@ -5,6 +5,7 @@
 
 #include "app_build_config.h"
 #include "app_clock.h"
+#include "app_dualboot.h"
 #include "app_fsm.h"
 #include "app_hw.h"
 #include "app_msgq.h"
@@ -305,7 +306,8 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("nfc logout               : invalidate NFC session") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("selftest                 : run self-test sequence") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("selftest status          : show last self-test summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("resetboot                : queue resetboot request") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("resetboot                : enter STM32 ROM bootloader") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("update2                  : mark slot2 update and enter ROM bootloader") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("sm                       : show current FSM state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("sm front <state>         : push state command to front") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("sm back <state>          : push state command to rear") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
@@ -451,6 +453,31 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
             return App_DebugConsoleWriteLine(txBuffer);
         }
         return App_DebugConsoleWriteLine("resetboot queued");
+    }
+
+    if (strcmp(p_command, "update2") == 0)
+    {
+        status = App_DualBootRequestUpdateToSlot2();
+        if (status != APP_STATUS_OK)
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "update2 prep failed status=%lu", (unsigned long)status);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+            return App_DebugConsoleWriteLine(txBuffer);
+        }
+
+        status = App_FsmRequestResetBoot();
+        if (status != APP_STATUS_OK)
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer), "update2 resetboot failed status=%lu", (unsigned long)status);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+            return App_DebugConsoleWriteLine(txBuffer);
+        }
+
+        formattedLength = snprintf(txBuffer, sizeof(txBuffer), "update2 queued target=%s addr=0x%08lX",
+                                   App_DualBootGetTargetSlotName(),
+                                   (unsigned long)App_DualBootGetTargetSlotAddress());
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
     }
 
     if ((strcmp(p_command, "nfc") == 0) || (strncmp(p_command, "nfc ", 4) == 0))

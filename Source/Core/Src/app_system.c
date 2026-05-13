@@ -6,6 +6,7 @@
 #include "app_build_config.h"
 #include "app_clock.h"
 #include "app_debug.h"
+#include "app_dualboot.h"
 #include "app_gpio_lp.h"
 #include "app_hw.h"
 #include "app_log.h"
@@ -793,13 +794,18 @@ static void App_SystemHandleIdle(void)
             }
         }
 
-        (void)APP_LOGI("LP",
-                       "STOP qualify: step=%u/%u decision=%s idle=%lu dispatch=%lu",
-                       (unsigned int)g_appSystemContext.stopQualificationCount,
-                       (unsigned int)APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT,
-                       App_FsmGetDecisionString(),
-                       (unsigned long)g_appSystemContext.idleCounter,
-                       (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
+#ifdef DEBUG
+        if (App_SystemCanDebugLog() == APP_TRUE)
+        {
+            (void)APP_LOGD("LP",
+                           "STOP qualify: step=%u/%u decision=%s idle=%lu dispatch=%lu",
+                           (unsigned int)g_appSystemContext.stopQualificationCount,
+                           (unsigned int)APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT,
+                           App_FsmGetDecisionString(),
+                           (unsigned long)g_appSystemContext.idleCounter,
+                           (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
+        }
+#endif
 
         if (g_appSystemContext.stopQualificationCount >= APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT)
         {
@@ -930,6 +936,12 @@ AppStatus_t App_SystemInit(void)
 
     g_appSystemContext.bootStage = APP_BOOT_STAGE_GPIO_LP_READY;
 
+    status = App_DualBootInit();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
     status = App_DebugConsoleInit();
     if (status != APP_STATUS_OK)
     {
@@ -1023,6 +1035,7 @@ void App_SystemProcess(void)
         App_SystemResetStopQualification();
     }
 
+    App_DualBootService();
     g_appSystemContext.loopCounter++;
 }
 
