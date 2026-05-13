@@ -105,9 +105,9 @@ extern "C" {
 #define APP_FSM_IDLE_DELAY_MS                       (1u)
 #define APP_FSM_BOOT_RESET_HOLD_MS                  (1000u)
 #define APP_FSM_DEBUG_POLL_PERIOD_MS                (1u)
-#define APP_FSM_HOUSEKEEPING_PERIOD_MS              (100u)
+#define APP_FSM_HOUSEKEEPING_PERIOD_MS              (500u)
 #define APP_FSM_METER_PERIOD_MS                     (500u)
-#define APP_FSM_NFC_PERIOD_MS                       (250u)
+#define APP_FSM_NFC_PERIOD_MS                       (500u)
 #if 0	//Temp support
 #define APP_FSM_AUX_PERIOD_MS                       (1000u)
 #endif
@@ -122,8 +122,8 @@ extern "C" {
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
 #define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
 #define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
-#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (20*1000u) //0:don't stop
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
+#define APP_RTC_WAKEUP_PERIOD_MS                    (5*1000u) //0:don't stop
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
 
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)

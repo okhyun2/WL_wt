@@ -619,7 +619,7 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     g_appSelfTestContext.running = APP_FALSE;
     g_appSelfTestContext.lastSequenceStatus = (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Boot self-test summary: pass=%lu fail=%lu",
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "------ Boot self-test summary: pass=%lu fail=%lu",
                                  (unsigned long)g_appSelfTestContext.passCount,
                                  (unsigned long)g_appSelfTestContext.failCount) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);

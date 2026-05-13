@@ -585,12 +585,12 @@ AppStatus_t App_SystemRunBootSelfTest(void)
 
     if (status == APP_STATUS_OK)
     {
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Boot self-test finished without failures") == APP_STATUS_OK,
+        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "------ Boot self-test finished without failures") == APP_STATUS_OK,
                             APP_STATUS_UART_TX_FAILED);
         return APP_STATUS_OK;
     }
 
-    APP_RETURN_IF_FALSE(APP_LOGW("SELF", "Boot self-test completed with one or more failures") == APP_STATUS_OK,
+    APP_RETURN_IF_FALSE(APP_LOGW("SELF", "!!!!!! Boot self-test completed with one or more failures") == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
     if (APP_SELFTEST_FAIL_STOPS_BOOT == APP_TRUE)
