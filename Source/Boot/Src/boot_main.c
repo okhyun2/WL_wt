@@ -10,6 +10,15 @@ static void BootSaveOrResetDefaults(BootInfo_t *p_info)
     }
 }
 
+static void BootRollbackToSlot1(BootInfo_t *p_info)
+{
+    p_info->activeSlot = BOOT_SLOT1;
+    p_info->pendingSlot = 0u;
+    p_info->bootMode = BOOT_MODE_NORMAL;
+    p_info->bootState = BOOT_STATE_ROLLBACK;
+    (void)BootInfoSave(p_info);
+}
+
 int main(void)
 {
     BootInfo_t info;
@@ -19,10 +28,14 @@ int main(void)
 
     BootInfoLoad(&info);
     BootSaveOrResetDefaults(&info);
-    info.bootCounter++;
-    (void)BootInfoSave(&info);
 
     if (info.bootState == BOOT_STATE_UPDATE_REQUESTED)
+    {
+            info.bootState = BOOT_STATE_TRIAL_PENDING;
+            (void)BootInfoSave(&info);
+            BootInfoJumpToSystemMemory();
+    }
+    else if (info.bootState == BOOT_STATE_TRIAL_PENDING)
     {
         if (BootSlotIsValid(BOOT_SLOT2_ADDR) != 0u)
         {
@@ -34,26 +47,15 @@ int main(void)
         }
         else
         {
-            info.activeSlot = BOOT_SLOT1;
-            info.pendingSlot = 0u;
-            info.bootMode = BOOT_MODE_NORMAL;
-            info.bootState = BOOT_STATE_IDLE;
-            (void)BootInfoSave(&info);
+            BootRollbackToSlot1(&info);
         }
-    }
-    else if (info.bootState == BOOT_STATE_TRIAL_PENDING)
-    {
-        info.activeSlot = BOOT_SLOT1;
-        info.pendingSlot = 0u;
-        info.bootMode = BOOT_MODE_NORMAL;
-        info.bootState = BOOT_STATE_ROLLBACK;
-        (void)BootInfoSave(&info);
     }
 
     BootInfoLoad(&info);
     jumpAddress = BootSlotGetAddress(info.activeSlot);
     if (BootSlotIsValid(jumpAddress) == 0u)
     {
+        BootRollbackToSlot1(&info);
         jumpAddress = BOOT_SLOT1_ADDR;
     }
 

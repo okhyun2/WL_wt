@@ -15,8 +15,7 @@ typedef struct
     uint32_t pendingSlot;
     uint32_t bootMode;
     uint32_t bootState;
-    uint32_t bootCounter;
-    uint32_t reserved[8];
+    uint32_t reserved[9];
     uint32_t crc32;
 } AppDualBootInfo_t;
 
@@ -36,8 +35,11 @@ typedef struct
 AppStatus_t App_DualBootInit(void);
 void App_DualBootService(void);
 AppStatus_t App_DualBootRequestUpdateToSlot2(void);
+AppStatus_t App_DualBootCancelUpdateRequest(void);
 AppStatus_t App_DualBootConfirmSlot2(void);
 const AppDualBootInfo_t *App_DualBootGetInfo(void);
+uint32_t App_DualBootGetCurrentSlotId(void);
+const char *App_DualBootGetCurrentSlotName(void);
 const char *App_DualBootGetTargetSlotName(void);
 uint32_t App_DualBootGetTargetSlotAddress(void);
 const char *App_DualBootGetBootStateString(void);

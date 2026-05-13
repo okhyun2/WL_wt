@@ -33,19 +33,29 @@ void BootSlotJump(uint32_t baseAddress)
     uint32_t resetHandler = *(volatile uint32_t *)(baseAddress + 4u);
     BootJumpFunction_t jumpFunction = (BootJumpFunction_t)resetHandler;
 
-    HAL_RCC_DeInit();
-    HAL_DeInit();
     __disable_irq();
 
     SysTick->CTRL = 0u;
     SysTick->LOAD = 0u;
-    SysTick->VAL = 0u;
+    SysTick->VAL  = 0u;
+
+    NVIC->ICER[0] = 0xFFFFFFFFu;
+    NVIC->ICPR[0] = 0xFFFFFFFFu;
+
+    HAL_RCC_DeInit();
+    HAL_DeInit();
 
     SCB->VTOR = baseAddress;
+    __DSB();
+    __ISB();
+
     __set_MSP(stackPtr);
+    __set_PRIMASK(0);   // 또는 __enable_irq();
+
     jumpFunction();
 
-    while (1)
+    while(1)
     {
+
     }
 }

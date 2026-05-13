@@ -10,7 +10,6 @@
 
 static AppDualBootInfo_t g_appDualBootInfo;
 static uint8_t g_appDualBootInitialized;
-static uint32_t g_appDualBootTrialStartTickMs;
 
 static uint32_t App_DualBootCrc32(const uint8_t *p_data, uint32_t length)
 {
@@ -44,7 +43,6 @@ static void App_DualBootSetDefaults(AppDualBootInfo_t *p_info)
     p_info->pendingSlot = 0u;
     p_info->bootMode = APP_DUALBOOT_MODE_NORMAL;
     p_info->bootState = APP_DUALBOOT_STATE_IDLE;
-    p_info->bootCounter = 0u;
     p_info->crc32 = App_DualBootCalcInfoCrc(p_info);
 }
 
@@ -123,18 +121,6 @@ AppStatus_t App_DualBootInit(void)
 {
     App_DualBootLoadInfo();
     g_appDualBootInitialized = APP_TRUE;
-
-    if ((APP_SLOT_ID == APP_DUALBOOT_SLOT2) &&
-        (g_appDualBootInfo.bootState == APP_DUALBOOT_STATE_TRIAL_PENDING) &&
-        (g_appDualBootInfo.activeSlot == APP_DUALBOOT_SLOT2))
-    {
-        g_appDualBootTrialStartTickMs = HAL_GetTick();
-    }
-    else
-    {
-        g_appDualBootTrialStartTickMs = 0u;
-    }
-
     return APP_STATUS_OK;
 }
 
@@ -143,16 +129,6 @@ void App_DualBootService(void)
     if (g_appDualBootInitialized != APP_TRUE)
     {
         return;
-    }
-
-    if ((APP_SLOT_ID == APP_DUALBOOT_SLOT2) &&
-        (g_appDualBootInfo.bootState == APP_DUALBOOT_STATE_TRIAL_PENDING) &&
-        (g_appDualBootInfo.activeSlot == APP_DUALBOOT_SLOT2))
-    {
-        if ((HAL_GetTick() - g_appDualBootTrialStartTickMs) >= APP_DUALBOOT_TRIAL_CONFIRM_MS)
-        {
-            (void)App_DualBootConfirmSlot2();
-        }
     }
 }
 
@@ -172,6 +148,22 @@ AppStatus_t App_DualBootRequestUpdateToSlot2(void)
     return App_DualBootWriteInfo(&info);
 }
 
+AppStatus_t App_DualBootCancelUpdateRequest(void)
+{
+    AppDualBootInfo_t info;
+
+    if (g_appDualBootInitialized != APP_TRUE)
+    {
+        (void)App_DualBootInit();
+    }
+
+    info = g_appDualBootInfo;
+    info.pendingSlot = 0u;
+    info.bootMode = APP_DUALBOOT_MODE_NORMAL;
+    info.bootState = APP_DUALBOOT_STATE_IDLE;
+    return App_DualBootWriteInfo(&info);
+}
+
 AppStatus_t App_DualBootConfirmSlot2(void)
 {
     AppDualBootInfo_t info;
@@ -179,6 +171,13 @@ AppStatus_t App_DualBootConfirmSlot2(void)
     if (g_appDualBootInitialized != APP_TRUE)
     {
         (void)App_DualBootInit();
+    }
+
+    if ((APP_SLOT_ID != APP_DUALBOOT_SLOT2) ||
+        (g_appDualBootInfo.bootState != APP_DUALBOOT_STATE_TRIAL_PENDING) ||
+        (g_appDualBootInfo.activeSlot != APP_DUALBOOT_SLOT2))
+    {
+        return APP_STATUS_OK;
     }
 
     info = g_appDualBootInfo;
@@ -192,6 +191,16 @@ AppStatus_t App_DualBootConfirmSlot2(void)
 const AppDualBootInfo_t *App_DualBootGetInfo(void)
 {
     return &g_appDualBootInfo;
+}
+
+uint32_t App_DualBootGetCurrentSlotId(void)
+{
+    return APP_SLOT_ID;
+}
+
+const char *App_DualBootGetCurrentSlotName(void)
+{
+    return APP_SLOT_NAME;
 }
 
 const char *App_DualBootGetTargetSlotName(void)

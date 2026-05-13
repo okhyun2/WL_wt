@@ -299,6 +299,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("components               : show component table") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("q                        : show queue status") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("lp                       : show low-power state and wake source") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("slot                     : show current running slot") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("nfc help                 : show NFC CLI commands") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("nfc status|driver|auth   : show NFC state/statistics") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("nfc cmd|lp|uid           : show NFC command/lp/uid info") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
@@ -428,6 +429,23 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         return App_DebugConsoleWriteLine(txBuffer);
     }
 
+    if (strcmp(p_command, "slot") == 0)
+    {
+        const AppDualBootInfo_t *p_dualbootInfo;
+
+        p_dualbootInfo = App_DualBootGetInfo();
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "current=%s(%lu) state=%s active=%lu pending=%lu",
+                                   App_DualBootGetCurrentSlotName(),
+                                   (unsigned long)App_DualBootGetCurrentSlotId(),
+                                   App_DualBootGetBootStateString(),
+                                   (unsigned long)((p_dualbootInfo != NULL) ? p_dualbootInfo->activeSlot : 0u),
+                                   (unsigned long)((p_dualbootInfo != NULL) ? p_dualbootInfo->pendingSlot : 0u));
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
     if (strcmp(p_command, "selftest") == 0)
     {
         status = App_SelfTestRunBootSequence();
@@ -468,6 +486,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         status = App_FsmRequestResetBoot();
         if (status != APP_STATUS_OK)
         {
+            (void)App_DualBootCancelUpdateRequest();
             formattedLength = snprintf(txBuffer, sizeof(txBuffer), "update2 resetboot failed status=%lu", (unsigned long)status);
             APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
             return App_DebugConsoleWriteLine(txBuffer);

@@ -145,7 +145,7 @@ typedef struct
 } AppSystemContext_t;
 
 static AppSystemContext_t g_appSystemContext;
-static const char g_appVersionString[] = "0.7.1";
+static const char g_appVersionString[] = "0.8.2";
 static AppGpioLpConfig_t g_appGpioLpConfig;
 static char g_appSystemWakeString[64];
 

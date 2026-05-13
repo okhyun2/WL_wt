@@ -77,7 +77,8 @@ extern "C" {
 #ifdef DEBUG
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #else
-#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE)
+//#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE)
+#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #endif
 
 #if (APP_BUILD_IS_PRODUCTION == APP_TRUE)

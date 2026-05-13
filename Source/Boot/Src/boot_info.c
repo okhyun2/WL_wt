@@ -4,6 +4,8 @@
 
 #define BOOT_INFO_PTR                          ((const BootInfo_t *)BOOT_INFO_ADDR)
 
+typedef void (*BootJumpFunction_t)(void);
+
 static uint32_t BootInfoCrc32(const uint8_t *p_data, uint32_t length)
 {
     uint32_t crc = 0xFFFFFFFFu;
@@ -36,7 +38,6 @@ void BootInfoSetDefaults(BootInfo_t *p_info)
     p_info->pendingSlot = 0u;
     p_info->bootMode = BOOT_MODE_NORMAL;
     p_info->bootState = BOOT_STATE_IDLE;
-    p_info->bootCounter = 0u;
     p_info->crc32 = BootInfoCalcCrc(p_info);
 }
 
@@ -89,6 +90,7 @@ HAL_StatusTypeDef BootInfoSave(const BootInfo_t *p_info)
     eraseInit.PageAddress = BOOT_INFO_ADDR;
     eraseInit.NbPages = 1u;
     pageError = 0u;
+
     if (HAL_FLASHEx_Erase(&eraseInit, &pageError) != HAL_OK)
     {
         (void)HAL_FLASH_Lock();
@@ -97,9 +99,12 @@ HAL_StatusTypeDef BootInfoSave(const BootInfo_t *p_info)
 
     p_words = (const uint32_t *)&temp;
     wordCount = (uint32_t)(sizeof(BootInfo_t) / sizeof(uint32_t));
+
     for (index = 0u; index < wordCount; index++)
     {
-        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, BOOT_INFO_ADDR + (index * 4u), p_words[index]) != HAL_OK)
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                              BOOT_INFO_ADDR + (index * 4u),
+                              p_words[index]) != HAL_OK)
         {
             (void)HAL_FLASH_Lock();
             return HAL_ERROR;
@@ -107,4 +112,43 @@ HAL_StatusTypeDef BootInfoSave(const BootInfo_t *p_info)
     }
 
     return HAL_FLASH_Lock();
+}
+
+void BootInfoJumpToSystemMemory(void)
+{
+    uint32_t jumpAddress;
+    uint32_t stackPtr;
+    BootJumpFunction_t jumpFunction;
+
+    stackPtr = *(volatile uint32_t *)BOOT_SYSTEM_MEMORY_ADDR;
+    jumpAddress = *(volatile uint32_t *)(BOOT_SYSTEM_MEMORY_ADDR + 4u);
+    jumpFunction = (BootJumpFunction_t)jumpAddress;
+
+    __disable_irq();
+
+    SysTick->CTRL = 0u;
+    SysTick->LOAD = 0u;
+    SysTick->VAL = 0u;
+
+    NVIC->ICER[0] = 0xFFFFFFFFu;
+    NVIC->ICPR[0] = 0xFFFFFFFFu;
+
+    HAL_RCC_DeInit();
+    HAL_DeInit();
+
+    __HAL_RCC_SYSCFG_CLK_ENABLE();
+    __HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
+    SCB->VTOR = BOOT_SYSTEM_MEMORY_ADDR;
+
+    __DSB();
+    __ISB();
+
+    __set_MSP(stackPtr);
+    __set_PRIMASK(0u);
+
+    jumpFunction();
+
+    while (1)
+    {
+    }
 }

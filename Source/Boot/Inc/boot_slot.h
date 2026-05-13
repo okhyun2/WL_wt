@@ -11,7 +11,7 @@ extern "C" {
 #define BOOT_SLOT2_ADDR                        (0x08010000u)
 #define BOOT_SLOT_SIZE_BYTES                   (56u * 1024u)
 #define BOOT_SRAM_START                        (0x20000000u)
-#define BOOT_SRAM_END                          (0x20004FFFu)
+#define BOOT_SRAM_END                          (0x20005000u)
 
 uint8_t BootSlotIsValid(uint32_t baseAddress);
 uint32_t BootSlotGetAddress(uint32_t slotId);

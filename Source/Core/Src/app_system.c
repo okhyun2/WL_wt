@@ -957,6 +957,15 @@ AppStatus_t App_SystemInit(void)
         return status;
     }
 
+    (void)App_DualBootConfirmSlot2();
+    (void)APP_LOGI("BOOT",
+               "running image=%s(%lu) state=%s active=%lu pending=%lu",
+               App_DualBootGetCurrentSlotName(),
+               (unsigned long)App_DualBootGetCurrentSlotId(),
+               App_DualBootGetBootStateString(),
+               (unsigned long)App_DualBootGetInfo()->activeSlot,
+               (unsigned long)App_DualBootGetInfo()->pendingSlot);
+
     status = App_SystemRunBootSelfTest();
     if (status != APP_STATUS_OK)
     {
