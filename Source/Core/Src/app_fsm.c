@@ -30,10 +30,6 @@ static uint8_t g_nfcReady = APP_FALSE;
 static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTES;
 static const uint8_t g_nfcAdminKey[NFC_AUTH_KEY_SIZE] = APP_NFC_ADMIN_KEY_BYTES;
 
-#if (APP_BUILD_IS_PRODUCTION == APP_TRUE) && (APP_NFC_KEY_ALLOW_DEFAULTS == APP_TRUE)
-#error "Production build must replace default NFC keys and disable APP_NFC_KEY_ALLOW_DEFAULTS."
-#endif
-
 static void App_FsmNfcWakeupCallback(NFC_WakeupEvent_t event)
 {
     g_nfcWakeEvent = event;

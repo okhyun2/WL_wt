@@ -11,6 +11,7 @@
 *.ilk
 *.map
 *.exp
+*.list
 
 # Precompiled Headers
 *.gch
@@ -35,6 +36,7 @@
 *.i*86
 *.x86_64
 *.hex
+*.bin
 
 # Debug files
 *.dSYM/
@@ -59,10 +61,13 @@ dkms.conf
 .cproject
 .project
 .mxproject
-*.ld
+#*.ld
 *.ioc
 .settins/
 Debug/
 Release/
+bootloader/
+app_slot1/
+app_slot2/
 .settins/
 

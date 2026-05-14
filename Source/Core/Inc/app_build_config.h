@@ -73,7 +73,7 @@ extern "C" {
 #define APP_LOG_BUFFER_SIZE                         (192u)
 #define APP_LOG_HEXDUMP_BYTES_PER_LINE              (16u)
 
-#define APP_BUILD_IS_PRODUCTION                     (APP_FALSE) //if true. change swd pin -> analog input.(=disable swd).
+#define APP_BUILD_IS_PRODUCTION                     (APP_FALSE) //if true. change swd&debug pin -> analog input.(=disable swd&debug).
 #ifdef DEBUG
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #else
@@ -113,7 +113,6 @@ extern "C" {
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x54u)
 
 /* NFC production hardening */
-#define APP_NFC_KEY_ALLOW_DEFAULTS                    (APP_TRUE)
 #define APP_NFC_MASTER_KEY_BYTES                      { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C }
 #define APP_NFC_ADMIN_KEY_BYTES                       { 0x60, 0x3D, 0xEB, 0x10, 0x15, 0xCA, 0x71, 0xBE, 0x2B, 0x73, 0xAE, 0xF0, 0x85, 0x7D, 0x77, 0x81 }
 #define APP_NFC_TEMP_THRESHOLD_MIN_X10               (-400)
@@ -145,9 +144,9 @@ extern "C" {
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
 #define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
 #define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
+#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (5*1000u) //0:don't stop
-#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
 
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT     (50u)

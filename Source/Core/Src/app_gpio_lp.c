@@ -65,12 +65,27 @@ void App_GpioLpConfigAnalogNoPull(GPIO_TypeDef *gpioPort, uint32_t pinMask)
 {
     GPIO_InitTypeDef gpioInit;
 
+    #if 1 //analog no pull
     (void)memset(&gpioInit, 0, sizeof(gpioInit));
     gpioInit.Pin = pinMask;
     gpioInit.Mode = GPIO_MODE_ANALOG;
     gpioInit.Pull = GPIO_NOPULL;
 
     HAL_GPIO_Init(gpioPort, &gpioInit);
+
+    #else // gpio low
+
+    HAL_GPIO_WritePin(gpioPort, pinMask, GPIO_PIN_RESET);
+
+    (void)memset(&gpioInit, 0, sizeof(gpioInit));
+    gpioInit.Pin = pinMask;
+    gpioInit.Mode = GPIO_MODE_OUTPUT_PP;
+    gpioInit.Pull = GPIO_NOPULL;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
+
+    HAL_GPIO_Init(gpioPort, &gpioInit);
+    #endif
+
 }
 
 /**
@@ -364,6 +379,7 @@ static void App_GpioLpApplySwdPolicy(void)
     if (g_appGpioLpContext.config.swdPolicy == APP_GPIO_LP_SWD_DISABLE_IN_PRODUCTION)
     {
         App_GpioLpConfigAnalogNoPull(GPIOA, GPIO_PIN_13 | GPIO_PIN_14); //pin13:swdio, pin14:swdclk
+        App_GpioLpConfigAnalogNoPull(GPIOA, Debug_TX_Pin | Debug_RX_Pin); //debug uart tx,rx
     }
 }
 
