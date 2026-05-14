@@ -19,6 +19,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "app_build_config.h"
+#ifdef SUPPORT_DUALBOOT
+#include "boot_info.h"
+#endif // SUPPORT_DUALBOOT
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -38,6 +41,25 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#ifdef SUPPORT_DUALBOOT
+/* -------------------------------------------------------
+ * Firmware image header
+ * Placed at BOOT_APP_BASE_ADDR + BOOT_IMAGE_HEADER_OFFSET
+ * firmwareSize and firmwareCRC are filled by post_build_crc.py
+ * ------------------------------------------------------- */
+__attribute__((section(".image_header"), used))
+const BootImageHeader_t gImageHeader =
+{
+    .magicNumber  = BOOT_MAGIC_NUMBER,   /* 0xDEADC0DE */
+    .firmwareSize = 0u,                  /* Filled by post_build_crc.py */
+    .firmwareCRC  = 0u,                  /* Filled by post_build_crc.py */
+    .versionMajor = 1u,
+    .versionMinor = 0u,
+    .versionPatch = 0u,
+    .reserved     = {0u, 0u},
+};
+#endif // SUPPORT_DUALBOOT
 
 /* USER CODE END PD */
 

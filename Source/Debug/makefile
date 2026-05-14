@@ -34,40 +34,40 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := STM32L073RZT6
+BUILD_ARTIFACT_NAME := STM32L073RZT6_debug
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-STM32L073RZT6.elf \
+STM32L073RZT6_debug.elf \
 
 MAP_FILES += \
-STM32L073RZT6.map \
+STM32L073RZT6_debug.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-STM32L073RZT6.list \
+STM32L073RZT6_debug.list \
 
 OBJCOPY_HEX += \
-STM32L073RZT6.hex \
+STM32L073RZT6_debug.hex \
 
 OBJCOPY_BIN += \
-STM32L073RZT6.bin \
+STM32L073RZT6_debug.bin \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: STM32L073RZT6.elf secondary-outputs
+main-build: STM32L073RZT6_debug.elf secondary-outputs
 
 # Tool invocations
-STM32L073RZT6.elf STM32L073RZT6.map: $(OBJS) $(USER_OBJS) C:\BMTech\Project\Biz_WaterLink\3_DevelopStep\Source\WL_wt\Source\STM32L073RZTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "STM32L073RZT6.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0plus -T"C:\BMTech\Project\Biz_WaterLink\3_DevelopStep\Source\WL_wt\Source\STM32L073RZTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32L073RZT6.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+STM32L073RZT6_debug.elf STM32L073RZT6_debug.map: $(OBJS) $(USER_OBJS) C:\BMTech\Project\Biz_WaterLink\3_DevelopStep\Source\WL_wt\Source\STM32L073RZTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "STM32L073RZT6_debug.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0plus -T"C:\BMTech\Project\Biz_WaterLink\3_DevelopStep\Source\WL_wt\Source\STM32L073RZTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32L073RZT6_debug.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -76,24 +76,24 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-STM32L073RZT6.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "STM32L073RZT6.list"
+STM32L073RZT6_debug.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "STM32L073RZT6_debug.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
-STM32L073RZT6.hex: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objcopy  -O ihex $(EXECUTABLES) "STM32L073RZT6.hex"
+STM32L073RZT6_debug.hex: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O ihex $(EXECUTABLES) "STM32L073RZT6_debug.hex"
 	@echo 'Finished building: $@'
 	@echo ' '
 
-STM32L073RZT6.bin: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objcopy  -O binary $(EXECUTABLES) "STM32L073RZT6.bin"
+STM32L073RZT6_debug.bin: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O binary $(EXECUTABLES) "STM32L073RZT6_debug.bin"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) STM32L073RZT6.bin STM32L073RZT6.elf STM32L073RZT6.hex STM32L073RZT6.list STM32L073RZT6.map default.size.stdout
+	-$(RM) STM32L073RZT6_debug.bin STM32L073RZT6_debug.elf STM32L073RZT6_debug.hex STM32L073RZT6_debug.list STM32L073RZT6_debug.map default.size.stdout
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST) $(OBJCOPY_HEX) $(OBJCOPY_BIN)

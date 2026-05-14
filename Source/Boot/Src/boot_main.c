@@ -53,6 +53,7 @@ int main(void)
 
     BootInfoLoad(&info);
     jumpAddress = BootSlotGetAddress(info.activeSlot);
+    if (BootSlotIsValid(jumpAddress) == 0u) while(1);
     if (BootSlotIsValid(jumpAddress) == 0u)
     {
         BootRollbackToSlot1(&info);

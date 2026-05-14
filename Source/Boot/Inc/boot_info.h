@@ -27,6 +27,31 @@ extern "C" {
 
 #define BOOT_SYSTEM_MEMORY_ADDR                (0x1FF00000u)
 
+/* -------------------------------------------------------
+ * Image header
+ * Located after vector table
+ * Offset is determined by actual vector table size
+ * Check .map file: size of .isr_vector section
+ * ------------------------------------------------------- */
+#define BOOT_IMAGE_HEADER_OFFSET     (0x000000C0u)  /* Adjust after checking .map */
+
+#define BOOT_MAGIC_NUMBER            (0xDEADC0DEu)
+
+/* -------------------------------------------------------
+ * Image header structure
+ * Placed immediately after vector table in flash
+ * ------------------------------------------------------- */
+typedef struct
+{
+    uint32_t magicNumber;     /* 0xDEADC0DE                        */
+    uint32_t firmwareSize;    /* CRC calculation target size(bytes) */
+    uint32_t firmwareCRC;     /* CRC32 value                        */
+    uint32_t versionMajor;    /* Firmware version Major             */
+    uint32_t versionMinor;    /* Firmware version Minor             */
+    uint32_t versionPatch;    /* Firmware version Patch             */
+    uint32_t reserved[2u];    /* Reserved                           */
+} BootImageHeader_t;          /* Total: 32 bytes (0x20)             */
+
 typedef struct
 {
     uint32_t magic;

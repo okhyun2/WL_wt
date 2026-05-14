@@ -234,7 +234,6 @@ static uint8_t App_FsmIsValidState(uint8_t state)
         case APP_FSM_STATE_LPTIM_READY:
         case APP_FSM_STATE_WATCHDOG_INIT:
         case APP_FSM_STATE_WATCHDOG_FEED:
-        case APP_FSM_STATE_WATCHDOG_RELEASE:
         case APP_FSM_STATE_STORAGE_INIT:
         case APP_FSM_STATE_STORAGE_SERVICE:
         case APP_FSM_STATE_STORAGE_RELEASE:
@@ -574,8 +573,7 @@ static uint8_t App_FsmMapComponentToState(AppFsmComponentId_t id)
             {
                 case APP_FSM_STATE_WATCHDOG_INIT:               return APP_FSM_STATE_WATCHDOG_INIT;
                 case APP_FSM_STATE_WATCHDOG_FEED:               return APP_FSM_STATE_WATCHDOG_FEED;
-                case APP_FSM_STATE_WATCHDOG_RELEASE:
-                default:                                    return APP_FSM_STATE_WATCHDOG_RELEASE;
+                default:                                    return APP_FSM_STATE_WATCHDOG_FEED;
             }
 
         case APP_FSM_COMPONENT_STORAGE:
@@ -973,19 +971,9 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_WATCHDOG_FEED:
             (void)APP_LOGD("FSM", "state:%s", App_FsmGetStateName(currentState));
-            /* pseudo code*/
-            /*
-                do something;
-                feed_on_onff
-                APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FATAL);
-            */
+            App_HwFeedEWD();
             //Clear eventPending
-            App_FsmMarkComponent(APP_FSM_COMPONENT_WATCHDOG, APP_FSM_STATE_WATCHDOG_RELEASE, APP_FALSE, APP_FALSE, APP_STATUS_OK); //release eventPending. can entry stop mode
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
-            break;
-
-        case APP_FSM_STATE_WATCHDOG_RELEASE:
-            App_FsmMarkComponent(APP_FSM_COMPONENT_WATCHDOG, APP_FSM_STATE_WATCHDOG_RELEASE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_FsmMarkComponent(APP_FSM_COMPONENT_WATCHDOG, APP_FSM_STATE_WATCHDOG_FEED, APP_FALSE, APP_FALSE, APP_STATUS_OK); //release eventPending. can entry stop mode
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
@@ -1209,7 +1197,6 @@ const char *App_FsmGetStateName(uint8_t state)
         case APP_FSM_STATE_LPTIM_READY:             return "LPTIM_READY";
         case APP_FSM_STATE_WATCHDOG_INIT:           return "WATCHDOG_INIT";
         case APP_FSM_STATE_WATCHDOG_FEED:           return "WATCHDOG_FEED";
-        case APP_FSM_STATE_WATCHDOG_RELEASE:        return "WATCHDOG_RELEASE";
         case APP_FSM_STATE_STORAGE_INIT:            return "STORAGE_INIT";
         case APP_FSM_STATE_STORAGE_SERVICE:         return "STORAGE_SERVICE";
         case APP_FSM_STATE_STORAGE_RELEASE:         return "STORAGE_RELEASE";
