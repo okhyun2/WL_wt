@@ -18,7 +18,6 @@
 wakeup_context_t g_wakeup_ctx = {0};
 extern NFC_NTP53321_Handle_t g_nfcTagHandle;
 
-
 static void handle_lptim1_wakeup(uint32_t flags)
 {
     if (flags & WAKEUP_FLAG_LPTIM1_ARR) {
@@ -489,10 +488,12 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
 #if 0	//ESI support
         APP_GPIO_LP_CLK_I2C1 |
 #endif
-        APP_GPIO_LP_CLK_I2C2;
+        APP_GPIO_LP_CLK_I2C2 |
 #if 0	//Temp support
-        APP_GPIO_LP_CLK_I2C3;
+        APP_GPIO_LP_CLK_I2C3 |
 #endif
+        APP_GPIO_LP_CLK_LPTIM1 |
+        APP_GPIO_LP_CLK_SYSCFG;
 
     status = App_GpioLpInit(&g_appGpioLpConfig);
     if (status != APP_STATUS_OK)
@@ -884,10 +885,6 @@ void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
             App_SystemQueueStateCommand(APP_FSM_STATE_NFC_WAIT_EVENT);
             break;
 
-        case REED_IN_Pin:
-            App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_REED);
-            App_SystemQueueStateCommand(APP_FSM_STATE_METER_WAIT_TRIGGER);
-            break;
 #if 0	//ESI support
         case ESI_Int_Pin:
             App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_ESI_INT);

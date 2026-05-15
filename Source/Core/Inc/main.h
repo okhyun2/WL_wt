@@ -94,8 +94,6 @@ uint64_t RTC_GetTimeMs(void);
 #define Debug_TX_GPIO_Port GPIOA
 #define Debug_RX_Pin GPIO_PIN_10
 #define Debug_RX_GPIO_Port GPIOA
-#define REED_IN_Pin GPIO_PIN_15
-#define REED_IN_GPIO_Port GPIOA
 #define WD_FEED_Pin GPIO_PIN_5
 #define WD_FEED_GPIO_Port GPIOB
 #if 0	//ESI support

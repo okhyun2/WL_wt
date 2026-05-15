@@ -273,10 +273,6 @@ void EXTI4_15_IRQHandler(void)
       App_FsmNfcEdIrqHandler();
       g_wakeup_ctx.pending_flags |= WAKEUP_FLAG_EXTI_PIN4;
     }
-    if (pr & REED_IN_Pin)
-    {
-      g_wakeup_ctx.pending_flags |= WAKEUP_FLAG_EXTI_PIN15;
-    }
 
     EXTI->PR = pr;
   }

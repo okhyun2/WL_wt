@@ -394,17 +394,18 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
     {
         // memset(replyBuffer, 0xFF, sizeof(replyBuffer));
 
-        APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_NBIOT_HANDLE,
+        status = HAL_UART_Transmit(APP_UART_NBIOT_HANDLE,
                                                   (uint8_t *)atCommand,
                                                   (uint16_t)sizeof(atCommand),
-                                                  APP_SELFTEST_UART_TIMEOUT_MS),
-                                APP_STATUS_SELFTEST_DEVICE_NOT_READY);
+                                                  APP_SELFTEST_UART_TIMEOUT_MS);
+        if(status != APP_STATUS_OK) goto Error_App_SelfTestCheckNbiot;
 
         status = App_SelfTestUartReceiveIt(APP_UART_NBIOT_HANDLE,
                                              replyBuffer,
                                              APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN,
                                              APP_SELFTEST_UART_REPLY_TIMEOUT_MS);
-        APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
+
+        if(status != APP_STATUS_OK) goto Error_App_SelfTestCheckNbiot;
 
         App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)replyBuffer, APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN);
     }
@@ -413,6 +414,7 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
                                  (unsigned int)APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
+Error_App_SelfTestCheckNbiot:
     App_HwSetNbiotEnable(GPIO_PIN_RESET);
     APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_FALSE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
@@ -521,26 +523,15 @@ static AppStatus_t App_SelfTestCheckInputLines(void)
 #if 0	//ESI support
     GPIO_PinState esiIntState;
 #endif
-    GPIO_PinState reedState;
 
     nfcEventState = App_HwReadNfcEvent();
 #if 0	//ESI support
     esiIntState = App_HwReadEsiInterrupt();
 #endif
-    reedState = HAL_GPIO_ReadPin(REED_IN_GPIO_Port, REED_IN_Pin);
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "GPIO inputs NFC_ED=%u REED=%u",
-                                 (unsigned int)nfcEventState,
-                                 (unsigned int)reedState) == APP_STATUS_OK,
+    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "GPIO inputs NFC_ED=%u",
+                                 (unsigned int)nfcEventState) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
-#if 0	//ESI support
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "GPIO inputs RI=%u NFC_ED=%u ESI_INT=%u REED=%u",
-                                 (unsigned int)riState,
-                                 (unsigned int)nfcEventState,
-                                 (unsigned int)esiIntState,
-                                 (unsigned int)reedState) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
-#endif
 
     return APP_STATUS_OK;
 }

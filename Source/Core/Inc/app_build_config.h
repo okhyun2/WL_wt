@@ -75,9 +75,9 @@ extern "C" {
 
 #define APP_BUILD_IS_PRODUCTION                     (APP_FALSE) //if true. change swd&debug pin -> analog input.(=disable swd&debug).
 #ifdef DEBUG
-#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
+#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE) //org
 #else
-//#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE)
+//#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #endif
 
@@ -145,7 +145,7 @@ extern "C" {
 #define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
 #define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
-#define APP_RTC_WAKEUP_PERIOD_MS                    (5*1000u) //0:don't stop
+#define APP_RTC_WAKEUP_PERIOD_MS                    (10*1000u) //0:don't stop
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
 
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)

@@ -36,11 +36,12 @@ typedef enum
 #if 0	//ESI support
     APP_GPIO_LP_CLK_I2C1      = 0x00000020u,
 #endif
-    APP_GPIO_LP_CLK_I2C2      = 0x00000020u,
+    APP_GPIO_LP_CLK_I2C2      = 0x00000040u,
 #if 0	//Temp support
     APP_GPIO_LP_CLK_I2C3      = 0x00000080u,
 #endif
-    APP_GPIO_LP_CLK_SYSCFG    = 0x00000040u
+    APP_GPIO_LP_CLK_LPTIM1    = 0x00000100u,
+    APP_GPIO_LP_CLK_SYSCFG    = 0x00000200u
 } AppGpioLpClockMask_t;
 
 /**
@@ -143,6 +144,10 @@ AppStatus_t App_GpioLpRecoverFromStop(void);
  * @return Pointer to internal context.
  */
 const AppGpioLpContext_t *App_GpioLpGetContext(void);
+
+#ifdef DEBUG
+void GPIO_DumpAll(void);
+#endif //DEBUG
 
 #ifdef __cplusplus
 }

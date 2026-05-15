@@ -5,6 +5,7 @@
 #include "app_build_config.h"
 #include "app_hw.h"
 #include "app_log.h"
+#include <stdio.h>
 
 /**
  * @file    app_gpio_lp.c
@@ -13,7 +14,7 @@
 
 /** @brief Truly unconnected pins on GPIOA based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTA_MASK \
-    (GPIO_PIN_0 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_8 | GPIO_PIN_11 | GPIO_PIN_12)
+    (GPIO_PIN_0 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_8 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_15)
 
 /** @brief Truly unconnected pins on GPIOB based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTB_MASK \
@@ -30,6 +31,9 @@
     (GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5 | \
      GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | \
      GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15)
+
+/** @brief Truly unconnected pins on GPIOH based on current board pin map. */
+#define APP_GPIO_LP_UNUSED_PORTH_MASK (GPIO_PIN_All)
 
 /** @brief Runtime context instance. */
 static AppGpioLpContext_t g_appGpioLpContext;
@@ -57,6 +61,19 @@ static void App_GpioLpEnablePortClocks(void)
 }
 
 /**
+ * @brief Disable all GPIO port clocks used by the board.
+ */
+static void App_GpioLpDisablePortClocks(void)
+{
+    __HAL_RCC_GPIOA_CLK_DISABLE();
+    __HAL_RCC_GPIOB_CLK_DISABLE();
+    __HAL_RCC_GPIOC_CLK_DISABLE();
+    __HAL_RCC_GPIOD_CLK_DISABLE();
+    __HAL_RCC_GPIOH_CLK_DISABLE();
+}
+
+
+/**
  * @brief Configure selected pins as analog/no-pull.
  *
  * @param gpioPort GPIO port.
@@ -66,27 +83,12 @@ void App_GpioLpConfigAnalogNoPull(GPIO_TypeDef *gpioPort, uint32_t pinMask)
 {
     GPIO_InitTypeDef gpioInit;
 
-    #if 1 //analog no pull
     (void)memset(&gpioInit, 0, sizeof(gpioInit));
     gpioInit.Pin = pinMask;
     gpioInit.Mode = GPIO_MODE_ANALOG;
     gpioInit.Pull = GPIO_NOPULL;
 
     HAL_GPIO_Init(gpioPort, &gpioInit);
-
-    #else // gpio low
-
-    HAL_GPIO_WritePin(gpioPort, pinMask, GPIO_PIN_RESET);
-
-    (void)memset(&gpioInit, 0, sizeof(gpioInit));
-    gpioInit.Pin = pinMask;
-    gpioInit.Mode = GPIO_MODE_OUTPUT_PP;
-    gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
-
-    HAL_GPIO_Init(gpioPort, &gpioInit);
-    #endif
-
 }
 
 /**
@@ -393,6 +395,7 @@ static void App_GpioLpApplyUnusedPins(void)
     App_GpioLpConfigAnalogNoPull(GPIOB, APP_GPIO_LP_UNUSED_PORTB_MASK);
     App_GpioLpConfigAnalogNoPull(GPIOC, APP_GPIO_LP_UNUSED_PORTC_MASK);
     App_GpioLpConfigAnalogNoPull(GPIOD, APP_GPIO_LP_UNUSED_PORTD_MASK);
+    App_GpioLpConfigAnalogNoPull(GPIOH, APP_GPIO_LP_UNUSED_PORTH_MASK);
 }
 
 /**
@@ -419,7 +422,7 @@ static void App_GpioLpApplyStaticControlPins(void)
 static void App_GpioLpRestoreWakeInputs(void)
 {
     App_GpioLpConfigExtiFalling(NFC_ED_GPIO_Port, NFC_ED_Pin);
-    App_GpioLpConfigExtiFalling(REED_IN_GPIO_Port, REED_IN_Pin);
+
 #if 0	//ESI support
     App_GpioLpConfigExtiFalling(ESI_Int_GPIO_Port, ESI_Int_Pin);
 #endif	
@@ -475,6 +478,11 @@ static void App_GpioLpDisablePeripheralClocks(uint32_t mask)
         __HAL_RCC_I2C3_CLK_DISABLE();
     }
 #endif
+
+    if ((mask & APP_GPIO_LP_CLK_LPTIM1) != 0u)
+    {
+        __HAL_RCC_LPTIM1_CLK_DISABLE();
+    }
 
     if ((mask & APP_GPIO_LP_CLK_SYSCFG) != 0u)
     {
@@ -569,10 +577,12 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
 #if 0	//ESI support
         APP_GPIO_LP_CLK_I2C1 |
 #endif
-        APP_GPIO_LP_CLK_I2C2;
+        APP_GPIO_LP_CLK_I2C2 |
 #if 0	//Temp support
-        APP_GPIO_LP_CLK_I2C3;
+        APP_GPIO_LP_CLK_I2C3 |
 #endif
+        APP_GPIO_LP_CLK_LPTIM1 |
+        APP_GPIO_LP_CLK_SYSCFG;
 }
 
 AppStatus_t App_GpioLpInit(const AppGpioLpConfig_t *p_config)
@@ -654,17 +664,6 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
     App_GpioLpRestoreWakeInputs();
     App_GpioLpApplySwdPolicy();
 
-    if (g_appGpioLpContext.config.keepDebugUartPinsInStop != 1u)
-    {
-        /* 진행 중인 송신 완료 대기 */
-        while (!(USART1->ISR & USART_ISR_TC))
-            ;
-        /* USART1 수신(RX) 비활성화 - 핵심! */
-        USART1->CR1 &= ~USART_CR1_RE; // 가짜 신호 차단
-
-        App_GpioLpConfigAnalogNoPull(Debug_TX_GPIO_Port, Debug_TX_Pin | Debug_RX_Pin);
-    }
-
     if (g_appGpioLpContext.config.keepMeterUartPinsInStop != 1u)
     {
         /* 진행 중인 송신 완료 대기 */
@@ -710,6 +709,25 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
     {
         App_GpioLpIsolateNbiotInterface();
     }
+
+#if (APP_BUILD_IS_PRODUCTION == APP_FALSE)
+#ifdef DEBUG
+    //for debugging gpio port status
+    GPIO_DumpAll();
+#endif //DEBUG
+#endif
+
+    if (g_appGpioLpContext.config.keepDebugUartPinsInStop != 1u)
+    {
+        /* 진행 중인 송신 완료 대기 */
+        while (!(USART1->ISR & USART_ISR_TC))
+            ;
+        /* USART1 수신(RX) 비활성화 - 핵심! */
+        USART1->CR1 &= ~USART_CR1_RE; // 가짜 신호 차단
+
+        App_GpioLpConfigAnalogNoPull(Debug_TX_GPIO_Port, Debug_TX_Pin | Debug_RX_Pin);
+    }
+
 
     App_GpioLpDisablePeripheralClocks(g_appGpioLpContext.config.stopClockDisableMask);
     g_appGpioLpContext.lastDisabledClockMask = g_appGpioLpContext.config.stopClockDisableMask;
@@ -818,3 +836,143 @@ const AppGpioLpContext_t *App_GpioLpGetContext(void)
 {
     return &g_appGpioLpContext;
 }
+
+#ifdef DEBUG
+
+static const char *modeStr(uint32_t m)
+{
+    switch (m & 0x3U) {
+        case 0: return "INPUT  ";
+        case 1: return "OUTPUT ";
+        case 2: return "ALT-FN ";
+        case 3: return "ANALOG ";
+    }
+    return "?";
+}
+
+static const char *otypeStr(uint32_t t)   { return (t & 1U) ? "OD" : "PP"; }
+
+static const char *speedStr(uint32_t s)
+{
+    switch (s & 0x3U) {
+        case 0: return "Low ";
+        case 1: return "Med ";
+        case 2: return "High";
+        case 3: return "VHi ";
+    }
+    return "?";
+}
+
+static const char *pullStr(uint32_t p)
+{
+    switch (p & 0x3U) {
+        case 0: return "NoPull";
+        case 1: return "PullUp";
+        case 2: return "PullDn";
+        case 3: return "RSVD  ";
+    }
+    return "?";
+}
+
+/* 포트 클럭이 켜져 있는지 확인 (꺼져 있으면 레지스터 읽기 0 또는 fault) */
+static int isPortClockEnabled(GPIO_TypeDef *GPIOx)
+{
+    uint32_t en = RCC->IOPENR;
+    if (GPIOx == GPIOA) return (en & RCC_IOPENR_GPIOAEN) ? 1 : 0;
+    if (GPIOx == GPIOB) return (en & RCC_IOPENR_GPIOBEN) ? 1 : 0;
+    if (GPIOx == GPIOC) return (en & RCC_IOPENR_GPIOCEN) ? 1 : 0;
+    if (GPIOx == GPIOD) return (en & RCC_IOPENR_GPIODEN) ? 1 : 0;
+    if (GPIOx == GPIOH) return (en & RCC_IOPENR_GPIOHEN) ? 1 : 0;
+    return 0;
+}
+
+/* 포트 클럭을 임시로 켜고, 원상복구 위해 이전 상태 반환 */
+static int enablePortClockIfNeeded(GPIO_TypeDef *GPIOx)
+{
+    int wasOn = isPortClockEnabled(GPIOx);
+    if (!wasOn) {
+        if      (GPIOx == GPIOA) __HAL_RCC_GPIOA_CLK_ENABLE();
+        else if (GPIOx == GPIOB) __HAL_RCC_GPIOB_CLK_ENABLE();
+        else if (GPIOx == GPIOC) __HAL_RCC_GPIOC_CLK_ENABLE();
+        else if (GPIOx == GPIOD) __HAL_RCC_GPIOD_CLK_ENABLE();
+        else if (GPIOx == GPIOH) __HAL_RCC_GPIOH_CLK_ENABLE();
+    }
+    return wasOn;
+}
+
+static void restorePortClock(GPIO_TypeDef *GPIOx, int wasOn)
+{
+    if (wasOn) return;
+    if      (GPIOx == GPIOA) __HAL_RCC_GPIOA_CLK_DISABLE();
+    else if (GPIOx == GPIOB) __HAL_RCC_GPIOB_CLK_DISABLE();
+    else if (GPIOx == GPIOC) __HAL_RCC_GPIOC_CLK_DISABLE();
+    else if (GPIOx == GPIOD) __HAL_RCC_GPIOD_CLK_DISABLE();
+    else if (GPIOx == GPIOH) __HAL_RCC_GPIOH_CLK_DISABLE();
+}
+
+void GPIO_DumpPort(GPIO_TypeDef *GPIOx, const char *portName)
+{
+    int wasOn = enablePortClockIfNeeded(GPIOx);
+
+    /* 레지스터 스냅샷 (atomic하게 한 번에 읽음) */
+    uint32_t moder   = GPIOx->MODER;
+    uint32_t otyper  = GPIOx->OTYPER;
+    uint32_t ospeedr = GPIOx->OSPEEDR;
+    uint32_t pupdr   = GPIOx->PUPDR;
+    uint32_t idr     = GPIOx->IDR;
+    uint32_t odr     = GPIOx->ODR;
+    uint32_t afrl    = GPIOx->AFR[0];
+    uint32_t afrh    = GPIOx->AFR[1];
+
+    APP_LOGI("GPIO", "=== %s (CLK:%s) ===", portName, wasOn ? "ON" : "OFF(temp on)");
+    APP_LOGI("GPIO", "Pin | Mode    | OType | Speed | Pull   | AF | IDR ODR");
+    APP_LOGI("GPIO", "----+---------+-------+-------+--------+----+--------");
+
+    for (int i = 0; i < 16; i++) {
+        uint32_t m  = (moder   >> (i * 2)) & 0x3U;
+        uint32_t t  = (otyper  >> i)       & 0x1U;
+        uint32_t s  = (ospeedr >> (i * 2)) & 0x3U;
+        uint32_t p  = (pupdr   >> (i * 2)) & 0x3U;
+        uint32_t in = (idr     >> i)       & 0x1U;
+        uint32_t ou = (odr     >> i)       & 0x1U;
+        uint32_t af = (i < 8) ? ((afrl >> (i * 4)) & 0xFU)
+                              : ((afrh >> ((i - 8) * 4)) & 0xFU);
+
+        APP_LOGI("GPIO", "P%s%-2d | %s | %s    | %s  | %s | %2lu | %lu   %lu",
+               portName + 4,    /* "GPIOA" → "A" 추출용 */
+               i,
+               modeStr(m),
+               (m == 1 || m == 2) ? otypeStr(t) : "--",
+               (m == 1 || m == 2) ? speedStr(s) : "--- ",
+               pullStr(p),
+               (m == 2) ?  (unsigned long)af:0,
+               (unsigned long)in, (unsigned long)ou);
+
+    }
+
+    /* 원본 레지스터 값도 함께 출력 (디버깅용) */
+    APP_LOGI("GPIO", "RAW: MODER=0x%08lX OTYPER=0x%04lX OSPEEDR=0x%08lX PUPDR=0x%08lX",
+           (unsigned long)moder, (unsigned long)otyper,
+           (unsigned long)ospeedr, (unsigned long)pupdr);
+    APP_LOGI("GPIO", "     AFRL =0x%08lX AFRH  =0x%08lX IDR=0x%04lX ODR=0x%04lX",
+           (unsigned long)afrl, (unsigned long)afrh,
+           (unsigned long)idr, (unsigned long)odr);
+
+    restorePortClock(GPIOx, wasOn);
+}
+
+void GPIO_DumpAll(void)
+{
+    APP_LOGI("GPIO", "########## GPIO STATE DUMP ##########");
+    APP_LOGI("GPIO", "RCC->IOPENR = 0x%08lX", (unsigned long)RCC->IOPENR);
+
+    GPIO_DumpPort(GPIOA, "GPIOA");
+    GPIO_DumpPort(GPIOB, "GPIOB");
+    GPIO_DumpPort(GPIOC, "GPIOC");
+    GPIO_DumpPort(GPIOD, "GPIOD");
+    GPIO_DumpPort(GPIOH, "GPIOH");
+
+    APP_LOGI("GPIO", "######################################");
+}
+
+#endif // DEBUG
