@@ -15,8 +15,7 @@
 /* ============================================================
  * Init
  * ============================================================ */
-NFC_Result_t NFC_LP_Init(NFC_LP_Handle_t *hlp,
-                          NFC_NTP53321_Handle_t *hntag)
+NFC_Result_t NFC_LP_Init(NFC_LP_Handle_t *hlp, NFC_NTP53321_Handle_t *hntag)
 {
     if (hlp == NULL || hntag == NULL)
         return NFC_RESULT_ERROR_INVALID_PARAM;
@@ -57,7 +56,7 @@ NFC_Result_t NFC_LP_EnterStop(NFC_LP_Handle_t *hlp)
         hlp->OnPreSleep_Callback();
 
     sleep_start = HAL_GetTick();
-    ret         = NFC_NTP53321_EnterStop(hlp->hntag);
+    ret         = NFC_NTP53321_EnterStandby(hlp->hntag);
 
     hlp->stats.total_sleep_ms += (HAL_GetTick() - sleep_start);
     return ret;
@@ -107,6 +106,7 @@ NFC_Result_t NFC_LP_HandleWakeup(NFC_LP_Handle_t *hlp)
 
     /* Measure processing time (callback only, excludes LED delays) */
     active_start = HAL_GetTick();
+    NFC_NTP53321_ExitStandby(hlp->hntag);
 
     if (hlp->OnWakeup_Callback != NULL)
         hlp->OnWakeup_Callback(event);

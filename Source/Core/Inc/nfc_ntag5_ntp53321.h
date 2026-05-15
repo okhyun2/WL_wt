@@ -317,8 +317,8 @@ NFC_Result_t NFC_NTP53321_ReadNDEFText(NFC_NTP53321_Handle_t *hntag,
 NFC_Result_t NFC_NTP53321_GetUID(NFC_NTP53321_Handle_t *hntag, uint8_t *uid);
 
 /* Low Power */
-NFC_Result_t NFC_NTP53321_EnterStop(NFC_NTP53321_Handle_t *hntag);
-NFC_Result_t NFC_NTP53321_ExitStop(NFC_NTP53321_Handle_t *hntag);
+NFC_Result_t NFC_NTP53321_EnterStandby(NFC_NTP53321_Handle_t *hntag);
+NFC_Result_t NFC_NTP53321_ExitStandby(NFC_NTP53321_Handle_t *hntag);
 
 /* ED */
 bool         NFC_NTP53321_IsEDTriggered(NFC_NTP53321_Handle_t *hntag);

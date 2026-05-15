@@ -5,7 +5,10 @@
 #include "app_build_config.h"
 #include "app_hw.h"
 #include "app_log.h"
+#include "nfc_lowpower.h"
 #include <stdio.h>
+
+extern NFC_LP_Handle_t g_nfcLpHandle;
 
 /**
  * @file    app_gpio_lp.c
@@ -684,6 +687,12 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
 
     if (g_appGpioLpContext.config.keepNfcI2cPinsInStop != 1u)
     {
+        NFC_Result_t ret;
+        if( (ret = NFC_LP_EnterStop(&g_nfcLpHandle)) != NFC_RESULT_OK)
+        {
+            APP_LOGE("NFC", "Can't enter stop mode!(%d)", ret);
+        }
+
         App_GpioLpConfigAnalogNoPull(NFC_SCL_GPIO_Port, NFC_SCL_Pin | NFC_SDA_Pin);
     }
 
@@ -713,7 +722,7 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
 #if (APP_BUILD_IS_PRODUCTION == APP_FALSE)
 #ifdef DEBUG
     //for debugging gpio port status
-    GPIO_DumpAll();
+    //GPIO_DumpAll();
 #endif //DEBUG
 #endif
 

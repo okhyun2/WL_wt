@@ -401,6 +401,88 @@ NFC_Result_t NFC_NTP53321_GetUID(NFC_NTP53321_Handle_t *hntag, uint8_t *uid)
     return NFC_RESULT_OK;
 }
 
+/**
+ * @brief NTP53321 Standby 모드 진입
+ *
+ * 레지스터: CONFIG_0_REG (세션, 0x10A1 Byte0)
+ * bit0 = AUTO_STANDBY_MODE_EN = 1
+ * MASK = 0x01 (bit0만 변경)
+ *
+ * 주의: Standby 진입 후 I2C 통신 불가.
+ *       NFC 필드 감지 또는 HPD 펄스로만 복귀.
+ */
+NFC_Result_t NFC_NTP53321_EnterStandby(NFC_NTP53321_Handle_t *hntag)
+{
+    NFC_Result_t ret;
+
+    if (hntag == NULL) return NFC_RESULT_ERROR_INVALID_PARAM;
+    if (hntag->state == NFC_STATE_UNINITIALIZED)
+        return NFC_RESULT_ERROR_NOT_INIT;
+
+    /* CONFIG_0_REG (0x10A1 Byte0) bit0 = 1 */
+    ret = NFC_NTP53321_WriteSessionReg(hntag,
+                                       NFC_SESSION_CONFIG_REG_ADDR, /* 0x10A1 */
+                                       0U,    /* Byte0 = CONFIG_0_REG */
+                                       0x01U, /* MASK: bit0만 변경 */
+                                       0x01U);/* VALUE: bit0 = 1 */
+    if (ret == NFC_RESULT_OK) {
+        hntag->state = NFC_STATE_STOP;
+        hntag->sleep_enter_tick = HAL_GetTick();
+        APP_LOGI("NFC", "Enter Standby (<6uA). NFC field wakeup OK.");
+    } else {
+        APP_LOGE("NFC", "Enter Standby FAILED (ret=%d)", ret);
+    }
+    return ret;
+}
+
+/**
+ * @brief NTP53321 Standby 복귀 확인
+ *
+ * Standby에서 NFC 필드로 자동 복귀 후, STATUS_REG(0x10A0 Byte0)의
+ * VCC_SUPPLY_OK(bit1) 와 NFC_BOOT_OK(STATUS1 bit6) 확인.
+ * I2C 통신이 다시 가능한지 검증.
+ */
+NFC_Result_t NFC_NTP53321_ExitStandby(NFC_NTP53321_Handle_t *hntag)
+{
+    NFC_Result_t ret;
+    uint8_t      status0 = 0U;
+    uint8_t      status1 = 0U;
+
+    if (hntag == NULL) return NFC_RESULT_ERROR_INVALID_PARAM;
+
+    /* STATUS0 읽기 시도 — 성공하면 Standby에서 복귀된 것 */
+    ret = NFC_NTP53321_ReadSessionReg(hntag,
+                                      NFC_SESSION_STATUS_ADDR, /* 0x10A0 */
+                                      0U,                       /* Byte0 = STATUS0 */
+                                      &status0);
+    if (ret != NFC_RESULT_OK) {
+        APP_LOGE("NFC", "ExitStandby: I2C still unavailable (ret=%d)", ret);
+        return NFC_RESULT_ERROR_BUSY;
+    }
+
+    NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 1U, &status1);
+
+    APP_LOGI("NFC", "ExitStandby: STATUS0=0x%02X STATUS1=0x%02X", status0, status1);
+    APP_LOGI("NFC", "  VCC_OK=%d NFC_FIELD=%d VCC_BOOT=%d NFC_BOOT=%d",
+             (status0 & NFC_STATUS0_VCC_SUPPLY_OK) ? 1 : 0,
+             (status0 & NFC_STATUS0_NFC_FIELD_OK)  ? 1 : 0,
+             (status1 & NFC_STATUS1_VCC_BOOT_OK)   ? 1 : 0,
+             (status1 & NFC_STATUS1_NFC_BOOT_OK)   ? 1 : 0);
+
+    /* CONFIG_0_REG bit0 다시 0으로 클리어 (정상 모드 복귀) */
+    NFC_NTP53321_WriteSessionReg(hntag,
+                                 NFC_SESSION_CONFIG_REG_ADDR,
+                                 0U,    /* Byte0 */
+                                 0x01U, /* MASK */
+                                 0x00U);/* bit0 = 0 */
+
+    hntag->state = NFC_STATE_IDLE;
+    hntag->stats.total_sleep_ticks +=
+        (HAL_GetTick() - hntag->sleep_enter_tick);
+    APP_LOGI("NFC", "ExitStandby OK");
+    return NFC_RESULT_OK;
+}
+
 /* ============================================================
  * ED / Event Handling
  * ============================================================ */
