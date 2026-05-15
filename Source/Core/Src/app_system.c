@@ -713,17 +713,25 @@ static AppStatus_t App_SystemEnterStopMode(void)
     return APP_STATUS_OK;
 #else
 
+    // nfc prepare
     g_nfcTagHandle.sleep_enter_tick = HAL_GetTick();
     g_nfcTagHandle.state            = NFC_STATE_STOP;
 
     // Stop 진입 전 RTC 시간 저장
     rtc_time_before_stop = RTC_GetTimeMs();
 
+    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+
+    HAL_PWREx_EnableUltraLowPower();   /* VREFINT off in Stop */
+    HAL_PWREx_EnableFastWakeUp();      /* VREFINT 안정 대기 skip */
+    __HAL_FLASH_SLEEP_POWERDOWN_ENABLE();
+
     HAL_SuspendTick();
     HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+
     /*
-    * STOP mode
+    * ---- Entry STOP mode
     */
 
     status = App_ClockRecoverAfterStop();
