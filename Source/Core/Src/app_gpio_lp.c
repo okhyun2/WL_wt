@@ -675,7 +675,9 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         /* USART2 수신(RX) 비활성화 - 핵심! */
         USART2->CR1 &= ~USART_CR1_RE; // 가짜 신호 차단
 
-        App_GpioLpConfigAnalogNoPull(Meter_TX_GPIO_Port, Meter_TX_Pin | Meter_RX_Pin);
+        //App_GpioLpConfigAnalogNoPull(Meter_TX_GPIO_Port, Meter_TX_Pin | Meter_RX_Pin);
+        //Set UART pint to output low for buffer IC. If uart pin input, buffer ic unstable increase current.
+        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin | Meter_RX_Pin, GPIO_PIN_RESET);
     }
 
 #if 0	//ESI support
