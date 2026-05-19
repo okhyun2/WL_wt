@@ -254,9 +254,6 @@ static const char *App_NbiotDumpDiameterString(uint8_t code)
     }
 }
 
-
-/* ---------- 메인 덤프 함수 ---------- */
-
 static AppStatus_t App_DebugConsoleDumpNbiotPeriodicReport(const uint8_t *packet, uint32_t length)
 {
     char     txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
@@ -701,9 +698,26 @@ static AppStatus_t App_DebugConsoleRunMeterConvert(uint8_t clearOnSuccess)
     APP_RETURN_IF_FALSE(App_DebugConsoleDumpNbiotPeriodicReport(packet, (uint32_t)result.packetLength) == APP_STATUS_OK,
                         APP_STATUS_UART_TX_FAILED);
 
+
     return App_DebugConsolePrintMeterStorageSummary();
 }
 
+//a33b70869692066911391f450061225187489f58004a005e000a000e003324700005000924ffffffff01130101061a04020b353a01010000000000000042
+static AppStatus_t App_DebugConsoleRunNbiotDumpTest(void)
+{
+    static const uint8_t packet[] = {
+        0xA3, 0x3B, 0x70, 0x86, 0x96, 0x92, 0x06, 0x69,
+        0x11, 0x39, 0x1F, 0x45, 0x00, 0x61, 0x22, 0x51,
+        0x87, 0x48, 0x9F, 0x58, 0x00, 0x4A, 0x00, 0x5E,
+        0x00, 0x0A, 0x00, 0x0E, 0x00, 0x33, 0x24, 0x70,
+        0x00, 0x05, 0x00, 0x09, 0x24, 0xFF, 0xFF, 0xFF,
+        0xFF, 0x01, 0x13, 0x01, 0x01, 0x06, 0x1A, 0x04,
+        0x02, 0x0B, 0x35, 0x3A, 0x01, 0x01, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x42
+    };
+
+    return App_DebugConsoleDumpNbiotPeriodicReport(packet, (uint32_t)sizeof(packet));
+}
 
 #endif
 
@@ -1132,6 +1146,9 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
 
     if (strcmp(p_command, "mconv test") == 0)
     {
+        //debug
+        App_DebugConsoleRunNbiotDumpTest();
+
         return App_DebugConsoleRunMeterConvert(APP_FALSE);
     }
 
