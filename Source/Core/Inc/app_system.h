@@ -77,6 +77,21 @@ typedef struct {
 extern wakeup_context_t g_wakeup_ctx;
 ////////////////////////////////////////////////////////////////////////////
 
+/* 리셋 원인 식별용 매직 넘버 */
+#define WWDG_RESET_MAGIC    0xDEADBEEF
+#define NORMAL_BOOT_MAGIC   0x12345678
+/* EWI 최대 허용 횟수: X × 65.54ms */
+#define EWI_MAX_COUNT   10    // 약 9.8초
+/* 리셋 원인 문자열 변환용 */
+typedef struct {
+    uint32_t reset_flags;
+    uint32_t bkp0;
+    uint32_t bkp1;
+    uint32_t bkp2;
+    uint32_t bkp3;
+    uint32_t bkp4;
+} BootInfo_t;
+
 typedef enum
 {
     APP_BOOT_STAGE_RESET = 0,
@@ -104,11 +119,8 @@ typedef enum
     APP_SYSTEM_WAKE_SRC_NBIOT_RI     = 0x00000001u,
     APP_SYSTEM_WAKE_SRC_NFC_ED       = 0x00000002u,
     APP_SYSTEM_WAKE_SRC_REED         = 0x00000004u,
-#if 0	//ESI support
-    APP_SYSTEM_WAKE_SRC_ESI_INT      = 0x00000008u,
-#endif	
-    APP_SYSTEM_WAKE_SRC_RTC          = 0x00000010u,
-    APP_SYSTEM_WAKE_SRC_LPTIM        = 0x00000020u,
+    APP_SYSTEM_WAKE_SRC_RTC          = 0x00000008u,
+    APP_SYSTEM_WAKE_SRC_LPTIM        = 0x00000010u,
     APP_SYSTEM_WAKE_SRC_DEBUG_DRYRUN = 0x40000000u,
     APP_SYSTEM_WAKE_SRC_UNKNOWN      = 0x80000000u
 } AppSystemWakeSource_t;
@@ -160,6 +172,8 @@ LPTIM_PRESCALER_DIV128
 */
 #define APP_SYSTEM_LPTIM1_PRESCALER               LPTIM_PRESCALER_DIV32                   
 
+extern BootInfo_t g_boot_info;
+
 AppStatus_t App_SystemInit(void);
 void App_SystemProcess(void);
 AppStatus_t App_SystemOnBeforeStopEnter(void);
@@ -178,6 +192,7 @@ const char *App_SystemGetVersionString(void);
 const char *App_SystemGetWakeSourceString(void);
 const char *App_SystemGetLowPowerModeString(void);
 AppStatus_t App_SystemRunBootSelfTest(void);
+void Get_BootInfo(BootInfo_t *pBootInfo);
 
 #ifdef __cplusplus
 }

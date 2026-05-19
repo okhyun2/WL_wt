@@ -235,13 +235,6 @@ static AppStatus_t App_DebugConsoleParseState(const char *p_token, uint8_t *p_st
         *p_state = APP_FSM_STATE_NFC_WAIT_EVENT;
         return APP_STATUS_OK;
     }
-#if 0	//Temp support
-    if (strcmp(p_token, "aux") == 0)
-    {
-        *p_state = APP_FSM_STATE_AUX_TRIGGER_MEASURE;
-        return APP_STATUS_OK;
-    }
-#endif
     if (strcmp(p_token, "nbiot") == 0)
     {
         *p_state = APP_FSM_STATE_NBIOT_DECIDE_WAKE;
@@ -535,18 +528,12 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         pushFront = (p_command[3] == 'f') ? APP_TRUE : APP_FALSE;
         if (sscanf(p_command, pushFront == APP_TRUE ? "sm front %23s" : "sm back %23s", stateToken) != 1)
         {
-#if 0	//Temp support
-            return App_DebugConsoleWriteLine("usage: sm <front|back> <boot|idle|debug|power|hk|meter|nfc|aux|nbiot|server|rtc|fault>");
-#endif
             return App_DebugConsoleWriteLine("usage: sm <front|back> <boot|idle|debug|power|hk|meter|nfc|nbiot|server|rtc|fault>");
         }
 
         status = App_DebugConsoleParseState(stateToken, &nextState);
         if (status != APP_STATUS_OK)
         {
-#if 0	//Temp support
-            return App_DebugConsoleWriteLine("state: boot, idle, debug, power, hk, meter, nfc, aux, nbiot, server, rtc, fault");
-#endif
             return App_DebugConsoleWriteLine("state: boot, idle, debug, power, hk, meter, nfc, nbiot, server, rtc, fault");
         }
 

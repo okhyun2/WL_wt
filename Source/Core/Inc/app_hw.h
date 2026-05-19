@@ -15,29 +15,18 @@ extern "C" {
  *          - USART1  : Debug console
  *          - USART2  : Meter interface
  *          - LPUART1 : NB-IoT
-#if 0	//ESI support
- *          - I2C1    : ESI
-#endif
  *          - I2C2    : NFC
-#if 0	//Temp support
- *          - I2C3    : Temperature/auxiliary
-#endif
  */
 
 /* Peripheral handles generated in main.c */
 extern RTC_HandleTypeDef hrtc;
 extern ADC_HandleTypeDef hadc;
 extern CRC_HandleTypeDef hcrc;
-#if 0	//ESI support
-extern I2C_HandleTypeDef hi2c1;
-#endif
 extern I2C_HandleTypeDef hi2c2;
-#if 0	//Temp support
-extern I2C_HandleTypeDef hi2c3;
-#endif
 extern UART_HandleTypeDef hlpuart1;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
+extern WWDG_HandleTypeDef hwwdg;
 
 /** @brief Logical peripheral aliases. */
 #define APP_RTC_HANDLE           (&hrtc)
@@ -46,16 +35,12 @@ extern UART_HandleTypeDef huart2;
 #define APP_UART_METER_HANDLE           (&huart2)
 #define APP_UART_NBIOT_HANDLE           (&hlpuart1)
 
-#if 0	//ESI support
-#define APP_I2C_ESI_HANDLE              (&hi2c1)
-#endif
 #define APP_I2C_NFC_HANDLE              (&hi2c2)
-#if 0	//Temp support
-#define APP_I2C_AUX_HANDLE              (&hi2c3)
-#endif
 
 #define APP_ADC_BATTERY_HANDLE          (&hadc)
 #define APP_CRC_HANDLE                  (&hcrc)
+
+#define APP_WWDG_HANDLE                 (&hwwdg)
 
 /**
  * @brief Set EWD module feed pin.
@@ -108,18 +93,6 @@ static inline GPIO_PinState App_HwReadNfcEvent(void)
 {
     return HAL_GPIO_ReadPin(NFC_ED_GPIO_Port, NFC_ED_Pin);
 }
-
-#if 0	//ESI support
-/**
- * @brief Read ESI interrupt line state.
- *
- * @return Current ESI interrupt pin state.
- */
-static inline GPIO_PinState App_HwReadEsiInterrupt(void)
-{
-    return HAL_GPIO_ReadPin(ESI_Int_GPIO_Port, ESI_Int_Pin);
-}
-#endif
 
 #ifdef __cplusplus
 }

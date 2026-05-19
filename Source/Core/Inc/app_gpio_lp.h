@@ -33,15 +33,9 @@ typedef enum
     APP_GPIO_LP_CLK_USART1    = 0x00000004u,
     APP_GPIO_LP_CLK_USART2    = 0x00000008u,
     APP_GPIO_LP_CLK_LPUART1   = 0x00000010u,
-#if 0	//ESI support
-    APP_GPIO_LP_CLK_I2C1      = 0x00000020u,
-#endif
-    APP_GPIO_LP_CLK_I2C2      = 0x00000040u,
-#if 0	//Temp support
-    APP_GPIO_LP_CLK_I2C3      = 0x00000080u,
-#endif
-    APP_GPIO_LP_CLK_LPTIM1    = 0x00000100u,
-    APP_GPIO_LP_CLK_SYSCFG    = 0x00000200u
+    APP_GPIO_LP_CLK_I2C2      = 0x00000020u,
+    APP_GPIO_LP_CLK_LPTIM1    = 0x00000040u,
+    APP_GPIO_LP_CLK_SYSCFG    = 0x00000080u
 } AppGpioLpClockMask_t;
 
 /**
@@ -50,17 +44,6 @@ typedef enum
 typedef struct
 {
     AppGpioLpSwdPolicy_t swdPolicy;
-    uint8_t keepDebugUartPinsInStop;
-    uint8_t keepMeterUartPinsInStop;
-#if 0	//ESI support
-    uint8_t keepEsiI2cPinsInStop;
-#endif	
-    uint8_t keepNfcI2cPinsInStop;
-#if 0	//Temp support
-    uint8_t keepTempI2cPinsInStop;
-#endif
-    uint8_t keepPiezoPinInStop;
-    uint8_t keepExternalWatchdogPinInStop;
     uint32_t stopClockDisableMask;
 } AppGpioLpConfig_t;
 

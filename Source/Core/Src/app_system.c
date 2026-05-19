@@ -17,6 +17,9 @@
 
 wakeup_context_t g_wakeup_ctx = {0};
 extern NFC_NTP53321_Handle_t g_nfcTagHandle;
+BootInfo_t g_boot_info;
+
+static void Print_BootInfo(BootInfo_t *pBootInfo);
 
 static void handle_lptim1_wakeup(uint32_t flags)
 {
@@ -171,12 +174,7 @@ static const char *App_SystemBuildWakeSourceString(uint32_t wakeMask)
     {
         APP_SYSTEM_APPEND_WAKE("REED");
     }
-#if 0	//ESI support
-    if ((wakeMask & APP_SYSTEM_WAKE_SRC_ESI_INT) != 0u)
-    {
-        APP_SYSTEM_APPEND_WAKE("ESI_INT");
-    }
-#endif
+
     if ((wakeMask & APP_SYSTEM_WAKE_SRC_RTC) != 0u)
     {
         APP_SYSTEM_APPEND_WAKE("RTC");
@@ -434,13 +432,7 @@ static AppStatus_t App_SystemValidateHandles(void)
     APP_RETURN_IF_FALSE(APP_UART_DEBUG_HANDLE->Instance == USART1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
-    #if 0	//ESI support
-    APP_RETURN_IF_FALSE(APP_I2C_ESI_HANDLE->Instance == I2C1, APP_STATUS_HW_HANDLE_INVALID);
-    #endif
     APP_RETURN_IF_FALSE(APP_I2C_NFC_HANDLE->Instance == I2C2, APP_STATUS_HW_HANDLE_INVALID);
-#if 0	//Temp support
-    APP_RETURN_IF_FALSE(APP_I2C_AUX_HANDLE->Instance == I2C3, APP_STATUS_HW_HANDLE_INVALID);
-#endif
     APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_FALSE(APP_CRC_HANDLE->Instance == CRC, APP_STATUS_HW_HANDLE_INVALID);
     return APP_STATUS_OK;
@@ -468,30 +460,13 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
         g_appGpioLpConfig.swdPolicy = APP_GPIO_LP_SWD_KEEP;
     }
 
-    g_appGpioLpConfig.keepDebugUartPinsInStop = APP_FALSE;
-    g_appGpioLpConfig.keepMeterUartPinsInStop = APP_FALSE;
-    #if 0	//ESI support
-    g_appGpioLpConfig.keepEsiI2cPinsInStop = APP_FALSE;
-	#endif
-    g_appGpioLpConfig.keepNfcI2cPinsInStop = APP_FALSE;
-#if 0	//Temp support
-    g_appGpioLpConfig.keepTempI2cPinsInStop = APP_FALSE;
-#endif
-    g_appGpioLpConfig.keepPiezoPinInStop = APP_FALSE;
-    g_appGpioLpConfig.keepExternalWatchdogPinInStop = APP_FALSE;
     g_appGpioLpConfig.stopClockDisableMask =
         APP_GPIO_LP_CLK_ADC1 |
         APP_GPIO_LP_CLK_CRC |
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
-#if 0	//ESI support
-        APP_GPIO_LP_CLK_I2C1 |
-#endif
         APP_GPIO_LP_CLK_I2C2 |
-#if 0	//Temp support
-        APP_GPIO_LP_CLK_I2C3 |
-#endif
         APP_GPIO_LP_CLK_LPTIM1 |
         APP_GPIO_LP_CLK_SYSCFG;
 
@@ -885,12 +860,6 @@ void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
             App_SystemQueueStateCommand(APP_FSM_STATE_NFC_WAIT_EVENT);
             break;
 
-#if 0	//ESI support
-        case ESI_Int_Pin:
-            App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_ESI_INT);
-            App_SystemQueueStateCommand(APP_FSM_STATE_HOUSEKEEPING_SNAPSHOT);
-            break;
-#endif
         default:
             break;
     }
@@ -970,6 +939,9 @@ AppStatus_t App_SystemInit(void)
                App_DualBootGetBootStateString(),
                (unsigned long)App_DualBootGetInfo()->activeSlot,
                (unsigned long)App_DualBootGetInfo()->pendingSlot);
+
+    // booting info
+    Print_BootInfo(&g_boot_info);
 
     status = App_SystemRunBootSelfTest();
     if (status != APP_STATUS_OK)
@@ -1141,3 +1113,99 @@ const char *App_SystemGetVersionString(void)
 {
     return g_appVersionString;
 }
+
+void Get_BootInfo(BootInfo_t *pBootInfo)
+{
+    /* 리셋 플래그 저장 (클리어 전에) */
+    pBootInfo->reset_flags = RCC->CSR;
+
+    /* 백업 레지스터 읽기 */
+    pBootInfo->bkp0 = RTC->BKP0R;
+    pBootInfo->bkp1 = RTC->BKP1R;
+    pBootInfo->bkp2 = RTC->BKP2R;
+    pBootInfo->bkp3 = RTC->BKP3R;
+    pBootInfo->bkp4 = RTC->BKP4R;
+
+    /* === 3) 리셋 플래그 클리어 === */
+    __HAL_RCC_CLEAR_RESET_FLAGS();
+
+    /* === 4) BKP 레지스터를 정상 부팅 상태로 마킹 === */
+    RTC->BKP0R = NORMAL_BOOT_MAGIC;
+    RTC->BKP1R = 0x00000000;
+    RTC->BKP2R = 0x00000000;
+    RTC->BKP3R = 0x00000000;
+    RTC->BKP4R = 0x00000000;
+}
+
+static void Print_BootInfo(BootInfo_t *pBootInfo)
+{
+    APP_LOGI("BOOT", "========================================");
+    APP_LOGI("BOOT", "  STM32L073 Boot Information");
+    APP_LOGI("BOOT", "========================================");
+
+    /* --- 리셋 원인 표시 --- */
+    APP_LOGI("BOOT", "[Reset Flags] RCC_CSR = 0x%08lX",
+           (unsigned long)pBootInfo->reset_flags);
+
+    if (pBootInfo->reset_flags & RCC_CSR_LPWRRSTF)
+        APP_LOGI("BOOT", "  - Low Power Reset");
+    if (pBootInfo->reset_flags & RCC_CSR_WWDGRSTF)
+        APP_LOGI("BOOT", "  - *** WWDG Reset ***");
+    if (pBootInfo->reset_flags & RCC_CSR_IWDGRSTF)
+        APP_LOGI("BOOT", "  - IWDG Reset");
+    if (pBootInfo->reset_flags & RCC_CSR_SFTRSTF)
+        APP_LOGI("BOOT", "  - Software Reset");
+    if (pBootInfo->reset_flags & RCC_CSR_PORRSTF)
+        APP_LOGI("BOOT", "  - Power-On Reset (POR/PDR)");
+    if (pBootInfo->reset_flags & RCC_CSR_PINRSTF)
+        APP_LOGI("BOOT", "  - NRST Pin Reset");
+    if (pBootInfo->reset_flags & RCC_CSR_OBLRSTF)
+        APP_LOGI("BOOT", "  - Option Byte Loader Reset");
+
+    /* --- 백업 레지스터 내용 표시 --- */
+    APP_LOGI("BOOT", "[Backup Registers]");
+    APP_LOGI("BOOT", "  BKP0R = 0x%08lX", (unsigned long)pBootInfo->bkp0);
+    APP_LOGI("BOOT", "  BKP1R = 0x%08lX", (unsigned long)pBootInfo->bkp1);
+    APP_LOGI("BOOT", "  BKP2R = 0x%08lX", (unsigned long)pBootInfo->bkp2);
+    APP_LOGI("BOOT", "  BKP3R = 0x%08lX", (unsigned long)pBootInfo->bkp3);
+    APP_LOGI("BOOT", "  BKP4R = 0x%08lX", (unsigned long)pBootInfo->bkp4);
+
+    /* BKP0R 의미 해석 */
+    switch (pBootInfo->bkp0)
+    {
+        case WWDG_RESET_MAGIC:
+            APP_LOGI("BOOT", "  --> Abnormal termination by WWDG!");
+            break;
+        case NORMAL_BOOT_MAGIC:
+            APP_LOGI("BOOT", "  --> Reset from previous normal operation");
+            break;
+        case 0x00000000:
+            APP_LOGI("BOOT", "  --> Backup domain cleared (POR or VBAT lost)");
+            break;
+        default:
+            APP_LOGI("BOOT", "  --> Unknown value");
+            break;
+    }
+
+    APP_LOGI("BOOT", "  BKP1R = 0x%08lX  --> Emergency saved data",
+           (unsigned long)pBootInfo->bkp1);
+
+    /* --- Additional WWDG diagnosis --- */
+    if ((pBootInfo->reset_flags & RCC_CSR_WWDGRSTF) &&
+        (pBootInfo->bkp0 == WWDG_RESET_MAGIC))
+    {
+        APP_LOGI("BOOT", "[WWDG Diagnosis]");
+        APP_LOGI("BOOT", "  EWI emergency handler executed successfully.");
+        APP_LOGI("BOOT", "  Last status code: 0x%08lX",
+               (unsigned long)pBootInfo->bkp1);
+    }
+    else if (pBootInfo->reset_flags & RCC_CSR_WWDGRSTF)
+    {
+        APP_LOGI("BOOT", "[WWDG Diagnosis]");
+        APP_LOGI("BOOT", "  WWDG reset occurred, but no EWI handler trace found.");
+        APP_LOGI("BOOT", "  --> EWI was disabled or reset occurred before callback.");
+    }
+
+    APP_LOGI("BOOT", "========================================");
+}
+

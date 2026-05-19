@@ -233,27 +233,6 @@ void App_GpioLpRestoreMeterUartPins(void)
     }
 }
 
-#if 0	//ESI support
-/**
- * @brief Restore ESI I2C pins.
- */
-static void App_GpioLpRestoreEsiI2cPins(void)
-{
-    GPIO_InitTypeDef gpioInit;
-
-    __HAL_RCC_I2C1_CLK_ENABLE();
-
-    (void)memset(&gpioInit, 0, sizeof(gpioInit));
-    gpioInit.Pin = ESI_SCL_Pin | ESI_SDA_Pin;
-    gpioInit.Mode = GPIO_MODE_AF_OD;
-    gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    gpioInit.Alternate = GPIO_AF1_I2C1;
-
-    HAL_GPIO_Init(GPIOB, &gpioInit);
-}
-#endif
-
 /**
  * @brief Restore NFC I2C pins.
  */
@@ -272,33 +251,6 @@ static void App_GpioLpRestoreNfcI2cPins(void)
 
     HAL_GPIO_Init(GPIOB, &gpioInit);
 }
-
-#if 0	//Temp support
-/**
- * @brief Restore auxiliary temperature I2C pins.
- */
-static void App_GpioLpRestoreTempI2cPins(void)
-{
-    GPIO_InitTypeDef gpioInit;
-
-    __HAL_RCC_I2C3_CLK_ENABLE();
-
-    (void)memset(&gpioInit, 0, sizeof(gpioInit));
-    gpioInit.Pin = Temp_SCL_Pin;
-    gpioInit.Mode = GPIO_MODE_AF_OD;
-    gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
-    gpioInit.Alternate = GPIO_AF7_I2C3;
-    HAL_GPIO_Init(Temp_SCL_GPIO_Port, &gpioInit);
-
-    gpioInit.Pin = Temp_SDA_Pin;
-    gpioInit.Mode = GPIO_MODE_AF_OD;
-    gpioInit.Pull = GPIO_NOPULL;
-    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
-    gpioInit.Alternate = GPIO_AF7_I2C3;
-    HAL_GPIO_Init(Temp_SDA_GPIO_Port, &gpioInit);
-}
-#endif
 
 /**
  * @brief Restore piezo gpio pin.
@@ -425,10 +377,6 @@ static void App_GpioLpApplyStaticControlPins(void)
 static void App_GpioLpRestoreWakeInputs(void)
 {
     App_GpioLpConfigExtiFalling(NFC_ED_GPIO_Port, NFC_ED_Pin);
-
-#if 0	//ESI support
-    App_GpioLpConfigExtiFalling(ESI_Int_GPIO_Port, ESI_Int_Pin);
-#endif	
 }
 
 /**
@@ -463,24 +411,10 @@ static void App_GpioLpDisablePeripheralClocks(uint32_t mask)
         __HAL_RCC_LPUART1_CLK_DISABLE();
     }
 
-#if 0	//ESI support
-    if ((mask & APP_GPIO_LP_CLK_I2C1) != 0u)
-    {
-        __HAL_RCC_I2C1_CLK_DISABLE();
-    }
-#endif
-
     if ((mask & APP_GPIO_LP_CLK_I2C2) != 0u)
     {
         __HAL_RCC_I2C2_CLK_DISABLE();
     }
-
-#if 0	//Temp support
-    if ((mask & APP_GPIO_LP_CLK_I2C3) != 0u)
-    {
-        __HAL_RCC_I2C3_CLK_DISABLE();
-    }
-#endif
 
     if ((mask & APP_GPIO_LP_CLK_LPTIM1) != 0u)
     {
@@ -525,24 +459,10 @@ static void App_GpioLpEnablePeripheralClocks(uint32_t mask)
         __HAL_RCC_LPUART1_CLK_ENABLE();
     }
 
-#if 0	//ESI support
-    if ((mask & APP_GPIO_LP_CLK_I2C1) != 0u)
-    {
-        __HAL_RCC_I2C1_CLK_ENABLE();
-    }
-#endif
-
     if ((mask & APP_GPIO_LP_CLK_I2C2) != 0u)
     {
         __HAL_RCC_I2C2_CLK_ENABLE();
     }
-
-#if 0	//Temp support
-    if ((mask & APP_GPIO_LP_CLK_I2C3) != 0u)
-    {
-        __HAL_RCC_I2C3_CLK_ENABLE();
-    }
-#endif
 
     if ((mask & APP_GPIO_LP_CLK_SYSCFG) != 0u)
     {
@@ -560,30 +480,13 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
     (void)memset(p_config, 0, sizeof(*p_config));
 
     p_config->swdPolicy = APP_GPIO_LP_SWD_KEEP;
-    p_config->keepDebugUartPinsInStop = 0u;
-    p_config->keepMeterUartPinsInStop = 0u;
-#if 0	//ESI support
-    p_config->keepEsiI2cPinsInStop = 0u;
-#endif	
-    p_config->keepNfcI2cPinsInStop = 0u;
-#if 0	//Temp support
-    p_config->keepTempI2cPinsInStop = 0u;
-#endif
-    p_config->keepPiezoPinInStop = 0u;
-    p_config->keepExternalWatchdogPinInStop = 0u;
     p_config->stopClockDisableMask =
         APP_GPIO_LP_CLK_ADC1 |
         APP_GPIO_LP_CLK_CRC |
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
-#if 0	//ESI support
-        APP_GPIO_LP_CLK_I2C1 |
-#endif
         APP_GPIO_LP_CLK_I2C2 |
-#if 0	//Temp support
-        APP_GPIO_LP_CLK_I2C3 |
-#endif
         APP_GPIO_LP_CLK_LPTIM1 |
         APP_GPIO_LP_CLK_SYSCFG;
 }
@@ -667,7 +570,7 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
     App_GpioLpRestoreWakeInputs();
     App_GpioLpApplySwdPolicy();
 
-    if (g_appGpioLpContext.config.keepMeterUartPinsInStop != 1u)
+    //Meter TX/RX pin
     {
         /* 진행 중인 송신 완료 대기 */
         while (!(USART2->ISR & USART_ISR_TC))
@@ -680,14 +583,7 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin | Meter_RX_Pin, GPIO_PIN_RESET);
     }
 
-#if 0	//ESI support
-    if (g_appGpioLpContext.config.keepEsiI2cPinsInStop != 1u)
-    {
-        App_GpioLpConfigAnalogNoPull(ESI_SCL_GPIO_Port, ESI_SCL_Pin | ESI_SDA_Pin);
-    }
-#endif	
-
-    if (g_appGpioLpContext.config.keepNfcI2cPinsInStop != 1u)
+    //NFC SCL/SDA pin
     {
         NFC_Result_t ret;
         if( (ret = NFC_LP_EnterStop(&g_nfcLpHandle)) != NFC_RESULT_OK)
@@ -698,20 +594,12 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         App_GpioLpConfigAnalogNoPull(NFC_SCL_GPIO_Port, NFC_SCL_Pin | NFC_SDA_Pin);
     }
 
-#if 0	//Temp support
-    if (g_appGpioLpContext.config.keepTempI2cPinsInStop != 1u)
-    {
-        App_GpioLpConfigAnalogNoPull(Temp_SCL_GPIO_Port, Temp_SCL_Pin);
-        App_GpioLpConfigAnalogNoPull(Temp_SDA_GPIO_Port, Temp_SDA_Pin);
-    }
-#endif
-
-    if (g_appGpioLpContext.config.keepPiezoPinInStop != 1u)
+    //Piezo pin
     {
         App_GpioLpConfigAnalogNoPull(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin);
     }
 
-    if (g_appGpioLpContext.config.keepExternalWatchdogPinInStop != 1u)
+    //WD_Feed pin
     {
         App_GpioLpConfigAnalogNoPull(WD_FEED_GPIO_Port, WD_FEED_Pin);
     }
@@ -728,7 +616,7 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
 #endif //DEBUG
 #endif
 
-    if (g_appGpioLpContext.config.keepDebugUartPinsInStop != 1u)
+    //Debug TX/RX pin
     {
         /* 진행 중인 송신 완료 대기 */
         while (!(USART1->ISR & USART_ISR_TC))
@@ -748,10 +636,8 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
     if (App_GpioLpCanDebugLog() == 1u)
     {
         (void)APP_LOGD("GPIO",
-                       "STOP prep done: nbiot=%u keep_dbg=%u keep_meter=%u clk_mask=0x%08lX",
+                       "STOP prep done: nbiot=%u clk_mask=0x%08lX",
                        (unsigned int)g_appGpioLpContext.nbiotPowered,
-                       (unsigned int)g_appGpioLpContext.config.keepDebugUartPinsInStop,
-                       (unsigned int)g_appGpioLpContext.config.keepMeterUartPinsInStop,
                        (unsigned long)g_appGpioLpContext.lastDisabledClockMask);
     }
 #endif
@@ -770,44 +656,11 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
     App_GpioLpApplyStaticControlPins();
     App_GpioLpRestoreWakeInputs();
 
-    if (g_appGpioLpContext.config.keepDebugUartPinsInStop != 1u)
-    {
-        App_GpioLpRestoreDebugUartPins();
-    }
-
-    if (g_appGpioLpContext.config.keepMeterUartPinsInStop != 1u)
-    {
-        App_GpioLpRestoreMeterUartPins();
-    }
-
-#if 0	//ESI support
-    if (g_appGpioLpContext.config.keepEsiI2cPinsInStop != 1u)
-    {
-        App_GpioLpRestoreEsiI2cPins();
-    }
-#endif	
-
-    if (g_appGpioLpContext.config.keepNfcI2cPinsInStop != 1u)
-    {
-        App_GpioLpRestoreNfcI2cPins();
-    }
-
-#if 0	//Temp support
-    if (g_appGpioLpContext.config.keepTempI2cPinsInStop != 1u)
-    {
-        App_GpioLpRestoreTempI2cPins();
-    }
-#endif
-
-    if (g_appGpioLpContext.config.keepPiezoPinInStop != 1u)
-    {
-        App_GpioLpRestorePiezoPin();
-    }
-
-    if (g_appGpioLpContext.config.keepExternalWatchdogPinInStop != 1u)
-    {
-        App_GpioLpRestoreExternalWatchdogPin();
-    }
+    App_GpioLpRestoreDebugUartPins();
+    App_GpioLpRestoreMeterUartPins();
+    App_GpioLpRestoreNfcI2cPins();
+    App_GpioLpRestorePiezoPin();
+    App_GpioLpRestoreExternalWatchdogPin();
 
     if(g_appGpioLpContext.nbiotPowered == 0u)
     {

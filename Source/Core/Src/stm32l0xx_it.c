@@ -74,6 +74,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 /* External variables --------------------------------------------------------*/
 extern LPTIM_HandleTypeDef hlptim1;
 extern RTC_HandleTypeDef hrtc;
+extern WWDG_HandleTypeDef hwwdg;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -238,27 +239,12 @@ void LPTIM1_IRQHandler(void)
 
 void EXTI0_1_IRQHandler(void)
 {
-
 }
 
 void EXTI2_3_IRQHandler(void)
 {
-#if 0	//ESI support
-    uint32_t pr = EXTI->PR & 0x0000000CU;  // bit2, bit3만 마스킹
-
-    if (pr) {
-        g_wakeup_ctx.raw_exti_pr |= pr;
-
-      /* Pin 2 ~ Pin 3 처리 */
-      if (pr & ESI_Int_Pin)
-      {
-        g_wakeup_ctx.pending_flags |= WAKEUP_FLAG_EXTI_PIN2;
-      }
-
-        EXTI->PR = pr;
-    }
-#endif
 }
+
 void EXTI4_15_IRQHandler(void)
 {
   uint32_t pr = EXTI->PR & 0x0000FFF0U; // bit4 ~ bit15만 마스킹
@@ -314,3 +300,19 @@ void RNG_LPUART1_IRQHandler(void)
 
   /* USER CODE END RNG_LPUART1_IRQn 1 */
 }
+
+
+void WWDG_IRQHandler(void)
+{
+  /* USER CODE BEGIN WWDG_IRQn 0 */
+
+  /* USER CODE END WWDG_IRQn 0 */
+  HAL_WWDG_IRQHandler(&hwwdg);
+  /* USER CODE BEGIN WWDG_IRQn 1 */
+
+  /* USER CODE END WWDG_IRQn 1 */
+}
+
+/* USER CODE BEGIN 1 */
+
+/* USER CODE END 1 */

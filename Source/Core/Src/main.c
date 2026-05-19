@@ -61,6 +61,11 @@ const BootImageHeader_t gImageHeader =
 };
 #endif // SUPPORT_DUALBOOT
 
+/* 메인 루프 health 플래그 */
+volatile uint8_t  g_wwdg_main_loop_alive = 0;
+/* EWI 카운터 (가상 timeout 연장용) */
+volatile uint32_t g_wwdg_ewi_count = 0;
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -74,21 +79,15 @@ ADC_HandleTypeDef hadc;
 
 CRC_HandleTypeDef hcrc;
 
-#if 0	//ESI support
-I2C_HandleTypeDef hi2c1;
-#endif
 I2C_HandleTypeDef hi2c2;
-#if 0	//Temp support
-I2C_HandleTypeDef hi2c3;
-#endif
-
-IWDG_HandleTypeDef hiwdg;
 
 UART_HandleTypeDef hlpuart1;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 LPTIM_HandleTypeDef hlptim1;
+
+WWDG_HandleTypeDef hwwdg;
 
 /* USER CODE BEGIN PV */
 
@@ -99,21 +98,16 @@ void SystemClock_Config(void);
 static void MX_RTC_Init(void);
 static void MX_GPIO_Init(void);
 static void MX_CRC_Init(void);
-#if 0	//ESI support
-static void MX_I2C1_Init(void);
-#endif
 static void MX_I2C2_Init(void);
-#if 0	//Temp support
-static void MX_I2C3_Init(void);
-#endif
 static void MX_LPUART1_UART_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC_Init(void);
-static void MX_IWDG_InitStart(void);
 static void LPTIM1_Start(void);
 static void LPTIM1_Stop(void);
 static void MX_LPTIM1_Init(void);
+static void MX_WWDG_Init(void);
+static void Print_BootInfo(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -156,18 +150,11 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_CRC_Init();
-#if 0	//ESI support
-  MX_I2C1_Init();
-#endif
   MX_I2C2_Init();
-#if 0	//Temp support
-  MX_I2C3_Init();
-#endif
   MX_LPUART1_UART_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_ADC_Init();
-  //MX_IWDG_InitStart();
   MX_LPTIM1_Init();
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
@@ -178,6 +165,8 @@ int main(void)
 
   //LPTIM1_Start(); //add periodic wakeup source. max 4min
 
+  MX_WWDG_Init();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -187,6 +176,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+    /* 메인 루프 정상 동작 표시 */
+    g_wwdg_main_loop_alive = 0;
+
     App_SystemProcess();
   }
   /* USER CODE END 3 */
@@ -204,6 +197,8 @@ void SystemClock_Config(void)
 
   __HAL_RCC_PWR_CLK_ENABLE();
   HAL_PWR_EnableBkUpAccess();
+
+  Get_BootInfo(&g_boot_info);
 
   /** Configure the main internal regulator output voltage
   */
@@ -254,22 +249,10 @@ void SystemClock_Config(void)
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1
-#if 0	//ESI support
-  |RCC_PERIPHCLK_I2C1
-#endif
-#if 0	//Temp support
-  |RCC_PERIPHCLK_I2C3
-#endif
-  |RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
+    |RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_LSE;
-#if 0	//ESI support
-  PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_PCLK1;
-#endif
-#if 0	//Temp support
-  PeriphClkInit.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
-#endif
   PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
   PeriphClkInit.LptimClockSelection = RCC_LPTIM1CLKSOURCE_LSE;
   
@@ -366,56 +349,6 @@ static void MX_CRC_Init(void)
 
 }
 
-#if 0	//ESI support
-/**
-  * @brief I2C1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C1_Init(void)
-{
-
-  /* USER CODE BEGIN I2C1_Init 0 */
-
-  /* USER CODE END I2C1_Init 0 */
-
-  /* USER CODE BEGIN I2C1_Init 1 */
-
-  /* USER CODE END I2C1_Init 1 */
-  hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x00000708; //PCLK1-2Mhz. 708:100Khz
-  hi2c1.Init.OwnAddress1 = 0;
-  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c1.Init.OwnAddress2 = 0;
-  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
-  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Analogue filter
-  */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Digital filter
-  */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C1_Init 2 */
-
-  /* USER CODE END I2C1_Init 2 */
-
-}
-#endif
-
 /**
   * @brief I2C2 Initialization Function
   * @param None
@@ -461,85 +394,6 @@ static void MX_I2C2_Init(void)
   /* USER CODE BEGIN I2C2_Init 2 */
 
   /* USER CODE END I2C2_Init 2 */
-
-}
-
-#if 0	//Temp support
-/**
-  * @brief I2C3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C3_Init(void)
-{
-
-  /* USER CODE BEGIN I2C3_Init 0 */
-
-  /* USER CODE END I2C3_Init 0 */
-
-  /* USER CODE BEGIN I2C3_Init 1 */
-
-  /* USER CODE END I2C3_Init 1 */
-  hi2c3.Instance = I2C3;
-  hi2c3.Init.Timing = 0x00000708; //PCLK1-2Mhz. 708:100Khz
-  hi2c3.Init.OwnAddress1 = 0;
-  hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c3.Init.OwnAddress2 = 0;
-  hi2c3.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
-  hi2c3.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c3.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Analogue filter
-  */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c3, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Digital filter
-  */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c3, 0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C3_Init 2 */
-
-  /* USER CODE END I2C3_Init 2 */
-
-}
-#endif
-
-/**
-  * @brief IWDG Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_IWDG_InitStart(void)
-{
-
-  /* USER CODE BEGIN IWDG_Init 0 */
-
-  /* USER CODE END IWDG_Init 0 */
-
-  /* USER CODE BEGIN IWDG_Init 1 */
-
-  /* USER CODE END IWDG_Init 1 */
-  hiwdg.Instance = IWDG;
-  hiwdg.Init.Prescaler = IWDG_PRESCALER_256;
-  hiwdg.Init.Window = IWDG_WINDOW_DISABLE;
-  hiwdg.Init.Reload = 4095;
-  if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN IWDG_Init 2 */
-
-  /* USER CODE END IWDG_Init 2 */
 
 }
 
@@ -862,14 +716,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(WD_FEED_GPIO_Port, &GPIO_InitStruct);
 
-#if 0	//ESI support
-  /*Configure GPIO pin : ESI_Int_Pin */
-  GPIO_InitStruct.Pin = ESI_Int_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(ESI_Int_GPIO_Port, &GPIO_InitStruct);
-#endif
-
   /*Configure GPIO pin : NFC_ED_Pin */
   GPIO_InitStruct.Pin = NFC_ED_Pin; //actvie low
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
@@ -886,6 +732,64 @@ static void MX_GPIO_Init(void)
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
+}
+
+/* ============================================================
+ * WWDG 초기화 (EWI 활성화)
+ * ============================================================ */
+static void MX_WWDG_Init(void)
+{
+    __HAL_RCC_WWDG_CLK_ENABLE();
+
+    hwwdg.Instance       = WWDG;
+    hwwdg.Init.Prescaler = WWDG_PRESCALER_8;
+    hwwdg.Init.Window    = 0x7F;
+    hwwdg.Init.Counter   = 0x7F;
+    hwwdg.Init.EWIMode   = WWDG_EWI_ENABLE;   /* ← EWI 활성화 */
+
+    /* WWDG IRQ 설정 (NVIC) */
+    HAL_NVIC_SetPriority(WWDG_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(WWDG_IRQn);
+
+    if (HAL_WWDG_Init(&hwwdg) != HAL_OK)
+    {
+        Error_Handler();
+    }
+}
+void HAL_WWDG_EarlyWakeupCallback(WWDG_HandleTypeDef *hwwdg_handle)
+{
+    if (g_wwdg_main_loop_alive)
+    {
+        /* 메인 루프가 정상 → 카운터 리셋 후 Refresh */
+        g_wwdg_main_loop_alive = 0;
+        g_wwdg_ewi_count       = 0;     /* ← 여기서 초기화! */
+        HAL_WWDG_Refresh(hwwdg_handle);
+    }
+    else if (g_wwdg_ewi_count < EWI_MAX_COUNT)
+    {
+        /* 메인 루프 hang 상태지만 아직 유예 기간 → Refresh로 버티기 */
+        g_wwdg_ewi_count++;
+        HAL_WWDG_Refresh(hwwdg_handle);
+    }
+    else
+    {
+        /* 비상 처리 (백업 RAM 저장 등) */
+        /* Refresh 하지 않음 → 1 tick 후 리셋 */
+        /* 디버그 정보 저장 (백업 레지스터는 1µs 내 가능) */
+        //HAL_PWR_EnableBkUpAccess();
+        /* Defensive: ensure backup domain write access */
+        PWR->CR |= PWR_CR_DBP;
+        RTC->BKP0R = WWDG_RESET_MAGIC; /* 리셋 원인 표식 */
+        RTC->BKP1R = 0x12345678; // some_critical_data;
+        RTC->BKP2R = 0x00020002; // some_critical_data;
+        RTC->BKP3R = 0x00030003; // some_critical_data;
+        RTC->BKP4R = 0x00040004; // some_critical_data;
+
+        /* Refresh 하지 않음 → 잠시 후 자연스럽게 리셋 */
+        /* HAL_WWDG_Refresh()를 호출하지 않음 */
+
+        UNUSED(hwwdg_handle);
+    }
 }
 
 /* USER CODE BEGIN 4 */

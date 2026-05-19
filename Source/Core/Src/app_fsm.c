@@ -209,11 +209,6 @@ static uint8_t App_FsmIsValidState(uint8_t state)
         case APP_FSM_STATE_NFC_WAIT_EVENT:
         case APP_FSM_STATE_NFC_EXCHANGE:
         case APP_FSM_STATE_NFC_RELEASE:
-#if 0	//Temp support
-        case APP_FSM_STATE_AUX_INIT:
-        case APP_FSM_STATE_AUX_TRIGGER_MEASURE:
-        case APP_FSM_STATE_AUX_READ_RESULT:
-#endif
         case APP_FSM_STATE_NBIOT_INIT:
         case APP_FSM_STATE_NBIOT_DECIDE_WAKE:
         case APP_FSM_STATE_NBIOT_POWER_ON:
@@ -251,9 +246,6 @@ static const char *App_FsmGetComponentNameInternal(AppFsmComponentId_t id)
         case APP_FSM_COMPONENT_POWER:        return "power";
         case APP_FSM_COMPONENT_METER:        return "meter";
         case APP_FSM_COMPONENT_NFC:          return "nfc";
-#if 0	//Temp support
-        case APP_FSM_COMPONENT_AUX:          return "aux";
-#endif
         case APP_FSM_COMPONENT_NBIOT:        return "nbiot";
         case APP_FSM_COMPONENT_SERVER:       return "server";
         case APP_FSM_COMPONENT_RTC:          return "rtc";
@@ -273,9 +265,6 @@ static uint32_t App_FsmGetComponentInterval(AppFsmComponentId_t id)
         case APP_FSM_COMPONENT_POWER:        return 0u;
         case APP_FSM_COMPONENT_METER:        return APP_FSM_METER_PERIOD_MS;
         case APP_FSM_COMPONENT_NFC:          return APP_FSM_NFC_PERIOD_MS;
-#if 0	//Temp support
-        case APP_FSM_COMPONENT_AUX:          return APP_FSM_AUX_PERIOD_MS;
-#endif
         case APP_FSM_COMPONENT_NBIOT:        return APP_FSM_NBIOT_PERIOD_MS;
         case APP_FSM_COMPONENT_SERVER:       return APP_FSM_SERVER_PERIOD_MS;
         case APP_FSM_COMPONENT_RTC:          return APP_FSM_RTC_PERIOD_MS;
@@ -366,13 +355,6 @@ static void App_FsmSignalEventForState(uint8_t nextState)
         case APP_FSM_STATE_NFC_RELEASE:
             componentId = APP_FSM_COMPONENT_NFC;
             break;
-
-#if 0	//Temp support
-        case APP_FSM_STATE_AUX_TRIGGER_MEASURE:
-        case APP_FSM_STATE_AUX_READ_RESULT:
-            componentId = APP_FSM_COMPONENT_AUX;
-            break;
-#endif
 
         case APP_FSM_STATE_NBIOT_DECIDE_WAKE:
         case APP_FSM_STATE_NBIOT_POWER_ON:
@@ -517,17 +499,6 @@ static uint8_t App_FsmMapComponentToState(AppFsmComponentId_t id)
                 default:                                return APP_FSM_STATE_NFC_RELEASE;
             }
 
-#if 0	//Temp support
-        case APP_FSM_COMPONENT_AUX:
-            switch (p_component->state)
-            {
-                case APP_FSM_STATE_AUX_INIT:            return APP_FSM_STATE_AUX_INIT;
-                case APP_FSM_STATE_AUX_READ_RESULT:     return APP_FSM_STATE_AUX_READ_RESULT;
-                case APP_FSM_STATE_AUX_TRIGGER_MEASURE:
-                default:                                return APP_FSM_STATE_AUX_TRIGGER_MEASURE;
-            }
-#endif
-
         case APP_FSM_COMPONENT_NBIOT:
             switch (p_component->state)
             {
@@ -598,9 +569,6 @@ static AppStatus_t App_FsmFindDuePeriodicState(uint8_t *p_state)
         APP_FSM_COMPONENT_HOUSEKEEPING,
         //APP_FSM_COMPONENT_METER,
         APP_FSM_COMPONENT_NFC,
-#if 0	//Temp support
-        //APP_FSM_COMPONENT_AUX,
-#endif
         //APP_FSM_COMPONENT_NBIOT,
         //APP_FSM_COMPONENT_SERVER,
         //APP_FSM_COMPONENT_RTC
@@ -669,9 +637,6 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmMarkComponent(APP_FSM_COMPONENT_POWER, APP_FSM_STATE_POWER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-#if 0	//Temp support
-            App_FsmMarkComponent(APP_FSM_COMPONENT_AUX, APP_FSM_STATE_AUX_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-#endif
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_SERVER, APP_FSM_STATE_SERVER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
@@ -684,9 +649,6 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_POWER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_METER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NFC_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
-#if 0	//Temp support
-            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_AUX_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
-#endif
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_SERVER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_RTC_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
@@ -823,32 +785,6 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_NFC_RELEASE:
             App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_RELEASE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
-
-#if 0	//Temp support
-        case APP_FSM_STATE_AUX_INIT:
-            /* pseudo code*/
-            /*
-                do something;
-                APP_RETURN_IF_FALSE(App_AuxInit() == APP_STATUS_OK, APP_STATUS_FATAL);
-            */
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
-            break;
-
-        case APP_FSM_STATE_AUX_TRIGGER_MEASURE:
-            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_AUX_READ_RESULT, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
-            break;
-
-        case APP_FSM_STATE_AUX_READ_RESULT:
-            /* pseudo code*/
-            /*
-                do something;
-                APP_RETURN_IF_FALSE(App_AuxReadResult() == APP_STATUS_OK, APP_STATUS_FATAL);
-            */
-            App_FsmMarkComponent(APP_FSM_COMPONENT_AUX, APP_FSM_STATE_AUX_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-            App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
-            break;
-#endif
 
         case APP_FSM_STATE_NBIOT_INIT:
             /* pseudo code*/
@@ -1184,11 +1120,6 @@ const char *App_FsmGetStateName(uint8_t state)
         case APP_FSM_STATE_NFC_WAIT_EVENT:          return "NFC_WAIT_EVENT";
         case APP_FSM_STATE_NFC_EXCHANGE:            return "NFC_EXCHANGE";
         case APP_FSM_STATE_NFC_RELEASE:              return "NFC_RELEASE";
-#if 0	//Temp support
-        case APP_FSM_STATE_AUX_INIT:                return "AUX_INIT";
-        case APP_FSM_STATE_AUX_TRIGGER_MEASURE:     return "AUX_TRIGGER_MEASURE";
-        case APP_FSM_STATE_AUX_READ_RESULT:         return "AUX_READ_RESULT";
-#endif
         case APP_FSM_STATE_NBIOT_INIT:              return "NBIOT_INIT";
         case APP_FSM_STATE_NBIOT_DECIDE_WAKE:       return "NBIOT_DECIDE_WAKE";
         case APP_FSM_STATE_NBIOT_POWER_ON:          return "NBIOT_POWER_ON";

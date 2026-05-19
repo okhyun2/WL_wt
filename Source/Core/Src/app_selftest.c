@@ -106,17 +106,9 @@ static const char *App_SelfTestItemToString(AppSelfTestItem_t item)
 
         case APP_SELFTEST_ITEM_NBIOT_UART:
             return "NBIOT";
-#if 0	//ESI support
-        case APP_SELFTEST_ITEM_ESI_I2C:
-            return "ESI";
-#endif
+
         case APP_SELFTEST_ITEM_NFC_I2C:
             return "NFC";
-
-#if 0	//Temp support
-        case APP_SELFTEST_ITEM_AUX_I2C:
-            return "TEMP";
-#endif
 
         case APP_SELFTEST_ITEM_EXT_WATCHDOG:
             return "EWDT";
@@ -452,22 +444,6 @@ static AppStatus_t App_SelfTestCheckI2cDevice(I2C_HandleTypeDef *p_i2cHandle,
     return APP_STATUS_OK;
 }
 
-#if 0	//ESI support
-/**
- * @brief ESI I2C peripheral check.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
-static AppStatus_t App_SelfTestCheckEsiI2c(void)
-{
-    APP_RETURN_IF_FALSE(APP_I2C_ESI_HANDLE->Instance == I2C1, APP_STATUS_HW_HANDLE_INVALID);
-
-    return App_SelfTestCheckI2cDevice(APP_I2C_ESI_HANDLE,
-                                      "ESI",
-                                      APP_SELFTEST_ESI_I2C_ADDRESS_7BIT);
-}
-#endif
-
 /**
  * @brief NFC I2C peripheral check.
  *
@@ -481,22 +457,6 @@ static AppStatus_t App_SelfTestCheckNfcI2c(void)
                                       "NFC",
                                       APP_SELFTEST_NFC_I2C_ADDRESS_7BIT);
 }
-
-#if 0	//Temp support
-/**
- * @brief Auxiliary temperature/sensor I2C peripheral check.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
-static AppStatus_t App_SelfTestCheckAuxI2c(void)
-{
-    APP_RETURN_IF_FALSE(APP_I2C_AUX_HANDLE->Instance == I2C3, APP_STATUS_HW_HANDLE_INVALID);
-
-    return App_SelfTestCheckI2cDevice(APP_I2C_AUX_HANDLE,
-                                      "TEMP",
-                                      APP_SELFTEST_AUX_I2C_ADDRESS_7BIT);
-}
-#endif
 
 /**
  * @brief External watchdog output pseudo check.
@@ -520,14 +480,8 @@ static AppStatus_t App_SelfTestCheckExternalWatchdog(void)
 static AppStatus_t App_SelfTestCheckInputLines(void)
 {
     GPIO_PinState nfcEventState;
-#if 0	//ESI support
-    GPIO_PinState esiIntState;
-#endif
 
     nfcEventState = App_HwReadNfcEvent();
-#if 0	//ESI support
-    esiIntState = App_HwReadEsiInterrupt();
-#endif
 
     APP_RETURN_IF_FALSE(APP_LOGI("SELF", "GPIO inputs NFC_ED=%u",
                                  (unsigned int)nfcEventState) == APP_STATUS_OK,
@@ -597,13 +551,7 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
     //App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiot);
-#if 0	//ESI support
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_ESI_I2C, App_SelfTestCheckEsiI2c);
-#endif	
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
-#if 0	//Temp support
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
-#endif
     App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_GPIO_INPUTS, App_SelfTestCheckInputLines);
 
