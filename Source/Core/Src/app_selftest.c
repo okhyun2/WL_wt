@@ -179,14 +179,14 @@ static AppStatus_t App_SelfTestPlayBuzzerPattern(uint8_t count, uint32_t onMs, u
  */
 static AppStatus_t App_SelfTestCheckBuzzer(void)
 {
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Buzzer test start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "Buzzer test start");
 
     APP_RETURN_IF_FALSE(App_SelfTestPlayBuzzerPattern(APP_SELFTEST_BUZZER_BOOT_BEEP_COUNT,
                                                       APP_SELFTEST_BUZZER_BEEP_ON_MS,
                                                       APP_SELFTEST_BUZZER_BEEP_OFF_MS) == APP_STATUS_OK,
                         APP_STATUS_SELFTEST_FAILED);
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Buzzer test pass") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "Buzzer test pass");
 
     return APP_STATUS_OK;
 }
@@ -205,8 +205,7 @@ static AppStatus_t App_SelfTestCheckCrc(void)
     APP_RETURN_IF_FALSE(APP_CRC_HANDLE->Instance == CRC, APP_STATUS_HW_HANDLE_INVALID);
 
     crcValue = HAL_CRC_Calculate(APP_CRC_HANDLE, testVector, 2u);
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "CRC sanity value = 0x%08lX", (unsigned long)crcValue) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "CRC sanity value = 0x%08lX", (unsigned long)crcValue);
 
     if(crcValue == result) {
         return APP_STATUS_OK;
@@ -233,8 +232,7 @@ static AppStatus_t App_SelfTestCheckBatteryAdc(void)
     rawAdc = HAL_ADC_GetValue(APP_ADC_BATTERY_HANDLE);
     (void)HAL_ADC_Stop(APP_ADC_BATTERY_HANDLE);
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Battery ADC raw = %lu", (unsigned long)rawAdc) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "Battery ADC raw = %lu", (unsigned long)rawAdc);
 
     return APP_STATUS_OK;
 }
@@ -247,9 +245,7 @@ static AppStatus_t App_SelfTestCheckBatteryAdc(void)
 static AppStatus_t App_SelfTestCheckDebugUart(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_DEBUG_HANDLE->Instance == USART1, APP_STATUS_HW_HANDLE_INVALID);
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Debug UART online at %lu baud",
-                                 (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "Debug UART online at %lu baud", (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate);
 
     return APP_STATUS_OK;
 }
@@ -275,7 +271,7 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
     const uint8_t SYNC_STOP = 0x16;
     int i = 0; 
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter(Normal) UART real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "Meter(Normal) UART real probe start");
 
     //Read protocols meter(Normal)
     //for(i = 0; i < 1000; i++)
@@ -302,11 +298,13 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
         App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
     }
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter UART reply received (%u bytes minimum)",
-                                 (unsigned int)APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "Meter UART reply received (%u bytes minimum)", (unsigned int)APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
 
+    //App_MeterSetStorageEnabled(APP_FALSE);
+    //kiki 
+    App_MeterSetStorageEnabled(APP_TRUE);
     status = App_MeterProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+    App_MeterSetStorageEnabled(APP_TRUE);
     return (status);
 }
 
@@ -322,7 +320,7 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
     const uint8_t SYNC_STOP = 0x03;
     int i = 0; 
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "Meter(SC1xxx) UART real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "Meter(SC1xxx) UART real probe start");
 
     //Read protocols meter(SC1xxx)
     //for(i = 0; i < 100; i++)
@@ -350,7 +348,9 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
         App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
     }
 
+    App_MeterSetStorageEnabled(APP_FALSE);
     status = App_MeterSC1xxxProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
+    App_MeterSetStorageEnabled(APP_TRUE);
     return (status);
 }
 
@@ -371,7 +371,7 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
     uint8_t replyBuffer[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0, };
     int i = 0; 
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "NB-IoT real probe start") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "NB-IoT real probe start");
 
     APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
@@ -402,9 +402,7 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
         App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)replyBuffer, APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN);
     }
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "NB-IoT AT reply received (%u bytes minimum)",
-                                 (unsigned int)APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "NB-IoT AT reply received (%u bytes minimum)", (unsigned int)APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN);
 
 Error_App_SelfTestCheckNbiot:
     App_HwSetNbiotEnable(GPIO_PIN_RESET);
@@ -429,10 +427,7 @@ static AppStatus_t App_SelfTestCheckI2cDevice(I2C_HandleTypeDef *p_i2cHandle,
 
     if (address7bit != 0u)
     {
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "%s I2C real probe start: addr=0x%02X",
-                                     p_itemName,
-                                     (unsigned int)address7bit) == APP_STATUS_OK,
-                            APP_STATUS_UART_TX_FAILED);
+        APP_LOGI("SELF", "%s I2C real probe start: addr=0x%02X", p_itemName, (unsigned int)address7bit);
 
         APP_RETURN_IF_FALSE(HAL_I2C_IsDeviceReady(p_i2cHandle,
                                                   (uint16_t)((uint16_t)address7bit << 1u),
@@ -483,9 +478,7 @@ static AppStatus_t App_SelfTestCheckInputLines(void)
 
     nfcEventState = App_HwReadNfcEvent();
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "GPIO inputs NFC_ED=%u",
-                                 (unsigned int)nfcEventState) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SELF", "GPIO inputs NFC_ED=%u", (unsigned int)nfcEventState);
 
     return APP_STATUS_OK;
 }
@@ -513,13 +506,11 @@ static void App_SelfTestRunItem(AppSelfTestItem_t item, AppStatus_t (*p_checkFun
 
     if (status == APP_STATUS_OK)
     {
-        (void)APP_LOGI("SELF", "%s PASS", App_SelfTestItemToString(item));
+        APP_LOGI("SELF", "%s PASS", App_SelfTestItemToString(item));
     }
     else
     {
-        (void)APP_LOGE("SELF", "%s FAIL status=%lu",
-                       App_SelfTestItemToString(item),
-                       (unsigned long)status);
+        APP_LOGE("SELF", "%s FAIL status=%lu", App_SelfTestItemToString(item), (unsigned long)status);
         (void)App_SelfTestSignalErrorBuzzer();
     }
 }
@@ -558,10 +549,9 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     g_appSelfTestContext.running = APP_FALSE;
     g_appSelfTestContext.lastSequenceStatus = (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SELF", "------ Boot self-test summary: pass=%lu fail=%lu",
+    APP_LOGI("SELF", "------ Boot self-test summary: pass=%lu fail=%lu",
                                  (unsigned long)g_appSelfTestContext.passCount,
-                                 (unsigned long)g_appSelfTestContext.failCount) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+                                 (unsigned long)g_appSelfTestContext.failCount);
 
     return g_appSelfTestContext.lastSequenceStatus;
 }

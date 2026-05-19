@@ -51,7 +51,21 @@ typedef struct
 static AppStorageContext_t g_appStorageContext;
 static AppStorageSummary_t g_appStorageSummary;
 
-//common////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+static uint8_t App_StorageIf_GetSupportedTargets(void)
+{
+    uint8_t targets = 0u;
+
+#ifdef SUPPORT_EEPROM
+    targets = (uint8_t)(targets | (uint8_t)APP_STORAGE_TARGET_EEPROM);
+#endif
+#ifdef SUPPORT_FALASH
+    targets = (uint8_t)(targets | (uint8_t)APP_STORAGE_TARGET_FLASH);
+#endif
+
+    return targets;
+}
+
+// common ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static uint32_t App_StorageIf_CalculateCrc32(const AppStorageParameterBlock_t *p_block)
 {
     AppStorageParameterBlock_t blockCopy;
@@ -124,14 +138,12 @@ static uint8_t App_StorageIf_IsBlockValid(const AppStorageParameterBlock_t *p_bl
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-
-//eeprom///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#ifdef SUPPORT_EEPROM
+// eeprom ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static uint32_t App_StorageIf_GetEepromSlotAddress(uint32_t slotIndex)
 {
     return (DATA_EEPROM_BASE + (slotIndex * APP_STORAGE_DATA_EEPROM_SLOT_SIZE_BYTES));
 }
-
 
 static AppStatus_t App_StorageIf_WriteEepromBlock(const AppStorageParameterBlock_t *p_block, uint32_t address)
 {
@@ -196,10 +208,11 @@ static AppStatus_t App_StorageIf_LoadLatestEeprom(AppStorageParameterBlock_t *p_
     *p_address = bestAddress;
     return APP_STATUS_OK;
 }
+#endif
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//flash////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+#ifdef SUPPORT_FALASH
+// flash ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static uint32_t App_StorageIf_GetFlashPartitionStart(void)
 {
     uint32_t flashSizeBytes;
@@ -217,7 +230,6 @@ static uint32_t App_StorageIf_GetFlashPartitionEnd(void)
     flashSizeBytes = ((uint32_t)(*(__IO uint16_t *)FLASHSIZE_BASE)) * 1024u;
     return (FLASH_BASE + flashSizeBytes);
 }
-
 
 static AppStatus_t App_StorageIf_EraseFlashPartition(void)
 {
@@ -242,7 +254,6 @@ static AppStatus_t App_StorageIf_EraseFlashPartition(void)
     APP_RETURN_IF_HAL_ERROR(HAL_FLASH_Lock(), APP_STATUS_INIT_FAILED);
     return APP_STATUS_OK;
 }
-
 
 static AppStatus_t App_StorageIf_LoadLatestFlash(AppStorageParameterBlock_t *p_block, uint32_t *p_address)
 {
@@ -284,7 +295,6 @@ static AppStatus_t App_StorageIf_LoadLatestFlash(AppStorageParameterBlock_t *p_b
     *p_address = bestAddress;
     return APP_STATUS_OK;
 }
-
 
 static AppStatus_t App_StorageIf_WriteFlashBlock(const AppStorageParameterBlock_t *p_block, uint32_t *p_writtenAddress)
 {
@@ -336,11 +346,10 @@ static AppStatus_t App_StorageIf_WriteFlashBlock(const AppStorageParameterBlock_
     *p_writtenAddress = targetAddress;
     return APP_STATUS_OK;
 }
-
-
+#endif
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//application////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// application /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static void App_StorageUpdateSummary(void)
 {
     g_appStorageSummary.initialized = g_appStorageContext.initialized;
@@ -381,7 +390,6 @@ static void App_StorageIf_SetDefaultsParam(AppStorageParameterBlock_t *p_block)
     p_block->crc32 = App_StorageIf_CalculateCrc32(p_block);
 }
 
-
 AppStatus_t App_StorageIf_LoadParameterBlocks(void)
 {
     AppStorageParameterBlock_t eepromBlock;
@@ -390,7 +398,12 @@ AppStatus_t App_StorageIf_LoadParameterBlocks(void)
     AppStatus_t flashStatus;
     uint32_t eepromAddress;
     uint32_t flashAddress;
+    uint8_t supportedTargets;
 
+    supportedTargets = App_StorageIf_GetSupportedTargets();
+
+    (void)memset(&eepromBlock, 0, sizeof(eepromBlock));
+    (void)memset(&flashBlock, 0, sizeof(flashBlock));
     (void)memset(&g_appStorageContext, 0, sizeof(g_appStorageContext));
     (void)memset(&g_appStorageSummary, 0, sizeof(g_appStorageSummary));
     g_appStorageContext.activeEepromAddress = APP_STORAGE_INVALID_ADDRESS;
@@ -399,16 +412,28 @@ AppStatus_t App_StorageIf_LoadParameterBlocks(void)
     g_appStorageContext.lastCommitStatus = APP_STATUS_NOT_INITIALIZED;
     g_appStorageContext.pendingRequester = APP_STORAGE_REQUESTER_NONE;
 
+    APP_RETURN_IF_FALSE(supportedTargets != 0u, APP_STATUS_INVALID_PARAM);
+
+    eepromStatus = APP_STATUS_NOT_INITIALIZED;
+    flashStatus = APP_STATUS_NOT_INITIALIZED;
+    eepromAddress = APP_STORAGE_INVALID_ADDRESS;
+    flashAddress = APP_STORAGE_INVALID_ADDRESS;
+
+#ifdef SUPPORT_EEPROM
     APP_RETURN_IF_FALSE(APP_STORAGE_DATA_EEPROM_SLOT_SIZE_BYTES >= sizeof(AppStorageParameterBlock_t), APP_STATUS_INVALID_PARAM);
+    eepromStatus = App_StorageIf_LoadLatestEeprom(&eepromBlock, &eepromAddress);
+#endif
+
+#ifdef SUPPORT_FALASH
     APP_RETURN_IF_FALSE(APP_STORAGE_FLASH_RECORD_STRIDE_BYTES >= sizeof(AppStorageParameterBlock_t), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE(APP_STORAGE_FLASH_PARTITION_PAGE_COUNT != 0u, APP_STATUS_INVALID_PARAM);
-
-    eepromStatus = App_StorageIf_LoadLatestEeprom(&eepromBlock, &eepromAddress);
     flashStatus = App_StorageIf_LoadLatestFlash(&flashBlock, &flashAddress);
+#endif
 
     g_appStorageContext.eepromValid = (eepromStatus == APP_STATUS_OK) ? APP_TRUE : APP_FALSE;
     g_appStorageContext.flashValid = (flashStatus == APP_STATUS_OK) ? APP_TRUE : APP_FALSE;
 
+#if defined(SUPPORT_EEPROM) && defined(SUPPORT_FALASH)
     if ((eepromStatus == APP_STATUS_OK) && (flashStatus == APP_STATUS_OK))
     {
         if (eepromBlock.sequence >= flashBlock.sequence)
@@ -446,12 +471,41 @@ AppStatus_t App_StorageIf_LoadParameterBlocks(void)
         g_appStorageContext.commitPending = APP_TRUE;
         g_appStorageContext.pendingBackend = (uint8_t)APP_STORAGE_TARGET_BOTH;
     }
+#elif defined(SUPPORT_EEPROM)
+    if (eepromStatus == APP_STATUS_OK)
+    {
+        g_appStorageContext.active = eepromBlock;
+        g_appStorageContext.activeEepromAddress = eepromAddress;
+    }
+    else
+    {
+        App_StorageIf_SetDefaultsParam(&g_appStorageContext.active);
+        g_appStorageContext.defaultsApplied = APP_TRUE;
+        g_appStorageContext.commitPending = APP_TRUE;
+        g_appStorageContext.pendingBackend = (uint8_t)APP_STORAGE_TARGET_EEPROM;
+    }
+#elif defined(SUPPORT_FALASH)
+    if (flashStatus == APP_STATUS_OK)
+    {
+        g_appStorageContext.active = flashBlock;
+        g_appStorageContext.activeFlashAddress = flashAddress;
+    }
+    else
+    {
+        App_StorageIf_SetDefaultsParam(&g_appStorageContext.active);
+        g_appStorageContext.defaultsApplied = APP_TRUE;
+        g_appStorageContext.commitPending = APP_TRUE;
+        g_appStorageContext.pendingBackend = (uint8_t)APP_STORAGE_TARGET_FLASH;
+    }
+#else
+    APP_RETURN_IF_FALSE(APP_FALSE, APP_STATUS_INVALID_PARAM);
+#endif
 
     g_appStorageContext.initialized = APP_TRUE;
     g_appStorageContext.lastLoadStatus = APP_STATUS_OK;
     App_StorageUpdateSummary();
 
-    (void)APP_LOGI("STOR", "init eeprom=%u flash=%u seq=%lu commit=%u backend=%u",
+    APP_LOGI("STOR", "init eeprom=%u flash=%u seq=%lu commit=%u backend=%u",
                          (unsigned int)g_appStorageContext.eepromValid,
                          (unsigned int)g_appStorageContext.flashValid,
                          (unsigned long)g_appStorageContext.active.sequence,
@@ -463,8 +517,12 @@ AppStatus_t App_StorageIf_LoadParameterBlocks(void)
 AppStatus_t App_StorageLoadDefaults(void)
 {
     uint32_t nextSequence;
+    uint8_t supportedTargets;
 
     APP_RETURN_IF_FALSE(g_appStorageContext.initialized == APP_TRUE, APP_STATUS_NOT_INITIALIZED);
+
+    supportedTargets = App_StorageIf_GetSupportedTargets();
+    APP_RETURN_IF_FALSE(supportedTargets != 0u, APP_STATUS_INVALID_PARAM);
 
     nextSequence = (g_appStorageContext.active.sequence == 0u) ? 1u : (g_appStorageContext.active.sequence + 1u);
     App_StorageIf_SetDefaultsParam(&g_appStorageContext.active);
@@ -472,7 +530,7 @@ AppStatus_t App_StorageLoadDefaults(void)
     g_appStorageContext.active.crc32 = App_StorageIf_CalculateCrc32(&g_appStorageContext.active);
     g_appStorageContext.defaultsApplied = APP_TRUE;
     g_appStorageContext.commitPending = APP_TRUE;
-    g_appStorageContext.pendingBackend = (uint8_t)APP_STORAGE_TARGET_BOTH;
+    g_appStorageContext.pendingBackend = supportedTargets;
     g_appStorageContext.pendingRequester = APP_STORAGE_REQUESTER_NONE;
     g_appStorageContext.pendingOperation = (uint8_t)APP_STORAGE_QUEUE_OP_SAVE;
     g_appStorageContext.pendingRequestTickMs = HAL_GetTick();
@@ -480,11 +538,58 @@ AppStatus_t App_StorageLoadDefaults(void)
     return APP_STATUS_OK;
 }
 
+AppStatus_t App_StorageDataEepromRead(uint32_t offset, void *p_data, uint32_t sizeBytes)
+{
+#ifdef SUPPORT_EEPROM
+    uint32_t address;
 
+    APP_RETURN_IF_FALSE(p_data != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) >= offset, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) <= APP_STORAGE_METER_DATA_EEPROM_SIZE_BYTES, APP_STATUS_INVALID_PARAM);
 
+    address = DATA_EEPROM_BASE + APP_STORAGE_METER_DATA_EEPROM_OFFSET_BYTES + offset;
+    (void)memcpy(p_data, (const void *)address, sizeBytes);
+    return APP_STATUS_OK;
+#else
+    (void)offset;
+    (void)p_data;
+    (void)sizeBytes;
+    return APP_STATUS_NOT_INITIALIZED;
+#endif
+}
 
+AppStatus_t App_StorageDataEepromWrite(uint32_t offset, const void *p_data, uint32_t sizeBytes)
+{
+#ifdef SUPPORT_EEPROM
+    const uint8_t *p_bytes;
+    uint32_t address;
+    uint32_t index;
 
+    APP_RETURN_IF_FALSE(p_data != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) >= offset, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) <= APP_STORAGE_METER_DATA_EEPROM_SIZE_BYTES, APP_STATUS_INVALID_PARAM);
 
+    p_bytes = (const uint8_t *)p_data;
+    address = DATA_EEPROM_BASE + APP_STORAGE_METER_DATA_EEPROM_OFFSET_BYTES + offset;
 
-
-
+    APP_RETURN_IF_HAL_ERROR(HAL_FLASHEx_DATAEEPROM_Unlock(), APP_STATUS_INIT_FAILED);
+    for (index = 0u; index < sizeBytes; index++)
+    {
+        if (HAL_FLASHEx_DATAEEPROM_Program(FLASH_TYPEPROGRAMDATA_BYTE,
+                                           address + index,
+                                           p_bytes[index]) != HAL_OK)
+        {
+            (void)HAL_FLASHEx_DATAEEPROM_Lock();
+            App_ErrorRecord(APP_STATUS_INIT_FAILED, __FILE__, __LINE__);
+            return APP_STATUS_INIT_FAILED;
+        }
+    }
+    APP_RETURN_IF_HAL_ERROR(HAL_FLASHEx_DATAEEPROM_Lock(), APP_STATUS_INIT_FAILED);
+    return APP_STATUS_OK;
+#else
+    (void)offset;
+    (void)p_data;
+    (void)sizeBytes;
+    return APP_STATUS_NOT_INITIALIZED;
+#endif
+}

@@ -44,6 +44,9 @@ typedef enum
 AppStatus_t App_StorageIf_LoadParameterBlocks(void);
 AppStatus_t App_StorageLoadDefaults(void);
 
+AppStatus_t App_StorageDataEepromRead(uint32_t offset, void *p_data, uint32_t sizeBytes);
+AppStatus_t App_StorageDataEepromWrite(uint32_t offset, const void *p_data, uint32_t sizeBytes);
+
 #ifdef __cplusplus
 }
 #endif

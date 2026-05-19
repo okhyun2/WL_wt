@@ -178,7 +178,7 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
     /* 메인 루프 정상 동작 표시 */
-    g_wwdg_main_loop_alive = 0;
+    g_wwdg_main_loop_alive = 1;
 
     App_SystemProcess();
   }

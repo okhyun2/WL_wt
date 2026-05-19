@@ -411,7 +411,7 @@ static uint8_t App_FsmIsSignalEventPending(void)
         p_component = App_FsmGetComponentMutable(componentId);
         if (p_component->eventPending != 0)
         {
-            (void)APP_LOGD("FSM", "%s is eventpending", App_FsmGetComponentNameInternal(componentId));
+            APP_LOGD("FSM", "%s is eventpending", App_FsmGetComponentNameInternal(componentId));
             return APP_TRUE;
         }
     }
@@ -604,8 +604,7 @@ static AppStatus_t App_FsmServiceDebugConsole(void)
 
 static void App_FsmExecuteResetBoot(void)
 {
-    (void)APP_LOGW("FSM", "executing reset boot-hold=%lu ms",
-                         (unsigned long)APP_FSM_BOOT_RESET_HOLD_MS);
+    APP_LOGW("FSM", "executing reset boot-hold=%lu ms", (unsigned long)APP_FSM_BOOT_RESET_HOLD_MS);
     App_HwSetChargeBoot0(GPIO_PIN_SET);
     HAL_Delay(APP_FSM_BOOT_RESET_HOLD_MS);
     __disable_irq();
@@ -621,7 +620,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
     APP_RETURN_IF_FALSE(App_FsmIsValidState(currentState) == APP_TRUE, APP_STATUS_INVALID_PARAM);
 
-    (void)APP_LOGD("FSM", "executing state:%s, commandParam:%d", App_FsmGetStateName(currentState), commandParam0);
+    APP_LOGD("FSM", "executing state:%s, commandParam:%d", App_FsmGetStateName(currentState), commandParam0);
 
     g_appFsmContext.summary.currentState = currentState;
     g_appFsmContext.summary.lastStateTickMs = HAL_GetTick();
@@ -909,14 +908,14 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_WATCHDOG_INIT:
-            (void)APP_LOGD("FSM", "state:%s", App_FsmGetStateName(currentState));
+            APP_LOGD("FSM", "state:%s", App_FsmGetStateName(currentState));
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_WATCHDOG_FEED, APP_TRUE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL); //eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_WATCHDOG, APP_FSM_STATE_WATCHDOG_FEED, APP_TRUE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
         case APP_FSM_STATE_WATCHDOG_FEED:
-            (void)APP_LOGD("FSM", "state:%s", App_FsmGetStateName(currentState));
+            APP_LOGD("FSM", "state:%s", App_FsmGetStateName(currentState));
             App_HwFeedEWD();
             //Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_WATCHDOG, APP_FSM_STATE_WATCHDOG_FEED, APP_FALSE, APP_FALSE, APP_STATUS_OK); //release eventPending. can entry stop mode
@@ -1001,7 +1000,7 @@ AppStatus_t App_FsmRun(void)
     if (status == APP_STATUS_OK)
     {
         nextState = message.nextState;
-        (void)APP_LOGI("FSM", "GetMsgq state:%s", App_FsmGetStateName(nextState));
+        APP_LOGI("FSM", "GetMsgq state:%s", App_FsmGetStateName(nextState));
 
         if (App_FsmIsValidState(nextState) != APP_TRUE)
         {
@@ -1027,7 +1026,7 @@ AppStatus_t App_FsmRun(void)
     status = App_FsmFindDuePeriodicState(&nextState);
     if (status == APP_STATUS_OK)
     {
-        (void)APP_LOGD("FSM", "Periodic state:%s", App_FsmGetStateName(nextState));
+        APP_LOGD("FSM", "Periodic state:%s", App_FsmGetStateName(nextState));
         g_appFsmContext.summary.lastQueuedState = nextState;
         g_appFsmContext.summary.lastDequeFromFront = APP_FALSE;
         g_appFsmContext.summary.lastCommandTickMs = HAL_GetTick();
@@ -1040,12 +1039,12 @@ AppStatus_t App_FsmRun(void)
 
     if(App_FsmIsSignalEventPending())
     {
-        (void)APP_LOGD("FSM", "EventPending. don't stop allow");
+        APP_LOGD("FSM", "EventPending. don't stop allow");
         return App_SystemRequestLowPower(APP_FALSE);
     }
     else
     {
-        (void)APP_LOGD("FSM", "No EventPending. stop allow");
+        APP_LOGD("FSM", "No EventPending. stop allow");
     }
 
     g_appFsmContext.summary.currentState = APP_FSM_STATE_IDLE;

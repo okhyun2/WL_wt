@@ -546,7 +546,7 @@ AppStatus_t App_GpioLpSetNbiotPowered(uint8_t powered)
 #ifdef DEBUG
     if (App_GpioLpCanDebugLog() == 1u)
     {
-        (void)APP_LOGD("GPIO", "NB-IoT power=%u", (unsigned int)powered);
+        APP_LOGD("GPIO", "NB-IoT power=%u", (unsigned int)powered);
     }
 #endif
 
@@ -562,7 +562,7 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         return APP_STATUS_OK;
     }
 
-    (void)APP_LOGW("GPIO", "STOP External interface pins(UART, I2C, gpios..)");
+    APP_LOGW("GPIO", "STOP External interface pins(UART, I2C, gpios..)");
 
     App_GpioLpEnablePortClocks();
     App_GpioLpApplyUnusedPins();
@@ -635,7 +635,7 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
 #ifdef DEBUG
     if (App_GpioLpCanDebugLog() == 1u)
     {
-        (void)APP_LOGD("GPIO",
+        APP_LOGD("GPIO",
                        "STOP prep done: nbiot=%u clk_mask=0x%08lX",
                        (unsigned int)g_appGpioLpContext.nbiotPowered,
                        (unsigned long)g_appGpioLpContext.lastDisabledClockMask);
@@ -671,12 +671,12 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
 
     g_appGpioLpContext.stopPrepared = 0u;
 
-    (void)APP_LOGI("GPIO", "STOP recover external interface pins(UART, I2C, gpios..)");
+    APP_LOGI("GPIO", "STOP recover external interface pins(UART, I2C, gpios..)");
 
 #ifdef DEBUG
     if (App_GpioLpCanDebugLog() == 1u)
     {
-        (void)APP_LOGD("GPIO",
+        APP_LOGD("GPIO",
                        "STOP recover done: nbiot=%u restored_mask=0x%08lX",
                        (unsigned int)g_appGpioLpContext.nbiotPowered,
                        (unsigned long)g_appGpioLpContext.lastDisabledClockMask);

@@ -93,11 +93,54 @@ AppStatus_t App_LogPrintf(AppLogLevel_t level, const char *p_module, const char 
  */
 AppStatus_t App_LogHexDump(AppLogLevel_t level, const char *p_module, const uint8_t *p_data, uint16_t length);
 
-#define APP_LOGT(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_TRACE, (module), (fmt), ##__VA_ARGS__)
-#define APP_LOGD(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_DEBUG, (module), (fmt), ##__VA_ARGS__)
-#define APP_LOGI(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_INFO,  (module), (fmt), ##__VA_ARGS__)
-#define APP_LOGW(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_WARN,  (module), (fmt), ##__VA_ARGS__)
-#define APP_LOGE(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_ERROR, (module), (fmt), ##__VA_ARGS__)
+#if (APP_BUILD_IS_PRODUCTION == APP_TRUE)
+ #if APP_LOG_LEVEL == (APP_LOG_LEVEL_TRACE)
+    #define APP_LOGT(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_TRACE, (module), (fmt), ##__VA_ARGS__)
+    #define APP_LOGD(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_DEBUG, (module), (fmt), ##__VA_ARGS__)
+    #define APP_LOGI(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_INFO,  (module), (fmt), ##__VA_ARGS__)
+    #define APP_LOGW(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_WARN,  (module), (fmt), ##__VA_ARGS__)
+    #define APP_LOGE(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_ERROR, (module), (fmt), ##__VA_ARGS__)
+ #elif APP_LOG_LEVEL == (APP_LOG_LEVEL_DEBUG)
+    #define APP_LOGT(module, fmt, ...)
+    #define APP_LOGD(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_DEBUG, (module), (fmt), ##__VA_ARGS__)
+    #define APP_LOGI(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_INFO,  (module), (fmt), ##__VA_ARGS__)
+    #define APP_LOGW(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_WARN,  (module), (fmt), ##__VA_ARGS__)
+    #define APP_LOGE(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_ERROR, (module), (fmt), ##__VA_ARGS__)
+ #elif APP_LOG_LEVEL == (APP_LOG_LEVEL_INFO)
+    #define APP_LOGT(module, fmt, ...)
+    #define APP_LOGD(module, fmt, ...)
+    #define APP_LOGI(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_INFO,  (module), (fmt), ##__VA_ARGS__)
+    #define APP_LOGW(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_WARN,  (module), (fmt), ##__VA_ARGS__)
+    #define APP_LOGE(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_ERROR, (module), (fmt), ##__VA_ARGS__)
+ #elif APP_LOG_LEVEL == (APP_LOG_LEVEL_WARN)
+    #define APP_LOGT(module, fmt, ...)
+    #define APP_LOGD(module, fmt, ...)
+    #define APP_LOGI(module, fmt, ...)
+    #define APP_LOGW(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_WARN,  (module), (fmt), ##__VA_ARGS__)
+    #define APP_LOGE(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_ERROR, (module), (fmt), ##__VA_ARGS__)
+ #elif APP_LOG_LEVEL == (APP_LOG_LEVEL_ERROR)
+    #define APP_LOGT(module, fmt, ...)
+    #define APP_LOGD(module, fmt, ...)
+    #define APP_LOGI(module, fmt, ...)
+    #define APP_LOGW(module, fmt, ...)
+    #define APP_LOGE(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_ERROR, (module), (fmt), ##__VA_ARGS__)
+ #elif APP_LOG_LEVEL == (APP_LOG_LEVEL_NONE)
+    #define APP_LOGT(module, fmt, ...)
+    #define APP_LOGD(module, fmt, ...)
+    #define APP_LOGI(module, fmt, ...)
+    #define APP_LOGW(module, fmt, ...)
+    #define APP_LOGE(module, fmt, ...)
+ #else
+    #error "unknown log level";
+ #endif
+#else
+ #define APP_LOGT(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_TRACE, (module), (fmt), ##__VA_ARGS__)
+ #define APP_LOGD(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_DEBUG, (module), (fmt), ##__VA_ARGS__)
+ #define APP_LOGI(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_INFO,  (module), (fmt), ##__VA_ARGS__)
+ #define APP_LOGW(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_WARN,  (module), (fmt), ##__VA_ARGS__)
+ #define APP_LOGE(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_ERROR, (module), (fmt), ##__VA_ARGS__)
+#endif
+
 
 #ifdef __cplusplus
 }

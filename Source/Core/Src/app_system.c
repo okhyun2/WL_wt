@@ -14,6 +14,7 @@
 #include "app_msgq.h"
 #include "app_selftest.h"
 #include "nfc_ntag5_ntp53321.h"
+#include "app_meter_storage.h"
 
 wakeup_context_t g_wakeup_ctx = {0};
 extern NFC_NTP53321_Handle_t g_nfcTagHandle;
@@ -396,7 +397,7 @@ void App_SystemNotifyWakeSource(uint32_t sourceMask)
 #ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
-        (void)APP_LOGD("WAKE",
+        APP_LOGD("WAKE",
                        "source=%s mask=0x%08lX tick=%lu",
                        App_SystemBuildWakeSourceString(g_appSystemContext.wakeSourceMask),
                        (unsigned long)g_appSystemContext.wakeSourceMask,
@@ -506,40 +507,31 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     g_appSystemContext.logReady = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_LOG_READY;
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SYS", "Boot complete: %s v%s", APP_NAME_STRING, App_SystemGetVersionString()) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu LSE=%u",
+    APP_LOGI("SYS", "Boot complete: %s v%s", APP_NAME_STRING, App_SystemGetVersionString());
+    APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu LSE=%u",
                                  (unsigned long)p_clockContext->sysclkHz,
                                  (unsigned long)p_clockContext->hclkHz,
                                  (unsigned long)p_clockContext->pclk1Hz,
                                  (unsigned long)p_clockContext->pclk2Hz,
                                  (unsigned long)p_clockContext->msiRange,
-                                 (unsigned int)p_clockContext->lseReady) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("GPIO", "LP policy ready: SWD=%lu",
-                                 (unsigned long)g_appGpioLpConfig.swdPolicy) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("RTC", "STOP wake period=%lu ms (%s)",
+                                 (unsigned int)p_clockContext->lseReady);
+    APP_LOGI("GPIO", "LP policy ready: SWD=%lu",
+                                 (unsigned long)g_appGpioLpConfig.swdPolicy);
+    APP_LOGI("RTC", "STOP wake period=%lu ms (%s)",
                                  (unsigned long)APP_RTC_WAKEUP_PERIOD_MS,
-                                 (APP_RTC_WAKEUP_PERIOD_MS == 0) ? "Don't work stop":"LSE rtc wakeup") == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("DBG", "USART1 debug console ready at %lu baud",
-                                 (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("METER", "USART2 meter ready at %lu baud",
-                                 (unsigned long)APP_UART_METER_HANDLE->Init.BaudRate) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("NBIoT", "LPUART1 NBIoT ready at %lu baud",
-                                 (unsigned long)APP_UART_NBIOT_HANDLE->Init.BaudRate) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(APP_LOGI("NFC", "I2C2 NFC ready at %sKhz",
-                                 (((unsigned long)APP_I2C_NFC_HANDLE->Init.Timing == 0x00000708)?"100":"unknown")) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+                                 (APP_RTC_WAKEUP_PERIOD_MS == 0) ? "Don't work stop":"LSE rtc wakeup");
+    APP_LOGI("DBG", "USART1 debug console ready at %lu baud",
+                                 (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate);
+    APP_LOGI("METER", "USART2 meter ready at %lu baud",
+                                 (unsigned long)APP_UART_METER_HANDLE->Init.BaudRate);
+    APP_LOGI("NBIoT", "LPUART1 NBIoT ready at %lu baud",
+                                 (unsigned long)APP_UART_NBIOT_HANDLE->Init.BaudRate);
+    APP_LOGI("NFC", "I2C2 NFC ready at %sKhz",
+                                 (((unsigned long)APP_I2C_NFC_HANDLE->Init.Timing == 0x00000708)?"100":"unknown"));
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
     APP_RETURN_IF_FALSE(App_DebugConsolePrintPrompt() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 #endif
-    APP_RETURN_IF_FALSE(APP_LOGI("SYS", "Boot path complete: clock/log/debug ready") == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SYS", "Boot path complete: clock/log/debug ready");
 
     return APP_STATUS_OK;
 }
@@ -562,13 +554,11 @@ AppStatus_t App_SystemRunBootSelfTest(void)
 
     if (status == APP_STATUS_OK)
     {
-        APP_RETURN_IF_FALSE(APP_LOGI("SELF", "------ Boot self-test finished without failures") == APP_STATUS_OK,
-                            APP_STATUS_UART_TX_FAILED);
+        APP_LOGI("SELF", "------ Boot self-test finished without failures");
         return APP_STATUS_OK;
     }
 
-    APP_RETURN_IF_FALSE(APP_LOGW("SELF", "!!!!!! Boot self-test completed with one or more failures") == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+    APP_LOGW("SELF", "!!!!!! Boot self-test completed with one or more failures");
 
     if (APP_SELFTEST_FAIL_STOPS_BOOT == APP_TRUE)
     {
@@ -598,10 +588,9 @@ static AppStatus_t App_SystemInitFsm(void)
     g_appSystemContext.fsmStatus = APP_STATUS_OK;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_FSM_READY;
 
-    APP_RETURN_IF_FALSE(APP_LOGI("FSM", "FSM ready: queue=%u state=%s",
+    APP_LOGI("FSM", "FSM ready: queue=%u state=%s",
                                  (unsigned int)APP_MSGQ_CAPACITY,
-                                 App_FsmGetCurrentStateString()) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+                                 App_FsmGetCurrentStateString());
 
     return APP_STATUS_OK;
 }
@@ -612,7 +601,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
 {
     AppStatus_t status;
 
-    (void)APP_LOGI("LP", "Enter STOP mode");
+    APP_LOGI("LP", "Enter STOP mode");
 
     g_appSystemContext.stopCandidateCount++;
 
@@ -620,16 +609,16 @@ static AppStatus_t App_SystemEnterStopMode(void)
         (g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_RTC) )
     {
         uint32_t wakeupSeconds = 0;
-        (void)APP_LOGD("LP", "RTCConfigureWakeupTimer");
+        APP_LOGD("LP", "RTCConfigureWakeupTimer");
         g_appSystemContext.oldWakeSourceMask &= ~APP_SYSTEM_WAKE_SRC_RTC;
         status = App_SystemRtcConfigureWakeupTimer(&wakeupSeconds);
         if (status != APP_STATUS_OK)
         {
-            (void)APP_LOGE("LP", "RtcConfigureWakeupTimer");
+            APP_LOGE("LP", "RtcConfigureWakeupTimer");
             return status;
         }
 
-        (void)APP_LOGI("RTC", "STOP periodic:%ds", wakeupSeconds);
+        APP_LOGI("RTC", "STOP periodic:%ds", wakeupSeconds);
     }
     else if(g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_LPTIM)
     {
@@ -640,13 +629,13 @@ static AppStatus_t App_SystemEnterStopMode(void)
         fTemp = (((APP_SYSTEM_LPTIM1_ARR+1) * lptim1_prescaler)/32768) + 0.5;
         wakeupSeconds = (uint32_t)fTemp;
         g_appSystemContext.oldWakeSourceMask &= ~APP_SYSTEM_WAKE_SRC_LPTIM;
-        (void)APP_LOGI("LPTIM", "STOP periodic:%ds", wakeupSeconds);
+        APP_LOGI("LPTIM", "STOP periodic:%ds", wakeupSeconds);
     }
 
     status = App_SystemPrepareForStop();
     if (status != APP_STATUS_OK)
     {
-        (void)APP_LOGE("LP", "systemPrepareForStop");
+        APP_LOGE("LP", "systemPrepareForStop");
         return status;
     }
 
@@ -658,7 +647,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
         // this don't print because stopped external interface.
-        (void)APP_LOGI("LP", "STOP candidate=%lu qual=%u idle=%lu sleep=%lu stop=%lu dryrun=%u",
+        APP_LOGI("LP", "STOP candidate=%lu qual=%u idle=%lu sleep=%lu stop=%lu dryrun=%u",
                        (unsigned long)g_appSystemContext.stopCandidateCount,
                        (unsigned int)g_appSystemContext.stopQualificationCount,
                        (unsigned long)g_appSystemContext.idleCounter,
@@ -680,7 +669,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
         // this don't print because stopped external interface.
-        (void)APP_LOGW("LP", "STOP dry-run only: candidate=%lu dryrun=%lu wake=%s",
+        APP_LOGW("LP", "STOP dry-run only: candidate=%lu dryrun=%lu wake=%s",
                        (unsigned long)g_appSystemContext.stopCandidateCount,
                        (unsigned long)g_appSystemContext.stopDryRunCount,
                        App_SystemGetWakeSourceString());
@@ -688,6 +677,9 @@ static AppStatus_t App_SystemEnterStopMode(void)
 #endif
     return APP_STATUS_OK;
 #else
+
+    /* Stop 진입 직전 WWDG 최대 충전 */
+    HAL_WWDG_Refresh(APP_WWDG_HANDLE);
 
     // nfc prepare
     g_nfcTagHandle.sleep_enter_tick = HAL_GetTick();
@@ -735,6 +727,9 @@ static AppStatus_t App_SystemEnterStopMode(void)
     g_nfcTagHandle.stats.total_sleep_ticks += (HAL_GetTick() - g_nfcTagHandle.sleep_enter_tick);
     g_nfcTagHandle.state = NFC_STATE_ACTIVE;
 
+    /* Wakeup 직후 WWDG 즉시 Refresh (안전 마진 확보) */
+    HAL_WWDG_Refresh(APP_WWDG_HANDLE);
+
 #ifdef DEBUG
     debug_print_wakeup_info();
 #endif
@@ -749,7 +744,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
 
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
-        (void)APP_LOGI("LP", "STOP exit wake=%s, mask=%x count=%lu tick=%lu",
+        APP_LOGI("LP", "STOP exit wake=%s, mask=%x count=%lu tick=%lu",
                        App_SystemGetWakeSourceString(),
                        g_appSystemContext.wakeSourceMask,
                        (unsigned long)g_appSystemContext.stopEntryCount,
@@ -781,7 +776,7 @@ static void App_SystemHandleIdle(void)
 #ifdef DEBUG
         if (App_SystemCanDebugLog() == APP_TRUE)
         {
-            (void)APP_LOGD("LP",
+            APP_LOGD("LP",
                            "STOP qualify: step=%u/%u decision=%s idle=%lu dispatch=%lu",
                            (unsigned int)g_appSystemContext.stopQualificationCount,
                            (unsigned int)APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT,
@@ -800,7 +795,7 @@ static void App_SystemHandleIdle(void)
             {
                 g_appSystemContext.fsmStatus = status;
                 App_ErrorRecord(status, __FILE__, __LINE__);
-                (void)APP_LOGE("LP", "STOP entry/exit failed: status=%lu", (unsigned long)status);
+                APP_LOGE("LP", "STOP entry/exit failed: status=%lu", (unsigned long)status);
             }
             return;
         }
@@ -813,7 +808,7 @@ static void App_SystemHandleIdle(void)
 #ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
-        (void)APP_LOGD("SYS",
+        APP_LOGD("SYS",
                        "Entering idle path: mode=%s stop_req=%u idle=%lu dispatch=%lu",
                        (APP_FSM_USE_WFI_IDLE == APP_TRUE) ? "WFI" : "delay",
                        (unsigned int)g_appSystemContext.stopRequested,
@@ -908,6 +903,12 @@ AppStatus_t App_SystemInit(void)
         return status;
     }
 
+    status = App_MeterStorageInit();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
     g_appSystemContext.bootStage = APP_BOOT_STAGE_GPIO_LP_READY;
 
     status = App_DualBootInit();
@@ -932,7 +933,7 @@ AppStatus_t App_SystemInit(void)
     }
 
     (void)App_DualBootConfirmSlot2();
-    (void)APP_LOGI("BOOT",
+    APP_LOGI("BOOT",
                "running image=%s(%lu) state=%s active=%lu pending=%lu",
                App_DualBootGetCurrentSlotName(),
                (unsigned long)App_DualBootGetCurrentSlotId(),
@@ -960,16 +961,14 @@ AppStatus_t App_SystemInit(void)
     g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
 
 #ifdef DEBUG
-    APP_RETURN_IF_FALSE(APP_LOGD("SYS", "Application ready: boot=%lu/%lu stop_req=%u",
+    APP_LOGD("SYS", "Application ready: boot=%lu/%lu stop_req=%u",
                                  (unsigned long)g_appSystemContext.bootStage,
                                  (unsigned long)APP_BOOT_STAGE_APP_READY,
-                                 (unsigned int)g_appSystemContext.stopRequested) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+                                 (unsigned int)g_appSystemContext.stopRequested);
 #endif
 
-    APP_RETURN_IF_FALSE(APP_LOGI("SYS", "RTC Set(%04d-%02d-%02d %02d:%02d:%02d)",
-                        APP_DEFAULT_RTC_YEAR, APP_DEFAULT_RTC_MONTH, APP_DEFAULT_RTC_DAY, APP_DEFAULT_RTC_HOUR, APP_DEFAULT_RTC_MIN, APP_DEFAULT_RTC_SEC) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
+    APP_LOGI("SYS", "RTC Set(%04d-%02d-%02d %02d:%02d:%02d)",
+                        APP_DEFAULT_RTC_YEAR, APP_DEFAULT_RTC_MONTH, APP_DEFAULT_RTC_DAY, APP_DEFAULT_RTC_HOUR, APP_DEFAULT_RTC_MIN, APP_DEFAULT_RTC_SEC);
     RTC_SetTime(APP_DEFAULT_RTC_YEAR, APP_DEFAULT_RTC_MONTH, APP_DEFAULT_RTC_DAY, APP_DEFAULT_RTC_HOUR, APP_DEFAULT_RTC_MIN, APP_DEFAULT_RTC_SEC);
 
     return APP_STATUS_OK;
@@ -992,7 +991,7 @@ void App_SystemProcess(void)
     {
         App_ErrorRecord(status, __FILE__, __LINE__);
 #ifdef DEBUG
-        (void)APP_LOGE("SYS", "FSM run failed: status=%lu", (unsigned long)status);
+        APP_LOGE("SYS", "FSM run failed: status=%lu", (unsigned long)status);
 #endif
     }
 
@@ -1006,7 +1005,7 @@ void App_SystemProcess(void)
             (g_appSystemContext.stopRequested == APP_TRUE) &&
             (App_SystemCanDebugLog() == APP_TRUE))
         {
-            (void)APP_LOGD("LP",
+            APP_LOGD("LP",
                            "idle gate forced: dispatch=%lu decision=%s stop_req=%u",
                            (unsigned long)p_fsmSummary->lastLoopDispatchCount,
                            App_FsmGetDecisionString(),
@@ -1034,7 +1033,7 @@ AppStatus_t App_SystemOnBeforeStopEnter(void)
 #ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
-        (void)APP_LOGD("LP", "before STOP status=%lu", (unsigned long)status);
+        APP_LOGD("LP", "before STOP status=%lu", (unsigned long)status);
     }
 #endif
     return status;
@@ -1049,7 +1048,7 @@ AppStatus_t App_SystemOnAfterStopExit(void)
 #ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
-        (void)APP_LOGD("LP", "after STOP status=%lu wake=%s", (unsigned long)status, App_SystemGetWakeSourceString());
+        APP_LOGD("LP", "after STOP status=%lu wake=%s", (unsigned long)status, App_SystemGetWakeSourceString());
     }
 #endif
     return status;
@@ -1093,7 +1092,7 @@ AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
     p_fsmSummary = App_FsmGetSummary();
     if ((previousRequest != allowStop) && (App_SystemCanDebugLog() == APP_TRUE))
     {
-        (void)APP_LOGD("LP",
+        APP_LOGD("LP",
                        "stop_request=%u decision=%s dispatch=%lu qualify=%u",
                        (unsigned int)allowStop,
                        App_FsmGetDecisionString(),

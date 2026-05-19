@@ -6,6 +6,10 @@
 
 #include "app_build_config.h"
 #include "app_log.h"
+#include "app_hw.h"
+#include "app_meter_storage.h"
+
+static uint8_t g_appMeterStorageEnabled = APP_TRUE;
 
 /* 4바이트 배열 → uint32_t (Little Endian) */
 static uint32_t App_MeterBytesToUint32LE(const uint8_t *bytes)
@@ -79,6 +83,202 @@ static uint32_t Decimal_To_BCD(uint32_t decimal_value)
     }
     
     return bcd;
+}
+
+static void App_MeterGetTimestamp(uint8_t ts[6], uint8_t *p_timeValid)
+{
+    RTC_TimeTypeDef sTime = {0};
+    RTC_DateTypeDef sDate = {0};
+
+    if ((HAL_RTC_GetTime(APP_RTC_HANDLE, &sTime, RTC_FORMAT_BIN) == HAL_OK) &&
+        (HAL_RTC_GetDate(APP_RTC_HANDLE, &sDate, RTC_FORMAT_BIN) == HAL_OK))
+    {
+        ts[0] = sDate.Year;
+        ts[1] = sDate.Month;
+        ts[2] = sDate.Date;
+        ts[3] = sTime.Hours;
+        ts[4] = sTime.Minutes;
+        ts[5] = sTime.Seconds;
+        if (p_timeValid != NULL)
+        {
+            *p_timeValid = APP_TRUE;
+        }
+    }
+    else
+    {
+        ts[0] = 0xFFu;
+        ts[1] = 0xFFu;
+        ts[2] = 0xFFu;
+        ts[3] = 0u;
+        ts[4] = 0u;
+        ts[5] = 0u;
+        if (p_timeValid != NULL)
+        {
+            *p_timeValid = APP_FALSE;
+        }
+    }
+}
+
+static uint8_t App_MeterDecodeDigitalDecimal(uint8_t vif)
+{
+    if ((vif >= 0x10u) && (vif <= 0x16u))
+    {
+        return (uint8_t)(0x16u - vif);
+    }
+
+    if (vif == 0x17u)
+    {
+        return 0u;
+    }
+
+    return 3u;
+}
+
+static uint8_t App_MeterDecodeDigitalCaliber(uint8_t dif)
+{
+    return (uint8_t)(dif & 0x0Fu);
+}
+
+static uint32_t App_MeterScaleToMilli(uint32_t value, uint8_t decimal)
+{
+    while (decimal < 3u)
+    {
+        value *= 10u;
+        decimal++;
+    }
+
+    while (decimal > 3u)
+    {
+        value /= 10u;
+        decimal--;
+    }
+
+    return value;
+}
+
+static uint8_t App_MeterNormalizeDigitalStatus(uint8_t rawStatus)
+{
+    uint8_t status = 0u;
+
+    if ((rawStatus & (1u << 7)) != 0u)
+    {
+        status |= APP_METER_STORAGE_STATUS_OVERFLOW;
+    }
+    if ((rawStatus & (1u << 6)) != 0u)
+    {
+        status |= APP_METER_STORAGE_STATUS_REVERSE_FLOW;
+    }
+    if ((rawStatus & (1u << 5)) != 0u)
+    {
+        status |= APP_METER_STORAGE_STATUS_LEAK;
+    }
+
+    return status;
+}
+
+static uint8_t App_MeterNormalizeScStatus(uint8_t rawStatus, uint8_t battery)
+{
+    uint8_t status = 0u;
+
+    if ((rawStatus & (1u << 1)) != 0u)
+    {
+        status |= APP_METER_STORAGE_STATUS_OVERFLOW;
+    }
+    if ((rawStatus & (1u << 4)) != 0u)
+    {
+        status |= APP_METER_STORAGE_STATUS_REVERSE_FLOW;
+    }
+    if ((rawStatus & (1u << 3)) != 0u)
+    {
+        status |= APP_METER_STORAGE_STATUS_LEAK;
+    }
+    if (battery != 0x02u)
+    {
+        status |= APP_METER_STORAGE_STATUS_LOW_BATTERY;
+    }
+
+    return status;
+}
+
+static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
+{
+    AppMeterStorageRecord_t record;
+    uint32_t identRaw;
+    uint32_t dataRaw;
+    uint32_t identDecimal;
+    uint32_t dataDecimal;
+    uint8_t timeValid;
+    uint8_t decimalPos;
+    uint8_t caliber;
+
+    APP_RETURN_IF_FALSE(pRxFrame != NULL, APP_STATUS_INVALID_PARAM);
+
+    (void)memset(&record, 0, sizeof(record));
+    App_MeterGetTimestamp(record.ts, &timeValid);
+
+    identRaw = App_MeterGetIdentificationNumber((App_MeterUnion_t *)pRxFrame);
+    dataRaw = App_MeterGetMeasurementData((App_MeterUnion_t *)pRxFrame);
+    identDecimal = BCD_To_Decimal(identRaw);
+    dataDecimal = BCD_To_Decimal(dataRaw);
+    decimalPos = App_MeterDecodeDigitalDecimal(pRxFrame->frame.UserData.VIF);
+    caliber = App_MeterDecodeDigitalCaliber(pRxFrame->frame.UserData.DIF);
+
+    record.srcType = APP_METER_STORAGE_SRC_DIGITAL_UART;
+    record.flags = APP_METER_STORAGE_FLAG_READING_VALID;
+    if (timeValid == APP_TRUE)
+    {
+        record.flags |= APP_METER_STORAGE_FLAG_TIME_VALID;
+    }
+    record.meterId = identDecimal;
+    record.readingScaled = App_MeterScaleToMilli(dataDecimal, decimalPos);
+    record.meterStatus = App_MeterNormalizeDigitalStatus(pRxFrame->frame.UserData.Status);
+    record.meterBattery = (uint8_t)(pRxFrame->frame.UserData.Status & 0x1Fu);
+    record.meterType = APP_METER_STORAGE_METER_TYPE_DIGITAL_UART;
+    record.caliberDecimal = (uint8_t)(((caliber & 0x0Fu) << 4) | (decimalPos & 0x0Fu));
+
+    return App_MeterStoragePush(&record);
+}
+
+void App_MeterSetStorageEnabled(uint8_t enabled)
+{
+    g_appMeterStorageEnabled = (enabled != APP_FALSE) ? APP_TRUE : APP_FALSE;
+}
+
+uint8_t App_MeterIsStorageEnabled(void)
+{
+    return g_appMeterStorageEnabled;
+}
+
+static AppStatus_t App_MeterSaveSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxFrame)
+{
+    AppMeterStorageRecord_t record;
+    uint32_t identRaw;
+    uint32_t dataRaw;
+    uint8_t timeValid;
+
+    APP_RETURN_IF_FALSE(pRxFrame != NULL, APP_STATUS_INVALID_PARAM);
+
+    (void)memset(&record, 0, sizeof(record));
+    App_MeterGetTimestamp(record.ts, &timeValid);
+
+    identRaw = App_MeterSC1xxxGetIdentificationNumber((App_MeterSC1xxxUnion_t *)pRxFrame);
+    dataRaw = App_MeterSC1xxxGetMeasurementData((App_MeterSC1xxxUnion_t *)pRxFrame);
+
+    record.srcType = APP_METER_STORAGE_SRC_SC1XXX;
+    record.flags = APP_METER_STORAGE_FLAG_READING_VALID;
+    if (timeValid == APP_TRUE)
+    {
+        record.flags |= APP_METER_STORAGE_FLAG_TIME_VALID;
+    }
+    record.meterId = BCD_To_Decimal(identRaw);
+    record.readingScaled = BCD_To_Decimal(dataRaw);
+    record.meterStatus = App_MeterNormalizeScStatus(pRxFrame->frame.UserData.Status,
+                                                    pRxFrame->frame.UserData.Battery);
+    record.meterBattery = pRxFrame->frame.UserData.Battery;
+    record.meterType = APP_METER_STORAGE_METER_TYPE_SC1XXX;
+    record.caliberDecimal = (uint8_t)((APP_METER_STORAGE_CALIBER_UNKNOWN << 4) | 0x03u);
+
+    return App_MeterStoragePush(&record);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -189,6 +389,10 @@ AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t le
         APP_LOGI("METER", "Success Meter parsing.");
         
         App_MeterPrintData(&rx_frame);
+        if (App_MeterIsStorageEnabled() == APP_TRUE)
+        {
+            APP_RETURN_IF_FALSE(App_MeterSaveDigitalRecord(&rx_frame) == APP_STATUS_OK, APP_STATUS_FATAL);
+        }
         return(APP_STATUS_OK);
         
     } else {
@@ -299,13 +503,16 @@ AppStatus_t App_MeterSC1xxxProcessReceivedData(const uint8_t *pRxBuf, const uint
     App_MeterSC1xxxUnion_t rx_frame = {0};
 
     /* 핵심: Binary → Union Cascading */
-    //App_MeterResult_t result = App_MeterSC1xxxParseFrame(&rx_frame, uart_rx_buffer, sizeof(uart_rx_buffer));
     App_MeterResult_t result = App_MeterSC1xxxParseFrame(&rx_frame, pRxBuf, length);
     
     if (result == APP_METER_OK) {
         APP_LOGI("METER", "Success MeterSC1xxx parsing.");
         
         App_MeterSC1xxxPrintData(&rx_frame);
+        if (App_MeterIsStorageEnabled() == APP_TRUE)
+        {
+            APP_RETURN_IF_FALSE(App_MeterSaveSc1xxxRecord(&rx_frame) == APP_STATUS_OK, APP_STATUS_FATAL);
+        }
         return(APP_STATUS_OK);
         
     } else {

@@ -11,6 +11,8 @@
 #include "app_msgq.h"
 #include "app_system.h"
 #include "app_selftest.h"
+#include "app_meter_storage.h"
+#include "app_meter_server_format.h"
 
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
 static const char g_appDebugPrompt[] = APP_DEBUG_CONSOLE_PROMPT;
@@ -50,6 +52,659 @@ static AppStatus_t App_DebugConsolePrintSelfTestSummary(const char *p_prefix)
     APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
     return App_DebugConsoleWriteLine(txBuffer);
 }
+
+static AppStatus_t App_DebugConsolePrintMeterStorageSummary(void)
+{
+    char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
+    AppMeterStorageInfo_t info;
+    AppStatus_t status;
+    int32_t formattedLength;
+
+    status = App_MeterStorageGetInfo(&info);
+    if (status != APP_STATUS_OK)
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "mstor info failed status=%lu",
+                                   (unsigned long)status);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    formattedLength = snprintf(txBuffer,
+                               sizeof(txBuffer),
+                               "mstor init=%u head=%u count=%u next_seq=%u max=%u",
+                               (unsigned int)info.initialized,
+                               (unsigned int)info.head,
+                               (unsigned int)info.count,
+                               (unsigned int)info.nextSeq,
+                               (unsigned int)APP_METER_STORAGE_MAX_RECORDS);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    return App_DebugConsoleWriteLine(txBuffer);
+}
+
+static AppStatus_t App_DebugConsolePrintMeterStorageDump(void)
+{
+    char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
+    AppMeterStorageInfo_t info;
+    AppMeterStorageRecord_t record;
+    AppStatus_t status;
+    uint8_t index;
+    int32_t formattedLength;
+
+    status = App_MeterStorageGetInfo(&info);
+    if (status != APP_STATUS_OK)
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "mstor dump failed status=%lu",
+                                   (unsigned long)status);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (info.count == 0u)
+    {
+        return App_DebugConsoleWriteLine("mstor dump empty");
+    }
+
+    for (index = 0u; index < info.count; index++)
+    {
+        status = App_MeterStorageReadAt(index, &record);
+        if (status != APP_STATUS_OK)
+        {
+            formattedLength = snprintf(txBuffer,
+                                       sizeof(txBuffer),
+                                       "[%02u] read failed status=%lu",
+                                       (unsigned int)index,
+                                       (unsigned long)status);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+            APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+            continue;
+        }
+
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "[%02u] seq=%u src=%u flg=0x%02X ts=%02u/%02u/%02u %02u:%02u:%02u",
+                                   (unsigned int)index,
+                                   (unsigned int)record.seq,
+                                   (unsigned int)record.srcType,
+                                   (unsigned int)record.flags,
+                                   (unsigned int)record.ts[0],
+                                   (unsigned int)record.ts[1],
+                                   (unsigned int)record.ts[2],
+                                   (unsigned int)record.ts[3],
+                                   (unsigned int)record.ts[4],
+                                   (unsigned int)record.ts[5]);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "     id=%lu read=%lu stat=0x%02X batt=0x%02X type=0x%02X caldec=0x%02X crc=0x%02X",
+                                   (unsigned long)record.meterId,
+                                   (unsigned long)record.readingScaled,
+                                   (unsigned int)record.meterStatus,
+                                   (unsigned int)record.meterBattery,
+                                   (unsigned int)record.meterType,
+                                   (unsigned int)record.caliberDecimal,
+                                   (unsigned int)record.crc8);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    }
+
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_DebugConsolePrintHexBuffer(const uint8_t *p_data, uint16_t length)
+{
+    char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
+    uint16_t offset;
+    uint16_t index;
+    uint16_t lineIndex;
+    int32_t formattedLength;
+    int32_t appendLength;
+
+    APP_RETURN_IF_FALSE(p_data != NULL, APP_STATUS_INVALID_PARAM);
+
+    for (offset = 0u; offset < length; offset = (uint16_t)(offset + 16u))
+    {
+        formattedLength = snprintf(txBuffer, sizeof(txBuffer), "%04u :", (unsigned int)offset);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+
+        for (index = offset, lineIndex = 0u; (index < length) && (lineIndex < 16u); index++, lineIndex++)
+        {
+            appendLength = snprintf(&txBuffer[formattedLength],
+                                    (size_t)(sizeof(txBuffer) - (size_t)formattedLength),
+                                    " %02X",
+                                    (unsigned int)p_data[index]);
+            APP_RETURN_IF_FALSE((appendLength >= 0), APP_STATUS_INIT_FAILED);
+            formattedLength += appendLength;
+        }
+
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    }
+
+    return APP_STATUS_OK;
+}
+
+/* ============================================================
+ *  NB-IoT 주기보고 메시지 (0xA3 / 0x70) 덤프 함수
+ *  - 메시지 헤더 : 0xA3 (V1.5 기준, 이전 V1.4는 0xA1)
+ *  - 메시지 커맨드: 0x70 (주기보고)
+ *  - 멀티바이트 정수 : Little-Endian
+ *  - BCD 필드        : 상위 니블 먼저
+ *  - 체크섬          : 메시지 길이 다음 ~ 체크섬 직전까지의 합
+ * ============================================================ */
+
+#define APP_NBIOT_PERIODIC_MSG_HEADER       (0xA3u)
+#define APP_NBIOT_PERIODIC_MSG_HEADER_V14   (0xA1u)
+#define APP_NBIOT_PERIODIC_MSG_CMD          (0x70u)
+#define APP_NBIOT_PERIODIC_MIN_LENGTH       (62u)   /* 헤더~체크섬 포함 최소 길이 */
+#define APP_NBIOT_PERIODIC_FIXED_LENGTH     (53u)   /* 검침데이터 직전까지 (off=0..52) */
+
+
+/* ---------- 내부 유틸리티 ---------- */
+
+static uint32_t App_NbiotDumpReadLeUint(const uint8_t *buf, uint8_t len)
+{
+    uint32_t value = 0u;
+    uint8_t  i;
+
+    for (i = 0u; i < len; i++)
+    {
+        value |= ((uint32_t)buf[i]) << (8u * i);
+    }
+    return value;
+}
+
+static void App_NbiotDumpBcdToStr(const uint8_t *buf, uint8_t len, char *out)
+{
+    uint8_t i;
+    uint8_t hi;
+    uint8_t lo;
+
+    for (i = 0u; i < len; i++)
+    {
+        hi = (buf[i] >> 4) & 0x0Fu;
+        lo = buf[i] & 0x0Fu;
+        out[(i * 2u) + 0u] = (hi < 10u) ? (char)('0' + hi) : (char)('A' + hi - 10u);
+        out[(i * 2u) + 1u] = (lo < 10u) ? (char)('0' + lo) : (char)('A' + lo - 10u);
+    }
+    out[len * 2u] = '\0';
+}
+
+static const char *App_NbiotDumpDiameterString(uint8_t code)
+{
+    switch (code)
+    {
+        case 0x1u: return "15mm";
+        case 0x2u: return "20mm";
+        case 0x3u: return "25mm";
+        case 0x4u: return "32mm";
+        case 0x5u: return "40mm";
+        case 0x6u: return "50mm";
+        case 0x7u: return "80mm";
+        case 0x8u: return "100mm";
+        case 0x9u: return "150mm";
+        case 0xAu: return "200mm";
+        case 0xBu: return "250mm";
+        case 0xCu: return "300mm";
+        default:   return "Unknown";
+    }
+}
+
+
+/* ---------- 메인 덤프 함수 ---------- */
+
+static AppStatus_t App_DebugConsoleDumpNbiotPeriodicReport(const uint8_t *packet, uint32_t length)
+{
+    char     txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
+    char     bcdBuffer[64];
+    int32_t  formattedLength;
+    uint32_t offset;
+    uint8_t  decimalPos;
+    uint8_t  recordCount;
+    uint8_t  basePos;
+    uint8_t  meterPeriod;
+    uint32_t baseValue;
+    uint32_t curValue;
+    uint8_t  calcChecksum;
+    uint8_t  rxChecksum;
+    uint8_t  i;
+    uint32_t k;
+
+    /* 1) 입력 검증 */
+    if ((packet == NULL) || (length < APP_NBIOT_PERIODIC_MIN_LENGTH))
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "nbdump invalid len=%lu",
+                                   (unsigned long)length);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if ((packet[0] != APP_NBIOT_PERIODIC_MSG_HEADER) &&
+        (packet[0] != APP_NBIOT_PERIODIC_MSG_HEADER_V14))
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "nbdump bad header=0x%02X",
+                                   (unsigned int)packet[0]);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (packet[2] != APP_NBIOT_PERIODIC_MSG_CMD)
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "nbdump bad cmd=0x%02X",
+                                   (unsigned int)packet[2]);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    /* 2) 헤더 라인 + 전체 hex 덤프 */
+    formattedLength = snprintf(txBuffer,
+                               sizeof(txBuffer),
+                               "nbdump start len=%lu hdr=0x%02X cmd=0x%02X",
+                               (unsigned long)length,
+                               (unsigned int)packet[0],
+                               (unsigned int)packet[2]);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsolePrintHexBuffer(packet, length) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+    offset = 0u;
+
+    /* 3) 메시지 헤더 / 길이 / 형식 */
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] header        = 0x%02X (%s)",
+                               (unsigned long)offset, (unsigned int)packet[offset],
+                               (packet[offset] == APP_NBIOT_PERIODIC_MSG_HEADER) ? "V1.5" : "V1.4");
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 1u;
+
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] msg length    = %u bytes",
+                               (unsigned long)offset, (unsigned int)packet[offset]);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 1u;
+
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] msg command   = 0x%02X (periodic report)",
+                               (unsigned long)offset, (unsigned int)packet[offset]);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 1u;
+
+    /* 4) 이동통신 ID : IMEI(8) + IMSI(8) */
+    App_NbiotDumpBcdToStr(&packet[offset], 8u, bcdBuffer);
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] IMEI          = %s",
+                               (unsigned long)offset, bcdBuffer);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 8u;
+
+    App_NbiotDumpBcdToStr(&packet[offset], 8u, bcdBuffer);
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] IMSI          = %s",
+                               (unsigned long)offset, bcdBuffer);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 8u;
+
+    /* 5) 무선품질 정보 (10B) */
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] RSSI          = -%u dBm",
+                               (unsigned long)offset, (unsigned int)packet[offset]);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 1u;
+
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] BER           = %u",
+                               (unsigned long)offset, (unsigned int)packet[offset]);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 1u;
+
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] CID           = %lu",
+                               (unsigned long)offset,
+                               (unsigned long)App_NbiotDumpReadLeUint(&packet[offset], 2u));
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 2u;
+
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] RSRP          = -%lu dBm",
+                               (unsigned long)offset,
+                               (unsigned long)App_NbiotDumpReadLeUint(&packet[offset], 2u));
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 2u;
+
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] RSRQ          = -%lu dBm",
+                               (unsigned long)offset,
+                               (unsigned long)App_NbiotDumpReadLeUint(&packet[offset], 2u));
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 2u;
+
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] SNR           = %lu dBm",
+                               (unsigned long)offset,
+                               (unsigned long)App_NbiotDumpReadLeUint(&packet[offset], 2u));
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 2u;
+
+    /* 6) 단말기 정보 (8B) */
+    App_NbiotDumpBcdToStr(&packet[offset], 5u, bcdBuffer);
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] dev serial    = %s",
+                               (unsigned long)offset, bcdBuffer);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 5u;
+
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] FW version    = V%u.%u",
+                               (unsigned long)offset,
+                               (unsigned int)packet[offset],
+                               (unsigned int)packet[offset + 1u]);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 2u;
+
+    {
+        uint8_t b = packet[offset];
+        uint8_t alarm = (b >> 7) & 0x01u;
+        uint8_t v10 = b & 0x3Fu;   /* 전압 * 10 */
+        formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                   "[%03lu] battery       = %u.%uV alarm=%u",
+                                   (unsigned long)offset,
+                                   (unsigned int)(v10 / 10u),
+                                   (unsigned int)(v10 % 10u),
+                                   (unsigned int)alarm);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    }
+    offset += 1u;
+
+    /* 7) 계량기 정보 (7B) */
+    App_NbiotDumpBcdToStr(&packet[offset], 4u, bcdBuffer);
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] meter serial  = %s",
+                               (unsigned long)offset, bcdBuffer);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 4u;
+
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] meter type    = 0x%02X",
+                               (unsigned long)offset, (unsigned int)packet[offset]);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 1u;
+
+    {
+        uint8_t b = packet[offset];
+        uint8_t dia = (b >> 4) & 0x0Fu;
+        decimalPos = b & 0x0Fu;
+        formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                   "[%03lu] dia/decimal   = %s, decimal=%u",
+                                   (unsigned long)offset,
+                                   App_NbiotDumpDiameterString(dia),
+                                   (unsigned int)decimalPos);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    }
+    offset += 1u;
+
+    {
+        uint8_t s = packet[offset];
+        formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                   "[%03lu] meter status  = 0x%02X (ov=%u rev=%u leak=%u lowV=%u)",
+                                   (unsigned long)offset, (unsigned int)s,
+                                   (unsigned int)((s >> 7) & 1u),
+                                   (unsigned int)((s >> 6) & 1u),
+                                   (unsigned int)((s >> 5) & 1u),
+                                   (unsigned int)((s >> 2) & 1u));
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    }
+    offset += 1u;
+
+    /* 8) 검침/보고 주기 (2B) */
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] meter/report  = %uh / %uh",
+                               (unsigned long)offset,
+                               (unsigned int)packet[offset],
+                               (unsigned int)packet[offset + 1u]);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 2u;
+
+    /* 9) 검침 시간 (6B) */
+    {
+        uint8_t y  = packet[offset];
+        uint8_t mo = packet[offset + 1u];
+        uint8_t d  = packet[offset + 2u];
+        uint8_t h  = packet[offset + 3u];
+        uint8_t mi = packet[offset + 4u];
+        uint8_t se = packet[offset + 5u];
+
+        if ((y == 0xFFu) && (mo == 0xFFu) && (d == 0xFFu))
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                       "[%03lu] meter time    = unsync (-%02uh%02um%02us)",
+                                       (unsigned long)offset,
+                                       (unsigned int)h, (unsigned int)mi, (unsigned int)se);
+        }
+        else
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                       "[%03lu] meter time    = 20%02u-%02u-%02u %02u:%02u:%02u",
+                                       (unsigned long)offset,
+                                       (unsigned int)y, (unsigned int)mo, (unsigned int)d,
+                                       (unsigned int)h, (unsigned int)mi, (unsigned int)se);
+        }
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    }
+    offset += 6u;
+
+    /* 10) 검침 데이터 영역 */
+    meterPeriod = packet[offset];
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] data period   = %uh",
+                               (unsigned long)offset, (unsigned int)meterPeriod);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 1u;
+
+    recordCount = packet[offset];
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] record count  = %u",
+                               (unsigned long)offset, (unsigned int)recordCount);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 1u;
+
+    basePos = packet[offset];
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] base position = %u%s",
+                               (unsigned long)offset, (unsigned int)basePos,
+                               (basePos == 0xFFu) ? " (no valid reading)" : "");
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 1u;
+
+    baseValue = App_NbiotDumpReadLeUint(&packet[offset], 4u);
+    if (baseValue == 0xFFFFFFFFu)
+    {
+        formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                   "[%03lu] base value    = 0xFFFFFFFF (invalid)",
+                                   (unsigned long)offset);
+    }
+    else
+    {
+        /* 정수 표시 + 소수점 자리수 정보 */
+        formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                   "[%03lu] base value    = %lu (decimal=%u)",
+                                   (unsigned long)offset,
+                                   (unsigned long)baseValue,
+                                   (unsigned int)decimalPos);
+    }
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    offset += 4u;
+
+    /* 차이값 n개 (각 2B) - 기준 검침값에서 차례로 빼서 이전 검침값 산출 */
+    curValue = baseValue;
+    for (i = 0u; i < recordCount; i++)
+    {
+        uint16_t diff;
+
+        if ((offset + 2u) > (length - 1u))
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                       "nbdump truncated at diff#%u", (unsigned int)i);
+            APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+            return App_DebugConsoleWriteLine(txBuffer);
+        }
+
+        diff = (uint16_t)App_NbiotDumpReadLeUint(&packet[offset], 2u);
+
+        if (diff == 0xFFFFu)
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                       "[%03lu] diff[%02u]      = 0xFFFF (read fail)",
+                                       (unsigned long)offset, (unsigned int)i);
+        }
+        else if ((i >= basePos) && (curValue != 0xFFFFFFFFu))
+        {
+            curValue -= diff;
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                       "[%03lu] diff[%02u]      = -%u  => value=%lu",
+                                       (unsigned long)offset, (unsigned int)i,
+                                       (unsigned int)diff, (unsigned long)curValue);
+        }
+        else
+        {
+            formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                                       "[%03lu] diff[%02u]      = -%u",
+                                       (unsigned long)offset, (unsigned int)i,
+                                       (unsigned int)diff);
+        }
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+        offset += 2u;
+    }
+
+    /* 11) 체크섬 검증 (메시지 길이 다음 ~ 체크섬 직전까지의 합) */
+    calcChecksum = 0u;
+    for (k = 2u; k < (length - 1u); k++)
+    {
+        calcChecksum = (uint8_t)(calcChecksum + packet[k]);
+    }
+    rxChecksum = packet[length - 1u];
+
+    formattedLength = snprintf(txBuffer, sizeof(txBuffer),
+                               "[%03lu] checksum      = 0x%02X (calc=0x%02X %s)",
+                               (unsigned long)(length - 1u),
+                               (unsigned int)rxChecksum,
+                               (unsigned int)calcChecksum,
+                               (rxChecksum == calcChecksum) ? "OK" : "MISMATCH");
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+    /* 12) 요약 라인 */
+    formattedLength = snprintf(txBuffer,
+                               sizeof(txBuffer),
+                               "nbdump ok len=%lu rec=%u base=%lu checksum=%s",
+                               (unsigned long)length,
+                               (unsigned int)recordCount,
+                               (unsigned long)baseValue,
+                               (rxChecksum == calcChecksum) ? "OK" : "NG");
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    return App_DebugConsoleWriteLine(txBuffer);
+}
+
+static AppStatus_t App_DebugConsoleRunMeterConvert(uint8_t clearOnSuccess)
+{
+    char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
+    AppMeterStorageInfo_t info;
+    AppMeterServerFormatOptions_t options;
+    AppMeterServerFormatResult_t result;
+    uint8_t packet[APP_METER_SERVER_FORMAT_MAX_PACKET_SIZE];
+    AppStatus_t status;
+    int32_t formattedLength;
+
+    status = App_MeterStorageGetInfo(&info);
+    if (status != APP_STATUS_OK)
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "mconv info failed status=%lu",
+                                   (unsigned long)status);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (info.count == 0u)
+    {
+        return App_DebugConsoleWriteLine("mconv empty");
+    }
+
+    App_MeterServerFormatSetTestDefaults(&options);
+    if (clearOnSuccess == APP_TRUE)
+    {
+        status = App_MeterServerFormatBuildFromStorageAndClear(&options, packet, sizeof(packet), &result);
+    }
+    else
+    {
+        status = App_MeterServerFormatBuildFromStorage(&options, packet, sizeof(packet), &result);
+    }
+
+    if (status != APP_STATUS_OK)
+    {
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "mconv failed status=%lu",
+                                   (unsigned long)status);
+        APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+        return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    formattedLength = snprintf(txBuffer,
+                               sizeof(txBuffer),
+                               "mconv ok len=%u payload=%u rec=%u checksum=0x%02X cleared=%u",
+                               (unsigned int)result.packetLength,
+                               (unsigned int)result.payloadLength,
+                               (unsigned int)result.recordCount,
+                               (unsigned int)result.checksum,
+                               (unsigned int)result.cleared);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsolePrintHexBuffer(packet, result.packetLength) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+    /* 생성된 패킷을 NB-IoT 주기보고 메시지 포맷으로 파싱하여 덤프 */
+    APP_RETURN_IF_FALSE(App_DebugConsoleDumpNbiotPeriodicReport(packet, (uint32_t)result.packetLength) == APP_STATUS_OK,
+                        APP_STATUS_UART_TX_FAILED);
+
+    return App_DebugConsolePrintMeterStorageSummary();
+}
+
+
 #endif
 
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
@@ -300,6 +955,11 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("nfc logout               : invalidate NFC session") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("selftest                 : run self-test sequence") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("selftest status          : show last self-test summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("mstor                    : show meter ring info and dump") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("mstor info               : show meter ring structure") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("mstor dump               : show stored meter EEPROM records") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("mconv test               : build server packet from EEPROM and print hex") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("mconv run                : build server packet and clear EEPROM on success") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("resetboot                : enter STM32 ROM bootloader") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("update2                  : mark slot2 update and enter ROM bootloader") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("sm                       : show current FSM state") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
@@ -452,6 +1112,32 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     if (strcmp(p_command, "selftest status") == 0)
     {
         return App_DebugConsolePrintSelfTestSummary("selftest");
+    }
+
+    if (strcmp(p_command, "mstor") == 0)
+    {
+        APP_RETURN_IF_FALSE(App_DebugConsolePrintMeterStorageSummary() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+        return App_DebugConsolePrintMeterStorageDump();
+    }
+
+    if (strcmp(p_command, "mstor info") == 0)
+    {
+        return App_DebugConsolePrintMeterStorageSummary();
+    }
+
+    if (strcmp(p_command, "mstor dump") == 0)
+    {
+        return App_DebugConsolePrintMeterStorageDump();
+    }
+
+    if (strcmp(p_command, "mconv test") == 0)
+    {
+        return App_DebugConsoleRunMeterConvert(APP_FALSE);
+    }
+
+    if (strcmp(p_command, "mconv run") == 0)
+    {
+        return App_DebugConsoleRunMeterConvert(APP_TRUE);
     }
 
     if (strcmp(p_command, "resetboot") == 0)

@@ -61,6 +61,8 @@ uint32_t App_MeterGetIdentificationNumber(const App_MeterUnion_t *meterPacket);
 uint32_t App_MeterGetMeasurementData(const App_MeterUnion_t *meterPacket);
 App_MeterResult_t App_MeterParseFrame(App_MeterUnion_t *meterPacket, const uint8_t *binary_data, uint16_t length);
 void App_MeterPrintData(App_MeterUnion_t *pRxFrame);
+void App_MeterSetStorageEnabled(uint8_t enabled);
+uint8_t App_MeterIsStorageEnabled(void);
 AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t length);
 
 ///////////////////////////////////////////////////////////////////////////////////////

@@ -99,7 +99,7 @@ AppStatus_t App_FsmNfcCliExecute(const char *p_subcommand,
 #define APP_FSM_DEBUG_PRINT(module, fmt, ...)                         \
     do                                                                 \
     {                                                                  \
-        (void)APP_LOGD((module), (fmt), ##__VA_ARGS__);                \
+        APP_LOGD((module), (fmt), ##__VA_ARGS__);                \
     } while (0)
 #else
 #define APP_FSM_DEBUG_PRINT(module, fmt, ...)                         \
