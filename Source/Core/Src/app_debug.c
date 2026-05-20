@@ -13,6 +13,7 @@
 #include "app_selftest.h"
 #include "app_meter_storage.h"
 #include "app_meter_server_format.h"
+#include "app_aux.h"
 
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
 static const char g_appDebugPrompt[] = APP_DEBUG_CONSOLE_PROMPT;
@@ -962,6 +963,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("q                        : show queue status") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("lp                       : show low-power state and wake source") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("slot                     : show current running slot") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("aux                      : show aux(adc, temperature) value ") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("nfc help                 : show NFC CLI commands") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("nfc status|driver|auth   : show NFC state/statistics") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("nfc cmd|lp|uid           : show NFC command/lp/uid info") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
@@ -1111,6 +1113,43 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
                                    (unsigned long)((p_dualbootInfo != NULL) ? p_dualbootInfo->pendingSlot : 0u));
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (strcmp(p_command, "aux") == 0)
+    {
+        uint32_t adc_vref = 0, adc_vbat = 0, vbat_mv = 0, vdda_mv = 0;
+        if (Battery_ReadVoltage_Averaged_mV(&adc_vref, &adc_vbat, &vdda_mv, &vbat_mv) == HAL_OK)
+        {
+            APP_LOGI("AUX", "ADC(vref:%lu, vbat:%lu) Volt(vdda:%lumV, vbat:%lumV)",
+                     (unsigned long)adc_vref,
+                     (unsigned long)adc_vbat,
+                     (unsigned long)vdda_mv,
+                     (unsigned long)vbat_mv);
+        }
+        else
+        {
+            APP_LOGE("AUX", "Read ADC error");
+            return APP_STATUS_FATAL;
+        }
+
+        SHTC3_Data_t th;
+        if (SHTC3_ReadTempHumidity(APP_I2C_AUX_HANDLE, &th) == HAL_OK)
+        {
+            int t_int = (int)th.temperature;
+            int t_dec = (int)((th.temperature - t_int) * 100);
+            int h_int = (int)th.humidity;
+            int h_dec = (int)((th.humidity - h_int) * 100);
+            if (t_dec < 0)
+                t_dec = -t_dec;
+
+            APP_LOGI("AUX", "T = %d.%02d C, RH = %d.%02d %%", t_int, t_dec, h_int, h_dec);
+        }
+        else
+        {
+            APP_LOGE("AUX", "Read SHTC3 error");
+            return APP_STATUS_FATAL;
+        }
+        return APP_STATUS_OK;
     }
 
     if (strcmp(p_command, "selftest") == 0)

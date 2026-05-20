@@ -112,6 +112,7 @@ extern "C" {
 #define APP_SELFTEST_EXTERNAL_WD_PULSE_MS           (50u)
 
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x54u)
+#define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x70u)
 
 /* NFC production hardening */
 #define APP_NFC_MASTER_KEY_BYTES                      { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C }
@@ -128,6 +129,7 @@ extern "C" {
 #define APP_FSM_HOUSEKEEPING_PERIOD_MS              (500u)
 #define APP_FSM_METER_PERIOD_MS                     (500u)
 #define APP_FSM_NFC_PERIOD_MS                       (500u)
+#define APP_FSM_AUX_PERIOD_MS                       (1000u)
 #define APP_FSM_NBIOT_PERIOD_MS                     (500u)
 #define APP_FSM_SERVER_PERIOD_MS                    (1000u)
 #define APP_FSM_RTC_PERIOD_MS                       (1000u)

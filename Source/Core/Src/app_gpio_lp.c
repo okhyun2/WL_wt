@@ -17,7 +17,7 @@ extern NFC_LP_Handle_t g_nfcLpHandle;
 
 /** @brief Truly unconnected pins on GPIOA based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTA_MASK \
-    (GPIO_PIN_0 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_8 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_15)
+    (GPIO_PIN_0 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_15)
 
 /** @brief Truly unconnected pins on GPIOB based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTB_MASK \
@@ -26,7 +26,7 @@ extern NFC_LP_Handle_t g_nfcLpHandle;
 
 /** @brief Truly unconnected pins on GPIOC based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTC_MASK \
-    (GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 | \
+    (GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | \
      GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13)
 
 /** @brief Truly unconnected pins on GPIOD based on current board pin map. */
@@ -253,7 +253,32 @@ static void App_GpioLpRestoreNfcI2cPins(void)
 }
 
 /**
- * @brief Restore piezo gpio pin.
+ * @brief Restore auxiliary temperature I2C pins.
+ */
+static void App_GpioLpRestoreTempI2cPins(void)
+{
+    GPIO_InitTypeDef gpioInit;
+
+    __HAL_RCC_I2C3_CLK_ENABLE();
+
+    (void)memset(&gpioInit, 0, sizeof(gpioInit));
+    gpioInit.Pin = Temp_SCL_Pin;
+    gpioInit.Mode = GPIO_MODE_AF_OD;
+    gpioInit.Pull = GPIO_NOPULL;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
+    gpioInit.Alternate = GPIO_AF7_I2C3;
+    HAL_GPIO_Init(Temp_SCL_GPIO_Port, &gpioInit);
+
+    gpioInit.Pin = Temp_SDA_Pin;
+    gpioInit.Mode = GPIO_MODE_AF_OD;
+    gpioInit.Pull = GPIO_NOPULL;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
+    gpioInit.Alternate = GPIO_AF7_I2C3;
+    HAL_GPIO_Init(Temp_SDA_GPIO_Port, &gpioInit);
+}
+
+/**
+ * @brief Restore piezo PWM pin.
  */
 static void App_GpioLpRestorePiezoPin(void)
 {
@@ -416,6 +441,11 @@ static void App_GpioLpDisablePeripheralClocks(uint32_t mask)
         __HAL_RCC_I2C2_CLK_DISABLE();
     }
 
+    if ((mask & APP_GPIO_LP_CLK_I2C3) != 0u)
+    {
+        __HAL_RCC_I2C3_CLK_DISABLE();
+    }
+
     if ((mask & APP_GPIO_LP_CLK_LPTIM1) != 0u)
     {
         __HAL_RCC_LPTIM1_CLK_DISABLE();
@@ -464,6 +494,11 @@ static void App_GpioLpEnablePeripheralClocks(uint32_t mask)
         __HAL_RCC_I2C2_CLK_ENABLE();
     }
 
+    if ((mask & APP_GPIO_LP_CLK_I2C3) != 0u)
+    {
+        __HAL_RCC_I2C3_CLK_ENABLE();
+    }
+
     if ((mask & APP_GPIO_LP_CLK_SYSCFG) != 0u)
     {
         __HAL_RCC_SYSCFG_CLK_ENABLE();
@@ -487,6 +522,7 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
         APP_GPIO_LP_CLK_I2C2 |
+        APP_GPIO_LP_CLK_I2C3 |
         APP_GPIO_LP_CLK_LPTIM1 |
         APP_GPIO_LP_CLK_SYSCFG;
 }
@@ -594,6 +630,12 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         App_GpioLpConfigAnalogNoPull(NFC_SCL_GPIO_Port, NFC_SCL_Pin | NFC_SDA_Pin);
     }
 
+    //Aux pin
+    {
+        App_GpioLpConfigAnalogNoPull(Temp_SCL_GPIO_Port, Temp_SCL_Pin);
+        App_GpioLpConfigAnalogNoPull(Temp_SDA_GPIO_Port, Temp_SDA_Pin);
+    }
+	
     //Piezo pin
     {
         App_GpioLpConfigAnalogNoPull(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin);
@@ -659,6 +701,7 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
     App_GpioLpRestoreDebugUartPins();
     App_GpioLpRestoreMeterUartPins();
     App_GpioLpRestoreNfcI2cPins();
+    App_GpioLpRestoreTempI2cPins();
     App_GpioLpRestorePiezoPin();
     App_GpioLpRestoreExternalWatchdogPin();
 

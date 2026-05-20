@@ -23,6 +23,7 @@ extern RTC_HandleTypeDef hrtc;
 extern ADC_HandleTypeDef hadc;
 extern CRC_HandleTypeDef hcrc;
 extern I2C_HandleTypeDef hi2c2;
+extern I2C_HandleTypeDef hi2c3;
 extern UART_HandleTypeDef hlpuart1;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
@@ -36,6 +37,7 @@ extern WWDG_HandleTypeDef hwwdg;
 #define APP_UART_NBIOT_HANDLE           (&hlpuart1)
 
 #define APP_I2C_NFC_HANDLE              (&hi2c2)
+#define APP_I2C_AUX_HANDLE              (&hi2c3)
 
 #define APP_ADC_BATTERY_HANDLE          (&hadc)
 #define APP_CRC_HANDLE                  (&hcrc)

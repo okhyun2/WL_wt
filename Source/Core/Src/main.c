@@ -80,6 +80,7 @@ ADC_HandleTypeDef hadc;
 CRC_HandleTypeDef hcrc;
 
 I2C_HandleTypeDef hi2c2;
+I2C_HandleTypeDef hi2c3;
 
 UART_HandleTypeDef hlpuart1;
 UART_HandleTypeDef huart1;
@@ -99,6 +100,7 @@ static void MX_RTC_Init(void);
 static void MX_GPIO_Init(void);
 static void MX_CRC_Init(void);
 static void MX_I2C2_Init(void);
+static void MX_I2C3_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
@@ -151,6 +153,7 @@ int main(void)
   MX_GPIO_Init();
   MX_CRC_Init();
   MX_I2C2_Init();
+  MX_I2C3_Init();
   MX_LPUART1_UART_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
@@ -249,10 +252,11 @@ void SystemClock_Config(void)
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1
-    |RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
+    |RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_LSE;
+  PeriphClkInit.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
   PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
   PeriphClkInit.LptimClockSelection = RCC_LPTIM1CLKSOURCE_LSE;
   
@@ -397,6 +401,65 @@ static void MX_I2C2_Init(void)
 
 }
 
+/**
+  * @brief I2C3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C3_Init(void)
+{
+
+  /* USER CODE BEGIN I2C3_Init 0 */
+
+  /* USER CODE END I2C3_Init 0 */
+
+  /* USER CODE BEGIN I2C3_Init 1 */
+
+  /* USER CODE END I2C3_Init 1 */
+  hi2c3.Instance = I2C3;
+  hi2c3.Init.Timing = 0x00000708; //PCLK1-2Mhz. 708:100Khz
+  hi2c3.Init.OwnAddress1 = 0;
+  hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c3.Init.OwnAddress2 = 0;
+  hi2c3.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c3.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c3.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c3, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c3, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C3_Init 2 */
+
+  /* USER CODE END I2C3_Init 2 */
+
+}
+
+static void disable_lptim_wakeup(void)
+{
+    __HAL_LPTIM_WAKEUPTIMER_EXTI_DISABLE_IT();
+}
+
+static void enable_lptim_wakeup(void)
+{
+    __HAL_LPTIM_WAKEUPTIMER_EXTI_ENABLE_IT();
+}
+
+#define LPTIM1_ARR  (1023U)   // 32.768kHz / 32 / 1024 = 1Hz
 
 /**
  * @brief  Start LPTIM1
