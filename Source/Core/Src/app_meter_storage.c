@@ -253,6 +253,24 @@ AppStatus_t App_StorageDataEepromWrite(uint32_t offset, const void *p_data, uint
 #endif
 }
 
+void App_MeterStorageInfo(void)
+{
+    APP_LOGI("STOR", "EEPROM save map: address:0x%08lx, size:%lubyte",
+             DATA_EEPROM_BASE + APP_STORAGE_METER_DATA_EEPROM_OFFSET_BYTES,
+             APP_STORAGE_METER_DATA_EEPROM_SIZE_BYTES);
+    APP_LOGI("STOR", "  meta: address:0x%08lx, size:%lubyte, slot(count:%d, size:%lubyte)",
+             DATA_EEPROM_BASE + APP_STORAGE_METER_DATA_EEPROM_OFFSET_BYTES,
+             APP_METER_STORAGE_META_REGION_SIZE,
+             APP_METER_STORAGE_META_SLOT_COUNT,
+             (uint32_t)sizeof(AppMeterStorageMetaSlot_t));
+
+    APP_LOGI("STOR", "  record: address:0x%08lx, size:%lubyte, slot(count:%d, size:%lubyte)",
+             DATA_EEPROM_BASE + APP_METER_STORAGE_RECORD_REGION_OFFSET,
+             APP_METER_STORAGE_RECORD_REGION_SIZE,
+             APP_METER_STORAGE_MAX_RECORDS,
+             APP_METER_STORAGE_RECORD_SLOT_SIZE);
+}
+
 AppStatus_t App_MeterStorageInit(void)
 {
     (void)memset(&g_appMeterStorageContext, 0, sizeof(g_appMeterStorageContext));
@@ -277,7 +295,8 @@ AppStatus_t App_MeterStoragePush(const AppMeterStorageRecord_t *p_record)
     AppMeterStorageRecord_t temp;
     uint8_t writeIndex;
 
-    APP_LOGI("MSTOR", "save count=%u", App_MeterStorageCount());
+    APP_LOGI("MSTOR", "save count=%u/%u(%s)", App_MeterStorageCount(), APP_METER_STORAGE_MAX_RECORDS,
+        (App_MeterStorageCount() == APP_METER_STORAGE_MAX_RECORDS) ? "rolling":"static");
 
     if (App_MeterStorageIsInitialized() != APP_TRUE)
     {

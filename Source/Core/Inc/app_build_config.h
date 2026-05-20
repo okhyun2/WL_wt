@@ -142,8 +142,8 @@ extern "C" {
 #define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
 #define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (10*1000u) //0:don't stop
-#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
+#define APP_RTC_WAKEUP_PERIOD_MS                    (10*1000u) //0:don't stop
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
 
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT     (50u)
@@ -163,10 +163,12 @@ extern "C" {
 #define APP_STORAGE_PARAM_FLAGS_VALID               (0x00000001u)
 
 #define APP_STORAGE_EEPROM_TOTAL_SIZE_BYTES         (6u * 1024u)
+//BANK1 size 3Kbyte(0xC00)
 #define APP_STORAGE_CONFIG_EEPROM_SIZE_BYTES        (1u * 1024u)
-#define APP_STORAGE_RESERVED_EEPROM_SIZE_BYTES      (1u * 1024u)
+#define APP_STORAGE_RESERVED_EEPROM_SIZE_BYTES      (2u * 1024u)
+//BANK2 size 3Kbyte(0xC00)
 #define APP_STORAGE_METER_DATA_EEPROM_OFFSET_BYTES  (APP_STORAGE_CONFIG_EEPROM_SIZE_BYTES + APP_STORAGE_RESERVED_EEPROM_SIZE_BYTES)
-#define APP_STORAGE_METER_DATA_EEPROM_SIZE_BYTES    (4u * 1024u)
+#define APP_STORAGE_METER_DATA_EEPROM_SIZE_BYTES    (3u * 1024u)
 
 #if !defined(STM32L073xx)
 #error "This project requires STM32L073xx device support."

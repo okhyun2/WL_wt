@@ -10,8 +10,8 @@ extern "C" {
 
 #define APP_METER_STORAGE_MAGIC                 (0x4D535447u)
 #define APP_METER_STORAGE_VERSION               (0x01u)
-#define APP_METER_STORAGE_MAX_RECORDS           (24u)
-#define APP_METER_STORAGE_META_SLOT_COUNT       (32u)
+#define APP_METER_STORAGE_MAX_RECORDS           (48u)
+#define APP_METER_STORAGE_META_SLOT_COUNT       (64u)
 
 #define APP_METER_STORAGE_FLAG_VALID            (1u << 0)
 #define APP_METER_STORAGE_FLAG_SENT             (1u << 1)
@@ -65,6 +65,7 @@ typedef struct
 
 AppStatus_t App_StorageDataEepromRead(uint32_t offset, void *p_data, uint32_t sizeBytes);
 AppStatus_t App_StorageDataEepromWrite(uint32_t offset, const void *p_data, uint32_t sizeBytes);
+void App_MeterStorageInfo(void);
 AppStatus_t App_MeterStorageInit(void);
 uint8_t App_MeterStorageIsInitialized(void);
 AppStatus_t App_MeterStoragePush(const AppMeterStorageRecord_t *p_record);

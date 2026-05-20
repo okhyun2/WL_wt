@@ -542,6 +542,8 @@ AppStatus_t App_SystemRunBootSelfTest(void)
 {
     AppStatus_t status;
 
+    APP_LOGI("SELF", "######################## run selftest");
+
     status = App_SelfTestInit();
     if (status != APP_STATUS_OK)
     {
@@ -945,6 +947,8 @@ AppStatus_t App_SystemInit(void)
 
     // booting info
     Print_BootInfo(&g_boot_info);
+
+    App_MeterStorageInfo();
 
     status = App_SystemRunBootSelfTest();
     if (status != APP_STATUS_OK)
