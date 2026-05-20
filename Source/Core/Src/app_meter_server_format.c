@@ -90,9 +90,16 @@ void App_MeterServerFormatSetTestDefaults(AppMeterServerFormatOptions_t *p_optio
     (void)memset(p_options, 0, sizeof(*p_options));
     p_options->linkHeader = APP_METER_SERVER_FORMAT_HEADER_NBIOT;
     p_options->command = APP_METER_SERVER_FORMAT_COMMAND_PERIOD_REPORT;
+
+    p_options->wirelessQuality[0] = (uint8_t)APP_FW_VERSION_MAJOR;
+    p_options->mobileIdBcd[0] = (uint8_t)APP_FW_VERSION_MAJOR;
+    p_options->deviceSerialBcd[0] = (uint8_t)APP_FW_VERSION_MAJOR;
+
     p_options->firmwareVersion[0] = (uint8_t)APP_FW_VERSION_MAJOR;
     p_options->firmwareVersion[1] = (uint8_t)APP_FW_VERSION_MINOR;
+
     p_options->terminalBattery = 0x24u;
+
     p_options->meteringPeriodHours = 1u;
     p_options->reportingPeriodHours = 1u;
 }

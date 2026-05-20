@@ -25,6 +25,7 @@
 #include "app_system.h"
 #include "app_hw.h"
 #include "app_debug.h"
+#include "app_nbiot.h"
 #include "app_selftest.h"
 extern void App_FsmNfcEdIrqHandler(void);
 /* USER CODE END Includes */
@@ -63,12 +64,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   App_DebugConsoleOnUartRxCompleteIsr(huart);
   App_SelfTestOnUartRxCompleteIsr(huart);
+  App_Bc95AtOnUartRxCompleteIsr(huart);
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
   App_DebugConsoleOnUartErrorIsr(huart);
   App_SelfTestOnUartErrorIsr(huart);
+  App_Bc95AtOnUartErrorIsr(huart);
 }
 
 /* External variables --------------------------------------------------------*/

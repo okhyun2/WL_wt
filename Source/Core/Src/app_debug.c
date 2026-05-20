@@ -14,6 +14,7 @@
 #include "app_meter_storage.h"
 #include "app_meter_server_format.h"
 #include "app_aux.h"
+#include "app_nbiot.h"
 
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
 static const char g_appDebugPrompt[] = APP_DEBUG_CONSOLE_PROMPT;
@@ -971,6 +972,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("nfc logout               : invalidate NFC session") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("selftest                 : run self-test sequence") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("selftest status          : show last self-test summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("nbiot                    : run nbiot-test sequence") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("mstor                    : show meter ring info and dump") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("mstor info               : show meter ring structure") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("mstor dump               : show stored meter EEPROM records") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
@@ -1165,6 +1167,14 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     if (strcmp(p_command, "selftest status") == 0)
     {
         return App_DebugConsolePrintSelfTestSummary("selftest");
+    }
+
+    if (strcmp(p_command, "nbiot") == 0)
+    {
+        APP_RETURN_IF_FALSE(App_NBIoTAtInit() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+        App_NBIoTReadIdentity();
+        App_NBIoTReadQuality();
+        return (APP_STATUS_OK);
     }
 
     if (strcmp(p_command, "mstor") == 0)

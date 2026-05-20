@@ -20,9 +20,9 @@ typedef struct
 {
     uint8_t linkHeader;
     uint8_t command;
-    uint8_t wirelessQuality[10];
-    uint8_t mobileIdBcd[16];
-    uint8_t deviceSerialBcd[5];
+    uint8_t wirelessQuality[10];/* 무선품질 정보 (LoRa 2B / NB-IoT 10B) */
+    uint8_t mobileIdBcd[16];    /* 이동통신 ID (NB-IoT만, 16B = IMEI 8 + IMSI 8) */
+    uint8_t deviceSerialBcd[5]; /* 단말기 정보 (8B): 일련번호(5) + F/W(2) + 배터리(1) */
     uint8_t firmwareVersion[2];
     uint8_t terminalBattery;
     uint8_t meteringPeriodHours;
