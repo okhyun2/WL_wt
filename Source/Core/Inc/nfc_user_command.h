@@ -91,12 +91,13 @@ typedef struct {
 } NFC_CMD_ResultPacket_t;
 
 typedef struct {
-    uint8_t  fw_version[4];
+    uint8_t  fw_version[2];
     uint8_t  auth_state;
     uint8_t  nfc_field_active;
     uint32_t uptime_sec;
     uint32_t wakeup_count;
     uint16_t battery_mv;
+    uint8_t  reserved[2];
 } NFC_CMD_MCUStatus_t;              /* 16 bytes total */
 
 typedef struct {

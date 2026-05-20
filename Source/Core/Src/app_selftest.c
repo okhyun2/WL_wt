@@ -6,6 +6,7 @@
 #include "app_hw.h"
 #include "app_gpio_lp.h"
 #include "app_meter.h"
+#include "app_aux.h"
 #include "app_log.h"
 
 /**
@@ -222,17 +223,17 @@ static AppStatus_t App_SelfTestCheckCrc(void)
  */
 static AppStatus_t App_SelfTestCheckBatteryAdc(void)
 {
-    uint32_t rawAdc;
+    uint32_t adc_vref = 0, adc_vbat = 0, vbat_mv = 0, vdda_mv = 0;
 
     APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_HAL_ERROR(HAL_ADC_Start(APP_ADC_BATTERY_HANDLE), APP_STATUS_SELFTEST_FAILED);
-    APP_RETURN_IF_FALSE(HAL_ADC_PollForConversion(APP_ADC_BATTERY_HANDLE, APP_SELFTEST_ADC_TIMEOUT_MS) == HAL_OK,
-                        APP_STATUS_SELFTEST_TIMEOUT);
+    APP_RETURN_IF_HAL_ERROR(Battery_ReadVoltage_Averaged_mV(&adc_vref, &adc_vbat, &vdda_mv, &vbat_mv), APP_STATUS_SELFTEST_FAILED);
 
-    rawAdc = HAL_ADC_GetValue(APP_ADC_BATTERY_HANDLE);
-    (void)HAL_ADC_Stop(APP_ADC_BATTERY_HANDLE);
-
-    APP_LOGI("SELF", "Battery ADC raw = %lu", (unsigned long)rawAdc);
+    APP_LOGI("SELF", "Battery ADC(vref:%lu, vbat:%lu) Volt(vdda:%lu, vbat:%lu)", 
+        (unsigned long)adc_vref,
+        (unsigned long)adc_vbat,
+        (unsigned long)vdda_mv,
+        (unsigned long)vbat_mv);
 
     return APP_STATUS_OK;
 }

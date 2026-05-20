@@ -41,9 +41,7 @@ extern "C" {
 
 #define APP_FW_VERSION_MAJOR                        (0u)
 #define APP_FW_VERSION_MINOR                        (7u)
-#define APP_FW_VERSION_PATCH                        (1u)
 
-#define APP_PROJECT_LAYOUT_REV                      (8u)
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
 
 #define APP_DEFAULT_RTC_YEAR                        (2026)

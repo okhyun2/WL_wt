@@ -85,6 +85,9 @@ static NFC_CMD_Result_t nfc_cmd_publish_result_only(NFC_CMD_Handle_t *hcmd, NFC_
  * ============================================================ */
 static uint16_t nfc_cmd_read_battery_mv(void)
 {
+    //TODO
+    //read from config eeprom
+    #if 0
     ADC_ChannelConfTypeDef sConfig = {0};
     uint16_t               adc_raw = 0;
 
@@ -98,10 +101,15 @@ static uint16_t nfc_cmd_read_battery_mv(void)
         HAL_ADC_Stop(&hadc);
     }
     return (uint16_t)(((uint32_t)adc_raw * 3300U) / 4096U);
+    #endif
+    return 0;
 }
 
 static int16_t nfc_cmd_read_temperature_x10(void)
 {
+    //TODO
+    //read from config eeprom
+    #if 0
     ADC_ChannelConfTypeDef sConfig = {0};
     uint16_t ts_cal1 = *((volatile uint16_t *)0x1FF8007AU);
     uint16_t ts_cal2 = *((volatile uint16_t *)0x1FF8007EU);
@@ -123,6 +131,8 @@ static int16_t nfc_cmd_read_temperature_x10(void)
     temp_x10 = (int32_t)(1000 * ((int32_t)adc_raw - (int32_t)ts_cal1))
                / (int32_t)(ts_cal2 - ts_cal1) + 300;
     return (int16_t)temp_x10;
+    #endif
+    return 0;
 }
 
 /* ============================================================
@@ -215,7 +225,6 @@ static NFC_CMD_Result_t NFC_CMD_Handler_GetStatus(
 
     nfc_cmd_prepare_result(res, NFC_CMD_RESULT_OK);
     st.fw_version[0]   = APP_FW_VERSION_MAJOR; st.fw_version[1] = APP_FW_VERSION_MINOR;
-    st.fw_version[2]   = APP_FW_VERSION_PATCH; st.fw_version[3] = APP_PROJECT_LAYOUT_REV;
     st.auth_state       = (uint8_t)hcmd->hauth->state;
     st.nfc_field_active = NFC_NTP53321_IsEDTriggered(hcmd->hntag) ? 1U : 0U;
     st.uptime_sec       = HAL_GetTick() / 1000U;
@@ -278,9 +287,9 @@ static NFC_CMD_Result_t NFC_CMD_Handler_ReadSensor(
 
     nfc_cmd_prepare_result(res, NFC_CMD_RESULT_OK);
     sd.temperature_x10 = nfc_cmd_read_temperature_x10();
-    sd.humidity_x10    = 500U;
+    sd.humidity_x10    = 500U; //TODO //read from config eeprom
     sd.battery_mv      = nfc_cmd_read_battery_mv();
-    sd.signal_level_dbm = -60;
+    sd.signal_level_dbm = -60; //TODO //read from config eeprom
 
     res->result_code = NFC_CMD_RESULT_OK;
     res->data_len    = (uint8_t)sizeof(NFC_CMD_SensorData_t);

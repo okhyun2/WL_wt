@@ -4,7 +4,6 @@
 
 #include "app_build_config.h"
 #include "app_log.h"
-#include "app_storage.h"
 
 typedef struct APP_METER_STORAGE_PACKED
 {
@@ -161,6 +160,7 @@ static AppStatus_t App_MeterStorageLoadLatestMeta(void)
             continue;
         }
 
+        //이미 찾은 최신 슬롯(bestSlot)과 새로 읽은 슬롯(slot)의 시퀀스 번호를 비교하여, 새로 읽은 슬롯이 더 최신 데이터인지를 판별
         if ((found == APP_FALSE) || ((uint16_t)(slot.metaSeq - bestSlot.metaSeq) < 0x8000u))
         {
             bestSlot = slot;
@@ -195,6 +195,62 @@ static AppStatus_t App_MeterStorageWritePhysical(uint8_t physicalIndex, const Ap
 {
     APP_RETURN_IF_FALSE(p_record != NULL, APP_STATUS_INVALID_PARAM);
     return App_StorageDataEepromWrite(App_MeterStorageGetRecordOffset(physicalIndex), p_record, sizeof(*p_record));
+}
+
+AppStatus_t App_StorageDataEepromRead(uint32_t offset, void *p_data, uint32_t sizeBytes)
+{
+#ifdef SUPPORT_EEPROM
+    uint32_t address;
+
+    APP_RETURN_IF_FALSE(p_data != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) >= offset, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) <= APP_STORAGE_METER_DATA_EEPROM_SIZE_BYTES, APP_STATUS_INVALID_PARAM);
+
+    address = DATA_EEPROM_BASE + APP_STORAGE_METER_DATA_EEPROM_OFFSET_BYTES + offset;
+    (void)memcpy(p_data, (const void *)address, sizeBytes);
+    return APP_STATUS_OK;
+#else
+    (void)offset;
+    (void)p_data;
+    (void)sizeBytes;
+    return APP_STATUS_NOT_INITIALIZED;
+#endif
+}
+
+AppStatus_t App_StorageDataEepromWrite(uint32_t offset, const void *p_data, uint32_t sizeBytes)
+{
+#ifdef SUPPORT_EEPROM
+    const uint8_t *p_bytes;
+    uint32_t address;
+    uint32_t index;
+
+    APP_RETURN_IF_FALSE(p_data != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) >= offset, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) <= APP_STORAGE_METER_DATA_EEPROM_SIZE_BYTES, APP_STATUS_INVALID_PARAM);
+
+    p_bytes = (const uint8_t *)p_data;
+    address = DATA_EEPROM_BASE + APP_STORAGE_METER_DATA_EEPROM_OFFSET_BYTES + offset;
+
+    APP_RETURN_IF_HAL_ERROR(HAL_FLASHEx_DATAEEPROM_Unlock(), APP_STATUS_INIT_FAILED);
+    for (index = 0u; index < sizeBytes; index++)
+    {
+        if (HAL_FLASHEx_DATAEEPROM_Program(FLASH_TYPEPROGRAMDATA_BYTE,
+                                           address + index,
+                                           p_bytes[index]) != HAL_OK)
+        {
+            (void)HAL_FLASHEx_DATAEEPROM_Lock();
+            App_ErrorRecord(APP_STATUS_INIT_FAILED, __FILE__, __LINE__);
+            return APP_STATUS_INIT_FAILED;
+        }
+    }
+    APP_RETURN_IF_HAL_ERROR(HAL_FLASHEx_DATAEEPROM_Lock(), APP_STATUS_INIT_FAILED);
+    return APP_STATUS_OK;
+#else
+    (void)offset;
+    (void)p_data;
+    (void)sizeBytes;
+    return APP_STATUS_NOT_INITIALIZED;
+#endif
 }
 
 AppStatus_t App_MeterStorageInit(void)

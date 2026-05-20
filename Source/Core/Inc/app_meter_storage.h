@@ -63,6 +63,8 @@ typedef struct
     uint16_t nextSeq;
 } AppMeterStorageInfo_t;
 
+AppStatus_t App_StorageDataEepromRead(uint32_t offset, void *p_data, uint32_t sizeBytes);
+AppStatus_t App_StorageDataEepromWrite(uint32_t offset, const void *p_data, uint32_t sizeBytes);
 AppStatus_t App_MeterStorageInit(void);
 uint8_t App_MeterStorageIsInitialized(void);
 AppStatus_t App_MeterStoragePush(const AppMeterStorageRecord_t *p_record);
