@@ -1173,8 +1173,22 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         APP_RETURN_IF_FALSE(App_NBIoTAtInit() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
+        (void)App_SystemSetNbiotPowered(APP_TRUE);
+
+        APP_WWDGFeed();
+        APP_RETURN_IF_FALSE(App_NBIoTBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+        APP_WWDGFeed();
+        APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+        APP_WWDGFeed();
         App_NBIoTReadIdentity();
         App_NBIoTReadQuality();
+
+        APP_WWDGFeed();
+        App_NBIoTTransmitUdp();
+        APP_WWDGFeed();
+
+        (void)App_SystemSetNbiotPowered(APP_FALSE);
+
         return (APP_STATUS_OK);
     }
 

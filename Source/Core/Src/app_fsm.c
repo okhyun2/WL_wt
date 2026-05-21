@@ -587,7 +587,7 @@ static AppStatus_t App_FsmFindDuePeriodicState(uint8_t *p_state)
         //APP_FSM_COMPONENT_METER,
         APP_FSM_COMPONENT_NFC,
         //APP_FSM_COMPONENT_AUX,
-        APP_FSM_COMPONENT_NBIOT, //TODO kiki test
+        //APP_FSM_COMPONENT_NBIOT, //TODO kiki test
         //APP_FSM_COMPONENT_SERVER,
         //APP_FSM_COMPONENT_RTC
         //APP_FSM_COMPONENT_LPTIM
@@ -858,6 +858,8 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
             App_NBIoTReadIdentity();
             App_NBIoTReadQuality();
+
+            App_NBIoTTransmitUdp();
 
             (void)App_SystemSetNbiotPowered(APP_FALSE);
 

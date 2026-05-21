@@ -335,6 +335,8 @@ static void App_GpioLpRestoreNbiotInterface(void)
         /* 최종 안정화 */
         HAL_Delay(5);
     }
+
+    APP_LOGI("GPIO", "NB-IoT power on");
 }
 
 /**
@@ -342,6 +344,8 @@ static void App_GpioLpRestoreNbiotInterface(void)
  */
 static void App_GpioLpIsolateNbiotInterface(void)
 {
+    APP_LOGI("GPIO", "NB-IoT power off");
+
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
     App_GpioLpConfigAnalogNoPull(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin);
 
@@ -578,13 +582,6 @@ AppStatus_t App_GpioLpSetNbiotPowered(uint8_t powered)
     {
         App_GpioLpRestoreNbiotInterface();
     }
-
-#ifdef DEBUG
-    if (App_GpioLpCanDebugLog() == 1u)
-    {
-        APP_LOGD("GPIO", "NB-IoT power=%u", (unsigned int)powered);
-    }
-#endif
 
     return APP_STATUS_OK;
 }

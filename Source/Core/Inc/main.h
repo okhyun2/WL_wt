@@ -56,6 +56,7 @@ void Error_Handler(void);
 
 void RTC_SetTime(int year, int month, int date, int hour, int min, int sec);
 uint64_t RTC_GetTimeMs(void);
+void APP_WWDGFeed(void);
 
 /* USER CODE BEGIN EFP */
 

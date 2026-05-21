@@ -181,7 +181,7 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
     /* 메인 루프 정상 동작 표시 */
-    g_wwdg_main_loop_alive = 1;
+    APP_WWDGFeed();
 
     App_SystemProcess();
   }
@@ -853,6 +853,10 @@ void HAL_WWDG_EarlyWakeupCallback(WWDG_HandleTypeDef *hwwdg_handle)
 
         UNUSED(hwwdg_handle);
     }
+}
+void APP_WWDGFeed(void)
+{
+  g_wwdg_main_loop_alive = 1;
 }
 
 /* USER CODE BEGIN 4 */

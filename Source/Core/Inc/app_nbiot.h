@@ -160,6 +160,73 @@ const char        *App_Bc95AtGetCeregStatString (AppBc95CeregStat_t stat);
 const char        *App_Bc95AtGetNetPhaseString  (AppBc95NetPhase_t phase);
 const AppBc95NetStatus_t *App_Bc95AtGetLastNetStatus(void);
 
+/* ============================================================
+ *  UDP 송신 관련 정의
+ * ============================================================ */
+#define APP_BC95_DNS_TIMEOUT_MS              (30000u)   /* DNS 조회 타임아웃 */
+#define APP_BC95_DNS_POLL_INTERVAL_MS        (500u)
+#define APP_BC95_SOCKET_TIMEOUT_MS           (5000u)    /* 소켓 명령 응답 대기 */
+#define APP_BC95_NSOST_CONFIRM_TIMEOUT_MS    (15000u)   /* RF 송출 확인 (NSOSTR URC) */
+#define APP_BC95_UDP_LOCAL_PORT              (0u)       /* 0 = 모듈이 임의 할당 */
+#define APP_BC95_UDP_SEND_RETRY_MAX          (3u)       /* 송신 실패 시 재시도 */
+#define APP_BC95_UDP_SEND_RETRY_DELAY_MS     (1000u)
+#define APP_BC95_UDP_MAX_PAYLOAD             (512u)     /* 매뉴얼 1358 한도 내 권장값 */
+#define APP_BC95_IP_STR_SIZE                 (64u)
+
+typedef enum
+{
+    APP_BC95_UDP_STAGE_NONE       = 0,
+    APP_BC95_UDP_STAGE_RESOLVE    = 1,
+    APP_BC95_UDP_STAGE_CREATE     = 2,
+    APP_BC95_UDP_STAGE_SEND       = 3,
+    APP_BC95_UDP_STAGE_CONFIRM    = 4,
+    APP_BC95_UDP_STAGE_CLOSE      = 5,
+    APP_BC95_UDP_STAGE_DONE       = 6
+} AppBc95UdpStage_t;
+
+typedef struct
+{
+    AppBc95UdpStage_t  lastStage;
+    int32_t            socketId;
+    char               resolvedIp[APP_BC95_IP_STR_SIZE];
+    uint16_t           sentBytes;
+    uint8_t            seqNumber;
+    uint8_t            sendConfirmed;
+} AppBc95UdpResult_t;
+
+/* DNS 관련 상수 */
+#define APP_BC95_DNS_CMD_TIMEOUT_MS         (3000U)   /* "OK" 수신 타임아웃 */
+#define APP_BC95_DNS_URC_TIMEOUT_MS         (30000U)  /* +QDNS URC 대기 타임아웃 */
+#define APP_BC95_DNS_URC_POLL_MS            (100U)    /* URC 폴링 주기 */
+#define APP_BC95_DNS_INTERCMD_DELAY_MS      (200U)    /* 명령 송신 전 안정화 지연 */
+
+/* ===== DNS Robust 관련 상수 ===== */
+#define APP_BC95_DNS_FAIL_RETRY_MAX         (3U)      /* 각 단계별 재시도 횟수 */
+#define APP_BC95_DNS_FAIL_RETRY_DELAY_MS    (3000U)   /* 재시도 사이 지연 */
+#define APP_BC95_HOSTNAME_MAX_LEN           (128U)
+
+/* DNS / 소켓 명령 */
+AppStatus_t  App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_t ipBufSize);
+
+/* 메인 robust 함수 */
+AppStatus_t App_Bc95AtResolveHostRobust(const char *p_hostname,
+                                        char       *p_ipOut,
+                                        uint32_t    ipBufSize);
+
+
+AppStatus_t  App_Bc95AtCreateUdpSocket(uint16_t localPort, int32_t *p_socketOut);
+AppStatus_t  App_Bc95AtUdpSend(int32_t socketId, const char *p_ip, uint16_t port,
+                               const uint8_t *p_data, uint16_t length,
+                               uint16_t *p_sentLenOut);
+AppStatus_t  App_Bc95AtUdpSendAndConfirm(int32_t socketId, const char *p_ip, uint16_t port,
+                                         const uint8_t *p_data, uint16_t length,
+                                         uint8_t seqNum, uint32_t confirmTimeoutMs);
+AppStatus_t  App_Bc95AtCloseSocket(int32_t socketId);
+
+/* 통합 송신 (DNS -> 생성 -> 송신 -> 닫기) */
+AppStatus_t  App_Bc95AtUdpSendOnce(const char *p_hostname, uint16_t port,
+                                   const uint8_t *p_data, uint16_t length,
+                                   AppBc95UdpResult_t *p_result);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 AppStatus_t App_NBIoTAtInit(void);
@@ -167,6 +234,7 @@ AppStatus_t App_NBIoTBringUp(void);
 AppStatus_t App_NBIoTNetworkBringUp(void);
 AppStatus_t App_NBIoTReadIdentity(void);
 AppStatus_t App_NBIoTReadQuality(void);
+AppStatus_t App_NBIoTTransmitUdp(void);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
