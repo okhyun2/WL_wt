@@ -108,7 +108,7 @@ extern "C" {
 #define APP_SELFTEST_UART_RX_BUFFER_SIZE            (32u)
 #define APP_SELFTEST_NBIOT_PWR_STABLE_DELAY_MS      (200u)
 #define APP_SELFTEST_NBIOT_RESET_SIGNAL_DELAY_MS    (50u)
-#define APP_SELFTEST_NBIOT_BOOT_DELAY_MS            (2500u) //reset release + nbiot booting.
+#define APP_SELFTEST_NBIOT_BOOT_DELAY_MS            (15000u) //reset release + nbiot booting.
 #define APP_SELFTEST_EXTERNAL_WD_PULSE_MS           (50u)
 
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x54u)

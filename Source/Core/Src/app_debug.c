@@ -1172,6 +1172,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     if (strcmp(p_command, "nbiot") == 0)
     {
         APP_RETURN_IF_FALSE(App_NBIoTAtInit() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
         App_NBIoTReadIdentity();
         App_NBIoTReadQuality();
         return (APP_STATUS_OK);

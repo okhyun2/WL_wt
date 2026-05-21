@@ -7,6 +7,7 @@
 #include "app_gpio_lp.h"
 #include "app_meter.h"
 #include "app_aux.h"
+#include "app_nbiot.h"
 #include "app_log.h"
 
 /**
@@ -385,10 +386,6 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
     AppStatus_t status = APP_STATUS_OK;
     APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
 
-    static const uint8_t atCommand[] = {'A', 'T', '\r', '\n'};
-    uint8_t replyBuffer[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0, };
-    int i = 0; 
-
     APP_LOGI("SELF", "NB-IoT real probe start");
 
     APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
@@ -398,51 +395,16 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
     App_HwSetNbiotReset(GPIO_PIN_RESET);
     HAL_Delay(APP_SELFTEST_NBIOT_RESET_SIGNAL_DELAY_MS);
     App_HwSetNbiotReset(GPIO_PIN_SET);
-    HAL_Delay(APP_SELFTEST_NBIOT_BOOT_DELAY_MS);
 
-    //for (i = 0; i < 1000; i++)
+    if((status = App_NBIoTBringUp()) == APP_STATUS_OK)
     {
-        // memset(replyBuffer, 0xFF, sizeof(replyBuffer));
-
-        /* ----- 추가: 명령 송신 전 RX 라인/에러 플래그 완전 초기화 ----- */
-        (void)HAL_UART_AbortReceive_IT(APP_UART_NBIOT_HANDLE);
-        __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE,
-                              UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
-        __HAL_UART_SEND_REQ(APP_UART_NBIOT_HANDLE, UART_RXDATA_FLUSH_REQUEST);
-
-        /* 모듈이 IMSI 응답 후 추가 \r\n을 더 보낼 시간을 짧게 보장
-         * (BC95는 명령 처리 후 약간의 지연이 있음) */
-        HAL_Delay(20);
-        __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE,
-                              UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
-        __HAL_UART_SEND_REQ(APP_UART_NBIOT_HANDLE, UART_RXDATA_FLUSH_REQUEST);
-        /* ----- 끝 ----- */
-
-        status = HAL_UART_Transmit(APP_UART_NBIOT_HANDLE,
-                                                  (uint8_t *)atCommand,
-                                                  (uint16_t)sizeof(atCommand),
-                                                  APP_SELFTEST_UART_TIMEOUT_MS);
-        if(status != APP_STATUS_OK) goto Error_App_SelfTestCheckNbiot;
-
-        status = App_SelfTestUartReceiveIt(APP_UART_NBIOT_HANDLE,
-                                             replyBuffer,
-                                             APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN,
-                                             APP_SELFTEST_UART_REPLY_TIMEOUT_MS);
-
-        if(status != APP_STATUS_OK) goto Error_App_SelfTestCheckNbiot;
-
-        App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)replyBuffer, APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN);
+        App_NBIoTReadIdentity();
     }
 
-    APP_LOGI("SELF", "NB-IoT AT reply received (%u bytes minimum)", (unsigned int)APP_SELFTEST_UART_NBIOT_EXPECTED_RX_MIN_LEN);
+    App_HwSetNbiotEnable(GPIO_PIN_RESET);
+    APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_FALSE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
-Error_App_SelfTestCheckNbiot:
-    //kiki test
-    //App_HwSetNbiotEnable(GPIO_PIN_RESET);
-    //APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_FALSE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-    APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-
-    return APP_STATUS_OK;
+    return status;
 }
 
 /**

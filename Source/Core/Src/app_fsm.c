@@ -12,6 +12,7 @@
 #include "nfc_lowpower.h"
 #include "nfc_secure_auth.h"
 #include "nfc_user_command.h"
+#include "app_nbiot.h"
 
 static AppFsmContext_t g_appFsmContext;
 
@@ -586,7 +587,7 @@ static AppStatus_t App_FsmFindDuePeriodicState(uint8_t *p_state)
         //APP_FSM_COMPONENT_METER,
         APP_FSM_COMPONENT_NFC,
         //APP_FSM_COMPONENT_AUX,
-        //APP_FSM_COMPONENT_NBIOT,
+        APP_FSM_COMPONENT_NBIOT, //TODO kiki test
         //APP_FSM_COMPONENT_SERVER,
         //APP_FSM_COMPONENT_RTC
         //APP_FSM_COMPONENT_LPTIM
@@ -851,6 +852,13 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
+
+            //TODO kiki test
+            APP_RETURN_IF_FALSE(App_NBIoTBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+            APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+            App_NBIoTReadIdentity();
+            App_NBIoTReadQuality();
+
             (void)App_SystemSetNbiotPowered(APP_FALSE);
 
             //Clear eventPending
