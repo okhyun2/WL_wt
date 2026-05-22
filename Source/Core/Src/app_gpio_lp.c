@@ -315,6 +315,13 @@ static void App_GpioLpRestoreNbiotInterface(void)
 
     HAL_GPIO_Init(NBIoT_RX_GPIO_Port, &gpioInit);
 
+    /* Power 핀 안정화 대기 */
+    HAL_Delay(10);
+
+    App_HwSetNbiotReset(GPIO_PIN_RESET);
+    HAL_Delay(10);
+    App_HwSetNbiotReset(GPIO_PIN_SET);
+
     /* LPUART1 수신(RX) 재활성화 */
     LPUART1->CR1 |= USART_CR1_RE;
 
@@ -356,6 +363,7 @@ static void App_GpioLpIsolateNbiotInterface(void)
     LPUART1->CR1 &= ~USART_CR1_RE; // 가짜 신호 차단
 
     App_GpioLpConfigAnalogNoPull(NBIoT_RX_GPIO_Port, NBIoT_RX_Pin | NBIoT_TX_Pin);
+    HAL_Delay(1000u);   /* 캐패시터 방전 */
 }
 
 /**

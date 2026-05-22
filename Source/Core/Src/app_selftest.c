@@ -390,18 +390,11 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
 
     APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
-    App_HwSetNbiotEnable(GPIO_PIN_SET);
-    HAL_Delay(APP_SELFTEST_NBIOT_PWR_STABLE_DELAY_MS);
-    App_HwSetNbiotReset(GPIO_PIN_RESET);
-    HAL_Delay(APP_SELFTEST_NBIOT_RESET_SIGNAL_DELAY_MS);
-    App_HwSetNbiotReset(GPIO_PIN_SET);
-
     if((status = App_NBIoTBringUp()) == APP_STATUS_OK)
     {
         App_NBIoTReadIdentity();
     }
 
-    App_HwSetNbiotEnable(GPIO_PIN_RESET);
     APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_FALSE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
     return status;

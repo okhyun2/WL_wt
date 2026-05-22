@@ -15,6 +15,7 @@
 #include "app_selftest.h"
 #include "nfc_ntag5_ntp53321.h"
 #include "app_meter_storage.h"
+#include "app_nbiot.h"
 
 wakeup_context_t g_wakeup_ctx = {0};
 extern NFC_NTP53321_Handle_t g_nfcTagHandle;
@@ -949,6 +950,8 @@ AppStatus_t App_SystemInit(void)
     Print_BootInfo(&g_boot_info);
 
     App_MeterStorageInfo();
+
+    App_NBIoTAtInit();
 
     status = App_SystemRunBootSelfTest();
     if (status != APP_STATUS_OK)
