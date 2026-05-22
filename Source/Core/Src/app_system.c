@@ -902,6 +902,9 @@ AppStatus_t App_SystemInit(void)
         return status;
     }
 
+    //Set default RTC Set
+    RTC_SetTime(APP_DEFAULT_RTC_YEAR, APP_DEFAULT_RTC_MONTH, APP_DEFAULT_RTC_DAY, APP_DEFAULT_RTC_HOUR, APP_DEFAULT_RTC_MIN, APP_DEFAULT_RTC_SEC);
+
     status = App_SystemInitLowPowerGpio();
     if (status != APP_STATUS_OK)
     {
@@ -976,9 +979,6 @@ AppStatus_t App_SystemInit(void)
                                  (unsigned int)g_appSystemContext.stopRequested);
 #endif
 
-    APP_LOGI("SYS", "RTC Set(%04d-%02d-%02d %02d:%02d:%02d)",
-                        APP_DEFAULT_RTC_YEAR, APP_DEFAULT_RTC_MONTH, APP_DEFAULT_RTC_DAY, APP_DEFAULT_RTC_HOUR, APP_DEFAULT_RTC_MIN, APP_DEFAULT_RTC_SEC);
-    RTC_SetTime(APP_DEFAULT_RTC_YEAR, APP_DEFAULT_RTC_MONTH, APP_DEFAULT_RTC_DAY, APP_DEFAULT_RTC_HOUR, APP_DEFAULT_RTC_MIN, APP_DEFAULT_RTC_SEC);
 
     return APP_STATUS_OK;
 }

@@ -390,10 +390,13 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
 
     APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 
-    if((status = App_NBIoTBringUp()) == APP_STATUS_OK)
-    {
-        App_NBIoTReadIdentity();
-    }
+    APP_WWDGFeed();
+    APP_RETURN_IF_FALSE(App_NBIoTBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+    APP_WWDGFeed();
+    APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+    APP_WWDGFeed();
+    App_NBIoTReadIdentity();
+    App_NBIoTReadQuality();
 
     APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_FALSE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
 

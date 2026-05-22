@@ -2532,6 +2532,270 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_hostname, uint16_t port,
     return status;
 }
 
+/* 전역 - 마지막 동기화된 시간 */
+static AppBc95Time_t g_appBc95AtLastTime;
+
+/* ============================================================
+ *  AT+CCLK? 응답 파싱
+ *
+ *  응답 형식:
+ *    +CCLK:25/05/22,14:30:45+36
+ *    OK
+ *
+ *  필드:
+ *    YY/MM/DD : 연/월/일 (실제 연도 = 2000 + YY)
+ *    HH:MM:SS : 시:분:초
+ *    ±TZ      : 타임존, 15분 단위 (선택, 예: +36 = UTC+9h)
+ *
+ *  BC95-GV 는 네트워크 시간을 받기 전에는
+ *  "+CCLK:70/01/01,00:00:00+00" 같은 값을 반환할 수 있다.
+ *  연도가 APP_BC95_TIME_MIN_VALID_YEAR 미만이면 NO_DATA 로 처리.
+ * ============================================================ */
+AppBc95AtStatus_t App_Bc95AtParseCclk(const char *p_resp, AppBc95Time_t *p_time)
+{
+    AppBc95AtStatus_t status;
+    int32_t cmeErr;
+    const char *p_payload;
+    int parsedYy = 0, parsedMo = 0, parsedDd = 0;
+    int parsedHh = 0, parsedMi = 0, parsedSs = 0;
+    int parsedTz = 0;
+    char tzSign  = '+';
+    int parsedFields;
+
+    if ((p_resp == NULL) || (p_time == NULL)) return APP_BC95_AT_ERR_PARAM;
+    (void)memset(p_time, 0, sizeof(*p_time));
+
+    cmeErr = 0;
+    status = App_Bc95AtCheckResponse(p_resp, &cmeErr);
+    if (status != APP_BC95_AT_OK) return status;
+
+    p_payload = strstr(p_resp, APP_BC95_AT_CCLK_PREFIX);
+    if (p_payload == NULL) return APP_BC95_AT_ERR_NO_PREFIX;
+    p_payload += APP_BC95_AT_CCLK_PREFIX_LEN;
+    while ((*p_payload == ' ') || (*p_payload == '\t') || (*p_payload == '"'))
+        p_payload++;
+
+    /* "YY/MM/DD,HH:MM:SS±TZ" (TZ 있는 경우) */
+    parsedFields = sscanf(p_payload, "%d/%d/%d,%d:%d:%d%c%d",
+                          &parsedYy, &parsedMo, &parsedDd,
+                          &parsedHh, &parsedMi, &parsedSs,
+                          &tzSign, &parsedTz);
+
+    if (parsedFields < 6)
+    {
+        APP_LOGE("NBIOT", "CCLK format error: [%s]", p_payload);
+        return APP_BC95_AT_ERR_FORMAT;
+    }
+
+    /* TZ 부분이 부족하면 0 으로 */
+    if (parsedFields < 8)
+    {
+        parsedTz = 0;
+        tzSign   = '+';
+    }
+
+    /* 범위 검증 */
+    if ((parsedYy < 0)  || (parsedYy > 99)  ||
+        (parsedMo < 1)  || (parsedMo > 12)  ||
+        (parsedDd < 1)  || (parsedDd > 31)  ||
+        (parsedHh < 0)  || (parsedHh > 23)  ||
+        (parsedMi < 0)  || (parsedMi > 59)  ||
+        (parsedSs < 0)  || (parsedSs > 59)  ||
+        (parsedTz < 0)  || (parsedTz > 96))
+    {
+        return APP_BC95_AT_ERR_RANGE;
+    }
+
+    /* 네트워크 시간을 못 받은 상태 거르기 */
+    if ((uint16_t)(2000 + parsedYy) < APP_BC95_TIME_MIN_VALID_YEAR)
+    {
+        APP_LOGI("NBIOT", "CCLK: network time not synced yet (year=20%02d)", parsedYy);
+        return APP_BC95_AT_ERR_NO_DATA;
+    }
+
+    p_time->dateTime.year   = (uint16_t)(2000 + parsedYy);
+    p_time->dateTime.month  = (uint8_t)parsedMo;
+    p_time->dateTime.day    = (uint8_t)parsedDd;
+    p_time->dateTime.hour   = (uint8_t)parsedHh;
+    p_time->dateTime.minute = (uint8_t)parsedMi;
+    p_time->dateTime.second = (uint8_t)parsedSs;
+
+    if (tzSign == '-')
+        p_time->tzQuarterHour = (int8_t)(-parsedTz);
+    else
+        p_time->tzQuarterHour = (int8_t)parsedTz;
+
+    p_time->valid = APP_TRUE;
+    return APP_BC95_AT_OK;
+}
+
+/* ============================================================
+ *  AT+CCLK? 송신 + 파싱
+ * ============================================================ */
+AppStatus_t App_Bc95AtFetchTime(AppBc95Time_t *p_time)
+{
+    AppStatus_t status;
+    AppBc95AtStatus_t atStatus;
+    uint16_t rxLen = 0u;
+
+    APP_RETURN_IF_FALSE((p_time != NULL), APP_STATUS_INVALID_PARAM);
+    (void)memset(p_time, 0, sizeof(*p_time));
+
+    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_CCLK_QUERY,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   APP_BC95_AT_RX_TIMEOUT_MS, &rxLen);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGE("NBIOT", "CCLK send fail (status=%d, rxLen=%u)",
+                 (int)status, (unsigned)rxLen);
+        return status;
+    }
+
+    atStatus = App_Bc95AtParseCclk((const char *)g_appBc95AtRxBuf, p_time);
+    if (atStatus == APP_BC95_AT_OK)
+    {
+        (void)memcpy(&g_appBc95AtLastTime, p_time, sizeof(g_appBc95AtLastTime));
+        return APP_STATUS_OK;
+    }
+
+    if (atStatus == APP_BC95_AT_ERR_NO_DATA)
+    {
+        /* 아직 네트워크 시간 미수신 - 일시 실패 */
+        return APP_STATUS_UART_TIMEOUT;
+    }
+
+    APP_LOGE("NBIOT", "CCLK parse fail (atStatus=%s, raw=[%s])",
+             App_Bc95AtGetStatusString(atStatus), g_appBc95AtRxBuf);
+    return APP_STATUS_FATAL;
+}
+
+AppStatus_t App_Bc95AtFetchTimeWithRetry(AppBc95Time_t *p_time, uint32_t maxRetry)
+{
+    AppStatus_t st = APP_STATUS_FATAL;
+    uint32_t i;
+
+    if (maxRetry == 0u) maxRetry = 1u;
+
+    for (i = 0u; i < maxRetry; i++)
+    {
+        st = App_Bc95AtFetchTime(p_time);
+        if (st == APP_STATUS_OK) return APP_STATUS_OK;
+        if (st == APP_STATUS_FATAL) return st;
+
+        APP_LOGI("NBIOT", "CCLK retry %lu/%lu (status=%d)",
+                 (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)st);
+        if (i < (maxRetry - 1u))
+            App_Bc95AtDelayWithFeed(APP_BC95_TIME_SYNC_RETRY_DELAY_MS);
+    }
+    return st;
+}
+
+/* ============================================================
+ *  AT+CTZU=1 (자동 타임존 동기화 활성화)
+ *    부팅 시 1회 호출하면 이후 네트워크 시간이 자동 갱신된다.
+ *    실패해도 치명적이지 않음 (수동 CCLK 로 fallback 가능).
+ * ============================================================ */
+AppStatus_t App_Bc95AtEnableAutoTimezone(void)
+{
+    AppStatus_t status;
+    AppBc95AtStatus_t atStatus;
+    uint16_t rxLen = 0u;
+
+    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_CTZU_ENABLE,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   APP_BC95_AT_RX_TIMEOUT_MS, &rxLen);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGI("NBIOT", "CTZU=1 send fail (status=%d) - ignored",
+                 (int)status);
+        return status;
+    }
+
+    atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
+    if (atStatus != APP_BC95_AT_OK)
+    {
+        APP_LOGI("NBIOT", "CTZU=1 not OK (parse=%s) - ignored",
+                 App_Bc95AtGetStatusString(atStatus));
+        return APP_STATUS_FATAL;
+    }
+
+    APP_LOGI("NBIOT", "Auto-timezone (CTZU=1) enabled");
+    return APP_STATUS_OK;
+}
+
+/* ============================================================
+ *  통합: 모듈에서 시간 가져와 RTC 에 적용 (기존 RTC_SetTime 사용)
+ *
+ *  주의: RTC_SetTime() 의 year 인자가 2자리 ('25' 같은 BCD)인지
+ *        4자리 ('2025')인지에 따라 호출 방식이 달라진다.
+ *        STM32 HAL 의 RTC_DateTypeDef.Year 는 0~99 (2000 기준) 이므로
+ *        2자리(YY) 전달이 표준이다. 여기서는 YY 만 전달.
+ * ============================================================ */
+AppStatus_t App_Bc95AtSyncTimeToRtc(void)
+{
+    AppStatus_t status;
+    AppBc95Time_t timeInfo;
+
+    status = App_Bc95AtFetchTimeWithRetry(&timeInfo, APP_BC95_TIME_SYNC_RETRY_MAX);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGE("NBIOT", "Time fetch failed (status=%d)", (int)status);
+        return status;
+    }
+
+    APP_LOGI("NBIOT", "Module time: %04u-%02u-%02u %02u:%02u:%02u (TZ=%+d/15min)",
+             (unsigned)timeInfo.dateTime.year, (unsigned)timeInfo.dateTime.month, (unsigned)timeInfo.dateTime.day,
+             (unsigned)timeInfo.dateTime.hour, (unsigned)timeInfo.dateTime.minute, (unsigned)timeInfo.dateTime.second,
+             (int)timeInfo.tzQuarterHour);
+
+    /* 기존 RTC_SetTime() 사용
+     *   year   : 2자리(YY, 2000 기준) - HAL_RTC_SetDate 가 요구하는 형식
+     *   month  : 1~12
+     *   date   : 1~31
+     *   hour/min/sec : 0~23 / 0~59 / 0~59
+     */
+    RTC_SetTime((int)(timeInfo.dateTime.year - 2000u),
+                (int)timeInfo.dateTime.month,
+                (int)timeInfo.dateTime.day,
+                (int)timeInfo.dateTime.hour,
+                (int)timeInfo.dateTime.minute,
+                (int)timeInfo.dateTime.second);
+
+    APP_LOGI("NBIOT", "RTC set to 20%02u-%02u-%02u %02u:%02u:%02u",
+             (unsigned)(timeInfo.dateTime.year - 2000u),
+             (unsigned)timeInfo.dateTime.month, (unsigned)timeInfo.dateTime.day,
+             (unsigned)timeInfo.dateTime.hour, (unsigned)timeInfo.dateTime.minute, (unsigned)timeInfo.dateTime.second);
+
+    return APP_STATUS_OK;
+}
+
+const AppBc95Time_t *App_Bc95AtGetLastTime(void)
+{
+    return &g_appBc95AtLastTime;
+}
+
+/* ============================================================
+ *  Application level wrapper
+ * ============================================================ */
+AppStatus_t App_NBIoTSyncTime(void)
+{
+    AppStatus_t status;
+
+    APP_LOGI("NBIOT", "Synchronizing time from network...");
+
+    status = App_Bc95AtSyncTimeToRtc();
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGE("NBIOT", "Time sync failed (status=%d)", (int)status);
+        return status;
+    }
+
+    APP_LOGI("NBIOT", "Time sync done");
+    return APP_STATUS_OK;
+}
+
 /* ============================================================
  *  Application level
  * ============================================================ */
@@ -2616,6 +2880,12 @@ AppStatus_t App_NBIoTNetworkBringUp(void)
                  App_Bc95AtGetNetPhaseString(netStatus.phase));
         return status;
     }
+
+    /* 자동 타임존 활성화 (실패해도 무시) */
+    (void)App_Bc95AtEnableAutoTimezone();
+
+    /* 네트워크 시간 → RTC 동기화 */
+    (void)App_NBIoTSyncTime();
 
     (void)App_Bc95AtWarmupDns(WARMUPDNS_SERVER_DOMAIN);
     APP_LOGI("NBIOT", "Network ready");

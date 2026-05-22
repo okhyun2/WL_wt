@@ -10,6 +10,7 @@ extern "C" {
 
 #include "stm32l0xx_hal.h"
 #include "app_build_config.h"
+#include "app_clock.h"
 #include "app_error.h"
 
 /* ============================================================
@@ -233,6 +234,47 @@ void         App_Bc95AtCloseAllSockets(void);
 AppStatus_t  App_Bc95AtUdpSendOnce(const char *p_hostname, uint16_t port,
                                    const uint8_t *p_data, uint16_t length,
                                    AppBc95UdpResult_t *p_result);
+
+/* ============================================================
+ *  시간 정보 (네트워크 → RTC 동기화)
+ * ============================================================ */
+#define APP_BC95_AT_CMD_CCLK_QUERY           "AT+CCLK?\r\n"
+#define APP_BC95_AT_CMD_CTZU_ENABLE          "AT+CTZU=1\r\n"
+#define APP_BC95_AT_CCLK_PREFIX              "+CCLK:"
+#define APP_BC95_AT_CCLK_PREFIX_LEN          (6u)
+
+#define APP_BC95_TIME_SYNC_RETRY_MAX         (10u)
+#define APP_BC95_TIME_SYNC_RETRY_DELAY_MS    (1000u)
+#define APP_BC95_TIME_MIN_VALID_YEAR         (2020u)
+
+typedef struct
+{
+    AppDateTime_t dateTime;
+    int8_t   tzQuarterHour; /* -48 ~ +56 (15분 단위), 예: +36 = UTC+9 */
+    uint8_t  valid;
+} AppBc95Time_t;
+
+/* 응답 파서 */
+AppBc95AtStatus_t  App_Bc95AtParseCclk(const char *p_resp, AppBc95Time_t *p_time);
+
+/* 시간 조회 */
+AppStatus_t  App_Bc95AtFetchTime(AppBc95Time_t *p_time);
+AppStatus_t  App_Bc95AtFetchTimeWithRetry(AppBc95Time_t *p_time, uint32_t maxRetry);
+
+/* 자동 타임존 동기화 활성화 (부팅 시 1회 호출 권장) */
+AppStatus_t  App_Bc95AtEnableAutoTimezone(void);
+
+/* 통합: 모듈에서 가져와 RTC 에 바로 적용 */
+AppStatus_t  App_Bc95AtSyncTimeToRtc(void);
+
+/* 접근자 */
+const AppBc95Time_t *App_Bc95AtGetLastTime(void);
+
+/* Application level */
+AppStatus_t App_NBIoTSyncTime(void);
+
+/* 외부 RTC 함수 (다른 파일에 구현되어 있는 기존 함수) */
+extern void RTC_SetTime(int year, int month, int date, int hour, int min, int sec);
 
 /* ============================================================
  *  Application level

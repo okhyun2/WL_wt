@@ -704,7 +704,8 @@ static AppStatus_t App_DebugConsoleRunMeterConvert(uint8_t clearOnSuccess)
     return App_DebugConsolePrintMeterStorageSummary();
 }
 
-//a33b70869692066911391f450061225187489f58004a005e000a000e003324700005000924ffffffff01130101061a04020b353a01010000000000000042
+#ifdef DEBUG
+// a33b70869692066911391f450061225187489f58004a005e000a000e003324700005000924ffffffff01130101061a04020b353a01010000000000000042
 static AppStatus_t App_DebugConsoleRunNbiotDumpTest(void)
 {
     static const uint8_t packet[] = {
@@ -715,11 +716,11 @@ static AppStatus_t App_DebugConsoleRunNbiotDumpTest(void)
         0x00, 0x05, 0x00, 0x09, 0x24, 0xFF, 0xFF, 0xFF,
         0xFF, 0x01, 0x13, 0x01, 0x01, 0x06, 0x1A, 0x04,
         0x02, 0x0B, 0x35, 0x3A, 0x01, 0x01, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x42
-    };
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x42};
 
     return App_DebugConsoleDumpNbiotPeriodicReport(packet, (uint32_t)sizeof(packet));
 }
+#endif // DEBUG
 
 #endif
 
@@ -958,6 +959,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("ver                      : show firmware version") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("status                   : show system summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("clock                    : show boot clock summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("time                     : show date time summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("error                    : show last error record") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("fsm                      : show state-machine summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("components               : show component table") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
@@ -1029,6 +1031,12 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
                                    (unsigned long)p_clockContext->flashLatency);
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if (strcmp(p_command, "time") == 0)
+    {
+        RTC_PrintTime();
+        return APP_STATUS_OK;
     }
 
     if (strcmp(p_command, "error") == 0)
@@ -1208,8 +1216,9 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
 
     if (strcmp(p_command, "mconv test") == 0)
     {
-        //debug
+        #ifdef DEBUG
         App_DebugConsoleRunNbiotDumpTest();
+        #endif // DEBUG
 
         return App_DebugConsoleRunMeterConvert(APP_FALSE);
     }

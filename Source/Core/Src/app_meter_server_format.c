@@ -4,6 +4,7 @@
 
 #include "app_build_config.h"
 #include "app_meter_storage.h"
+#include "app_log.h"
 
 #define APP_METER_SERVER_FORMAT_FIXED_LORA_QUALITY_BYTES   (2u)
 #define APP_METER_SERVER_FORMAT_FIXED_NBIOT_QUALITY_BYTES  (10u)
@@ -98,7 +99,8 @@ void App_MeterServerFormatSetTestDefaults(AppMeterServerFormatOptions_t *p_optio
     p_options->firmwareVersion[0] = (uint8_t)APP_FW_VERSION_MAJOR;
     p_options->firmwareVersion[1] = (uint8_t)APP_FW_VERSION_MINOR;
 
-    p_options->terminalBattery = 0x24u;
+    p_options->terminalBattery.b.alarm = 0;
+    p_options->terminalBattery.b.volt = 36; //volt * 10
 
     p_options->meteringPeriodHours = 1u;
     p_options->reportingPeriodHours = 1u;
@@ -201,7 +203,7 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
                                               p_options->firmwareVersion,
                                               sizeof(p_options->firmwareVersion));
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    p_packet[cursor++] = p_options->terminalBattery;
+    p_packet[cursor++] = p_options->terminalBattery.value;
 
     /* 계량기 정보 (7B): 기물번호(4 BCD) + 형식(1) + 구경/소수점(1) + 상태(1) */
     App_MeterServerFormatEncodeBcdBe(latestRecord.meterId, packetMeterIdBcd, (uint8_t)sizeof(packetMeterIdBcd));

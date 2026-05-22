@@ -2,8 +2,10 @@
 #include "app_hw.h"
 
 #include <string.h>
+#include <stdio.h>
 
 #include "app_build_config.h"
+#include "app_log.h"
 
 /**
  * @file    app_clock.c
@@ -138,10 +140,78 @@ void RTC_SetTime(int year, int month, int date, int hour, int min, int sec)
   sTime.Seconds = sec;
   sDate.Date = date;
   sDate.Month = month;
-  sDate.Year = year;
+  sDate.Year = year%100;
 
   HAL_RTC_SetTime(APP_RTC_HANDLE, &sTime, RTC_FORMAT_BIN);
   HAL_RTC_SetDate(APP_RTC_HANDLE, &sDate, RTC_FORMAT_BIN);
+}
+
+AppStatus_t RTC_GetTime(AppDateTime_t *pDateTime)
+{
+    RTC_TimeTypeDef sTime;
+    RTC_DateTypeDef sDate;
+    HAL_StatusTypeDef halStatus;
+
+    APP_RETURN_IF_FALSE((pDateTime != NULL), APP_STATUS_INVALID_PARAM);
+    (void)memset(pDateTime, 0, sizeof(*pDateTime));
+
+    (void)memset(&sTime, 0, sizeof(sTime));
+    (void)memset(&sDate, 0, sizeof(sDate));
+
+    /* 반드시 Time -> Date 순서로 호출 (shadow register unlock) */
+    halStatus = HAL_RTC_GetTime(APP_RTC_HANDLE, &sTime, RTC_FORMAT_BIN);
+    if (halStatus != HAL_OK)
+    {
+        APP_LOGE("RTC", "GetTime failed (hal=%d)", (int)halStatus);
+        return APP_STATUS_FATAL;
+    }
+
+    halStatus = HAL_RTC_GetDate(APP_RTC_HANDLE, &sDate, RTC_FORMAT_BIN);
+    if (halStatus != HAL_OK)
+    {
+        APP_LOGE("RTC", "GetDate failed (hal=%d)", (int)halStatus);
+        return APP_STATUS_FATAL;
+    }
+
+    pDateTime->year   = (uint16_t)(2000u + (uint16_t)sDate.Year);
+    pDateTime->month  = sDate.Month;
+    pDateTime->day    = sDate.Date;
+    pDateTime->hour   = sTime.Hours;
+    pDateTime->minute = sTime.Minutes;
+    pDateTime->second = sTime.Seconds;
+
+    return APP_STATUS_OK;
+}
+
+AppStatus_t RTC_PrintTime(void)
+{
+    AppStatus_t status;
+    AppDateTime_t timeInfo;
+    int written;
+    char timeStr[APP_RTC_TIME_STR_LEN];
+
+    timeStr[0] = '\0';
+
+    status = RTC_GetTime(&timeInfo);
+    if (status != APP_STATUS_OK) return status;
+
+    written = snprintf(timeStr, APP_RTC_TIME_STR_LEN,
+                       "%04u-%02u-%02u %02u:%02u:%02u",
+                       (unsigned)timeInfo.year,
+                       (unsigned)timeInfo.month,
+                       (unsigned)timeInfo.day,
+                       (unsigned)timeInfo.hour,
+                       (unsigned)timeInfo.minute,
+                       (unsigned)timeInfo.second);
+
+    if ((written <= 0) || ((uint32_t)written >= APP_RTC_TIME_STR_LEN))
+    {
+        APP_LOGE("RTC", "time string format fail");
+        timeStr[0] = '\0';
+        return APP_STATUS_FATAL;
+    }
+    APP_LOGI("RTC", "Current time:%s", timeStr);
+    return APP_STATUS_OK;
 }
 
 uint64_t RTC_GetTimeMs(void)

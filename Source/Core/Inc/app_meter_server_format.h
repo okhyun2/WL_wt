@@ -16,15 +16,25 @@ extern "C" {
 #define APP_METER_SERVER_FORMAT_MAX_RECORDS_NBIOT        (24u)
 #define APP_METER_SERVER_FORMAT_MAX_RECORDS_LORA         (12u)
 
+typedef union
+{
+    uint8_t value;
+    struct {
+        uint8_t volt:6;
+        uint8_t reserved:1;
+        uint8_t alarm:1;
+    }b;
+}_unBattery;
+
 typedef struct
 {
     uint8_t linkHeader;
     uint8_t command;
     uint8_t wirelessQuality[10];/* 무선품질 정보 (LoRa 2B / NB-IoT 10B) */
-    uint8_t mobileIdBcd[16];    /* 이동통신 ID (NB-IoT만, 16B = IMEI 8 + IMSI 8) */
-    uint8_t deviceSerialBcd[5]; /* 단말기 정보 (8B): 일련번호(5) + F/W(2) + 배터리(1) */
-    uint8_t firmwareVersion[2];
-    uint8_t terminalBattery;
+    uint8_t mobileIdBcd[16];    /* 이동통신 ID (NB-IoT만, 16B = IMEI 8(BCD) + IMSI 8(BCD)) */
+    uint8_t deviceSerialBcd[5]; /* 단말기 정보 (8B): 일련번호(5(BCD)) */
+    uint8_t firmwareVersion[2]; /*                  + F/W(2(float)) Major(1) + Minor(1)*/
+    _unBattery terminalBattery; /*                  + 배터리(1(bit)) */
     uint8_t meteringPeriodHours;
     uint8_t reportingPeriodHours;
 } AppMeterServerFormatOptions_t;

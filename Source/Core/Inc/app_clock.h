@@ -40,6 +40,18 @@ typedef struct
     AppClockSource_t sysclkSource;
 } AppClockContext_t;
 
+#define APP_RTC_TIME_STR_LEN     (20u)   /* "yyyy-mm-dd hh:mm:ss" + NUL = 20 */
+
+typedef struct
+{
+    uint16_t year;          /* 2000~2099 */
+    uint8_t  month;         /* 1~12 */
+    uint8_t  day;           /* 1~31 */
+    uint8_t  hour;          /* 0~23 */
+    uint8_t  minute;        /* 0~59 */
+    uint8_t  second;        /* 0~59 */
+} AppDateTime_t;
+
 /**
  * @brief Validate SystemClock_Config() result and capture clock context.
  *
@@ -73,6 +85,8 @@ extern uint32_t g_tick_offset;
 uint32_t CalcElapsedMs(uint64_t before_ms, uint64_t after_ms);
 uint32_t GetCorrectedTick(void);
 void RTC_SetTime(int year, int month, int date, int hour, int min, int sec);
+AppStatus_t RTC_GetTime(AppDateTime_t *pDateTime);
+AppStatus_t RTC_PrintTime(void);
 uint64_t RTC_GetTimeMs(void);
 
 #ifdef __cplusplus
