@@ -13,6 +13,8 @@
 #include "nfc_secure_auth.h"
 #include "nfc_user_command.h"
 #include "app_nbiot.h"
+#include "app_meter_storage.h"
+#include "app_meter_server_format.h"
 
 static AppFsmContext_t g_appFsmContext;
 
@@ -856,8 +858,8 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             //TODO kiki test
             APP_RETURN_IF_FALSE(App_NBIoTBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
             APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
-            App_NBIoTReadIdentity();
-            App_NBIoTReadQuality();
+            App_NBIoTReadIdentity(APP_TRUE);
+            App_NBIoTReadQuality(APP_TRUE);
 
             App_NBIoTTransmitUdp();
 
@@ -975,8 +977,23 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_STORAGE_INIT:
-            //kiki TODO
-            //APP_RETURN_IF_FALSE(App_StorageIf_LoadParameterBlocks() == APP_STATUS_OK, APP_STATUS_FATAL);
+            AppDeviceConfig_t cfg;
+            AppMeterServerFormatOptions_t opt;
+
+            if (App_DeviceConfigLoad(&cfg) == APP_STATUS_NOT_INITIALIZED)
+            {
+                App_DeviceConfigSave(&cfg);
+            }
+            cfg.bootCount++;
+            App_DeviceConfigSave(&cfg);
+            App_DeviceConfigDump(&cfg);
+
+            if (App_MeterServerOptionsLoad(&opt) == APP_STATUS_NOT_INITIALIZED)
+            {
+                App_MeterServerOptionsSave(&opt);
+            }
+            App_MeterServerOptionsDump(&opt);
+
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_STORAGE_SERVICE, APP_TRUE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL); //eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_STORAGE, APP_FSM_STATE_STORAGE_SERVICE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);

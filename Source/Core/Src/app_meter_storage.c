@@ -437,3 +437,383 @@ AppStatus_t App_MeterStorageGetInfo(AppMeterStorageInfo_t *p_info)
     *p_info = g_appMeterStorageContext.info;
     return APP_STATUS_OK;
 }
+
+/* ================================================================
+ *  Bank1 Low-level EEPROM I/O
+ * ================================================================ */
+/* Bank1 전체(CONFIG + OPTION + RESERVED = 3KB) 범위 내 임의 offset 접근 */
+#define APP_STORAGE_BANK1_SIZE_BYTES    (APP_STORAGE_CONFIG_EEPROM_SIZE_BYTES + \
+                                         APP_STORAGE_METER_OPTION_EEPROM_SIZE_BYTES + \
+                                         APP_STORAGE_RESERVED_EEPROM_SIZE_BYTES)
+
+AppStatus_t App_StorageConfigEepromRead(uint32_t offset, void *p_data, uint32_t sizeBytes)
+{
+#ifdef SUPPORT_EEPROM
+    uint32_t address;
+
+    APP_RETURN_IF_FALSE(p_data != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) >= offset, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) <= APP_STORAGE_BANK1_SIZE_BYTES,
+                        APP_STATUS_INVALID_PARAM);
+
+    address = DATA_EEPROM_BASE + offset;     /* Bank1 시작 = DATA_EEPROM_BASE + 0 */
+    (void)memcpy(p_data, (const void *)address, sizeBytes);
+    return APP_STATUS_OK;
+#else
+    (void)offset; (void)p_data; (void)sizeBytes;
+    return APP_STATUS_NOT_INITIALIZED;
+#endif
+}
+
+AppStatus_t App_StorageConfigEepromWrite(uint32_t offset, const void *p_data, uint32_t sizeBytes)
+{
+#ifdef SUPPORT_EEPROM
+    const uint8_t *p_bytes;
+    uint32_t address;
+    uint32_t i;
+
+    APP_RETURN_IF_FALSE(p_data != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) >= offset, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((offset + sizeBytes) <= APP_STORAGE_BANK1_SIZE_BYTES,
+                        APP_STATUS_INVALID_PARAM);
+
+    p_bytes = (const uint8_t *)p_data;
+    address = DATA_EEPROM_BASE + offset;
+
+    APP_RETURN_IF_HAL_ERROR(HAL_FLASHEx_DATAEEPROM_Unlock(), APP_STATUS_INIT_FAILED);
+    for (i = 0u; i < sizeBytes; i++)
+    {
+        if (*(volatile uint8_t *)(address + i) == p_bytes[i])
+        {
+            continue;
+        }
+        if (HAL_FLASHEx_DATAEEPROM_Program(FLASH_TYPEPROGRAMDATA_BYTE,
+                                           address + i,
+                                           p_bytes[i]) != HAL_OK)
+        {
+            (void)HAL_FLASHEx_DATAEEPROM_Lock();
+            App_ErrorRecord(APP_STATUS_INIT_FAILED, __FILE__, __LINE__);
+            return APP_STATUS_INIT_FAILED;
+        }
+    }
+    APP_RETURN_IF_HAL_ERROR(HAL_FLASHEx_DATAEEPROM_Lock(), APP_STATUS_INIT_FAILED);
+    return APP_STATUS_OK;
+#else
+    (void)offset; (void)p_data; (void)sizeBytes;
+    return APP_STATUS_NOT_INITIALIZED;
+#endif
+}
+
+/* ================================================================
+ *  공용 슬롯 wear-leveling 헬퍼
+ * ================================================================ */
+#define APP_CONFIG_SLOT_MAGIC           (0x53434647u)   /* 'SCFG' */
+#define APP_CONFIG_SLOT_VERSION         (0x01u)
+#define APP_CONFIG_SLOT_PAYLOAD_MAX     (256u)
+
+typedef struct APP_METER_STORAGE_PACKED
+{
+    uint32_t magic;
+    uint8_t  version;
+    uint8_t  payloadSize;
+    uint16_t seq;
+    uint16_t crc16;
+    uint8_t  reserved[2];
+} AppConfigSlotHeader_t;
+
+static uint32_t App_ConfigSlotStride(const AppConfigSlotRegion_t *p_region)
+{
+    return (p_region->regionSize / p_region->slotCount);
+}
+
+static AppStatus_t App_ConfigSlotReadSlot(const AppConfigSlotRegion_t *p_region,
+                                          uint8_t slotIndex,
+                                          AppConfigSlotHeader_t *p_header,
+                                          void *p_payload)
+{
+    uint32_t base = p_region->regionOffset +
+                    ((uint32_t)slotIndex * App_ConfigSlotStride(p_region));
+
+    APP_RETURN_IF_FALSE(App_StorageConfigEepromRead(base, p_header,
+                        sizeof(*p_header)) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_StorageConfigEepromRead(base + sizeof(*p_header),
+                        p_payload, p_region->payloadSize) == APP_STATUS_OK,
+                        APP_STATUS_INIT_FAILED);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_ConfigSlotWriteSlot(const AppConfigSlotRegion_t *p_region,
+                                           uint8_t slotIndex,
+                                           const AppConfigSlotHeader_t *p_header,
+                                           const void *p_payload)
+{
+    uint32_t base = p_region->regionOffset +
+                    ((uint32_t)slotIndex * App_ConfigSlotStride(p_region));
+
+    APP_RETURN_IF_FALSE(App_StorageConfigEepromWrite(base, p_header,
+                        sizeof(*p_header)) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_StorageConfigEepromWrite(base + sizeof(*p_header),
+                        p_payload, p_region->payloadSize) == APP_STATUS_OK,
+                        APP_STATUS_INIT_FAILED);
+    return APP_STATUS_OK;
+}
+
+static uint8_t App_ConfigSlotIsValid(const AppConfigSlotHeader_t *p_header,
+                                     const void *p_payload,
+                                     uint8_t expectedPayloadSize)
+{
+    AppConfigSlotHeader_t tmp;
+    uint8_t  buf[sizeof(AppConfigSlotHeader_t) + APP_CONFIG_SLOT_PAYLOAD_MAX];
+    uint16_t crc;
+
+    if ((p_header->magic != APP_CONFIG_SLOT_MAGIC) ||
+        (p_header->version != APP_CONFIG_SLOT_VERSION) ||
+        (p_header->payloadSize != expectedPayloadSize) ||
+        (expectedPayloadSize > APP_CONFIG_SLOT_PAYLOAD_MAX))
+    {
+        return APP_FALSE;
+    }
+
+    tmp = *p_header;
+    tmp.crc16 = 0u;
+    (void)memcpy(buf, &tmp, sizeof(tmp));
+    (void)memcpy(&buf[sizeof(tmp)], p_payload, expectedPayloadSize);
+
+    crc = App_MeterStorageCrc16Ccitt(buf, sizeof(tmp) + expectedPayloadSize);
+    return (crc == p_header->crc16) ? APP_TRUE : APP_FALSE;
+}
+
+static AppStatus_t App_ConfigSlotFindLatest(AppConfigSlotRegion_t *p_region,
+                                            void *p_payloadOut,
+                                            uint8_t *p_foundOut)
+{
+    AppConfigSlotHeader_t header;
+    AppConfigSlotHeader_t bestHeader;
+    uint8_t  payload[APP_CONFIG_SLOT_PAYLOAD_MAX];
+    uint8_t  bestPayload[APP_CONFIG_SLOT_PAYLOAD_MAX];
+    uint8_t  found = APP_FALSE;
+    uint8_t  i;
+
+    APP_RETURN_IF_FALSE(p_region->payloadSize <= APP_CONFIG_SLOT_PAYLOAD_MAX,
+                        APP_STATUS_INVALID_PARAM);
+
+    (void)memset(&bestHeader, 0, sizeof(bestHeader));
+
+    for (i = 0u; i < p_region->slotCount; i++)
+    {
+        if (App_ConfigSlotReadSlot(p_region, i, &header, payload) != APP_STATUS_OK)
+        {
+            continue;
+        }
+        if (App_ConfigSlotIsValid(&header, payload, p_region->payloadSize) != APP_TRUE)
+        {
+            continue;
+        }
+        if ((found == APP_FALSE) ||
+            ((uint16_t)(header.seq - bestHeader.seq) < 0x8000u))
+        {
+            bestHeader = header;
+            (void)memcpy(bestPayload, payload, p_region->payloadSize);
+            p_region->latestSlotIndex = i;
+            found = APP_TRUE;
+        }
+    }
+
+    if (found == APP_TRUE)
+    {
+        (void)memcpy(p_payloadOut, bestPayload, p_region->payloadSize);
+        p_region->latestSeq = bestHeader.seq;
+    }
+    *p_foundOut = found;
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_ConfigSlotInit(AppConfigSlotRegion_t *p_region)
+{
+    uint8_t scratch[APP_CONFIG_SLOT_PAYLOAD_MAX];
+    uint8_t found;
+
+    APP_RETURN_IF_FALSE(p_region != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(p_region->slotCount > 0u, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(p_region->payloadSize <= APP_CONFIG_SLOT_PAYLOAD_MAX,
+                        APP_STATUS_INVALID_PARAM);
+
+    APP_RETURN_IF_FALSE(App_ConfigSlotFindLatest(p_region, scratch, &found)
+                        == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+
+    if (found == APP_FALSE)
+    {
+        p_region->latestSlotIndex = (uint8_t)(p_region->slotCount - 1u);
+        p_region->latestSeq       = 0u;
+    }
+    p_region->initialized = APP_TRUE;
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_ConfigSlotLoad(AppConfigSlotRegion_t *p_region,
+                               void *p_payload, uint8_t *p_found)
+{
+    APP_RETURN_IF_FALSE((p_region != NULL) && (p_payload != NULL) && (p_found != NULL),
+                        APP_STATUS_INVALID_PARAM);
+    if (p_region->initialized != APP_TRUE)
+    {
+        APP_RETURN_IF_FALSE(App_ConfigSlotInit(p_region) == APP_STATUS_OK,
+                            APP_STATUS_INIT_FAILED);
+    }
+    return App_ConfigSlotFindLatest(p_region, p_payload, p_found);
+}
+
+AppStatus_t App_ConfigSlotSave(AppConfigSlotRegion_t *p_region, const void *p_payload)
+{
+    AppConfigSlotHeader_t header;
+    uint8_t  buf[sizeof(AppConfigSlotHeader_t) + APP_CONFIG_SLOT_PAYLOAD_MAX];
+    uint8_t  nextSlot;
+
+    APP_RETURN_IF_FALSE((p_region != NULL) && (p_payload != NULL),
+                        APP_STATUS_INVALID_PARAM);
+    if (p_region->initialized != APP_TRUE)
+    {
+        APP_RETURN_IF_FALSE(App_ConfigSlotInit(p_region) == APP_STATUS_OK,
+                            APP_STATUS_INIT_FAILED);
+    }
+
+    nextSlot = (uint8_t)((p_region->latestSlotIndex + 1u) % p_region->slotCount);
+
+    (void)memset(&header, 0, sizeof(header));
+    header.magic       = APP_CONFIG_SLOT_MAGIC;
+    header.version     = APP_CONFIG_SLOT_VERSION;
+    header.payloadSize = p_region->payloadSize;
+    header.seq         = (uint16_t)(p_region->latestSeq + 1u);
+    header.crc16       = 0u;
+
+    (void)memcpy(buf, &header, sizeof(header));
+    (void)memcpy(&buf[sizeof(header)], p_payload, p_region->payloadSize);
+    header.crc16 = App_MeterStorageCrc16Ccitt(buf,
+                       sizeof(header) + p_region->payloadSize);
+
+    APP_RETURN_IF_FALSE(App_ConfigSlotWriteSlot(p_region, nextSlot, &header, p_payload)
+                        == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+
+    p_region->latestSlotIndex = nextSlot;
+    p_region->latestSeq       = header.seq;
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_ConfigSlotClear(AppConfigSlotRegion_t *p_region)
+{
+    uint8_t  zero = 0x00u;
+    uint32_t i;
+
+    APP_RETURN_IF_FALSE(p_region != NULL, APP_STATUS_INVALID_PARAM);
+
+    for (i = 0u; i < p_region->regionSize; i++)
+    {
+        APP_RETURN_IF_FALSE(App_StorageConfigEepromWrite(
+                                p_region->regionOffset + i, &zero, 1u)
+                            == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+    }
+    p_region->latestSlotIndex = (uint8_t)(p_region->slotCount - 1u);
+    p_region->latestSeq       = 0u;
+    return APP_STATUS_OK;
+}
+
+/* ================================================================
+ *  Device Config (Bank1)
+ * ================================================================ */
+static AppConfigSlotRegion_t g_appDeviceConfigRegion =
+{
+    .regionOffset    = APP_STORAGE_CONFIG_EEPROM_OFFSET_BYTES,   /* 0 */
+    .regionSize      = APP_STORAGE_CONFIG_EEPROM_SIZE_BYTES,     /* 1024 */
+    .slotCount       = APP_STORAGE_CONFIG_SLOT_COUNT,                    /* 4 */
+    .payloadSize     = (uint8_t)sizeof(AppDeviceConfig_t),
+    .latestSlotIndex = 0u,
+    .latestSeq       = 0u,
+    .initialized     = APP_FALSE,
+};
+
+void App_DeviceConfigSetDefaults(AppDeviceConfig_t *p_config)
+{
+    if (p_config == NULL) { return; }
+
+    (void)memset(p_config, 0, sizeof(*p_config));
+    p_config->bootCountValid = 1u;
+    p_config->bootCount      = 0u;
+    p_config->logLevel       = 3u;
+    p_config->linkType       = 1u;
+}
+
+AppStatus_t App_DeviceConfigInit(void)
+{
+    return App_ConfigSlotInit(&g_appDeviceConfigRegion);
+}
+
+AppStatus_t App_DeviceConfigLoad(AppDeviceConfig_t *p_config)
+{
+    uint8_t found;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_config != NULL, APP_STATUS_INVALID_PARAM);
+
+    status = App_ConfigSlotLoad(&g_appDeviceConfigRegion, p_config, &found);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if (found == APP_FALSE)
+    {
+        App_DeviceConfigSetDefaults(p_config);
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_DeviceConfigSave(const AppDeviceConfig_t *p_config)
+{
+    APP_RETURN_IF_FALSE(p_config != NULL, APP_STATUS_INVALID_PARAM);
+    return App_ConfigSlotSave(&g_appDeviceConfigRegion, p_config);
+}
+
+AppStatus_t App_DeviceConfigClear(void)
+{
+    return App_ConfigSlotClear(&g_appDeviceConfigRegion);
+}
+
+void App_DeviceConfigInfo(void)
+{
+    APP_LOGI("CFG", "Bank1 device cfg: addr=0x%08lx, size=%lu, slot(cnt=%u, payload=%lu)",
+             (uint32_t)(DATA_EEPROM_BASE + APP_STORAGE_CONFIG_EEPROM_OFFSET_BYTES),
+             (uint32_t)APP_STORAGE_CONFIG_EEPROM_SIZE_BYTES,
+             (unsigned)APP_STORAGE_CONFIG_SLOT_COUNT,
+             (uint32_t)sizeof(AppDeviceConfig_t));
+}
+
+void App_DeviceConfigDump(const AppDeviceConfig_t *p_config)
+{
+    uint32_t i;
+
+    if (p_config == NULL)
+    {
+        APP_LOGW("CFG", "dump: null");
+        return;
+    }
+
+    APP_LOGI("CFG", "===== Device Config =====");
+    APP_LOGI("CFG", "  bootCountValid : %u", (unsigned)p_config->bootCountValid);
+    APP_LOGI("CFG", "  bootCount      : %lu", (uint32_t)p_config->bootCount);
+    APP_LOGI("CFG", "  logLevel       : %u", (unsigned)p_config->logLevel);
+    APP_LOGI("CFG", "  linkType       : %u (%s)",
+             (unsigned)p_config->linkType,
+             (p_config->linkType == 0u) ? "LoRa" :
+             (p_config->linkType == 1u) ? "NB-IoT" : "unknown");
+
+    /* reserved 영역 중 0이 아닌 바이트만 표시 (디버깅용) */
+    for (i = 0u; i < sizeof(p_config->reserved); i++)
+    {
+        if (p_config->reserved[i] != 0u)
+        {
+            APP_LOGI("CFG", "  reserved[%lu]   : 0x%02X", i, p_config->reserved[i]);
+        }
+    }
+
+    APP_LOGI("CFG", "  slot(idx=%u, seq=%u)",
+             (unsigned)g_appDeviceConfigRegion.latestSlotIndex,
+             (unsigned)g_appDeviceConfigRegion.latestSeq);
+}

@@ -1,6 +1,7 @@
 #include "app_meter_server_format.h"
 
 #include <string.h>
+#include <stdio.h>
 
 #include "app_build_config.h"
 #include "app_meter_storage.h"
@@ -81,7 +82,7 @@ static AppStatus_t App_MeterServerFormatAppendBytes(uint8_t *p_packet,
     return APP_STATUS_OK;
 }
 
-void App_MeterServerFormatSetTestDefaults(AppMeterServerFormatOptions_t *p_options)
+void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options)
 {
     if (p_options == NULL)
     {
@@ -92,9 +93,9 @@ void App_MeterServerFormatSetTestDefaults(AppMeterServerFormatOptions_t *p_optio
     p_options->linkHeader = APP_METER_SERVER_FORMAT_HEADER_NBIOT;
     p_options->command = APP_METER_SERVER_FORMAT_COMMAND_PERIOD_REPORT;
 
-    p_options->wirelessQuality[0] = (uint8_t)APP_FW_VERSION_MAJOR;
-    p_options->mobileIdBcd[0] = (uint8_t)APP_FW_VERSION_MAJOR;
-    p_options->deviceSerialBcd[0] = (uint8_t)APP_FW_VERSION_MAJOR;
+    p_options->wirelessQuality[0] = 0;
+    p_options->mobileIdBcd[0] = 0;
+    p_options->deviceSerialBcd[0] = 0;
 
     p_options->firmwareVersion[0] = (uint8_t)APP_FW_VERSION_MAJOR;
     p_options->firmwareVersion[1] = (uint8_t)APP_FW_VERSION_MINOR;
@@ -140,6 +141,7 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
 
     status = App_MeterStorageGetInfo(&info);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    APP_LOGI("MSTOR", "Saved meter data count:%d(%s)", info.count, (info.count > 0)? "build send data":"skip build send data");
     APP_RETURN_IF_FALSE(info.count > 0u, APP_STATUS_INVALID_PARAM);
 
     qualityLength = (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_LORA)
@@ -355,4 +357,237 @@ AppStatus_t App_MeterServerFormatBuildFromStorageAndClear(const AppMeterServerFo
                                                           AppMeterServerFormatResult_t *p_result)
 {
     return App_MeterServerFormatBuildInternal(p_options, p_packet, packetCapacity, p_result, APP_TRUE);
+}
+
+/* ================================================================
+ *  Options 영구 저장 (Bank1, app_meter_storage의 슬롯 헬퍼 사용)
+ * ================================================================ */
+static AppConfigSlotRegion_t g_appMeterServerOptionsRegion =
+{
+    .regionOffset    = APP_STORAGE_METER_OPTION_EEPROM_OFFSET_BYTES,  /* 1024 */
+    .regionSize      = APP_STORAGE_METER_OPTION_EEPROM_SIZE_BYTES,    /* 1024 */
+    .slotCount       = APP_STORAGE_OPTION_SLOT_COUNT,
+    .payloadSize     = (uint8_t)sizeof(AppMeterServerFormatOptions_t),
+    .latestSlotIndex = 0u,
+    .latestSeq       = 0u,
+    .initialized     = APP_FALSE,
+};
+
+AppStatus_t App_MeterServerOptionsInit(void)
+{
+    return App_ConfigSlotInit(&g_appMeterServerOptionsRegion);
+}
+
+AppStatus_t App_MeterServerOptionsLoad(AppMeterServerFormatOptions_t *p_options)
+{
+    uint8_t found;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_options != NULL, APP_STATUS_INVALID_PARAM);
+
+    status = App_ConfigSlotLoad(&g_appMeterServerOptionsRegion, p_options, &found);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if (found == APP_FALSE)
+    {
+        App_MeterServerOptionsSetDefaults(p_options);
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_MeterServerOptionsSave(const AppMeterServerFormatOptions_t *p_options)
+{
+    APP_RETURN_IF_FALSE(p_options != NULL, APP_STATUS_INVALID_PARAM);
+    return App_ConfigSlotSave(&g_appMeterServerOptionsRegion, p_options);
+}
+
+AppStatus_t App_MeterServerOptionsClear(void)
+{
+    return App_ConfigSlotClear(&g_appMeterServerOptionsRegion);
+}
+
+void App_MeterServerOptionsInfo(void)
+{
+    APP_LOGI("OPT", "Bank1 options: addr=0x%08lx, size=%lu, slot(cnt=%u, payload=%lu)",
+             (uint32_t)(DATA_EEPROM_BASE + APP_STORAGE_METER_OPTION_EEPROM_OFFSET_BYTES),
+             (uint32_t)APP_STORAGE_METER_OPTION_EEPROM_SIZE_BYTES,
+             (unsigned)APP_STORAGE_OPTION_SLOT_COUNT,
+             (uint32_t)sizeof(AppMeterServerFormatOptions_t));
+}
+
+static void App_MeterServerFormatDumpHex(const char *p_tag,
+                                         const char *p_name,
+                                         const uint8_t *p_data,
+                                         uint32_t length)
+{
+    char     line[3 * 16 + 1];      /* "XX " * 16 + null */
+    uint32_t i;
+    uint32_t pos;
+
+    pos = 0u;
+    line[0] = '\0';
+    for (i = 0u; i < length; i++)
+    {
+        pos += (uint32_t)snprintf(&line[pos], sizeof(line) - pos, "%02X ", p_data[i]);
+        if (((i + 1u) % 16u == 0u) || ((i + 1u) == length))
+        {
+            APP_LOGI(p_tag, "  %s[%02lu..]: %s",
+                     p_name, (uint32_t)(i - (i % 16u)), line);
+            pos = 0u;
+            line[0] = '\0';
+        }
+    }
+}
+
+void App_MeterServerOptionsDump(const AppMeterServerFormatOptions_t *p_options)
+{
+    if (p_options == NULL)
+    {
+        APP_LOGW("OPT", "dump: null");
+        return;
+    }
+
+    APP_LOGI("OPT", "===== Meter Server Options =====");
+    APP_LOGI("OPT", "  linkHeader     : 0x%02X (%s)",
+             p_options->linkHeader,
+             (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_LORA)  ? "LoRa"  :
+             (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_NBIOT) ? "NB-IoT": "unknown");
+    APP_LOGI("OPT", "  command        : 0x%02X", p_options->command);
+
+    App_MeterServerFormatDumpHex("OPT", "wirelessQuality",
+                                 p_options->wirelessQuality,
+                                 sizeof(p_options->wirelessQuality));
+
+    App_MeterServerFormatDumpHex("OPT", "mobileIdBcd",
+                                 p_options->mobileIdBcd,
+                                 sizeof(p_options->mobileIdBcd));
+
+    App_MeterServerFormatDumpHex("OPT", "deviceSerialBcd",
+                                 p_options->deviceSerialBcd,
+                                 sizeof(p_options->deviceSerialBcd));
+
+    APP_LOGI("OPT", "  firmwareVer    : %u.%u",
+             (unsigned)p_options->firmwareVersion[0],
+             (unsigned)p_options->firmwareVersion[1]);
+
+    APP_LOGI("OPT", "  battery        : raw=0x%02X, volt=%u(x0.1V), alarm=%u",
+             p_options->terminalBattery.value,
+             (unsigned)p_options->terminalBattery.b.volt,
+             (unsigned)p_options->terminalBattery.b.alarm);
+
+    APP_LOGI("OPT", "  meteringPeriod : %u hour(s)", (unsigned)p_options->meteringPeriodHours);
+    APP_LOGI("OPT", "  reportingPeriod: %u hour(s)", (unsigned)p_options->reportingPeriodHours);
+
+    APP_LOGI("OPT", "  slot(idx=%u, seq=%u)",
+             (unsigned)g_appMeterServerOptionsRegion.latestSlotIndex,
+             (unsigned)g_appMeterServerOptionsRegion.latestSeq);
+}
+
+/* ================================================================
+ *  Options 필드 빌더 구현
+ * ================================================================ */
+void App_MeterServerOptionsSetLink(AppMeterServerFormatOptions_t *p_options,
+                                   uint8_t linkHeader,
+                                   uint8_t command)
+{
+    if (p_options == NULL) { return; }
+    p_options->linkHeader = linkHeader;
+    p_options->command    = command;
+}
+
+void App_MeterServerOptionsSetWirelessQuality(AppMeterServerFormatOptions_t *p_options,
+                                              const uint8_t *p_quality,
+                                              uint8_t length)
+{
+    uint8_t copyLen;
+
+    if ((p_options == NULL) || (p_quality == NULL) || (length == 0u))
+    {
+        return;
+    }
+
+    copyLen = (length > sizeof(p_options->wirelessQuality))
+              ? (uint8_t)sizeof(p_options->wirelessQuality)
+              : length;
+
+    (void)memset(p_options->wirelessQuality, 0, sizeof(p_options->wirelessQuality));
+    (void)memcpy(p_options->wirelessQuality, p_quality, copyLen);
+}
+
+void App_MeterServerOptionsSetMobileId(AppMeterServerFormatOptions_t *p_options,
+                                       const uint8_t *p_imeiBcd8,
+                                       const uint8_t *p_imsiBcd8)
+{
+    if (p_options == NULL) { return; }
+
+    (void)memset(p_options->mobileIdBcd, 0, sizeof(p_options->mobileIdBcd));
+
+    if (p_imeiBcd8 != NULL)
+    {
+        (void)memcpy(&p_options->mobileIdBcd[0], p_imeiBcd8, 8u);
+    }
+    if (p_imsiBcd8 != NULL)
+    {
+        (void)memcpy(&p_options->mobileIdBcd[8], p_imsiBcd8, 8u);
+    }
+}
+
+void App_MeterServerOptionsSetDeviceInfo(AppMeterServerFormatOptions_t *p_options,
+                                         const uint8_t *p_serialBcd5,
+                                         uint8_t fwMajor,
+                                         uint8_t fwMinor)
+{
+    if (p_options == NULL) { return; }
+
+    if (p_serialBcd5 != NULL)
+    {
+        (void)memcpy(p_options->deviceSerialBcd, p_serialBcd5,
+                     sizeof(p_options->deviceSerialBcd));
+    }
+    p_options->firmwareVersion[0] = fwMajor;
+    p_options->firmwareVersion[1] = fwMinor;
+}
+
+void App_MeterServerOptionsSetBattery(AppMeterServerFormatOptions_t *p_options,
+                                      uint8_t voltX10,
+                                      uint8_t alarm)
+{
+    if (p_options == NULL) { return; }
+
+    p_options->terminalBattery.value   = 0u;
+    p_options->terminalBattery.b.volt  = (uint8_t)(voltX10 & 0x3Fu);   /* 6bit */
+    p_options->terminalBattery.b.alarm = (uint8_t)(alarm   & 0x01u);   /* 1bit */
+}
+
+void App_MeterServerOptionsSetPeriod(AppMeterServerFormatOptions_t *p_options,
+                                     uint8_t meteringHours,
+                                     uint8_t reportingHours)
+{
+    if (p_options == NULL) { return; }
+    p_options->meteringPeriodHours  = meteringHours;
+    p_options->reportingPeriodHours = reportingHours;
+}
+
+/* ----------------------------------------------------------------
+ *  Update: 현재 EEPROM 값과 비교해서 다를 때만 저장
+ *  - 같은 값을 매번 쓰는 것을 방지 (셀 수명 보호)
+ * ---------------------------------------------------------------- */
+AppStatus_t App_MeterServerOptionsUpdate(const AppMeterServerFormatOptions_t *p_options)
+{
+    AppMeterServerFormatOptions_t current;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_options != NULL, APP_STATUS_INVALID_PARAM);
+
+    status = App_MeterServerOptionsLoad(&current);
+    if ((status == APP_STATUS_OK) &&
+        (memcmp(&current, p_options, sizeof(current)) == 0))
+    {
+        APP_LOGI("OPT", "update: no change, skip write");
+        return APP_STATUS_OK;
+    }
+
+    APP_LOGI("OPT", "update: write new options");
+    return App_MeterServerOptionsSave(p_options);
 }

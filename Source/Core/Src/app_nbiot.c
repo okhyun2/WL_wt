@@ -8,6 +8,8 @@
 #include "app_nbiot.h"
 #include "app_gpio_lp.h"
 #include "app_log.h"
+#include "app_meter_storage.h"
+#include "app_meter_server_format.h"
 
 #define MY_SERVER_DOMAIN              "acorp2.iptime.org"
 #define WARMUPDNS_SERVER_DOMAIN       "www.google.com"
@@ -1153,17 +1155,17 @@ AppStatus_t App_Bc95AtQualityToBcd(AppBc95Quality_t *pQuality, uint8_t *p_buf, u
     (void)memset(p_buf, 0, APP_BC95_QUALITY_BCD_BYTES);
     p_buf[0] = App_Bc95AtDbmToAbsByte(pQuality->rssiDbm);
     p_buf[1] = pQuality->ber;
-    p_buf[2] = (uint8_t)((pQuality->pci >> 8u) & 0xFFu);
-    p_buf[3] = (uint8_t)(pQuality->pci & 0xFFu);
+    p_buf[2] = (uint8_t)(pQuality->pci & 0xFFu);
+    p_buf[3] = (uint8_t)((pQuality->pci >> 8u) & 0xFFu);
     rsrpAbs = App_Bc95AtDbmToAbsU16(pQuality->rsrpDbm);
-    p_buf[4] = (uint8_t)((rsrpAbs >> 8u) & 0xFFu);
-    p_buf[5] = (uint8_t)(rsrpAbs & 0xFFu);
+    p_buf[4] = (uint8_t)(rsrpAbs & 0xFFu);
+    p_buf[5] = (uint8_t)((rsrpAbs >> 8u) & 0xFFu);
     rsrqAbs = App_Bc95AtDbmToAbsU16(pQuality->rsrqDbm);
-    p_buf[6] = (uint8_t)((rsrqAbs >> 8u) & 0xFFu);
-    p_buf[7] = (uint8_t)(rsrqAbs & 0xFFu);
+    p_buf[6] = (uint8_t)(rsrqAbs & 0xFFu);
+    p_buf[7] = (uint8_t)((rsrqAbs >> 8u) & 0xFFu);
     snrVal = pQuality->snrDb;
-    p_buf[8] = (uint8_t)(((uint16_t)snrVal >> 8u) & 0xFFu);
-    p_buf[9] = (uint8_t)((uint16_t)snrVal & 0xFFu);
+    p_buf[8] = (uint8_t)((uint16_t)snrVal & 0xFFu);
+    p_buf[9] = (uint8_t)(((uint16_t)snrVal >> 8u) & 0xFFu);
     return APP_STATUS_OK;
 }
 
@@ -2892,7 +2894,7 @@ AppStatus_t App_NBIoTNetworkBringUp(void)
     return APP_STATUS_OK;
 }
 
-AppStatus_t App_NBIoTReadIdentity(void)
+AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo)
 {
     AppStatus_t status;
     uint8_t appImeiBcd[APP_BC95_IMEI_BCD_BYTES];
@@ -2918,10 +2920,20 @@ AppStatus_t App_NBIoTReadIdentity(void)
     App_Bc95PrintBcd("IMSI", appImsiBcd, (uint32_t)APP_BC95_IMSI_BCD_BYTES);
     App_Bc95PrintDecoded("IMSI", appImsiBcd, (uint32_t)APP_BC95_IMSI_BCD_BYTES);
 
+    /* ----- Options에 반영 (IMEI 8B + IMSI 8B = 16B) ----- */
+    if (bSaveInfo == APP_TRUE)
+    {
+        AppMeterServerFormatOptions_t opt;
+
+        (void)App_MeterServerOptionsLoad(&opt); /* 기존 값 유지하면서 일부만 갱신 */
+        App_MeterServerOptionsSetMobileId(&opt, appImeiBcd, appImsiBcd);
+        (void)App_MeterServerOptionsUpdate(&opt); /* 변경 시에만 EEPROM write */
+    }
+
     return APP_STATUS_OK;
 }
 
-AppStatus_t App_NBIoTReadQuality(void)
+AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo)
 {
     AppStatus_t status;
     AppBc95Quality_t quality;
@@ -2936,26 +2948,75 @@ AppStatus_t App_NBIoTReadQuality(void)
     }
     App_NBIoTPrintQuality(&quality);
     App_Bc95PrintBcd("QUALITY", g_appBc95AtQualityBcd, (uint32_t)APP_BC95_QUALITY_BCD_BYTES);
+
+    /* ----- Options에 반영 (NB-IoT 10B) ----- */
+    if (bSaveInfo == APP_TRUE)
+    {
+        AppMeterServerFormatOptions_t opt;
+
+        (void)App_MeterServerOptionsLoad(&opt);
+        App_MeterServerOptionsSetWirelessQuality(&opt,
+                                                 g_appBc95AtQualityBcd,
+                                                 (uint8_t)APP_BC95_QUALITY_BCD_BYTES);
+        (void)App_MeterServerOptionsUpdate(&opt);
+    }
+
     return APP_STATUS_OK;
 }
 
 AppStatus_t App_NBIoTTransmitUdp(void)
 {
     AppStatus_t status;
-    AppBc95UdpResult_t result;
+    AppBc95UdpResult_t sendResult;
 
+    uint16_t port = 6001u;
+
+    AppMeterServerFormatOptions_t opt;
+    AppMeterServerFormatResult_t buildResult;
+    uint8_t  packet[APP_METER_SERVER_FORMAT_MAX_PACKET_SIZE];
+
+    #if 0 //debug
     const uint8_t payload[] = {
         0x01, 0x02, 0x03, 0x04, 0x05,
         0x86, 0x19, 0x21, 0x03, 0x12, 0x29, 0x50, 0x8F
     };
+    status = App_Bc95AtUdpSendOnce(MY_SERVER_DOMAIN, port, payload, (uint16_t)sizeof(payload), &sendResult);
 
-    uint16_t port = 6001u;
-    status = App_Bc95AtUdpSendOnce(MY_SERVER_DOMAIN, port,
-                                   payload, (uint16_t)sizeof(payload), &result);
+    if (status == APP_STATUS_OK)
+    {
+        APP_LOGI("NBIOT", "SendResult: stage=%d, ip=%s, port=%u, sent=%u, seq=%u, confirmed=%u",
+                 (int)sendResult.lastStage, sendResult.resolvedIp, port,
+                 (unsigned)sendResult.sentBytes, (unsigned)sendResult.seqNumber,
+                 (unsigned)sendResult.sendConfirmed);
+    }
+    #endif
 
-    APP_LOGI("NBIOT", "Result: stage=%d, ip=%s, port=%u, sent=%u, seq=%u, confirmed=%u",
-             (int)result.lastStage, result.resolvedIp, port,
-             (unsigned)result.sentBytes, (unsigned)result.seqNumber,
-             (unsigned)result.sendConfirmed);
+    /* --- 전송 시 최신 옵션 로드 후 패킷 빌드 --- */
+    App_MeterServerOptionsLoad(&opt);
+    App_MeterServerOptionsDump(&opt);
+    //App_MeterServerFormatBuildFromStorage(&opt, packet, sizeof(packet), &buildResult);
+    if((status = App_MeterServerFormatBuildFromStorageAndClear(&opt, packet, sizeof(packet), &buildResult)) == APP_STATUS_OK)
+    {
+        status = App_Bc95AtUdpSendOnce(MY_SERVER_DOMAIN, port, packet, buildResult.packetLength, &sendResult);
+    }
+    else
+    {
+        APP_LOGI("NBIOT", "Skip Send.");
+    }
+
+    APP_LOGD("NBIOT", "build len=%u payload=%u rec=%u checksum=0x%02X cleared=%u",
+             (unsigned int)buildResult.packetLength,
+             (unsigned int)buildResult.payloadLength,
+             (unsigned int)buildResult.recordCount,
+             (unsigned int)buildResult.checksum,
+             (unsigned int)buildResult.cleared);
+
+    if (status == APP_STATUS_OK)
+    {
+        APP_LOGI("NBIOT", "SendResult: stage=%d, ip=%s, port=%u, sent=%u, seq=%u, confirmed=%u",
+                 (int)sendResult.lastStage, sendResult.resolvedIp, port,
+                 (unsigned)sendResult.sentBytes, (unsigned)sendResult.seqNumber,
+                 (unsigned)sendResult.sendConfirmed);
+    }
     return status;
 }

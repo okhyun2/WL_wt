@@ -77,6 +77,52 @@ uint8_t App_MeterStorageCount(void);
 AppStatus_t App_MeterStorageClearAll(void);
 AppStatus_t App_MeterStorageGetInfo(AppMeterStorageInfo_t *p_info);
 
+/* ================================================================
+ *  Device Config (Bank1)
+ * ================================================================ */
+#define APP_DEVICE_CONFIG_MAGIC         (0x44434647u)   /* 'DCFG' */
+#define APP_DEVICE_CONFIG_VERSION       (0x01u)
+
+//If APP_STORAGE_CONFIG_SLOT_COUNT:4 -> Max 1KByte/4 = 256Byte
+typedef struct APP_METER_STORAGE_PACKED
+{
+    uint8_t  bootCountValid;
+    uint32_t bootCount;
+    uint8_t  logLevel;
+    uint8_t  linkType;          /* 0:LoRa, 1:NB-IoT */
+    uint8_t  reserved[32];      /* 향후 확장용 */
+} AppDeviceConfig_t;
+
+/* Bank1 low-level EEPROM I/O */
+AppStatus_t App_StorageConfigEepromRead (uint32_t offset, void *p_data, uint32_t sizeBytes);
+AppStatus_t App_StorageConfigEepromWrite(uint32_t offset, const void *p_data, uint32_t sizeBytes);
+
+/* 공용 슬롯 헬퍼 (Options 모듈에서도 사용) */
+typedef struct
+{
+    uint32_t regionOffset;
+    uint32_t regionSize;
+    uint8_t  slotCount;
+    uint8_t  payloadSize;
+    uint8_t  latestSlotIndex;
+    uint16_t latestSeq;
+    uint8_t  initialized;
+} AppConfigSlotRegion_t;
+
+AppStatus_t App_ConfigSlotInit (AppConfigSlotRegion_t *p_region);
+AppStatus_t App_ConfigSlotLoad (AppConfigSlotRegion_t *p_region, void *p_payload, uint8_t *p_found);
+AppStatus_t App_ConfigSlotSave (AppConfigSlotRegion_t *p_region, const void *p_payload);
+AppStatus_t App_ConfigSlotClear(AppConfigSlotRegion_t *p_region);
+
+/* Device Config API */
+void        App_DeviceConfigSetDefaults(AppDeviceConfig_t *p_config);
+AppStatus_t App_DeviceConfigInit (void);
+AppStatus_t App_DeviceConfigLoad (AppDeviceConfig_t *p_config);
+AppStatus_t App_DeviceConfigSave (const AppDeviceConfig_t *p_config);
+AppStatus_t App_DeviceConfigClear(void);
+void        App_DeviceConfigInfo (void);
+void App_DeviceConfigDump(const AppDeviceConfig_t *p_config);
+
 #ifdef __cplusplus
 }
 #endif

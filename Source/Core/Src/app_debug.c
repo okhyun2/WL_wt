@@ -664,7 +664,13 @@ static AppStatus_t App_DebugConsoleRunMeterConvert(uint8_t clearOnSuccess)
         return App_DebugConsoleWriteLine("mconv empty");
     }
 
-    App_MeterServerFormatSetTestDefaults(&options);
+    //load saved data
+    if (App_MeterServerOptionsLoad(&options) == APP_STATUS_NOT_INITIALIZED)
+    {
+        App_MeterServerOptionsSave(&options);
+    }
+    App_MeterServerOptionsDump(&options);
+
     if (clearOnSuccess == APP_TRUE)
     {
         status = App_MeterServerFormatBuildFromStorageAndClear(&options, packet, sizeof(packet), &result);
@@ -1186,8 +1192,8 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         APP_WWDGFeed();
         APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
         APP_WWDGFeed();
-        App_NBIoTReadIdentity();
-        App_NBIoTReadQuality();
+        App_NBIoTReadIdentity(APP_TRUE);
+        App_NBIoTReadQuality(APP_TRUE);
 
         APP_WWDGFeed();
         App_NBIoTTransmitUdp();
@@ -1217,7 +1223,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     if (strcmp(p_command, "mconv test") == 0)
     {
         #ifdef DEBUG
-        App_DebugConsoleRunNbiotDumpTest();
+        //App_DebugConsoleRunNbiotDumpTest();
         #endif // DEBUG
 
         return App_DebugConsoleRunMeterConvert(APP_FALSE);

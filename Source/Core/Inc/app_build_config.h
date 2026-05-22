@@ -167,6 +167,9 @@ extern "C" {
 #define APP_STORAGE_METER_DATA_EEPROM_OFFSET_BYTES      (3u * 1024u)
 #define APP_STORAGE_METER_DATA_EEPROM_SIZE_BYTES        (3u * 1024u)
 
+#define APP_STORAGE_CONFIG_SLOT_COUNT                           (4u)
+#define APP_STORAGE_OPTION_SLOT_COUNT                           (4u)
+
 #if !defined(STM32L073xx)
 #error "This project requires STM32L073xx device support."
 #endif

@@ -15,6 +15,7 @@
 #include "app_selftest.h"
 #include "nfc_ntag5_ntp53321.h"
 #include "app_meter_storage.h"
+#include "app_meter_server_format.h"
 #include "app_nbiot.h"
 
 wakeup_context_t g_wakeup_ctx = {0};
@@ -917,6 +918,18 @@ AppStatus_t App_SystemInit(void)
         return status;
     }
 
+    status = App_DeviceConfigInit();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    status = App_MeterServerOptionsInit();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
     g_appSystemContext.bootStage = APP_BOOT_STAGE_GPIO_LP_READY;
 
     status = App_DualBootInit();
@@ -953,6 +966,8 @@ AppStatus_t App_SystemInit(void)
     Print_BootInfo(&g_boot_info);
 
     App_MeterStorageInfo();
+    App_DeviceConfigInfo();
+    App_MeterServerOptionsInfo();
 
     App_NBIoTAtInit();
 

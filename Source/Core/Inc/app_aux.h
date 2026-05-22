@@ -22,7 +22,7 @@ extern "C" {
 
 HAL_StatusTypeDef Battery_ReadVoltage_mV(uint32_t *vbat_mv, uint32_t *vdda_mv);
 HAL_StatusTypeDef Battery_ReadVoltage_Averaged_mV(uint32_t *adc_vref, uint32_t *adc_vbat, uint32_t *vdda_mv, uint32_t *vbat_mv);
-
+void App_UpdateBatteryToOptions(uint8_t voltX10, uint8_t alarm);
 
 /* SHTC3 7-bit I2C address -> HAL은 8-bit shift된 값 사용 */
 #define SHTC3_I2C_ADDR        (0x70 << 1)
@@ -49,7 +49,7 @@ HAL_StatusTypeDef SHTC3_Sleep(I2C_HandleTypeDef *hi2c);
 HAL_StatusTypeDef SHTC3_SoftReset(I2C_HandleTypeDef *hi2c);
 HAL_StatusTypeDef SHTC3_ReadID(I2C_HandleTypeDef *hi2c, uint16_t *id);
 HAL_StatusTypeDef SHTC3_ReadTempHumidity(I2C_HandleTypeDef *hi2c, SHTC3_Data_t *data);
-
+void App_UpdateSHTC3ToConfigs(float temperature, float humidity);
 
 
 #ifdef __cplusplus

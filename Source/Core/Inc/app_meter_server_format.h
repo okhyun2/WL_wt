@@ -26,6 +26,7 @@ typedef union
     }b;
 }_unBattery;
 
+//If APP_STORAGE_OPTION_SLOT_COUNT:4 -> Max 1KByte/4 = 256Byte
 typedef struct
 {
     uint8_t linkHeader;
@@ -48,7 +49,7 @@ typedef struct
     uint8_t cleared;
 } AppMeterServerFormatResult_t;
 
-void App_MeterServerFormatSetTestDefaults(AppMeterServerFormatOptions_t *p_options);
+void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options);
 AppStatus_t App_MeterServerFormatBuildFromStorage(const AppMeterServerFormatOptions_t *p_options,
                                                   uint8_t *p_packet,
                                                   uint16_t packetCapacity,
@@ -57,6 +58,48 @@ AppStatus_t App_MeterServerFormatBuildFromStorageAndClear(const AppMeterServerFo
                                                           uint8_t *p_packet,
                                                           uint16_t packetCapacity,
                                                           AppMeterServerFormatResult_t *p_result);
+
+/* ================================================================
+ *  Options 영구 저장 (Bank1)
+ * ================================================================ */
+void        App_MeterServerOptionsInfo (void);
+AppStatus_t App_MeterServerOptionsInit (void);
+AppStatus_t App_MeterServerOptionsLoad (AppMeterServerFormatOptions_t *p_options);
+AppStatus_t App_MeterServerOptionsSave (const AppMeterServerFormatOptions_t *p_options);
+AppStatus_t App_MeterServerOptionsClear(void);
+void App_MeterServerOptionsDump(const AppMeterServerFormatOptions_t *p_options);
+
+/* ================================================================
+ *  Options 필드 빌더 (RAM 상의 options 구조체를 항목별로 채움)
+ * ================================================================ */
+void App_MeterServerOptionsSetLink     (AppMeterServerFormatOptions_t *p_options,
+                                        uint8_t linkHeader,
+                                        uint8_t command);
+
+void App_MeterServerOptionsSetWirelessQuality(AppMeterServerFormatOptions_t *p_options,
+                                              const uint8_t *p_quality,
+                                              uint8_t length);
+
+void App_MeterServerOptionsSetMobileId (AppMeterServerFormatOptions_t *p_options,
+                                        const uint8_t *p_imeiBcd8,
+                                        const uint8_t *p_imsiBcd8);
+
+void App_MeterServerOptionsSetDeviceInfo(AppMeterServerFormatOptions_t *p_options,
+                                         const uint8_t *p_serialBcd5,
+                                         uint8_t fwMajor,
+                                         uint8_t fwMinor);
+
+void App_MeterServerOptionsSetBattery  (AppMeterServerFormatOptions_t *p_options,
+                                        uint8_t voltX10,
+                                        uint8_t alarm);
+
+void App_MeterServerOptionsSetPeriod   (AppMeterServerFormatOptions_t *p_options,
+                                        uint8_t meteringHours,
+                                        uint8_t reportingHours);
+
+/* 채워진 options를 EEPROM에 저장 (변경된 경우에만 실제 write) */
+AppStatus_t App_MeterServerOptionsUpdate(const AppMeterServerFormatOptions_t *p_options);
+
 
 #ifdef __cplusplus
 }

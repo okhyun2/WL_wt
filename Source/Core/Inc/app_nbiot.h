@@ -287,8 +287,8 @@ AppStatus_t App_NBIoTAtInit(void);
 AppStatus_t App_NBIoTBringUp(void);
 AppStatus_t App_NBIoTBringUpWithReset(uint8_t maxResetRetry);
 AppStatus_t App_NBIoTNetworkBringUp(void);
-AppStatus_t App_NBIoTReadIdentity(void);
-AppStatus_t App_NBIoTReadQuality(void);
+AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo);
+AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTTransmitUdp(void);
 
 #ifdef __cplusplus

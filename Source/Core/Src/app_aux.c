@@ -3,6 +3,7 @@
 #include "app_build_config.h"
 #include "app_hw.h"
 #include "app_aux.h"
+#include "app_meter_server_format.h"
 
 /**
  * @brief  지정한 채널 1개를 단일 변환으로 측정
@@ -134,6 +135,15 @@ HAL_StatusTypeDef Battery_ReadVoltage_Averaged_mV(uint32_t *adc_vref, uint32_t *
     return HAL_OK;
 }
 
+void App_UpdateBatteryToOptions(uint8_t voltX10, uint8_t alarm)
+{
+    AppMeterServerFormatOptions_t opt;
+    (void)App_MeterServerOptionsLoad(&opt);
+    App_MeterServerOptionsSetBattery(&opt, voltX10, alarm);
+    (void)App_MeterServerOptionsUpdate(&opt);
+}
+
+
 /////////////////////////////////////////////////////////////////////////////////////////
 
 /* CRC-8: Polynomial 0x31, Init 0xFF (Sensirion 표준) */
@@ -260,6 +270,11 @@ HAL_StatusTypeDef SHTC3_Init(I2C_HandleTypeDef *hi2c)
 
     SHTC3_Sleep(hi2c);
     return HAL_OK;
+}
+
+void App_UpdateSHTC3ToConfigs(float temperature, float humidity)
+{
+    //;; TODO
 }
 
 
