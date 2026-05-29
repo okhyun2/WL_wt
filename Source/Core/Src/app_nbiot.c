@@ -57,6 +57,12 @@
 #define APP_BC95_AT_CGPADDR_PREFIX           "+CGPADDR:"
 #define APP_BC95_AT_CGPADDR_PREFIX_LEN       (9u)
 
+#define APP_BC95_AT_RX_IDLE_GAP_MS           (40u)
+#define APP_BC95_AT_RX_POST_TERM_WAIT_MS     (20u)
+#define APP_BC95_AT_DRAIN_GUARD_MS           (5u)
+#define APP_BC95_AT_LINE_QUEUE_DEPTH         (12u)
+#define APP_BC95_AT_LINE_MAX_LEN             (96u)
+
 /* ============================================================
  *  내부 상태
  * ============================================================ */
@@ -70,6 +76,17 @@ typedef struct
     volatile uint8_t completed;
     volatile uint8_t error;
 } AppBc95AtRxContext_t;
+
+typedef struct
+{
+    char     lines[APP_BC95_AT_LINE_QUEUE_DEPTH][APP_BC95_AT_LINE_MAX_LEN];
+    char     partial[APP_BC95_AT_LINE_MAX_LEN];
+    uint8_t  head;
+    uint8_t  tail;
+    uint8_t  count;
+    uint16_t partialLen;
+    uint16_t parsedLen;
+} AppBc95AtLineQueue_t;
 
 static AppBc95AtRxContext_t g_appBc95AtRxContext;
 static uint8_t  g_appBc95AtRxBuf[APP_BC95_AT_RX_BUF_SIZE];
@@ -122,6 +139,198 @@ static void App_Bc95AtDelayWithFeed(uint32_t ms)
     APP_WWDGFeed();
 }
 
+static uint16_t App_Bc95AtCopySnapshot(const uint8_t *p_src, uint16_t srcLen,
+                                       char *p_dst, uint16_t dstSize)
+{
+    uint16_t copyLen = srcLen;
+
+    if ((p_src == NULL) || (p_dst == NULL) || (dstSize == 0u))
+    {
+        return 0u;
+    }
+
+    if (copyLen >= dstSize)
+    {
+        copyLen = (uint16_t)(dstSize - 1u);
+    }
+
+    if (copyLen > 0u)
+    {
+        (void)memcpy(p_dst, p_src, copyLen);
+    }
+    p_dst[copyLen] = '\0';
+    return copyLen;
+}
+
+static void App_Bc95AtLineQueueReset(AppBc95AtLineQueue_t *p_queue)
+{
+    if (p_queue == NULL) return;
+    (void)memset(p_queue, 0, sizeof(*p_queue));
+}
+
+static void App_Bc95AtLineQueuePush(AppBc95AtLineQueue_t *p_queue, const char *p_line)
+{
+    uint8_t index;
+
+    if ((p_queue == NULL) || (p_line == NULL) || (p_line[0] == '\0'))
+    {
+        return;
+    }
+
+    index = p_queue->tail;
+    (void)strncpy(p_queue->lines[index], p_line, (size_t)(APP_BC95_AT_LINE_MAX_LEN - 1u));
+    p_queue->lines[index][APP_BC95_AT_LINE_MAX_LEN - 1u] = '\0';
+
+    p_queue->tail = (uint8_t)((p_queue->tail + 1u) % APP_BC95_AT_LINE_QUEUE_DEPTH);
+    if (p_queue->count < APP_BC95_AT_LINE_QUEUE_DEPTH)
+    {
+        p_queue->count++;
+    }
+    else
+    {
+        p_queue->head = (uint8_t)((p_queue->head + 1u) % APP_BC95_AT_LINE_QUEUE_DEPTH);
+    }
+}
+
+static void App_Bc95AtLineQueueFeed(AppBc95AtLineQueue_t *p_queue,
+                                    const char *p_snapshot,
+                                    uint16_t snapshotLen)
+{
+    uint16_t i;
+    char ch;
+
+    if ((p_queue == NULL) || (p_snapshot == NULL))
+    {
+        return;
+    }
+
+    if (snapshotLen < p_queue->parsedLen)
+    {
+        p_queue->parsedLen = 0u;
+        p_queue->partialLen = 0u;
+        p_queue->partial[0] = '\0';
+    }
+
+    for (i = p_queue->parsedLen; i < snapshotLen; i++)
+    {
+        ch = p_snapshot[i];
+        if ((ch == '\r') || (ch == '\n'))
+        {
+            if (p_queue->partialLen > 0u)
+            {
+                p_queue->partial[p_queue->partialLen] = '\0';
+                App_Bc95AtLineQueuePush(p_queue, p_queue->partial);
+                p_queue->partialLen = 0u;
+                p_queue->partial[0] = '\0';
+            }
+            continue;
+        }
+
+        if (p_queue->partialLen < (APP_BC95_AT_LINE_MAX_LEN - 1u))
+        {
+            p_queue->partial[p_queue->partialLen++] = ch;
+            p_queue->partial[p_queue->partialLen] = '\0';
+        }
+    }
+
+    p_queue->parsedLen = snapshotLen;
+}
+
+static uint8_t App_Bc95AtLineQueueContainsExact(const AppBc95AtLineQueue_t *p_queue,
+                                                const char *p_line)
+{
+    uint8_t i;
+    uint8_t index;
+
+    if ((p_queue == NULL) || (p_line == NULL))
+    {
+        return APP_FALSE;
+    }
+
+    for (i = 0u; i < p_queue->count; i++)
+    {
+        index = (uint8_t)((p_queue->head + i) % APP_BC95_AT_LINE_QUEUE_DEPTH);
+        if (strcmp(p_queue->lines[index], p_line) == 0)
+        {
+            return APP_TRUE;
+        }
+    }
+    return APP_FALSE;
+}
+
+static uint8_t App_Bc95AtLineQueueContainsPrefix(const AppBc95AtLineQueue_t *p_queue,
+                                                 const char *p_prefix)
+{
+    uint8_t i;
+    uint8_t index;
+    size_t prefixLen;
+
+    if ((p_queue == NULL) || (p_prefix == NULL))
+    {
+        return APP_FALSE;
+    }
+
+    prefixLen = strlen(p_prefix);
+    for (i = 0u; i < p_queue->count; i++)
+    {
+        index = (uint8_t)((p_queue->head + i) % APP_BC95_AT_LINE_QUEUE_DEPTH);
+        if (strncmp(p_queue->lines[index], p_prefix, prefixLen) == 0)
+        {
+            return APP_TRUE;
+        }
+    }
+    return APP_FALSE;
+}
+
+static uint8_t App_Bc95AtLineQueueContainsSubstring(const AppBc95AtLineQueue_t *p_queue,
+                                                    const char *p_token)
+{
+    uint8_t i;
+    uint8_t index;
+
+    if ((p_queue == NULL) || (p_token == NULL) || (p_token[0] == '\0'))
+    {
+        return APP_FALSE;
+    }
+
+    for (i = 0u; i < p_queue->count; i++)
+    {
+        index = (uint8_t)((p_queue->head + i) % APP_BC95_AT_LINE_QUEUE_DEPTH);
+        if (strstr(p_queue->lines[index], p_token) != NULL)
+        {
+            return APP_TRUE;
+        }
+    }
+
+    if (strstr(p_queue->partial, p_token) != NULL)
+    {
+        return APP_TRUE;
+    }
+    return APP_FALSE;
+}
+
+static uint8_t App_Bc95AtLineQueueHasFinalResponse(const AppBc95AtLineQueue_t *p_queue)
+{
+    if (p_queue == NULL)
+    {
+        return APP_FALSE;
+    }
+
+    if (App_Bc95AtLineQueueContainsExact(p_queue, APP_BC95_AT_OK_TOKEN) == APP_TRUE)
+    {
+        return APP_TRUE;
+    }
+    if (App_Bc95AtLineQueueContainsExact(p_queue, APP_BC95_AT_ERROR_TOKEN) == APP_TRUE)
+    {
+        return APP_TRUE;
+    }
+    if (App_Bc95AtLineQueueContainsPrefix(p_queue, APP_BC95_AT_CME_ERROR_PREFIX) == APP_TRUE)
+    {
+        return APP_TRUE;
+    }
+    return APP_FALSE;
+}
+
 /* ============================================================
  *  RX 컨텍스트 종료 (경쟁 조건 방지를 위한 통합 헬퍼)
  *    - active 를 먼저 false 로 만든 뒤 abort 호출 → ISR 이
@@ -141,8 +350,7 @@ static void App_Bc95AtFinishRxIt(UART_HandleTypeDef *p_huart)
  * ============================================================ */
 static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
 {
-    uint32_t startTick;
-    uint8_t  dummy;
+    uint32_t guardMs;
 
     if (p_huart == NULL) return;
 
@@ -153,19 +361,16 @@ static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
                           UART_CLEAR_NEF  | UART_CLEAR_PEF);
     __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
 
-    startTick = HAL_GetTick();
-    while ((HAL_GetTick() - startTick) < drainMs)
+    g_appBc95AtRxContext.error = APP_FALSE;
+    guardMs = drainMs;
+    if (guardMs > APP_BC95_AT_DRAIN_GUARD_MS)
     {
-        if (HAL_UART_Receive(p_huart, &dummy, 1u, 5u) != HAL_OK)
-        {
-            break;
-        }
+        guardMs = APP_BC95_AT_DRAIN_GUARD_MS;
     }
-
-    __HAL_UART_CLEAR_FLAG(p_huart,
-                          UART_CLEAR_OREF | UART_CLEAR_FEF |
-                          UART_CLEAR_NEF  | UART_CLEAR_PEF);
-    __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
+    if (guardMs > 0u)
+    {
+        App_Bc95AtDelayWithFeed(guardMs);
+    }
 }
 
 /* ============================================================
@@ -341,9 +546,14 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
 {
     HAL_StatusTypeDef halStatus;
     uint32_t startTick;
+    uint32_t lastRxTick;
+    uint32_t termTick = 0u;
     uint16_t curLen;
     uint16_t lastCheckedLen = 0u;
-    uint16_t stableCount    = 0u;
+    uint16_t safeLen;
+    char     rxSnapshot[APP_BC95_AT_RX_BUF_SIZE];
+    AppBc95AtLineQueue_t lineQueue;
+    uint8_t  termSeen = APP_FALSE;
 
     APP_RETURN_IF_FALSE((p_huart != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((p_buffer != NULL), APP_STATUS_INVALID_PARAM);
@@ -372,7 +582,9 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
         return APP_STATUS_UART_RX_FAILED;
     }
 
-    startTick = HAL_GetTick();
+    App_Bc95AtLineQueueReset(&lineQueue);
+    startTick  = HAL_GetTick();
+    lastRxTick = startTick;
     while (1)
     {
         APP_WWDGFeed();
@@ -380,66 +592,72 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
         if (g_appBc95AtRxContext.error == APP_TRUE)
         {
             curLen = g_appBc95AtRxContext.receivedLength;
+            if (curLen >= g_appBc95AtRxContext.bufferSize)
+            {
+                curLen = g_appBc95AtRxContext.bufferSize;
+            }
+            if (curLen < bufferSize)
+            {
+                p_buffer[curLen] = (uint8_t)'\0';
+            }
             App_Bc95AtFinishRxIt(p_huart);
             if (p_rxLengthOut != NULL) *p_rxLengthOut = curLen;
             return APP_STATUS_UART_RX_FAILED;
         }
 
         curLen = g_appBc95AtRxContext.receivedLength;
-
-        /* === 패치: 새 데이터가 왔거나, 데이터가 안정화되었으면 항상 재검사 === */
-        if ((curLen != lastCheckedLen) || (stableCount > 0u))
+        if (curLen != lastCheckedLen)
         {
-            uint16_t safeLen = curLen;
-            if (safeLen >= g_appBc95AtRxContext.bufferSize)
+            lastCheckedLen = curLen;
+            lastRxTick = HAL_GetTick();
+            termSeen = APP_FALSE;
+        }
+
+        safeLen = curLen;
+        if (safeLen >= g_appBc95AtRxContext.bufferSize)
+        {
+            safeLen = g_appBc95AtRxContext.bufferSize;
+        }
+        safeLen = App_Bc95AtCopySnapshot(p_buffer, safeLen, rxSnapshot, (uint16_t)sizeof(rxSnapshot));
+        App_Bc95AtLineQueueFeed(&lineQueue, rxSnapshot, safeLen);
+
+        if ((App_Bc95AtLineQueueHasFinalResponse(&lineQueue) == APP_TRUE) ||
+            (App_Bc95AtIsResponseTerminated((const uint8_t *)rxSnapshot, safeLen) == APP_TRUE))
+        {
+            if (termSeen != APP_TRUE)
             {
-                safeLen = g_appBc95AtRxContext.bufferSize;
+                termSeen = APP_TRUE;
+                termTick = HAL_GetTick();
             }
 
-            /* NUL 종료를 임시로 박되, ISR 가 즉시 덮어쓸 수 있으므로
-             * 검사를 끝낸 직후 길이를 한 번 더 확인한다. */
-            p_buffer[safeLen] = (uint8_t)'\0';
-
-            if (App_Bc95AtIsResponseTerminated(p_buffer, safeLen) == APP_TRUE)
+            if (((HAL_GetTick() - lastRxTick) >= APP_BC95_AT_RX_IDLE_GAP_MS) &&
+                ((HAL_GetTick() - termTick) >= APP_BC95_AT_RX_POST_TERM_WAIT_MS))
             {
-                /* 종료 토큰 확인됨. 안정화를 위해 추가 50ms 정도 더 대기하여
-                 * 뒤따라오는 URC 도 같이 받는다 (NSOST 의 +NSOSTR 등). */
-                uint32_t settleStart = HAL_GetTick();
-                while ((HAL_GetTick() - settleStart) < 100u)
-                {
-                    APP_WWDGFeed();
-                    HAL_Delay(10u);
-                    if (g_appBc95AtRxContext.error == APP_TRUE) break;
-                }
-                curLen = g_appBc95AtRxContext.receivedLength;
-                if (curLen >= g_appBc95AtRxContext.bufferSize)
-                    curLen = g_appBc95AtRxContext.bufferSize;
-                p_buffer[curLen] = '\0';
-
                 App_Bc95AtFinishRxIt(p_huart);
-                if (p_rxLengthOut != NULL) *p_rxLengthOut = curLen;
+                if (safeLen < bufferSize)
+                {
+                    p_buffer[safeLen] = (uint8_t)'\0';
+                }
+                if (p_rxLengthOut != NULL) *p_rxLengthOut = safeLen;
                 return APP_STATUS_OK;
-            }
-
-            if (curLen != lastCheckedLen)
-            {
-                lastCheckedLen = curLen;
-                stableCount = 0u;
-            }
-            else
-            {
-                stableCount++;
-                /* 같은 길이로 10번 폴링(=약 10ms 이상) 지나도 토큰 없으면
-                 * 더 재검사할 필요 없음 → 다음 새 바이트 기다림 */
-                if (stableCount >= 10u) stableCount = 0u;
             }
         }
 
         if (curLen >= g_appBc95AtRxContext.bufferSize)
         {
             App_Bc95AtFinishRxIt(p_huart);
-            p_buffer[curLen] = (uint8_t)'\0';
-            if (p_rxLengthOut != NULL) *p_rxLengthOut = curLen;
+            if (safeLen < bufferSize)
+            {
+                p_buffer[safeLen] = (uint8_t)'\0';
+            }
+            if (p_rxLengthOut != NULL) *p_rxLengthOut = safeLen;
+            if ((App_Bc95AtLineQueueHasFinalResponse(&lineQueue) == APP_TRUE) ||
+                (App_Bc95AtIsResponseTerminated((const uint8_t *)rxSnapshot, safeLen) == APP_TRUE))
+            {
+                APP_LOGI("NBIOT", "Response completed at full buffer (rxLen=%u)",
+                         (unsigned)safeLen);
+                return APP_STATUS_OK;
+            }
             return APP_STATUS_UART_TIMEOUT;
         }
 
@@ -449,22 +667,23 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
             __HAL_UART_CLEAR_FLAG(p_huart,
                 UART_CLEAR_OREF | UART_CLEAR_FEF |
                 UART_CLEAR_NEF  | UART_CLEAR_PEF);
-            __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
-            if (curLen >= g_appBc95AtRxContext.bufferSize)
-                curLen = g_appBc95AtRxContext.bufferSize;
-            p_buffer[curLen] = (uint8_t)'\0';
-            if (p_rxLengthOut != NULL) *p_rxLengthOut = curLen;
+            if (safeLen < bufferSize)
+            {
+                p_buffer[safeLen] = (uint8_t)'\0';
+            }
+            if (p_rxLengthOut != NULL) *p_rxLengthOut = safeLen;
 
-            /* === 패치: 타임아웃 직전 한 번 더 종료 토큰 확인 ===
-             * NUL 박는 race 로 놓친 응답을 마지막으로 구제 */
-            if (App_Bc95AtIsResponseTerminated(p_buffer, curLen) == APP_TRUE)
+            if ((App_Bc95AtLineQueueHasFinalResponse(&lineQueue) == APP_TRUE) ||
+                (App_Bc95AtIsResponseTerminated((const uint8_t *)rxSnapshot, safeLen) == APP_TRUE))
             {
                 APP_LOGI("NBIOT", "Late-detected response on timeout (rxLen=%u)",
-                         (unsigned)curLen);
+                         (unsigned)safeLen);
                 return APP_STATUS_OK;
             }
             return APP_STATUS_UART_TIMEOUT;
         }
+
+        HAL_Delay(1u);
     }
 }
 
@@ -532,6 +751,8 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
     uint16_t curLen;
     uint16_t lastCheckedLen = 0u;
     uint16_t bufferCap;
+    char     rxSnapshot[APP_BC95_AT_RX_BUF_SIZE];
+    AppBc95AtLineQueue_t lineQueue;
 
     APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((APP_UART_NBIOT_HANDLE != NULL), APP_STATUS_INVALID_PARAM);
@@ -559,6 +780,7 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
         return APP_STATUS_UART_RX_FAILED;
     }
 
+    App_Bc95AtLineQueueReset(&lineQueue);
     startTick = HAL_GetTick();
     while (1)
     {
@@ -571,20 +793,36 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
         curLen = g_appBc95AtRxContext.receivedLength;
         if (curLen != lastCheckedLen)
         {
-            g_appBc95AtRxBuf[curLen] = (uint8_t)'\0';
+            if (curLen >= bufferCap)
+            {
+                curLen = bufferCap;
+            }
+            (void)App_Bc95AtCopySnapshot(g_appBc95AtRxBuf, curLen, rxSnapshot, (uint16_t)sizeof(rxSnapshot));
+            App_Bc95AtLineQueueFeed(&lineQueue, rxSnapshot, curLen);
 
-            if (strstr((const char *)g_appBc95AtRxBuf, APP_BC95_BOOT_BANNER) != NULL)
+            if ((App_Bc95AtLineQueueContainsSubstring(&lineQueue, APP_BC95_BOOT_BANNER) == APP_TRUE) ||
+                (strstr(rxSnapshot, APP_BC95_BOOT_BANNER) != NULL))
             {
                 uint32_t completeWaitStart = HAL_GetTick();
                 while ((HAL_GetTick() - completeWaitStart) < 500u)
                 {
                     curLen = g_appBc95AtRxContext.receivedLength;
-                    g_appBc95AtRxBuf[curLen] = (uint8_t)'\0';
-                    if (App_Bc95AtFindOkBoundary((const char *)g_appBc95AtRxBuf) != NULL) break;
+                    if (curLen >= bufferCap)
+                    {
+                        curLen = bufferCap;
+                    }
+                    (void)App_Bc95AtCopySnapshot(g_appBc95AtRxBuf, curLen, rxSnapshot, (uint16_t)sizeof(rxSnapshot));
+                    App_Bc95AtLineQueueFeed(&lineQueue, rxSnapshot, curLen);
+                    if ((App_Bc95AtLineQueueHasFinalResponse(&lineQueue) == APP_TRUE) ||
+                        (App_Bc95AtFindOkBoundary(rxSnapshot) != NULL)) break;
                     APP_WWDGFeed();
                     HAL_Delay(10u);
                 }
                 App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
+                if (curLen < sizeof(g_appBc95AtRxBuf))
+                {
+                    g_appBc95AtRxBuf[curLen] = (uint8_t)'\0';
+                }
                 APP_LOGD("NBIOT", "Boot banner detected (len=%u)", (unsigned)curLen);
                 return APP_STATUS_OK;
             }
@@ -603,12 +841,13 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
             __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE,
                                   UART_CLEAR_OREF | UART_CLEAR_FEF |
                                   UART_CLEAR_NEF | UART_CLEAR_PEF);
-            __HAL_UART_SEND_REQ(APP_UART_NBIOT_HANDLE, UART_RXDATA_FLUSH_REQUEST);
             return APP_STATUS_UART_TIMEOUT;
         }
         APP_WWDGFeed();
+        HAL_Delay(1u);
     }
 }
+
 
 AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
 {
@@ -1807,20 +2046,88 @@ static uint8_t App_Bc95AtNextUdpSeq(void)
     return g_appBc95UdpSeqCounter;
 }
 
+static AppBc95AtStatus_t App_Bc95AtParseQdnsResult(const char *p_resp,
+                                                   char *p_ipOut,
+                                                   uint32_t ipBufSize,
+                                                   uint8_t *p_found,
+                                                   uint8_t *p_isFail)
+{
+    const char *p_scan;
+    const char *p_pfx;
+    const char *p_line;
+    const char *p_end;
+    uint32_t    lineLen;
+    uint32_t    i;
+
+    if ((p_resp == NULL) || (p_ipOut == NULL) || (ipBufSize < APP_BC95_IP_STR_SIZE) ||
+        (p_found == NULL) || (p_isFail == NULL))
+    {
+        return APP_BC95_AT_ERR_PARAM;
+    }
+
+    *p_found  = APP_FALSE;
+    *p_isFail = APP_FALSE;
+    p_scan = p_resp;
+
+    while ((p_pfx = strstr(p_scan, APP_BC95_AT_QDNS_PREFIX)) != NULL)
+    {
+        p_line = p_pfx + APP_BC95_AT_QDNS_PREFIX_LEN;
+        while ((*p_line == ' ') || (*p_line == '\t')) p_line++;
+
+        p_end = p_line;
+        while ((*p_end != '\0') && (*p_end != '\r') && (*p_end != '\n')) p_end++;
+        if (*p_end == '\0')
+        {
+            return APP_BC95_AT_ERR_NO_DATA;
+        }
+
+        lineLen = (uint32_t)(p_end - p_line);
+        if ((lineLen == 4u) && (strncmp(p_line, "FAIL", 4u) == 0))
+        {
+            *p_found  = APP_TRUE;
+            *p_isFail = APP_TRUE;
+            return APP_BC95_AT_OK;
+        }
+
+        if ((lineLen < 7u) || (lineLen >= ipBufSize))
+        {
+            return APP_BC95_AT_ERR_FORMAT;
+        }
+
+        for (i = 0u; i < lineLen; i++)
+        {
+            char c = p_line[i];
+            if (((c < '0') || (c > '9')) && (c != '.'))
+            {
+                return APP_BC95_AT_ERR_FORMAT;
+            }
+        }
+
+        (void)memcpy(p_ipOut, p_line, lineLen);
+        p_ipOut[lineLen] = '\0';
+        *p_found = APP_TRUE;
+        return APP_BC95_AT_OK;
+    }
+
+    return APP_BC95_AT_ERR_NO_PREFIX;
+}
+
 AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_t ipBufSize)
 {
     AppStatus_t       status;
     HAL_StatusTypeDef halStatus;
+    AppBc95AtStatus_t atStatus;
     char              atCmd[96];
+    char              rxSnapshot[APP_BC95_AT_RX_BUF_SIZE];
     int               cmdLen;
+    int32_t           cmeErr;
     uint32_t          rxLen;
+    uint32_t          snapLen;
     uint32_t          startTick;
     uint32_t          elapsed;
-    const char       *p_urc;
-    const char       *p_colon;
-    const char       *p_end;
-    uint32_t          ipLen;
     uint32_t          hostLen;
+    uint8_t           qdnsFound;
+    uint8_t           qdnsFail;
 
     if ((p_hostname == NULL) || (p_ipOut == NULL) || (ipBufSize < APP_BC95_IP_STR_SIZE))
     {
@@ -1873,12 +2180,16 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
         return APP_STATUS_UART_RX_FAILED;
     }
 
-    /* 1차: "OK" / "ERROR" */
     startTick = HAL_GetTick();
     while (1)
     {
         rxLen = g_appBc95AtRxContext.receivedLength;
-        if (rxLen < (APP_BC95_AT_RX_BUF_SIZE - 1u)) g_appBc95AtRxBuf[rxLen] = '\0';
+        if (rxLen >= (APP_BC95_AT_RX_BUF_SIZE - 1u))
+        {
+            rxLen = (APP_BC95_AT_RX_BUF_SIZE - 1u);
+        }
+        snapLen = App_Bc95AtCopySnapshot(g_appBc95AtRxBuf, (uint16_t)rxLen,
+                                         rxSnapshot, (uint16_t)sizeof(rxSnapshot));
 
         if (g_appBc95AtRxContext.error == APP_TRUE)
         {
@@ -1886,16 +2197,17 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
             return APP_STATUS_UART_RX_FAILED;
         }
-        if (strstr((char *)g_appBc95AtRxBuf, "\r\nOK\r\n") != NULL) break;
-        if (strstr((char *)g_appBc95AtRxBuf, "\r\nERROR\r\n") != NULL)
+
+        cmeErr = 0;
+        atStatus = App_Bc95AtCheckResponse(rxSnapshot, &cmeErr);
+        if (atStatus == APP_BC95_AT_OK)
         {
-            APP_LOGE("NBIOT", "ResolveHost: ERROR");
-            App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
-            return APP_STATUS_UART_TIMEOUT;
+            break;
         }
-        if (strstr((char *)g_appBc95AtRxBuf, "+CME ERROR") != NULL)
+        if ((atStatus == APP_BC95_AT_ERR_AT_ERROR) || (atStatus == APP_BC95_AT_ERR_CME_ERROR))
         {
-            APP_LOGE("NBIOT", "ResolveHost: +CME ERROR");
+            APP_LOGE("NBIOT", "ResolveHost: response error parse=%s cme=%ld raw=[%s]",
+                     App_Bc95AtGetStatusString(atStatus), (long)cmeErr, rxSnapshot);
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
             return APP_STATUS_UART_TIMEOUT;
         }
@@ -1903,89 +2215,88 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
         elapsed = HAL_GetTick() - startTick;
         if (elapsed >= APP_BC95_DNS_CMD_TIMEOUT_MS)
         {
-            APP_LOGE("NBIOT", "ResolveHost: OK timeout (rxLen=%lu)", (unsigned long)rxLen);
+            cmeErr = 0;
+            atStatus = App_Bc95AtCheckResponse(rxSnapshot, &cmeErr);
+            if (atStatus == APP_BC95_AT_OK)
+            {
+                APP_LOGI("NBIOT", "ResolveHost: late OK detected (rxLen=%lu)", (unsigned long)snapLen);
+                break;
+            }
+            APP_LOGE("NBIOT", "ResolveHost: OK timeout (rxLen=%lu, raw=[%s])",
+                     (unsigned long)rxLen, rxSnapshot);
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
             return APP_STATUS_UART_TIMEOUT;
         }
         APP_WWDGFeed();
-        HAL_Delay(20u);
+        HAL_Delay(5u);
     }
 
-    /* 2차: +QDNS URC */
     startTick = HAL_GetTick();
     status    = APP_STATUS_UART_TIMEOUT;
 
     while (1)
     {
         rxLen = g_appBc95AtRxContext.receivedLength;
-        if (rxLen < (APP_BC95_AT_RX_BUF_SIZE - 1u)) g_appBc95AtRxBuf[rxLen] = '\0';
+        if (rxLen >= (APP_BC95_AT_RX_BUF_SIZE - 1u))
+        {
+            rxLen = (APP_BC95_AT_RX_BUF_SIZE - 1u);
+        }
+        snapLen = App_Bc95AtCopySnapshot(g_appBc95AtRxBuf, (uint16_t)rxLen,
+                                         rxSnapshot, (uint16_t)sizeof(rxSnapshot));
 
         if (g_appBc95AtRxContext.error == APP_TRUE)
         {
-            APP_LOGE("NBIOT", "ResolveHost: UART err in URC wait");
+            APP_LOGE("NBIOT", "ResolveHost: UART err in URC wait raw=[%s]", rxSnapshot);
             status = APP_STATUS_UART_RX_FAILED;
             break;
         }
 
-        if (strstr((char *)g_appBc95AtRxBuf, "+QDNS:FAIL") != NULL)
+        qdnsFound = APP_FALSE;
+        qdnsFail  = APP_FALSE;
+        atStatus = App_Bc95AtParseQdnsResult(rxSnapshot, p_ipOut, ipBufSize, &qdnsFound, &qdnsFail);
+        if ((atStatus == APP_BC95_AT_OK) && (qdnsFound == APP_TRUE))
         {
-            APP_LOGI("NBIOT", "DNS FAIL for %s (transient)", p_hostname);
-            status = APP_STATUS_UART_TIMEOUT;
+            if (qdnsFail == APP_TRUE)
+            {
+                APP_LOGI("NBIOT", "DNS FAIL for %s (transient)", p_hostname);
+                status = APP_STATUS_UART_TIMEOUT;
+            }
+            else
+            {
+                APP_LOGD("NBIOT", "DNS OK: %s -> %s", p_hostname, p_ipOut);
+                status = APP_STATUS_OK;
+            }
             break;
         }
-
-        p_urc = strstr((char *)g_appBc95AtRxBuf, "+QDNS:");
-        if (p_urc != NULL)
+        if ((atStatus != APP_BC95_AT_ERR_NO_PREFIX) && (atStatus != APP_BC95_AT_ERR_NO_DATA))
         {
-            p_colon = p_urc + 6;
-            p_end = p_colon;
-            while ((*p_end != '\0') && (*p_end != '\r') && (*p_end != '\n')) p_end++;
-            ipLen = (uint32_t)(p_end - p_colon);
-
-            if (ipLen >= 7u)
-            {
-                if (ipLen < ipBufSize)
-                {
-                    (void)memcpy(p_ipOut, p_colon, ipLen);
-                    p_ipOut[ipLen] = '\0';
-                    {
-                        uint32_t k;
-                        uint8_t ok = APP_TRUE;
-                        for (k = 0u; k < ipLen; k++)
-                        {
-                            char c = p_ipOut[k];
-                            if (((c < '0') || (c > '9')) && (c != '.')) { ok = APP_FALSE; break; }
-                        }
-                        if (ok == APP_TRUE)
-                        {
-                            APP_LOGD("NBIOT", "DNS OK: %s -> %s", p_hostname, p_ipOut);
-                            status = APP_STATUS_OK;
-                            break;
-                        }
-                        APP_LOGE("NBIOT", "DNS bad IP fmt: [%s]", p_ipOut);
-                        (void)memset(p_ipOut, 0, ipBufSize);
-                        status = APP_STATUS_UART_TIMEOUT;
-                        break;
-                    }
-                }
-                else
-                {
-                    APP_LOGE("NBIOT", "DNS IP too long (%lu)", (unsigned long)ipLen);
-                    status = APP_STATUS_FATAL;
-                    break;
-                }
-            }
+            APP_LOGE("NBIOT", "ResolveHost: invalid QDNS URC raw=[%s]", rxSnapshot);
+            (void)memset(p_ipOut, 0, ipBufSize);
+            status = APP_STATUS_UART_TIMEOUT;
+            break;
         }
 
         elapsed = HAL_GetTick() - startTick;
         if (elapsed >= APP_BC95_DNS_URC_TIMEOUT_MS)
         {
-            APP_LOGE("NBIOT", "ResolveHost: URC timeout (rxLen=%lu)", (unsigned long)rxLen);
-            status = APP_STATUS_UART_TIMEOUT;
+            qdnsFound = APP_FALSE;
+            qdnsFail  = APP_FALSE;
+            atStatus = App_Bc95AtParseQdnsResult(rxSnapshot, p_ipOut, ipBufSize, &qdnsFound, &qdnsFail);
+            if ((atStatus == APP_BC95_AT_OK) && (qdnsFound == APP_TRUE) && (qdnsFail == APP_FALSE))
+            {
+                APP_LOGI("NBIOT", "ResolveHost: late QDNS detected %s -> %s", p_hostname, p_ipOut);
+                status = APP_STATUS_OK;
+            }
+            else
+            {
+                APP_LOGE("NBIOT", "ResolveHost: URC timeout (rxLen=%lu, raw=[%s])",
+                         (unsigned long)rxLen, rxSnapshot);
+                status = APP_STATUS_UART_TIMEOUT;
+            }
             break;
         }
         APP_WWDGFeed();
-        HAL_Delay(APP_BC95_DNS_URC_POLL_MS);
+        HAL_Delay(10u);
     }
 
     App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
@@ -2177,6 +2488,52 @@ static AppBc95AtStatus_t App_Bc95AtParseNsostr(const char *p_resp,
     return APP_BC95_AT_OK;
 }
 
+static AppBc95AtStatus_t App_Bc95AtFindNsostrForSocketSeq(const char *p_resp,
+                                                          int targetSock,
+                                                          int targetSeq,
+                                                          int *p_statusOut)
+{
+    const char *p_scan;
+    const char *p_pfx;
+    const char *p_line;
+    const char *p_end;
+    int parsedSock;
+    int parsedSeq;
+    int parsedStatus;
+
+    if ((p_resp == NULL) || (p_statusOut == NULL))
+    {
+        return APP_BC95_AT_ERR_PARAM;
+    }
+
+    p_scan = p_resp;
+    while ((p_pfx = strstr(p_scan, APP_BC95_AT_NSOSTR_PREFIX)) != NULL)
+    {
+        p_line = p_pfx + APP_BC95_AT_NSOSTR_PREFIX_LEN;
+        while ((*p_line == ' ') || (*p_line == '\t')) p_line++;
+
+        p_end = p_line;
+        while ((*p_end != '\0') && (*p_end != '\r') && (*p_end != '\n')) p_end++;
+        if (*p_end == '\0')
+        {
+            return APP_BC95_AT_ERR_NO_DATA;
+        }
+
+        if (sscanf(p_line, "%d,%d,%d", &parsedSock, &parsedSeq, &parsedStatus) == 3)
+        {
+            if ((parsedSock == targetSock) && (parsedSeq == targetSeq))
+            {
+                *p_statusOut = parsedStatus;
+                return APP_BC95_AT_OK;
+            }
+        }
+
+        p_scan = (*p_end == '\0') ? p_end : (p_end + 1);
+    }
+
+    return APP_BC95_AT_ERR_NO_PREFIX;
+}
+
 AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
                                         const char    *p_ip,
                                         uint16_t       port,
@@ -2192,11 +2549,13 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
     int               printed;
     uint16_t          rxLen;
     uint16_t          bufCap;
+    uint16_t          snapLen;
     uint32_t          startTick;
     uint32_t          elapsed;
-    int               parsedSock = -1, parsedSeq = -1, parsedStatus = -1;
+    int               parsedStatus = -1;
     int32_t           cmeErr;
     char              appBc95AtCmdTxBuf[APP_BC95_AT_CMD_TX_BUF_SIZE];
+    char              rxSnapshot[APP_BC95_AT_RX_BUF_SIZE];
 
     APP_RETURN_IF_FALSE(seqNum > 0u, APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((p_ip != NULL) && (p_ip[0] != '\0'), APP_STATUS_INVALID_PARAM);
@@ -2234,7 +2593,6 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
     APP_LOGI("NBIOT", "NSOST send: sock=%ld, ip=%s, port=%u, len=%u, seq=%u",
              (long)socketId, p_ip, (unsigned)port, (unsigned)length, (unsigned)seqNum);
 
-    /* 1차: NSOST + OK */
     rxLen  = 0u;
     status = App_Bc95AtSendCommand(appBc95AtCmdTxBuf,
                                    g_appBc95AtRxBuf,
@@ -2247,42 +2605,45 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
         return APP_STATUS_UART_TIMEOUT;
     }
 
+    snapLen = App_Bc95AtCopySnapshot(g_appBc95AtRxBuf, rxLen,
+                                     rxSnapshot, (uint16_t)sizeof(rxSnapshot));
     cmeErr   = 0;
-    atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
+    atStatus = App_Bc95AtCheckResponse(rxSnapshot, &cmeErr);
     if (atStatus != APP_BC95_AT_OK)
     {
         APP_LOGE("NBIOT", "NSOST no OK (parse=%s, cme=%ld, raw=[%s])",
-                 App_Bc95AtGetStatusString(atStatus), (long)cmeErr, g_appBc95AtRxBuf);
-        /* 패치: CME ERROR 도 재시도 가능 (네트워크 일시 오류일 수 있음) */
+                 App_Bc95AtGetStatusString(atStatus), (long)cmeErr, rxSnapshot);
         return APP_STATUS_UART_TIMEOUT;
     }
 
-    /* Fast path: 이미 +NSOSTR 가 같은 버퍼에 와 있는지 */
-    if (App_Bc95AtParseNsostr((const char *)g_appBc95AtRxBuf,
-                              &parsedSock, &parsedSeq, &parsedStatus) == APP_BC95_AT_OK)
+    if (App_Bc95AtFindNsostrForSocketSeq(rxSnapshot,
+                                         (int)socketId,
+                                         (int)seqNum,
+                                         &parsedStatus) == APP_BC95_AT_OK)
     {
-        if ((parsedSock == socketId) && (parsedSeq == (int)seqNum))
+        if (parsedStatus == 1)
         {
-            if (parsedStatus == 1)
-            {
-                APP_LOGI("NBIOT", "NSOSTR confirmed (fast): sock=%d, seq=%d",
-                         parsedSock, parsedSeq);
-                return APP_STATUS_OK;
-            }
-            /* 패치: status!=1 은 일시 실패 → 재시도 가능 */
-            APP_LOGE("NBIOT", "NSOSTR fail (fast): sock=%d, seq=%d, status=%d (transient)",
-                     parsedSock, parsedSeq, parsedStatus);
-            return APP_STATUS_UART_TIMEOUT;
+            APP_LOGI("NBIOT", "NSOSTR confirmed (fast): sock=%ld, seq=%u",
+                     (long)socketId, (unsigned)seqNum);
+            return APP_STATUS_OK;
         }
-        /* sock/seq 다르면 fast match 무시, 2차 진입 */
+        APP_LOGE("NBIOT", "NSOSTR fail (fast): sock=%ld, seq=%u, status=%d (transient)",
+                 (long)socketId, (unsigned)seqNum, parsedStatus);
+        return APP_STATUS_UART_TIMEOUT;
     }
 
-    /* 2차: URC 비동기 대기 (memset 금지, 누적 수신) */
     bufCap = (uint16_t)(sizeof(g_appBc95AtRxBuf) - 1u);
 
     if (rxLen >= bufCap)
     {
         APP_LOGE("NBIOT", "NSOSTR wait: buf full after OK (rxLen=%u)", (unsigned)rxLen);
+        if (App_Bc95AtFindNsostrForSocketSeq(rxSnapshot,
+                                             (int)socketId,
+                                             (int)seqNum,
+                                             &parsedStatus) == APP_BC95_AT_OK)
+        {
+            return (parsedStatus == 1) ? APP_STATUS_OK : APP_STATUS_UART_TIMEOUT;
+        }
         return APP_STATUS_UART_TIMEOUT;
     }
 
@@ -2307,7 +2668,6 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
         return APP_STATUS_UART_RX_FAILED;
     }
 
-    /* 2차 진입 직후 에러 발생 케이스 방어 */
     if (g_appBc95AtRxContext.error == APP_TRUE)
     {
         App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
@@ -2318,48 +2678,56 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
     startTick = HAL_GetTick();
     while (1)
     {
+        rxLen = g_appBc95AtRxContext.receivedLength;
+        if (rxLen >= bufCap)
+        {
+            rxLen = bufCap;
+        }
+        snapLen = App_Bc95AtCopySnapshot(g_appBc95AtRxBuf, rxLen,
+                                         rxSnapshot, (uint16_t)sizeof(rxSnapshot));
+
         if (g_appBc95AtRxContext.error == APP_TRUE)
         {
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
             __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE,
                                   UART_CLEAR_OREF | UART_CLEAR_FEF |
                                   UART_CLEAR_NEF  | UART_CLEAR_PEF);
-            __HAL_UART_SEND_REQ(APP_UART_NBIOT_HANDLE, UART_RXDATA_FLUSH_REQUEST);
-            APP_LOGE("NBIOT", "NSOSTR wait: UART err (rxLen=%u)",
-                     (unsigned)g_appBc95AtRxContext.receivedLength);
+            APP_LOGE("NBIOT", "NSOSTR wait: UART err (rxLen=%u, raw=[%s])",
+                     (unsigned)g_appBc95AtRxContext.receivedLength, rxSnapshot);
             return APP_STATUS_UART_RX_FAILED;
         }
 
-        rxLen = g_appBc95AtRxContext.receivedLength;
-        if (rxLen > 0u)
-        {
-            g_appBc95AtRxBuf[rxLen] = '\0';
-            if (App_Bc95AtParseNsostr((const char *)g_appBc95AtRxBuf,
-                                      &parsedSock, &parsedSeq, &parsedStatus) == APP_BC95_AT_OK)
-            {
-                if ((parsedSock == socketId) && (parsedSeq == (int)seqNum))
-                {
-                    App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
-                    if (parsedStatus == 1)
-                    {
-                        APP_LOGI("NBIOT", "NSOSTR confirmed: sock=%d, seq=%d (elapsed=%lums)",
-                                 parsedSock, parsedSeq,
-                                 (unsigned long)(HAL_GetTick() - startTick));
-                        return APP_STATUS_OK;
-                    }
-                    /* 패치: status!=1 은 일시 실패 */
-                    APP_LOGE("NBIOT", "NSOSTR fail: sock=%d, seq=%d, status=%d (transient)",
-                             parsedSock, parsedSeq, parsedStatus);
-                    return APP_STATUS_UART_TIMEOUT;
-                }
-                /* 다른 소켓 URC: 무시하고 계속 */
-            }
-        }
-
-        if (rxLen >= bufCap)
+        atStatus = App_Bc95AtFindNsostrForSocketSeq(rxSnapshot,
+                                                    (int)socketId,
+                                                    (int)seqNum,
+                                                    &parsedStatus);
+        if (atStatus == APP_BC95_AT_OK)
         {
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
-            APP_LOGE("NBIOT", "NSOSTR wait: buffer full (rxLen=%u)", (unsigned)rxLen);
+            if (parsedStatus == 1)
+            {
+                APP_LOGI("NBIOT", "NSOSTR confirmed: sock=%ld, seq=%u (elapsed=%lums)",
+                         (long)socketId, (unsigned)seqNum,
+                         (unsigned long)(HAL_GetTick() - startTick));
+                return APP_STATUS_OK;
+            }
+            APP_LOGE("NBIOT", "NSOSTR fail: sock=%ld, seq=%u, status=%d (transient)",
+                     (long)socketId, (unsigned)seqNum, parsedStatus);
+            return APP_STATUS_UART_TIMEOUT;
+        }
+
+        if (g_appBc95AtRxContext.receivedLength >= bufCap)
+        {
+            App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
+            APP_LOGE("NBIOT", "NSOSTR wait: buffer full (rxLen=%u, raw=[%s])",
+                     (unsigned)g_appBc95AtRxContext.receivedLength, rxSnapshot);
+            if (App_Bc95AtFindNsostrForSocketSeq(rxSnapshot,
+                                                 (int)socketId,
+                                                 (int)seqNum,
+                                                 &parsedStatus) == APP_BC95_AT_OK)
+            {
+                return (parsedStatus == 1) ? APP_STATUS_OK : APP_STATUS_UART_TIMEOUT;
+            }
             return APP_STATUS_UART_TIMEOUT;
         }
 
@@ -2370,12 +2738,21 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
             __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE,
                                   UART_CLEAR_OREF | UART_CLEAR_FEF |
                                   UART_CLEAR_NEF  | UART_CLEAR_PEF);
+            if (App_Bc95AtFindNsostrForSocketSeq(rxSnapshot,
+                                                 (int)socketId,
+                                                 (int)seqNum,
+                                                 &parsedStatus) == APP_BC95_AT_OK)
+            {
+                APP_LOGI("NBIOT", "NSOSTR late-detected: sock=%ld, seq=%u, status=%d",
+                         (long)socketId, (unsigned)seqNum, parsedStatus);
+                return (parsedStatus == 1) ? APP_STATUS_OK : APP_STATUS_UART_TIMEOUT;
+            }
             APP_LOGE("NBIOT", "NSOSTR timeout (sock=%ld, seq=%u, rxLen=%u, raw=[%s])",
-                     (long)socketId, (unsigned)seqNum, (unsigned)rxLen, g_appBc95AtRxBuf);
+                     (long)socketId, (unsigned)seqNum, (unsigned)rxLen, rxSnapshot);
             return APP_STATUS_UART_TIMEOUT;
         }
         APP_WWDGFeed();
-        HAL_Delay(20u);
+        HAL_Delay(10u);
     }
 }
 
@@ -2994,10 +3371,20 @@ AppStatus_t App_NBIoTTransmitUdp(void)
     /* --- 전송 시 최신 옵션 로드 후 패킷 빌드 --- */
     App_MeterServerOptionsLoad(&opt);
     App_MeterServerOptionsDump(&opt);
-    //App_MeterServerFormatBuildFromStorage(&opt, packet, sizeof(packet), &buildResult);
-    if((status = App_MeterServerFormatBuildFromStorageAndClear(&opt, packet, sizeof(packet), &buildResult)) == APP_STATUS_OK)
+    status = App_MeterServerFormatBuildFromStorage(&opt, packet, sizeof(packet), &buildResult);
+    if (status == APP_STATUS_OK)
     {
         status = App_Bc95AtUdpSendOnce(MY_SERVER_DOMAIN, port, packet, buildResult.packetLength, &sendResult);
+        if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u))
+        {
+            AppStatus_t clearStatus = App_MeterStorageClearAll();
+            if (clearStatus != APP_STATUS_OK)
+            {
+                APP_LOGE("NBIOT", "Storage clear failed after send (%ld)", (long)clearStatus);
+                return clearStatus;
+            }
+            buildResult.cleared = APP_TRUE;
+        }
     }
     else
     {

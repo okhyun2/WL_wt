@@ -856,7 +856,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
 
             //TODO kiki test
-            APP_RETURN_IF_FALSE(App_NBIoTBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+            APP_RETURN_IF_FALSE(App_NBIoTBringUpWithReset(2u) == APP_STATUS_OK, APP_STATUS_FATAL);
             APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
             App_NBIoTReadIdentity(APP_TRUE);
             App_NBIoTReadQuality(APP_TRUE);
