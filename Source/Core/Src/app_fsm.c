@@ -12,12 +12,18 @@
 #include "nfc_lowpower.h"
 #include "nfc_secure_auth.h"
 #include "nfc_user_command.h"
+#include "app_nfc_seoul_format.h"
 #include "app_nbiot.h"
 #include "app_meter_storage.h"
 #include "app_meter_server_format.h"
 
 static AppFsmContext_t g_appFsmContext;
 
+static void App_FsmMarkComponent(AppFsmComponentId_t id,
+                                 uint8_t state,
+                                 uint8_t busy,
+                                 uint8_t eventPending,
+                                 AppStatus_t status);
 
 NFC_NTP53321_Handle_t g_nfcTagHandle;
 NFC_AUTH_Handle_t g_nfcAuthHandle;
@@ -49,7 +55,6 @@ static AppStatus_t App_FsmNfcInitModule(void)
 
     //useless. use factory value: E1 40 10 00
     (void)NFC_NTP53321_ConfigureCC(&g_nfcTagHandle);
-    (void)NFC_NTP53321_EnableSRAMMirror(&g_nfcTagHandle, true);
 
     if (NFC_AUTH_Init(&g_nfcAuthHandle,
                       &g_nfcTagHandle,
@@ -72,9 +77,16 @@ static AppStatus_t App_FsmNfcInitModule(void)
     }
 
     NFC_LP_RegisterCallbacks(&g_nfcLpHandle, App_FsmNfcWakeupCallback, NULL);
+
+    if (App_NfcSeoulInit(&g_nfcTagHandle) != APP_STATUS_OK)
+    {
+        return APP_STATUS_INIT_FAILED;
+    }
+
     g_nfcIrqPending = APP_FALSE;
     g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
     g_nfcReady = APP_TRUE;
+    APP_LOGI("FSM", "trace nfc module init done ready=%u", (unsigned int)g_nfcReady);
     return APP_STATUS_OK;
 }
 
@@ -82,6 +94,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 {
     NFC_AUTH_Result_t authStatus;
     NFC_CMD_Result_t cmdStatus;
+    AppNfcSeoulProcessResult_t seoulResult;
 
     if (g_nfcReady != APP_TRUE)
     {
@@ -104,6 +117,40 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     }
 
     g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
+
+    if (App_NfcSeoulRetrySramMirrorOnField() != APP_STATUS_OK)
+    {
+        APP_LOGW("FSM", "trace nfc field retry sram sync deferred");
+    }
+
+    if (App_NfcSeoulProcessTag(&seoulResult) != APP_STATUS_OK)
+    {
+        return APP_STATUS_FATAL;
+    }
+
+    if (seoulResult.handled == APP_TRUE)
+    {
+        APP_LOGI("FSM",
+                 "trace nfc handled req=%02X%02X rsp=%02X%02X comm=%u",
+                 (unsigned int)seoulResult.requestCmd1,
+                 (unsigned int)seoulResult.requestCmd2,
+                 (unsigned int)seoulResult.responseCmd1,
+                 (unsigned int)seoulResult.responseCmd2,
+                 (unsigned int)seoulResult.commRequested);
+        if (seoulResult.commRequested == APP_TRUE)
+        {
+            if (App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK)
+            {
+                App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT,
+                                     APP_FSM_STATE_NBIOT_DECIDE_WAKE,
+                                     APP_TRUE,
+                                     APP_FALSE,
+                                     APP_STATUS_OK);
+                APP_LOGI("FSM", "trace nbiot queued by nfc rset");
+            }
+        }
+        return APP_STATUS_OK;
+    }
 
     if (NFC_AUTH_IsSessionValid(&g_nfcAuthHandle) == true)
     {
@@ -135,6 +182,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 void App_FsmNfcEdIrqHandler(void)
 {
     g_nfcIrqPending = APP_TRUE;
+    APP_LOGI("FSM", "trace nfc ed irq pending=1");
 }
 
 static const char *App_FsmGetDecisionNameInternal(AppFsmDecision_t decision)
@@ -319,6 +367,9 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
                                  AppStatus_t status)
 {
     AppFsmComponentContext_t *p_component;
+    uint8_t oldState;
+    uint8_t oldBusy;
+    uint8_t oldEventPending;
 
     p_component = App_FsmGetComponentMutable(id);
     if (p_component == NULL)
@@ -326,10 +377,32 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
         return;
     }
 
+    oldState = p_component->state;
+    oldBusy = p_component->busy;
+    oldEventPending = p_component->eventPending;
+
     p_component->state = state;
     p_component->busy = busy;
     p_component->eventPending = eventPending;
     App_FsmCompleteComponentRun(p_component, status);
+
+    if (((id == APP_FSM_COMPONENT_NFC) ||
+         (id == APP_FSM_COMPONENT_NBIOT) ||
+         (id == APP_FSM_COMPONENT_SERVER) ||
+         (id == APP_FSM_COMPONENT_METER)) &&
+        ((oldState != state) || (oldBusy != busy) || (oldEventPending != eventPending)))
+    {
+        APP_LOGI("FSM",
+                 "trace comp=%s %s->%s busy:%u->%u evt:%u->%u status=%lu",
+                 App_FsmGetComponentNameInternal(id),
+                 App_FsmGetStateName(oldState),
+                 App_FsmGetStateName(state),
+                 (unsigned int)oldBusy,
+                 (unsigned int)busy,
+                 (unsigned int)oldEventPending,
+                 (unsigned int)eventPending,
+                 (unsigned long)status);
+    }
 }
 
 static void App_FsmSignalEventForState(uint8_t nextState)

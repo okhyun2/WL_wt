@@ -44,7 +44,7 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
 NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *hi2c)
 {
     NFC_Result_t ret;
-    uint8_t      cc_block[4] = {0};
+    uint8_t      reg_block[4] = {0};
 
     if (hntag == NULL || hi2c == NULL)
         return NFC_RESULT_ERROR_INVALID_PARAM;
@@ -56,7 +56,7 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
     /* CC Block 읽기로 I2C 링크 확인 */
     ret = nfc_i2c_mem_read(hntag,
                            NFC_BLOCK_TO_I2C_ADDR(NFC_CC_BLOCK_ADDR),
-                           cc_block, 4U);
+                           reg_block, 4U);
     if (ret != NFC_RESULT_OK) {
         APP_LOGE("NFC", "Init: I2C read FAILED (ret=%d)", ret);
         hntag->state = NFC_STATE_ERROR;
@@ -64,11 +64,11 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
     }
 
     APP_LOGI("NFC", "Get CC Block: %02X %02X %02X %02X",
-             cc_block[0], cc_block[1], cc_block[2], cc_block[3]);
+             reg_block[0], reg_block[1], reg_block[2], reg_block[3]);
 
-    if (cc_block[0] != NFC_CC_MAGIC_BYTE) {
+    if (reg_block[0] != NFC_CC_MAGIC_BYTE) {
         APP_LOGE("NFC", "CC Magic FAIL: 0x%02X (expected 0x%02X)",
-                 cc_block[0], NFC_CC_MAGIC_BYTE);
+                 reg_block[0], NFC_CC_MAGIC_BYTE);
         hntag->state = NFC_STATE_ERROR;
         return NFC_RESULT_ERROR;
     }
@@ -90,9 +90,35 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
         }
     }
 
+    /* Enable SRAM */
+    ret = nfc_i2c_mem_read(hntag,
+                           NFC_BLOCK_TO_I2C_ADDR(NFC_CFG_CONFIG_ADDR),
+                           reg_block, 4U);
+    if (ret != NFC_RESULT_OK)
+    {
+        APP_LOGE("NFC", "Init: I2C read FAILED (ret=%d)", ret);
+        hntag->state = NFC_STATE_ERROR;
+        return ret;
+    }
+    else
+    {
+        APP_LOGI("NFC", "Get Config Block: %02X %02X %02X %02X",
+                 reg_block[0], reg_block[1], reg_block[2], reg_block[3]);
+
+        reg_block[1] |= 0x02;
+        ret = nfc_i2c_mem_write(hntag,
+                                NFC_BLOCK_TO_I2C_ADDR(NFC_CFG_CONFIG_ADDR),
+                                reg_block, 4U);
+        if (ret == NFC_RESULT_OK)
+        {
+            APP_LOGI("NFC", "Enable SRAM");
+        }
+    }
+
     /* ED 모드 설정 (구성 메모리 0x103D의 ED_CONF 바이트 사용) */
     ret = NFC_NTP53321_SetEDMode(hntag, NFC_ED_MODE_FIELD_DETECT);
-    if (ret != NFC_RESULT_OK) {
+    if (ret != NFC_RESULT_OK)
+    {
         APP_LOGE("NFC", "SetEDMode FAILED (ret=%d)", ret);
         hntag->state = NFC_STATE_ERROR;
         return ret;
@@ -202,20 +228,73 @@ NFC_Result_t NFC_NTP53321_EnableSRAMMirror(NFC_NTP53321_Handle_t *hntag, bool en
 {
     NFC_Result_t ret;
     uint8_t      value;
+    uint8_t      status0 = 0U;
+    uint8_t      status1 = 0U;
+    uint8_t      cfg1 = 0U;
+    uint8_t      arbiter = 0U;
 
-    if (hntag == NULL) return NFC_RESULT_ERROR_INVALID_PARAM;
+    if ((hntag == NULL) || (hntag->hi2c == NULL))
+    {
+        return NFC_RESULT_ERROR_INVALID_PARAM;
+    }
 
-    /* ARBITER_MODE: bit[3:2] = 01b(SRAM mirror) or 00b(Normal) */
     value = enable ? NFC_CONFIG1_ARBITER_SRAM_MIRROR : NFC_CONFIG1_ARBITER_NORMAL;
 
+    ret = NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 0U, &status0);
+    if (ret != NFC_RESULT_OK)
+    {
+        return ret;
+    }
+
+    ret = NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 1U, &status1);
+    if (ret != NFC_RESULT_OK)
+    {
+        return ret;
+    }
+
+    if ((status1 & NFC_STATUS1_I2C_IF_LOCKED) != 0u)
+    {
+        return NFC_RESULT_ERROR_BUSY;
+    }
+
+    if (enable)
+    {
+        if (((status0 & NFC_STATUS0_VCC_SUPPLY_OK) == 0u) ||
+            ((status0 & NFC_STATUS0_NFC_FIELD_OK) == 0u) ||
+            ((status1 & NFC_STATUS1_VCC_BOOT_OK) == 0u) ||
+            ((status1 & NFC_STATUS1_NFC_BOOT_OK) == 0u))
+        {
+            return NFC_RESULT_ERROR_BUSY;
+        }
+    }
+
     ret = nfc_i2c_reg_write(hntag,
-                            NFC_SESSION_CONFIG_REG_ADDR,  /* 0x10A1 */
-                            1U,                           /* Byte1 = CONFIG_1_REG */
-                            NFC_CONFIG1_ARBITER_MODE_MASK, /* mask = 0x0C */
+                            NFC_SESSION_CONFIG_REG_ADDR,
+                            1U,
+                            NFC_CONFIG1_ARBITER_MODE_MASK,
                             value);
-    if (ret == NFC_RESULT_OK)
-        APP_LOGI("NFC", "SRAM mirror %s", enable ? "ON" : "OFF");
-    return ret;
+    if (ret != NFC_RESULT_OK)
+    {
+        return ret;
+    }
+
+    ret = NFC_NTP53321_ReadSessionReg(hntag,
+                                      NFC_SESSION_CONFIG_REG_ADDR,
+                                      1U,
+                                      &cfg1);
+    if (ret != NFC_RESULT_OK)
+    {
+        return ret;
+    }
+
+    arbiter = (uint8_t)(cfg1 & NFC_CONFIG1_ARBITER_MODE_MASK);
+    if ((arbiter != value) || (enable && ((cfg1 & NFC_CONFIG1_SRAM_ENABLED) == 0u)))
+    {
+        return NFC_RESULT_ERROR_BUSY;
+    }
+
+    APP_LOGI("NFC", "SRAM mirror %s cfg1=0x%02X", enable ? "ON" : "OFF", (unsigned int)cfg1);
+    return NFC_RESULT_OK;
 }
 
 /* ============================================================
@@ -257,12 +336,59 @@ NFC_Result_t NFC_NTP53321_WriteMultiBlock(NFC_NTP53321_Handle_t *hntag,
                                            uint16_t block_addr,
                                            const uint8_t *data, uint16_t num_blocks)
 {
+    NFC_Result_t ret;
+    uint16_t     last_block;
+    uint16_t     i;
+    bool         is_eeprom;
+    bool         is_sram;
+
     if (hntag == NULL || data == NULL || num_blocks == 0U)
         return NFC_RESULT_ERROR_INVALID_PARAM;
-    return nfc_i2c_mem_write(hntag,
-                             NFC_BLOCK_TO_I2C_ADDR(block_addr),
-                             data,
-                             num_blocks * NFC_EEPROM_BLOCK_SIZE);
+
+    last_block = (uint16_t)(block_addr + num_blocks - 1U);
+    is_eeprom = ((block_addr >= NFC_EEPROM_BASE_ADDR) && (last_block <= NFC_EEPROM_END_ADDR));
+    is_sram = ((block_addr >= NFC_SRAM_BASE_ADDR) && (last_block <= NFC_SRAM_END_ADDR));
+    if ((!is_eeprom) && (!is_sram))
+    {
+        APP_LOGE("NFC", "WriteMultiBlock range invalid start=0x%04X blocks=%u",
+                 (unsigned int)block_addr,
+                 (unsigned int)num_blocks);
+        return NFC_RESULT_ERROR_INVALID_PARAM;
+    }
+
+    if (num_blocks == 1U)
+        return NFC_NTP53321_WriteBlock(hntag, block_addr, data);
+
+    ret = nfc_i2c_mem_write(hntag,
+                            NFC_BLOCK_TO_I2C_ADDR(block_addr),
+                            data,
+                            num_blocks * NFC_EEPROM_BLOCK_SIZE);
+    if (ret == NFC_RESULT_OK)
+        return NFC_RESULT_OK;
+
+    APP_LOGW("NFC", "WriteMultiBlock burst failed start=0x%04X blocks=%u, fallback single-block",
+             (unsigned int)block_addr,
+             (unsigned int)num_blocks);
+
+    for (i = 0U; i < num_blocks; i++)
+    {
+        ret = NFC_NTP53321_WriteBlock(hntag,
+                                      (uint16_t)(block_addr + i),
+                                      &data[i * NFC_EEPROM_BLOCK_SIZE]);
+        if (ret != NFC_RESULT_OK)
+        {
+            APP_LOGE("NFC", "WriteMultiBlock fallback fail blk=0x%04X idx=%u ret=%d",
+                     (unsigned int)(block_addr + i),
+                     (unsigned int)i,
+                     (int)ret);
+            return ret;
+        }
+
+        if (is_eeprom)
+            HAL_Delay(2U);
+    }
+
+    return NFC_RESULT_OK;
 }
 
 /* ============================================================
@@ -540,7 +666,11 @@ static NFC_Result_t nfc_i2c_mem_write(NFC_NTP53321_Handle_t *h,
                                        const uint8_t *data, uint16_t len)
 {
     HAL_StatusTypeDef hal_ret;
+    uint32_t          hal_err;
     uint8_t           retry = 0U;
+
+    if ((h == NULL) || (h->hi2c == NULL) || (data == NULL) || (len == 0U))
+        return NFC_RESULT_ERROR_INVALID_PARAM;
 
     do {
         hal_ret = HAL_I2C_Mem_Write(h->hi2c,
@@ -551,9 +681,15 @@ static NFC_Result_t nfc_i2c_mem_write(NFC_NTP53321_Handle_t *h,
                                     NFC_NTP53321_I2C_TIMEOUT);
         if (hal_ret == HAL_OK) return NFC_RESULT_OK;
 
+        hal_err = HAL_I2C_GetError(h->hi2c);
         h->stats.i2c_error_count++;
-        APP_LOGE("NFC", "Mem_Write err addr=0x%04X retry=%u hal=%d",
-                 block_addr, (unsigned int)retry, (int)hal_ret);
+        APP_LOGE("NFC", "Mem_Write err addr=0x%04X len=%u retry=%u hal=%d err=0x%08lX state=%lu",
+                 (unsigned int)block_addr,
+                 (unsigned int)len,
+                 (unsigned int)retry,
+                 (int)hal_ret,
+                 (unsigned long)hal_err,
+                 (unsigned long)HAL_I2C_GetState(h->hi2c));
 
         if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
             return NFC_RESULT_ERROR_I2C_RETRY;
@@ -602,13 +738,12 @@ static NFC_Result_t nfc_i2c_mem_read(NFC_NTP53321_Handle_t *h,
  *   WRITE: [START][SL_AD+W][BL_AD1][BL_AD0][REGA][MASK][REGDAT][STOP]
  *   READ:  [START][SL_AD+W][BL_AD1][BL_AD0][REGA][rSTART][SL_AD+R][REGDAT][STOP]
  *
- * HAL_I2C_Mem_Write(addr, MemAddr=block_addr, MemAddrSize=16bit, pData=[REGA,MASK,REGDAT])
- * → 내부 패킷: [SL_AD+W][BL_AD1][BL_AD0][REGA][MASK][REGDAT]  ✅ 올바름
+ * WRITE REGISTER 패킷은 [BL_AD1][BL_AD0][REGA][MASK][REGDAT] 전체를
+ * 그대로 보내야 하므로 HAL_I2C_Master_Transmit() 으로 raw 전송합니다.
  *
- * HAL_I2C_Mem_Read(addr, MemAddr=(block_addr<<8)|reg_offset, MemAddrSize=16bit, ...)
- * → 내부 패킷: [SL_AD+W][(block_addr>>8)][(reg_offset)][(rSTART)][SL_AD+R][REGDAT]
- * 단, 16bit MemAddr에 block_addr 상위/하위를 그대로 넣으면 BL_AD0 위치에
- * reg_offset이 들어가 버리므로 READ는 별도로 3바이트 Transmit 후 Receive 사용.
+ * READ REGISTER 패킷은 [BL_AD1][BL_AD0][REGA] 전송 후,
+ * repeated start 로 1바이트를 읽어야 하므로
+ * Master_Transmit(3byte) + Master_Receive(1byte) 로 분리 구현합니다.
  * ============================================================ */
 static NFC_Result_t nfc_i2c_reg_write(NFC_NTP53321_Handle_t *h,
                                        uint16_t block_addr,
@@ -617,31 +752,38 @@ static NFC_Result_t nfc_i2c_reg_write(NFC_NTP53321_Handle_t *h,
                                        uint8_t  value)
 {
     HAL_StatusTypeDef hal_ret;
-    uint8_t           payload[3];
+    uint32_t          hal_err;
+    uint8_t           pkt[5];
     uint8_t           retry = 0U;
 
-    /* Data payload: [REGA][MASK][REGDAT] */
-    payload[0] = reg_offset;
-    payload[1] = mask;
-    payload[2] = value;
+    if ((h == NULL) || (h->hi2c == NULL))
+        return NFC_RESULT_ERROR_INVALID_PARAM;
 
-    /*
-     * HAL_I2C_Mem_Write 패킷:
-     * [SL_AD+W][block_addr MSB][block_addr LSB][REGA][MASK][REGDAT]
-     * 이것이 NXP WRITE REGISTER 패킷과 정확히 일치합니다.
-     */
+    pkt[0] = (uint8_t)(block_addr >> 8U);
+    pkt[1] = (uint8_t)(block_addr & 0xFFU);
+    pkt[2] = reg_offset;
+    pkt[3] = mask;
+    pkt[4] = value;
+
     do {
-        hal_ret = HAL_I2C_Mem_Write(h->hi2c,
-                                    NFC_NTP53321_I2C_ADDR,
-                                    block_addr,
-                                    I2C_MEMADD_SIZE_16BIT,
-                                    payload, 3U,
-                                    NFC_NTP53321_I2C_TIMEOUT);
-        if (hal_ret == HAL_OK) return NFC_RESULT_OK;
+        hal_ret = HAL_I2C_Master_Transmit(h->hi2c,
+                                          NFC_NTP53321_I2C_ADDR,
+                                          pkt, 5U,
+                                          NFC_NTP53321_I2C_TIMEOUT);
+        if (hal_ret == HAL_OK)
+            return NFC_RESULT_OK;
 
+        hal_err = HAL_I2C_GetError(h->hi2c);
         h->stats.i2c_error_count++;
-        APP_LOGE("NFC", "Reg_Write err blk=0x%04X rega=0x%02X retry=%u hal=%d",
-                 block_addr, reg_offset, (unsigned int)retry, (int)hal_ret);
+        APP_LOGE("NFC", "Reg_Write err blk=0x%04X rega=0x%02X mask=0x%02X val=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+                 (unsigned int)block_addr,
+                 (unsigned int)reg_offset,
+                 (unsigned int)mask,
+                 (unsigned int)value,
+                 (unsigned int)retry,
+                 (int)hal_ret,
+                 (unsigned long)hal_err,
+                 (unsigned long)HAL_I2C_GetState(h->hi2c));
 
         if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
             return NFC_RESULT_ERROR_I2C_RETRY;
@@ -659,6 +801,8 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
                                       uint8_t  *out_value)
 {
     HAL_StatusTypeDef hal_ret;
+    uint32_t          hal_err;
+    uint32_t          hal_state;
     uint8_t           cmd[3];
     uint8_t           retry = 0U;
 
@@ -676,26 +820,67 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
     cmd[2] = reg_offset;                      /* REGA   */
 
     do {
+        /*
+        APP_LOGD("NFC", "Reg_Read stage=TX start blk=0x%04X rega=0x%02X retry=%u",
+                 (unsigned int)block_addr,
+                 (unsigned int)reg_offset,
+                 (unsigned int)retry);
+        */
+
         hal_ret = HAL_I2C_Master_Transmit(h->hi2c,
                                           NFC_NTP53321_I2C_ADDR,
                                           cmd, 3U,
                                           NFC_NTP53321_I2C_TIMEOUT);
         if (hal_ret != HAL_OK) {
+            hal_err = HAL_I2C_GetError(h->hi2c);
+            hal_state = HAL_I2C_GetState(h->hi2c);
             h->stats.i2c_error_count++;
-            APP_LOGE("NFC", "Reg_Read TX err blk=0x%04X rega=0x%02X retry=%u hal=%d",
-                     block_addr, reg_offset, (unsigned int)retry, (int)hal_ret);
+            APP_LOGE("NFC", "Reg_Read TX err blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+                     (unsigned int)block_addr,
+                     (unsigned int)reg_offset,
+                     (unsigned int)retry,
+                     (int)hal_ret,
+                     (unsigned long)hal_err,
+                     (unsigned long)hal_state);
             goto retry_label;
         }
+
+        /*
+        APP_LOGD("NFC", "Reg_Read stage=TX ok blk=0x%04X rega=0x%02X retry=%u",
+                 (unsigned int)block_addr,
+                 (unsigned int)reg_offset,
+                 (unsigned int)retry);
+        APP_LOGD("NFC", "Reg_Read stage=RX start blk=0x%04X rega=0x%02X retry=%u",
+                 (unsigned int)block_addr,
+                 (unsigned int)reg_offset,
+                 (unsigned int)retry);
+        */
 
         hal_ret = HAL_I2C_Master_Receive(h->hi2c,
                                          NFC_NTP53321_I2C_ADDR,
                                          out_value, 1U,
                                          NFC_NTP53321_I2C_TIMEOUT);
-        if (hal_ret == HAL_OK) return NFC_RESULT_OK;
+        if (hal_ret == HAL_OK) {
+            /*
+            APP_LOGD("NFC", "Reg_Read stage=RX ok blk=0x%04X rega=0x%02X retry=%u val=0x%02X",
+                     (unsigned int)block_addr,
+                     (unsigned int)reg_offset,
+                     (unsigned int)retry,
+                     (unsigned int)(*out_value));
+            */
+            return NFC_RESULT_OK;
+        }
 
+        hal_err = HAL_I2C_GetError(h->hi2c);
+        hal_state = HAL_I2C_GetState(h->hi2c);
         h->stats.i2c_error_count++;
-        APP_LOGE("NFC", "Reg_Read RX err blk=0x%04X rega=0x%02X retry=%u hal=%d",
-                 block_addr, reg_offset, (unsigned int)retry, (int)hal_ret);
+        APP_LOGE("NFC", "Reg_Read RX err blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+                 (unsigned int)block_addr,
+                 (unsigned int)reg_offset,
+                 (unsigned int)retry,
+                 (int)hal_ret,
+                 (unsigned long)hal_err,
+                 (unsigned long)hal_state);
 
 retry_label:
         if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)

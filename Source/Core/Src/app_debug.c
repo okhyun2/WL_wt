@@ -15,6 +15,7 @@
 #include "app_meter_server_format.h"
 #include "app_aux.h"
 #include "app_nbiot.h"
+#include "app_nfc_seoul_format.h"
 
 #if (APP_BUILD_CLI_ENABLED == APP_TRUE)
 static const char g_appDebugPrompt[] = APP_DEBUG_CONSOLE_PROMPT;
@@ -185,6 +186,83 @@ static AppStatus_t App_DebugConsolePrintHexBuffer(const uint8_t *p_data, uint16_
         }
 
         APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    }
+
+    return APP_STATUS_OK;
+}
+
+static const char *App_DebugConsoleNfcReadSourceString(uint8_t source)
+{
+    switch (source)
+    {
+        case 1u: return "SRAM";
+        case 2u: return "EEPROM";
+        default: return "NONE";
+    }
+}
+
+static AppStatus_t App_DebugConsoleDumpNfcPayload(void)
+{
+    char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
+    const AppNfcSeoulDebugInfo_t *p_info;
+    int32_t formattedLength;
+
+    p_info = App_NfcSeoulGetDebugInfo();
+    APP_RETURN_IF_FALSE((p_info != NULL), APP_STATUS_NOT_INITIALIZED);
+
+    if (p_info->initialized != APP_TRUE)
+    {
+        return App_DebugConsoleWriteLine("nfcdump empty");
+    }
+
+    formattedLength = snprintf(txBuffer,
+                               sizeof(txBuffer),
+                               "nfcdump req=%lu rsp=%lu stor=%lu tick=%lu src=%s handled=%u comm=%u status=%u",
+                               (unsigned long)p_info->requestCount,
+                               (unsigned long)p_info->responseCount,
+                               (unsigned long)p_info->storageRefreshCount,
+                               (unsigned long)p_info->lastTickMs,
+                               App_DebugConsoleNfcReadSourceString(p_info->lastReadSource),
+                               (unsigned int)p_info->lastHandled,
+                               (unsigned int)p_info->lastCommRequested,
+                               (unsigned int)p_info->lastStatus);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+    formattedLength = snprintf(txBuffer,
+                               sizeof(txBuffer),
+                               "nfcdump req cmd=%02X%02X len=%u rsp cmd=%02X%02X len=%u",
+                               (unsigned int)p_info->lastRequestCmd1,
+                               (unsigned int)p_info->lastRequestCmd2,
+                               (unsigned int)p_info->lastRequestLength,
+                               (unsigned int)p_info->lastResponseCmd1,
+                               (unsigned int)p_info->lastResponseCmd2,
+                               (unsigned int)p_info->lastResponseLength);
+    APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine(txBuffer) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+
+    if (p_info->lastRequestLength != 0u)
+    {
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine("nfcdump request hex") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsolePrintHexBuffer(p_info->lastRequest,
+                                                           p_info->lastRequestLength) == APP_STATUS_OK,
+                            APP_STATUS_UART_TX_FAILED);
+    }
+    else
+    {
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine("nfcdump request hex empty") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    }
+
+    if (p_info->lastResponseLength != 0u)
+    {
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine("nfcdump response hex") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+        APP_RETURN_IF_FALSE(App_DebugConsolePrintHexBuffer(p_info->lastResponse,
+                                                           p_info->lastResponseLength) == APP_STATUS_OK,
+                            APP_STATUS_UART_TX_FAILED);
+    }
+    else
+    {
+        APP_RETURN_IF_FALSE(App_DebugConsoleWriteLine("nfcdump response hex empty") == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
     }
 
     return APP_STATUS_OK;
@@ -978,7 +1056,8 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         if (App_DebugConsoleWriteLine("nfc cmd|lp|uid           : show NFC command/lp/uid info") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("nfc init|wake|exchange   : control NFC FSM/module") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("nfc logout               : invalidate NFC session") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
-        if (App_DebugConsoleWriteLine("selftest                 : run self-test sequence") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+        if (App_DebugConsoleWriteLine("nfc dump                 : dump last Seoul NFC req/rsp payload") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
+         if (App_DebugConsoleWriteLine("selftest                 : run self-test sequence") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("selftest status          : show last self-test summary") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("nbiot                    : run nbiot-test sequence") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
         if (App_DebugConsoleWriteLine("mstor                    : show meter ring info and dump") != APP_STATUS_OK) { return APP_STATUS_UART_TX_FAILED; }
@@ -1270,6 +1349,12 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
                                    (unsigned long)App_DualBootGetTargetSlotAddress());
         APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
         return App_DebugConsoleWriteLine(txBuffer);
+    }
+
+    if ((strcmp(p_command, "nfc dump") == 0) ||
+        (strcmp(p_command, "nfc payload") == 0))
+    {
+        return App_DebugConsoleDumpNfcPayload();
     }
 
     if ((strcmp(p_command, "nfc") == 0) || (strncmp(p_command, "nfc ", 4) == 0))
