@@ -476,13 +476,17 @@ NFC_AUTH_Result_t NFC_AUTH_ProcessNFCEvent(NFC_AUTH_Handle_t *hauth,
     ret = auth_read_cmd(hauth, &cmd);
     if (ret != NFC_AUTH_RESULT_OK) return ret;
 
+
     APP_LOGI("NFC", "CMD=0x%02X state=%d", cmd, hauth->state);
+	
+    if (cmd == 0x00u)
+        return NFC_AUTH_RESULT_OK;
 
     switch (cmd) {
         case NFC_AUTH_CMD_CONNECT:  return auth_handle_connect(hauth);
         case NFC_AUTH_CMD_RESPONSE: return auth_handle_response(hauth);
         default:
-            APP_LOGI("NFC", "Unknown CMD 0x%02X", cmd);
+            APP_LOGW("NFC", "Unknown CMD 0x%02X", cmd);
             return NFC_AUTH_RESULT_INVALID_STATE;
     }
 }

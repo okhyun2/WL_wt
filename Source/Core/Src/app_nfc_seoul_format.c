@@ -762,7 +762,14 @@ static AppStatus_t App_NfcSeoulWritePayload(const uint8_t *p_payload, uint8_t pa
     if (sramStatus != APP_STATUS_OK)
     {
         g_appNfcSeoulSramSyncPending = APP_TRUE;
-        APP_LOGW("NFC", "Seoul NDEF SRAM write skipped/failed, EEPROM is valid (sram_status=%d)", (int)sramStatus);
+        if (sramStatus == APP_STATUS_NOT_INITIALIZED)
+        {
+            APP_LOGI("NFC", "Seoul NDEF SRAM sync deferred until NFC field detect, EEPROM is valid (sram_status=%d)", (int)sramStatus);
+        }
+        else
+        {
+            APP_LOGW("NFC", "Seoul NDEF SRAM write failed, EEPROM is valid (sram_status=%d)", (int)sramStatus);
+        }
     }
     else
     {
