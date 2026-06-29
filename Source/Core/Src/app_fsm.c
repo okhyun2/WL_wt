@@ -58,9 +58,6 @@ AppStatus_t App_NfcInit(void)
         return APP_STATUS_INIT_FAILED;
     }
 
-    //useless. use factory value: E1 40 10 00
-    (void)NFC_NTP53321_ConfigureCC(&g_nfcTagHandle);
-
     if (NFC_AUTH_Init(&g_nfcAuthHandle,
                       &g_nfcTagHandle,
                       g_nfcMasterKey,

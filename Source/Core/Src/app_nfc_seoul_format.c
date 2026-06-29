@@ -31,6 +31,7 @@
 
 #define APP_NFC_SEOUL_NDEF_EEPROM_BLOCK           (NFC_NDEF_START_BLOCK)
 #define APP_NFC_SEOUL_NDEF_SRAM_BLOCK             (NFC_SRAM_BASE_ADDR + 1u)
+#define APP_NFC_SEOUL_EEPROM_READY_TIMEOUT_MS     (30u)
 
 typedef struct
 {
@@ -398,6 +399,52 @@ static AppStatus_t App_NfcSeoulBuildNdefMessage(const uint8_t *p_payload,
     return APP_STATUS_OK;
 }
 
+static uint8_t App_NfcSeoulWaitEepromAccessReady(const char *p_stage, uint16_t blockAddr)
+{
+    uint32_t startTick;
+    uint8_t status0;
+    uint8_t status1;
+    uint8_t eeBusy;
+    uint8_t i2cLocked;
+
+    if ((g_appNfcSeoulAttached != APP_TRUE) || (g_appNfcSeoulTag == NULL))
+    {
+        return APP_FALSE;
+    }
+
+    startTick = HAL_GetTick();
+    status0 = 0u;
+    status1 = 0u;
+
+    while ((HAL_GetTick() - startTick) < APP_NFC_SEOUL_EEPROM_READY_TIMEOUT_MS)
+    {
+        if ((NFC_NTP53321_ReadSessionReg(g_appNfcSeoulTag,
+                                         NFC_SESSION_STATUS_ADDR,
+                                         0u,
+                                         &status0) == NFC_RESULT_OK) &&
+            (NFC_NTP53321_ReadSessionReg(g_appNfcSeoulTag,
+                                         NFC_SESSION_STATUS_ADDR,
+                                         1u,
+                                         &status1) == NFC_RESULT_OK))
+        {
+            eeBusy = ((status0 & NFC_STATUS0_EEPROM_WR_BUSY) != 0u) ? APP_TRUE : APP_FALSE;
+            i2cLocked = ((status1 & NFC_STATUS1_I2C_IF_LOCKED) != 0u) ? APP_TRUE : APP_FALSE;
+            if ((eeBusy == APP_FALSE) && (i2cLocked == APP_FALSE))
+            {
+                return APP_TRUE;
+            }
+        }
+        HAL_Delay(1u);
+    }
+
+    APP_LOGW("NFC", "Seoul EEPROM wait timeout stage=%s blk=0x%04X status0=0x%02X status1=0x%02X",
+             (p_stage != NULL) ? p_stage : "?",
+             (unsigned int)blockAddr,
+             (unsigned int)status0,
+             (unsigned int)status1);
+    return APP_FALSE;
+}
+
 static uint8_t App_NfcSeoulIsSramMirrorReady(void)
 {
     uint8_t status0;
@@ -511,7 +558,9 @@ static AppStatus_t App_NfcSeoulWriteNdefToBlock(uint16_t startBlock,
 {
     uint8_t verify[APP_NFC_SEOUL_NDEF_MAX_BYTES];
     uint16_t byteLength;
+    uint16_t blockIndex;
     NFC_Result_t ret;
+    uint8_t useSingleBlock;
 
     if ((g_appNfcSeoulAttached != APP_TRUE) || (g_appNfcSeoulTag == NULL) || (p_ndef == NULL) || (numBlocks == 0u) || (p_name == NULL))
     {
@@ -524,30 +573,77 @@ static AppStatus_t App_NfcSeoulWriteNdefToBlock(uint16_t startBlock,
         return APP_STATUS_BUFFER_OVERFLOW;
     }
 
-    ret = NFC_NTP53321_WriteMultiBlock(g_appNfcSeoulTag,
-                                       startBlock,
-                                       p_ndef,
-                                       numBlocks);
-    if (ret != NFC_RESULT_OK)
-    {
-        APP_LOGE("NFC", "Seoul %s write fail blk=0x%04X ret=%d",
-                 p_name,
-                 (unsigned int)startBlock,
-                 (int)ret);
-        return APP_STATUS_INIT_FAILED;
-    }
+    useSingleBlock = (startBlock == APP_NFC_SEOUL_NDEF_EEPROM_BLOCK) ? APP_TRUE : APP_FALSE;
 
-    ret = NFC_NTP53321_ReadMultiBlock(g_appNfcSeoulTag,
-                                      startBlock,
-                                      verify,
-                                      numBlocks);
-    if (ret != NFC_RESULT_OK)
+    if (useSingleBlock == APP_TRUE)
     {
-        APP_LOGE("NFC", "Seoul %s verify-read fail blk=0x%04X ret=%d",
-                 p_name,
-                 (unsigned int)startBlock,
-                 (int)ret);
-        return APP_STATUS_INIT_FAILED;
+        for (blockIndex = 0u; blockIndex < numBlocks; ++blockIndex)
+        {
+            if (App_NfcSeoulWaitEepromAccessReady("write", (uint16_t)(startBlock + blockIndex)) != APP_TRUE)
+            {
+                return APP_STATUS_INIT_FAILED;
+            }
+
+            ret = NFC_NTP53321_WriteBlock(g_appNfcSeoulTag,
+                                          (uint16_t)(startBlock + blockIndex),
+                                          &p_ndef[blockIndex * 4u]);
+            if (ret != NFC_RESULT_OK)
+            {
+                APP_LOGE("NFC", "Seoul %s single-block write fail blk=0x%04X ret=%d",
+                         p_name,
+                         (unsigned int)(startBlock + blockIndex),
+                         (int)ret);
+                return APP_STATUS_INIT_FAILED;
+            }
+        }
+
+        for (blockIndex = 0u; blockIndex < numBlocks; ++blockIndex)
+        {
+            if (App_NfcSeoulWaitEepromAccessReady("read", (uint16_t)(startBlock + blockIndex)) != APP_TRUE)
+            {
+                return APP_STATUS_INIT_FAILED;
+            }
+
+            ret = NFC_NTP53321_ReadBlock(g_appNfcSeoulTag,
+                                         (uint16_t)(startBlock + blockIndex),
+                                         &verify[blockIndex * 4u]);
+            if (ret != NFC_RESULT_OK)
+            {
+                APP_LOGE("NFC", "Seoul %s single-block verify-read fail blk=0x%04X ret=%d",
+                         p_name,
+                         (unsigned int)(startBlock + blockIndex),
+                         (int)ret);
+                return APP_STATUS_INIT_FAILED;
+            }
+        }
+    }
+    else
+    {
+        ret = NFC_NTP53321_WriteMultiBlock(g_appNfcSeoulTag,
+                                           startBlock,
+                                           p_ndef,
+                                           numBlocks);
+        if (ret != NFC_RESULT_OK)
+        {
+            APP_LOGE("NFC", "Seoul %s write fail blk=0x%04X ret=%d",
+                     p_name,
+                     (unsigned int)startBlock,
+                     (int)ret);
+            return APP_STATUS_INIT_FAILED;
+        }
+
+        ret = NFC_NTP53321_ReadMultiBlock(g_appNfcSeoulTag,
+                                          startBlock,
+                                          verify,
+                                          numBlocks);
+        if (ret != NFC_RESULT_OK)
+        {
+            APP_LOGE("NFC", "Seoul %s verify-read fail blk=0x%04X ret=%d",
+                     p_name,
+                     (unsigned int)startBlock,
+                     (int)ret);
+            return APP_STATUS_INIT_FAILED;
+        }
     }
 
     if (memcmp(verify, p_ndef, byteLength) != 0)
@@ -581,6 +677,21 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
     if (status != APP_STATUS_OK)
     {
         return status;
+    }
+
+    {
+        uint8_t status0;
+
+        status0 = 0u;
+        if ((NFC_NTP53321_ReadSessionReg(g_appNfcSeoulTag,
+                                         NFC_SESSION_STATUS_ADDR,
+                                         0u,
+                                         &status0) != NFC_RESULT_OK) ||
+            ((status0 & NFC_STATUS0_NFC_FIELD_OK) == 0u))
+        {
+            g_appNfcSeoulSramSyncPending = APP_TRUE;
+            return APP_STATUS_NOT_INITIALIZED;
+        }
     }
 
     nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, true);
