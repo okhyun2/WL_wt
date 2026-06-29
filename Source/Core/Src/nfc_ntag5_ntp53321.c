@@ -254,6 +254,7 @@ NFC_Result_t NFC_NTP53321_EnableSRAMMirror(NFC_NTP53321_Handle_t *hntag, bool en
 
     if ((status1 & NFC_STATUS1_I2C_IF_LOCKED) != 0u)
     {
+    APP_LOGE("NFC", "I2C_IF_LOCKED");
         return NFC_RESULT_ERROR_BUSY;
     }
 
@@ -290,6 +291,7 @@ NFC_Result_t NFC_NTP53321_EnableSRAMMirror(NFC_NTP53321_Handle_t *hntag, bool en
     arbiter = (uint8_t)(cfg1 & NFC_CONFIG1_ARBITER_MODE_MASK);
     if ((arbiter != value) || (enable && ((cfg1 & NFC_CONFIG1_SRAM_ENABLED) == 0u)))
     {
+        APP_LOGE("NFC", "SRAM_EN");
         return NFC_RESULT_ERROR_BUSY;
     }
 

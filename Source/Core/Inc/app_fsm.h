@@ -96,6 +96,8 @@ AppStatus_t App_FsmNfcCliExecute(const char *p_subcommand,
                                  char *p_response,
                                  uint16_t response_length);
 
+AppStatus_t App_NfcInit(void);
+
 #ifdef DEBUG
 #define APP_FSM_DEBUG_PRINT(module, fmt, ...)                         \
     do                                                                 \

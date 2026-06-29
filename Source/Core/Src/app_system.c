@@ -970,6 +970,7 @@ AppStatus_t App_SystemInit(void)
     App_MeterServerOptionsInfo();
 
     App_NBIoTAtInit();
+    App_NfcInit();
 
     status = App_SystemRunBootSelfTest();
     if (status != APP_STATUS_OK)

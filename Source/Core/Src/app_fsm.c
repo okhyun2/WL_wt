@@ -41,7 +41,12 @@ static void App_FsmNfcWakeupCallback(NFC_WakeupEvent_t event)
     g_nfcWakeEvent = event;
 }
 
+//KIKI TODO-del
+#if 0
 static AppStatus_t App_FsmNfcInitModule(void)
+#else
+AppStatus_t App_NfcInit(void)
+#endif
 {
     if (g_nfcReady == APP_TRUE)
     {
@@ -741,7 +746,8 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_HOUSEKEEPING_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_POWER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_METER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
-            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NFC_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            //KIKI TODO-- del
+            //APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NFC_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_AUX_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_SERVER_INIT, APP_FALSE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
@@ -840,6 +846,8 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_NFC_INIT:
+            //KIKI TODO-- del
+            #if 0
             if (App_FsmNfcInitModule() != APP_STATUS_OK)
             {
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_RELEASE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
@@ -850,6 +858,10 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
                 App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             }
+            #else
+                App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+                App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+                #endif
             break;
 
         case APP_FSM_STATE_NFC_WAIT_EVENT:
@@ -869,7 +881,10 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_NFC_EXCHANGE:
+            //KIKI TODO-del
+            #if 0
             APP_RETURN_IF_FALSE(App_FsmNfcInitModule() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+            #endif
             APP_RETURN_IF_FALSE(App_FsmNfcProcessWakeEvent() == APP_STATUS_OK, APP_STATUS_FATAL);
             //Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
@@ -1330,6 +1345,8 @@ AppStatus_t App_FsmNfcCliExecute(const char *p_subcommand,
         return APP_STATUS_OK;
     }
 
+    //KIKI TODO-del
+    #if 0
     if (strcmp(subcommand, "init") == 0)
     {
         AppStatus_t initStatus;
@@ -1341,6 +1358,7 @@ AppStatus_t App_FsmNfcCliExecute(const char *p_subcommand,
         APP_RETURN_IF_FALSE((written >= 0), APP_STATUS_INIT_FAILED);
         return initStatus;
     }
+    #endif
 
     if (strcmp(subcommand, "wake") == 0)
     {
