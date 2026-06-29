@@ -114,6 +114,8 @@ extern "C" {
 #define APP_NFC_TEMP_THRESHOLD_MAX_X10               (1250)
 #define APP_NFC_REPORT_INTERVAL_MIN_SEC              (10u)
 #define APP_NFC_REPORT_INTERVAL_MAX_SEC              (86400u)
+#define APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE      (0u) //0:disable, 1:enable
+#define APP_NFC_TEST_MODE_REFRESH_MS                (100u)
 
 #define APP_FSM_USE_WFI_IDLE                        (APP_TRUE)
 #define APP_FSM_IDLE_DELAY_MS                       (1u)
@@ -121,7 +123,11 @@ extern "C" {
 #define APP_FSM_DEBUG_POLL_PERIOD_MS                (1u)
 #define APP_FSM_HOUSEKEEPING_PERIOD_MS              (500u)
 #define APP_FSM_METER_PERIOD_MS                     (500u)
+#if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
+#define APP_FSM_NFC_PERIOD_MS                       (APP_NFC_TEST_MODE_REFRESH_MS)
+#else
 #define APP_FSM_NFC_PERIOD_MS                       (500u)
+#endif
 #define APP_FSM_AUX_PERIOD_MS                       (1000u)
 #define APP_FSM_NBIOT_PERIOD_MS                     (500u)
 #define APP_FSM_SERVER_PERIOD_MS                    (1000u)

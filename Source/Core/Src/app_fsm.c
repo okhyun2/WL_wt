@@ -870,6 +870,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             }
             else
             {
+                (void)App_NfcSeoulServiceTestMode();
                 //Clear eventPending
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
 

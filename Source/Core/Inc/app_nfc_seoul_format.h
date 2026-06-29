@@ -45,6 +45,7 @@ AppStatus_t App_NfcSeoulInit(NFC_NTP53321_Handle_t *p_tag);
 AppStatus_t App_NfcSeoulProcessTag(AppNfcSeoulProcessResult_t *p_result);
 AppStatus_t App_NfcSeoulNotifyStorageChanged(void);
 AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void);
+AppStatus_t App_NfcSeoulServiceTestMode(void);
 const AppNfcSeoulDebugInfo_t *App_NfcSeoulGetDebugInfo(void);
 
 #ifdef __cplusplus

@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "app_build_config.h"
+#include "app_hw.h"
 #include "app_log.h"
 #include "app_meter_server_format.h"
 #include "app_meter_storage.h"
@@ -32,6 +33,9 @@
 #define APP_NFC_SEOUL_NDEF_EEPROM_BLOCK           (NFC_NDEF_START_BLOCK)
 #define APP_NFC_SEOUL_NDEF_SRAM_BLOCK             (NFC_SRAM_BASE_ADDR + 1u)
 #define APP_NFC_SEOUL_EEPROM_READY_TIMEOUT_MS     (30u)
+#define APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET (6u)
+#define APP_NFC_SEOUL_STOR_RES_READING_TIME_OFFSET (12u)
+#define APP_NFC_SEOUL_STOR_RES_RECORD_COUNT_OFFSET (18u)
 
 typedef struct
 {
@@ -59,6 +63,10 @@ static uint8_t g_appNfcSeoulAttached;
 static uint8_t g_appNfcSeoulPayloadDirty;
 static uint8_t g_appNfcSeoulSramSyncPending;
 static AppNfcSeoulDebugInfo_t g_appNfcSeoulDebugInfo;
+#if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
+static uint32_t g_appNfcSeoulTestModeLastRefreshTickMs;
+static uint8_t g_appNfcSeoulTestModeCounter;
+#endif
 
 static void App_NfcSeoulDebugStorePayload(uint8_t *p_dst, uint8_t *p_lengthDst, const uint8_t *p_src, uint8_t srcLength)
 {
@@ -275,6 +283,46 @@ static void App_NfcSeoulBuildSnapshot(AppNfcSeoulSnapshot_t *p_snapshot)
     {
         p_snapshot->commState = APP_NFC_SEOUL_COMM_OFF;
     }
+}
+
+static void App_NfcSeoulReadTestTimestamp(uint8_t ts[6])
+{
+    RTC_TimeTypeDef sTime = {0};
+    RTC_DateTypeDef sDate = {0};
+
+    if ((ts == NULL) ||
+        (HAL_RTC_GetTime(APP_RTC_HANDLE, &sTime, RTC_FORMAT_BIN) != HAL_OK) ||
+        (HAL_RTC_GetDate(APP_RTC_HANDLE, &sDate, RTC_FORMAT_BIN) != HAL_OK))
+    {
+        return;
+    }
+
+    ts[0] = sDate.Year;
+    ts[1] = sDate.Month;
+    ts[2] = sDate.Date;
+    ts[3] = sTime.Hours;
+    ts[4] = sTime.Minutes;
+    ts[5] = sTime.Seconds;
+}
+
+static void App_NfcSeoulApplyTestModeLiveFields(uint8_t *p_payload, uint8_t payloadLength)
+{
+#if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
+    uint8_t ts[6] = {0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu};
+
+    if ((p_payload == NULL) || (payloadLength <= APP_NFC_SEOUL_STOR_RES_RECORD_COUNT_OFFSET))
+    {
+        return;
+    }
+
+    App_NfcSeoulReadTestTimestamp(ts);
+    (void)memcpy(&p_payload[APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET], ts, sizeof(ts));
+    (void)memcpy(&p_payload[APP_NFC_SEOUL_STOR_RES_READING_TIME_OFFSET], ts, sizeof(ts));
+    p_payload[APP_NFC_SEOUL_STOR_RES_RECORD_COUNT_OFFSET] = g_appNfcSeoulTestModeCounter++;
+#else
+    (void)p_payload;
+    (void)payloadLength;
+#endif
 }
 
 static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_payload, uint8_t payloadCapacity, uint8_t *p_payloadLength)
@@ -860,6 +908,10 @@ AppStatus_t App_NfcSeoulInit(NFC_NTP53321_Handle_t *p_tag)
     g_appNfcSeoulAttached = APP_TRUE;
     g_appNfcSeoulPayloadDirty = APP_TRUE;
     g_appNfcSeoulSramSyncPending = APP_TRUE;
+#if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
+    g_appNfcSeoulTestModeLastRefreshTickMs = 0u;
+    g_appNfcSeoulTestModeCounter = 0u;
+#endif
     (void)memset(&g_appNfcSeoulDebugInfo, 0, sizeof(g_appNfcSeoulDebugInfo));
 
     return APP_STATUS_OK;
@@ -892,6 +944,10 @@ AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void)
         return status;
     }
 
+#if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
+    App_NfcSeoulApplyTestModeLiveFields(payload, payloadLength);
+#endif
+
     status = App_NfcSeoulWriteSramPayloadOnly(payload, payloadLength);
     if (status == APP_STATUS_OK)
     {
@@ -907,6 +963,65 @@ AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void)
     }
 
     return status;
+}
+
+AppStatus_t App_NfcSeoulServiceTestMode(void)
+{
+#if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
+    uint8_t payload[40];
+    uint8_t payloadLength;
+    uint8_t status0;
+    uint32_t nowTick;
+    AppStatus_t status;
+
+    if ((g_appNfcSeoulAttached != APP_TRUE) || (g_appNfcSeoulTag == NULL))
+    {
+        return APP_STATUS_OK;
+    }
+
+    nowTick = HAL_GetTick();
+    if ((nowTick - g_appNfcSeoulTestModeLastRefreshTickMs) < APP_NFC_TEST_MODE_REFRESH_MS)
+    {
+        return APP_STATUS_OK;
+    }
+
+    status0 = 0u;
+    if ((NFC_NTP53321_ReadSessionReg(g_appNfcSeoulTag,
+                                     NFC_SESSION_STATUS_ADDR,
+                                     0u,
+                                     &status0) != NFC_RESULT_OK) ||
+        ((status0 & NFC_STATUS0_NFC_FIELD_OK) == 0u))
+    {
+        return APP_STATUS_OK;
+    }
+
+    status = App_NfcSeoulBuildResponsePayload(APP_NFC_SEOUL_CMD_STOR_RES,
+                                              payload,
+                                              (uint8_t)sizeof(payload),
+                                              &payloadLength);
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    App_NfcSeoulApplyTestModeLiveFields(payload, payloadLength);
+    status = App_NfcSeoulWriteSramPayloadOnly(payload, payloadLength);
+    if (status == APP_STATUS_OK)
+    {
+        APP_LOGI("NFC", "test refresh cnt=%u, ts=%02u%02u%02u%02u%02u%02u",
+                 (unsigned int)payload[APP_NFC_SEOUL_STOR_RES_RECORD_COUNT_OFFSET],
+                 (unsigned int)payload[APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET + 0u],
+                 (unsigned int)payload[APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET + 1u],
+                 (unsigned int)payload[APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET + 2u],
+                 (unsigned int)payload[APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET + 3u],
+                 (unsigned int)payload[APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET + 4u],
+                 (unsigned int)payload[APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET + 5u]);
+        g_appNfcSeoulTestModeLastRefreshTickMs = nowTick;
+    }
+    return status;
+#else
+    return APP_STATUS_OK;
+#endif
 }
 
 AppStatus_t App_NfcSeoulNotifyStorageChanged(void)
