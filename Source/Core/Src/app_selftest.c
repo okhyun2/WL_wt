@@ -10,6 +10,7 @@
 #include "app_nbiot.h"
 #include "app_log.h"
 
+#ifdef SUPPORT_SELFTEST
 /**
  * @file    app_selftest.c
  * @brief   Boot-time peripheral initialization/check pseudo-code runner.
@@ -643,3 +644,5 @@ const AppSelfTestContext_t *App_SelfTestGetContext(void)
 {
     return &g_appSelfTestContext;
 }
+
+#endif // SUPPORT_SELFTEST

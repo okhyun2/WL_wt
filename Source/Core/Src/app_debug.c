@@ -34,6 +34,7 @@ static AppStatus_t App_DebugConsoleWriteLine(const char *p_text);
 static AppStatus_t App_DebugConsoleStartRxInterrupt(void);
 static uint8_t App_DebugConsolePopRxByte(uint8_t *p_rxByte);
 static void App_DebugConsolePushRxByteFromIsr(uint8_t rxByte);
+#ifdef SUPPORT_SELFTEST
 static AppStatus_t App_DebugConsolePrintSelfTestSummary(const char *p_prefix)
 {
     char txBuffer[APP_DEBUG_CONSOLE_TX_BUFFER_SIZE];
@@ -55,6 +56,7 @@ static AppStatus_t App_DebugConsolePrintSelfTestSummary(const char *p_prefix)
     APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
     return App_DebugConsoleWriteLine(txBuffer);
 }
+#endif // SUPPORT_SELFTEST
 
 static AppStatus_t App_DebugConsolePrintMeterStorageSummary(void)
 {
@@ -1247,6 +1249,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
         return APP_STATUS_OK;
     }
 
+#ifdef SUPPORT_SELFTEST
     if (strcmp(p_command, "selftest") == 0)
     {
         status = App_SelfTestRunBootSequence();
@@ -1261,6 +1264,7 @@ static AppStatus_t App_DebugConsoleExecuteCommand(const char *p_command)
     {
         return App_DebugConsolePrintSelfTestSummary("selftest");
     }
+#endif // SUPPORT_SELFTEST
 
     if (strcmp(p_command, "nbiot") == 0)
     {

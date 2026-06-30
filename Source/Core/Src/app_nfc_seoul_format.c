@@ -32,7 +32,8 @@
 
 #define APP_NFC_SEOUL_NDEF_EEPROM_BLOCK           (NFC_NDEF_START_BLOCK)
 #define APP_NFC_SEOUL_NDEF_SRAM_BLOCK             (NFC_SRAM_BASE_ADDR + 1u)
-#define APP_NFC_SEOUL_EEPROM_READY_TIMEOUT_MS     (30u)
+#define APP_NFC_SEOUL_EEPROM_SETTLE_DELAY_MS      (5u)
+#define APP_NFC_SEOUL_EEPROM_BLOCK_DELAY_MS       (2u)
 #define APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET (6u)
 #define APP_NFC_SEOUL_STOR_RES_READING_TIME_OFFSET (12u)
 #define APP_NFC_SEOUL_STOR_RES_RECORD_COUNT_OFFSET (18u)
@@ -447,6 +448,21 @@ static AppStatus_t App_NfcSeoulBuildNdefMessage(const uint8_t *p_payload,
     return APP_STATUS_OK;
 }
 
+#if 1
+static uint8_t App_NfcSeoulWaitEepromAccessReady(const char *p_stage, uint16_t blockAddr)
+{
+    (void)p_stage;
+    (void)blockAddr;
+
+    if ((g_appNfcSeoulAttached != APP_TRUE) || (g_appNfcSeoulTag == NULL))
+    {
+        return APP_FALSE;
+    }
+
+    HAL_Delay(APP_NFC_SEOUL_EEPROM_BLOCK_DELAY_MS);
+    return APP_TRUE;
+}
+#else
 static uint8_t App_NfcSeoulWaitEepromAccessReady(const char *p_stage, uint16_t blockAddr)
 {
     uint32_t startTick;
@@ -492,6 +508,7 @@ static uint8_t App_NfcSeoulWaitEepromAccessReady(const char *p_stage, uint16_t b
              (unsigned int)status1);
     return APP_FALSE;
 }
+#endif
 
 static uint8_t App_NfcSeoulIsSramMirrorReady(void)
 {
@@ -764,6 +781,55 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
     return status;
 }
 
+static AppStatus_t App_NfcSeoulWritePayloadEepromOnly(const uint8_t *p_payload, uint8_t payloadLength)
+{
+    uint8_t ndef[APP_NFC_SEOUL_NDEF_MAX_BYTES];
+    uint16_t numBlocks;
+    AppStatus_t status;
+    AppStatus_t eepromStatus;
+    NFC_Result_t nfcRet;
+
+    if ((g_appNfcSeoulAttached != APP_TRUE) || (g_appNfcSeoulTag == NULL) || (p_payload == NULL))
+    {
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    status = App_NfcSeoulBuildNdefMessage(p_payload,
+                                          payloadLength,
+                                          ndef,
+                                          (uint16_t)sizeof(ndef),
+                                          &numBlocks);
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, false);
+    if (nfcRet != NFC_RESULT_OK)
+    {
+        APP_LOGW("NFC", "Seoul SRAM mirror disable returned %d before EEPROM write", (int)nfcRet);
+    }
+    HAL_Delay(APP_NFC_SEOUL_EEPROM_SETTLE_DELAY_MS);
+    eepromStatus = App_NfcSeoulWriteNdefToBlock(APP_NFC_SEOUL_NDEF_EEPROM_BLOCK,
+                                                ndef,
+                                                numBlocks,
+                                                "EEPROM");
+
+    if (eepromStatus != APP_STATUS_OK)
+    {
+        APP_LOGE("NFC", "Seoul NDEF EEPROM write failed");
+        return APP_STATUS_INIT_FAILED;
+    }
+
+    g_appNfcSeoulSramSyncPending = APP_TRUE;
+    APP_LOGI("NFC", "Seoul NDEF SRAM sync deferred until NFC field detect");
+    APP_LOGI("NFC", "Seoul NDEF updated cmd=%02X%02X len=%u",
+             (unsigned int)p_payload[0],
+             (unsigned int)p_payload[1],
+             (unsigned int)payloadLength);
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_NfcSeoulWritePayload(const uint8_t *p_payload, uint8_t payloadLength)
 {
     uint8_t ndef[APP_NFC_SEOUL_NDEF_MAX_BYTES];
@@ -793,7 +859,7 @@ static AppStatus_t App_NfcSeoulWritePayload(const uint8_t *p_payload, uint8_t pa
     {
         APP_LOGW("NFC", "Seoul SRAM mirror disable returned %d before EEPROM write", (int)nfcRet);
     }
-    HAL_Delay(2U);
+    HAL_Delay(APP_NFC_SEOUL_EEPROM_SETTLE_DELAY_MS);
     eepromStatus = App_NfcSeoulWriteNdefToBlock(APP_NFC_SEOUL_NDEF_EEPROM_BLOCK,
                                                 ndef,
                                                 numBlocks,
@@ -1041,7 +1107,7 @@ AppStatus_t App_NfcSeoulNotifyStorageChanged(void)
         return status;
     }
 
-    status = App_NfcSeoulWritePayload(payload, payloadLength);
+    status = App_NfcSeoulWritePayloadEepromOnly(payload, payloadLength);
     if (status == APP_STATUS_OK)
     {
         g_appNfcSeoulPayloadDirty = APP_FALSE;

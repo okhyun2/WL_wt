@@ -540,6 +540,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     return APP_STATUS_OK;
 }
 
+#ifdef SUPPORT_SELFTEST
 AppStatus_t App_SystemRunBootSelfTest(void)
 {
     AppStatus_t status;
@@ -573,6 +574,7 @@ AppStatus_t App_SystemRunBootSelfTest(void)
 
     return APP_STATUS_OK;
 }
+#endif // SUPPORT_SELFTEST
 
 static AppStatus_t App_SystemInitFsm(void)
 {
@@ -972,11 +974,13 @@ AppStatus_t App_SystemInit(void)
     App_NBIoTAtInit();
     App_NfcInit();
 
+#ifdef SUPPORT_SELFTEST
     status = App_SystemRunBootSelfTest();
     if (status != APP_STATUS_OK)
     {
         return status;
     }
+#endif // SUPPORT_SELFTEST
 
     status = App_SystemInitFsm();
     if (status != APP_STATUS_OK)

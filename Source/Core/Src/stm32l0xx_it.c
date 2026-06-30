@@ -63,14 +63,18 @@ extern void App_FsmNfcEdIrqHandler(void);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   App_DebugConsoleOnUartRxCompleteIsr(huart);
+#ifdef SUPPORT_SELFTEST
   App_SelfTestOnUartRxCompleteIsr(huart);
+#endif // SUPPORT_SELFTEST
   App_Bc95AtOnUartRxCompleteIsr(huart);
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
   App_DebugConsoleOnUartErrorIsr(huart);
+#ifdef SUPPORT_SELFTEST
   App_SelfTestOnUartErrorIsr(huart);
+#endif // SUPPORT_SELFTEST
   App_Bc95AtOnUartErrorIsr(huart);
 }
 
