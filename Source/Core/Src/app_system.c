@@ -562,6 +562,27 @@ AppStatus_t App_SystemRunBootSelfTest(void)
     if (status == APP_STATUS_OK)
     {
         APP_LOGI("SELF", "------ Boot self-test finished without failures");
+
+#ifdef SUPPORT_SELFTEST_SENDNBIOT
+        {
+            (void)App_SystemSetNbiotPowered(APP_TRUE);
+
+            APP_WWDGFeed();
+            APP_RETURN_IF_FALSE(App_NBIoTBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+            APP_WWDGFeed();
+            APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+            APP_WWDGFeed();
+            App_NBIoTReadIdentity(APP_TRUE);
+            App_NBIoTReadQuality(APP_TRUE);
+
+            APP_WWDGFeed();
+            App_NBIoTTransmitUdp();
+            APP_WWDGFeed();
+
+            (void)App_SystemSetNbiotPowered(APP_FALSE);
+        }
+#endif // SUPPORT_SELFTEST_SENDNBIOT
+
         return APP_STATUS_OK;
     }
 

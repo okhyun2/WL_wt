@@ -295,7 +295,7 @@ AppStatus_t App_MeterStoragePush(const AppMeterStorageRecord_t *p_record)
     AppMeterStorageRecord_t temp;
     uint8_t writeIndex;
 
-    APP_LOGI("MSTOR", "save count=%u/%u(%s)", App_MeterStorageCount(), APP_METER_STORAGE_MAX_RECORDS,
+    APP_LOGI("MSTOR", "current saved count=%u/%u(%s)", App_MeterStorageCount(), APP_METER_STORAGE_MAX_RECORDS,
         (App_MeterStorageCount() == APP_METER_STORAGE_MAX_RECORDS) ? "rolling":"static");
 
     if (App_MeterStorageIsInitialized() != APP_TRUE)
@@ -326,6 +326,10 @@ AppStatus_t App_MeterStoragePush(const AppMeterStorageRecord_t *p_record)
 
     g_appMeterStorageContext.info.nextSeq++;
     APP_RETURN_IF_FALSE(App_MeterStorageCommitMeta() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+
+    APP_LOGI("MSTOR", "save count=%u/%u(%s)", App_MeterStorageCount(), APP_METER_STORAGE_MAX_RECORDS,
+        (App_MeterStorageCount() == APP_METER_STORAGE_MAX_RECORDS) ? "rolling":"static");
+
     return APP_STATUS_OK;
 }
 

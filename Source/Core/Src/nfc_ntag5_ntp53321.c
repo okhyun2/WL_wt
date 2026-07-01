@@ -240,26 +240,26 @@ NFC_Result_t NFC_NTP53321_EnableSRAMMirror(NFC_NTP53321_Handle_t *hntag, bool en
 
     value = enable ? NFC_CONFIG1_ARBITER_SRAM_MIRROR : NFC_CONFIG1_ARBITER_NORMAL;
 
-    ret = NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 0U, &status0);
-    if (ret != NFC_RESULT_OK)
-    {
-        return ret;
-    }
-
-    ret = NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 1U, &status1);
-    if (ret != NFC_RESULT_OK)
-    {
-        return ret;
-    }
-
-    if ((status1 & NFC_STATUS1_I2C_IF_LOCKED) != 0u)
-    {
-    APP_LOGE("NFC", "I2C_IF_LOCKED");
-        return NFC_RESULT_ERROR_BUSY;
-    }
-
     if (enable)
     {
+        ret = NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 0U, &status0);
+        if (ret != NFC_RESULT_OK)
+        {
+            return ret;
+        }
+
+        ret = NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 1U, &status1);
+        if (ret != NFC_RESULT_OK)
+        {
+            return ret;
+        }
+
+        if ((status1 & NFC_STATUS1_I2C_IF_LOCKED) != 0u)
+        {
+            APP_LOGE("NFC", "I2C_IF_LOCKED");
+            return NFC_RESULT_ERROR_BUSY;
+        }
+
         if (((status0 & NFC_STATUS0_VCC_SUPPLY_OK) == 0u) ||
             ((status0 & NFC_STATUS0_NFC_FIELD_OK) == 0u) ||
             ((status1 & NFC_STATUS1_VCC_BOOT_OK) == 0u) ||

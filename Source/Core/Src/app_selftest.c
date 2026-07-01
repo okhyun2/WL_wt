@@ -382,6 +382,7 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
+#ifndef SUPPORT_SELFTEST_SENDNBIOT
 static AppStatus_t App_SelfTestCheckNbiot(void)
 {
     AppStatus_t status = APP_STATUS_OK;
@@ -403,6 +404,7 @@ static AppStatus_t App_SelfTestCheckNbiot(void)
 
     return status;
 }
+#endif // SUPPORT_SELFTEST_NBIOT
 
 /**
  * @brief Shared I2C pseudo/real ready check.
@@ -567,7 +569,9 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_DEBUG_UART, App_SelfTestCheckDebugUart);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
     //App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
+#ifndef SUPPORT_SELFTEST_SENDNBIOT
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiot);
+#endif // SUPPORT_SELFTEST_SENDNBIOT
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);
