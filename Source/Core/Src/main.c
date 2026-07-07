@@ -158,7 +158,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_ADC_Init();
-  MX_LPTIM1_Init();
+  //MX_LPTIM1_Init();
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
   if (App_SystemInit() != APP_STATUS_OK)
@@ -207,9 +207,11 @@ void SystemClock_Config(void)
   */
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
+  #if 0 //kiki TODO del
   // reset backup domain. 
   __HAL_RCC_BACKUPRESET_FORCE();
   __HAL_RCC_BACKUPRESET_RELEASE();
+  #endif
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.

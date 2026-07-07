@@ -291,6 +291,8 @@ AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTTransmitUdp(void);
 
+AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime);
+
 #ifdef __cplusplus
 }
 #endif

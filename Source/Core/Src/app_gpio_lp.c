@@ -621,7 +621,11 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
 
         //App_GpioLpConfigAnalogNoPull(Meter_TX_GPIO_Port, Meter_TX_Pin | Meter_RX_Pin);
         //Set UART pint to output low for buffer IC. If uart pin input, buffer ic unstable increase current.
-        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin | Meter_RX_Pin, GPIO_PIN_RESET);
+
+        //App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin | Meter_RX_Pin, GPIO_PIN_RESET);
+        //kiki0000. recommend by han
+        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+        App_GpioLpConfigAnalogNoPull(Meter_TX_GPIO_Port, Meter_RX_Pin);
     }
 
     //NFC SCL/SDA pin
@@ -643,7 +647,9 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
 	
     //Piezo pin
     {
-        App_GpioLpConfigAnalogNoPull(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin);
+        //App_GpioLpConfigAnalogNoPull(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin);
+        //kiki0000. recommend by han
+        App_GpioLpConfigOutput(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
     }
 
     //WD_Feed pin

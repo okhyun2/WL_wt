@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
 #include "app_error.h"
 
 /**
@@ -88,6 +89,10 @@ void RTC_SetTime(int year, int month, int date, int hour, int min, int sec);
 AppStatus_t RTC_GetTime(AppDateTime_t *pDateTime);
 AppStatus_t RTC_PrintTime(void);
 uint64_t RTC_GetTimeMs(void);
+static inline uint8_t IsUpdatedRTC(void)
+{
+    return (RTC->ISR & RTC_ISR_INITS) != 0u;
+}
 
 #ifdef __cplusplus
 }

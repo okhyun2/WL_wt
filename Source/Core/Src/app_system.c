@@ -926,8 +926,10 @@ AppStatus_t App_SystemInit(void)
         return status;
     }
 
+  #if 0 //kiki TODO del
     //Set default RTC Set
     RTC_SetTime(APP_DEFAULT_RTC_YEAR, APP_DEFAULT_RTC_MONTH, APP_DEFAULT_RTC_DAY, APP_DEFAULT_RTC_HOUR, APP_DEFAULT_RTC_MIN, APP_DEFAULT_RTC_SEC);
+#endif
 
     status = App_SystemInitLowPowerGpio();
     if (status != APP_STATUS_OK)

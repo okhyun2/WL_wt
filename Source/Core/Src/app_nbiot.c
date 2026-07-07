@@ -8,6 +8,7 @@
 #include "app_nbiot.h"
 #include "app_gpio_lp.h"
 #include "app_log.h"
+#include "app_clock.h"
 #include "app_meter_storage.h"
 #include "app_meter_server_format.h"
 
@@ -3114,9 +3115,10 @@ AppStatus_t App_Bc95AtEnableAutoTimezone(void)
  * ============================================================ */
 AppStatus_t App_Bc95AtSyncTimeToRtc(void)
 {
-    AppStatus_t status;
     AppBc95Time_t timeInfo;
 
+  #if 0 //kiki TODO del
+    AppStatus_t status;
     status = App_Bc95AtFetchTimeWithRetry(&timeInfo, APP_BC95_TIME_SYNC_RETRY_MAX);
     if (status != APP_STATUS_OK)
     {
@@ -3146,6 +3148,153 @@ AppStatus_t App_Bc95AtSyncTimeToRtc(void)
              (unsigned)(timeInfo.dateTime.year - 2000u),
              (unsigned)timeInfo.dateTime.month, (unsigned)timeInfo.dateTime.day,
              (unsigned)timeInfo.dateTime.hour, (unsigned)timeInfo.dateTime.minute, (unsigned)timeInfo.dateTime.second);
+
+    return APP_STATUS_OK;
+
+  #else
+if ((App_Bc95AtFetchTimeWithRetry(&timeInfo, APP_BC95_TIME_SYNC_RETRY_MAX) == APP_STATUS_OK) &&
+    (timeInfo.valid != 0u))
+{
+    return App_ClockSyncFromNbiot(&timeInfo);   /* INITS/오차 판단 + 타임존 반영 */
+}
+return APP_STATUS_FATAL;
+#endif
+
+}
+
+#ifndef APP_RTC_SYNC_THRESHOLD_SEC
+#define APP_RTC_SYNC_THRESHOLD_SEC   (30)   /* 이 값(초) 초과 시 RTC 재설정 */
+#endif
+
+/* --- 시각 <-> epoch 변환  */
+/* AppDateTime_t → 2000-01-01 기준 경과 초. 시각 비교 전용(윤년 반영) */
+static int64_t App_DateTimeToEpoch(const AppDateTime_t *dt)
+{
+    static const uint16_t daysBeforeMonth[12] =
+        { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334 };
+    int64_t days = 0;
+    uint16_t y;
+
+    for (y = 2000u; y < dt->year; y++)
+    {
+        uint8_t leap = (((y % 4u) == 0u) && (((y % 100u) != 0u) || ((y % 400u) == 0u))) ? 1u : 0u;
+        days += (365 + leap);
+    }
+    if ((dt->month >= 1u) && (dt->month <= 12u))
+    {
+        days += daysBeforeMonth[dt->month - 1u];
+        if (dt->month > 2u)
+        {
+            uint8_t leap = (((dt->year % 4u) == 0u) &&
+                            (((dt->year % 100u) != 0u) || ((dt->year % 400u) == 0u))) ? 1u : 0u;
+            days += leap;
+        }
+    }
+    days += (dt->day - 1);
+
+    return (days * 86400LL) + ((int64_t)dt->hour * 3600LL)
+         + ((int64_t)dt->minute * 60LL) + (int64_t)dt->second;
+}
+
+/* epoch 초 → AppDateTime_t (역변환). 타임존 보정 결과를 다시 년/월/일로 */
+static void App_EpochToDateTime(int64_t epoch, AppDateTime_t *dt)
+{
+    static const uint8_t mdaysNorm[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    int64_t days = epoch / 86400LL;
+    int64_t rem  = epoch % 86400LL;
+    uint16_t y = 2000u;
+
+    if (rem < 0) { rem += 86400LL; days -= 1; }
+
+    dt->hour   = (uint8_t)(rem / 3600LL);
+    dt->minute = (uint8_t)((rem % 3600LL) / 60LL);
+    dt->second = (uint8_t)(rem % 60LL);
+
+    for (;;)
+    {
+        uint8_t leap = (((y % 4u) == 0u) && (((y % 100u) != 0u) || ((y % 400u) == 0u))) ? 1u : 0u;
+        int64_t yearDays = 365 + leap;
+        if (days < yearDays) break;
+        days -= yearDays;
+        y++;
+    }
+    dt->year = y;
+
+    {
+        uint8_t m;
+        uint8_t leap = (((y % 4u) == 0u) && (((y % 100u) != 0u) || ((y % 400u) == 0u))) ? 1u : 0u;
+        for (m = 0u; m < 12u; m++)
+        {
+            uint8_t dmax = mdaysNorm[m] + (((m == 1u) && leap) ? 1u : 0u);
+            if (days < dmax) break;
+            days -= dmax;
+        }
+        dt->month = (uint8_t)(m + 1u);
+        dt->day   = (uint8_t)(days + 1);
+    }
+}
+
+/**
+ * @brief NB-IoT CCLK 시각을 타임존 보정 후 RTC와 비교하여,
+ *        RTC가 미설정(INITS=0)이거나 오차가 임계값을 넘으면 RTC를 설정한다.
+ */
+AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime)
+{
+    AppDateTime_t rtcTime;
+    int64_t nbEpoch;
+    int64_t diff;
+    uint8_t needSet = 0u;
+
+    APP_RETURN_IF_FALSE((nbTime != NULL) && (nbTime->valid != 0u), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(nbTime->dateTime.year >= APP_BC95_TIME_MIN_VALID_YEAR, APP_STATUS_INVALID_PARAM);
+
+    APP_LOGI("NBIOT", "Get Module time: %04u-%02u-%02u %02u:%02u:%02u (TZ=%+d/15min)",
+             (unsigned)nbTime->dateTime.year, (unsigned)nbTime->dateTime.month, (unsigned)nbTime->dateTime.day,
+             (unsigned)nbTime->dateTime.hour, (unsigned)nbTime->dateTime.minute, (unsigned)nbTime->dateTime.second,
+             (int)nbTime->tzQuarterHour);
+
+    nbEpoch = App_DateTimeToEpoch(&nbTime->dateTime);
+
+    if(!IsUpdatedRTC())
+    {
+        /* 백업 도메인이 초기 상태 → 아직 유효 시각 없음 */
+        APP_LOGI("RTC", "INITS=0 (uninitialized) -> set from NBIoT");
+        needSet = 1u;
+    }
+    else if (RTC_GetTime(&rtcTime) != APP_STATUS_OK)
+    {
+        APP_LOGW("RTC", "RTC read failed -> set from NBIoT");
+        needSet = 1u;
+    }
+    else
+    {
+        diff = nbEpoch - App_DateTimeToEpoch(&rtcTime);
+        if (diff < 0) { diff = -diff; }
+
+        APP_LOGI("RTC", "NBIoT vs RTC diff=%ld sec", (long)diff);
+
+        if (diff > (int64_t)APP_RTC_SYNC_THRESHOLD_SEC)
+        {
+            APP_LOGI("RTC", "diff exceeds %d sec -> resync", APP_RTC_SYNC_THRESHOLD_SEC);
+            needSet = 1u;
+        }
+        else
+        {
+            APP_LOGI("RTC", "within tolerance -> keep RTC");
+        }
+    }
+
+    if (needSet)
+    {
+        RTC_SetTime(nbTime->dateTime.year, nbTime->dateTime.month, nbTime->dateTime.day,
+                    nbTime->dateTime.hour, nbTime->dateTime.minute, nbTime->dateTime.second);
+        /* RTC_SetTime → HAL_RTC_SetTime/SetDate 가 INIT 진입/해제하며 INITS=1로 만듦 */
+
+        APP_LOGI("NBIOT", "RTC set to %04u-%02u-%02u %02u:%02u:%02u",
+                 (unsigned)nbTime->dateTime.year,
+                 (unsigned)nbTime->dateTime.month, (unsigned)nbTime->dateTime.day,
+                 (unsigned)nbTime->dateTime.hour, (unsigned)nbTime->dateTime.minute, (unsigned)nbTime->dateTime.second);
+    }
 
     return APP_STATUS_OK;
 }

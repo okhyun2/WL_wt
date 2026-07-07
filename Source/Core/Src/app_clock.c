@@ -6,6 +6,7 @@
 
 #include "app_build_config.h"
 #include "app_log.h"
+#include "app_nbiot.h"
 
 /**
  * @file    app_clock.c
@@ -236,3 +237,4 @@ uint64_t RTC_GetTimeMs(void)
 
     return ms;
 }
+

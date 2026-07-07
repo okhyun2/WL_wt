@@ -72,6 +72,7 @@ extern "C" {
 #define APP_LOG_HEXDUMP_BYTES_PER_LINE              (16u)
 
 #define APP_BUILD_IS_PRODUCTION                     (APP_FALSE) //if true. change swd&debug pin -> analog input.(=disable swd&debug).
+//#define APP_BUILD_IS_PRODUCTION                     (APP_TRUE) //if true. change swd&debug pin -> analog input.(=disable swd&debug).
 #ifdef DEBUG
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE) //org
 #else
@@ -100,16 +101,19 @@ extern "C" {
 #define APP_SELFTEST_I2C_READY_TRIALS               (2u)
 #define APP_SELFTEST_I2C_READY_TIMEOUT_MS           (20u)
 #define APP_SELFTEST_UART_TIMEOUT_MS                (100u)
-#define APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS          (400u)
+#define APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS          (1200u)
 #define APP_SELFTEST_UART_REPLY_METER_SC1xxx_TIMEOUT_MS          (800u)
 #define APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN (21u)
+#define APP_SELFTEST_UART_METER_REINIT_PREP_DELAY_MS             (20u)
+#define APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS           (100u)
+#define APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS       (300u)
 #define APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN (15u)
 #define APP_SELFTEST_UART_RX_BUFFER_SIZE            (32u)
 
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x54u)
 #define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x70u)
 
-#define SUPPORT_SELFTEST_SENDNBIOT                  //after selftest, send nbiot server
+#undef SUPPORT_SELFTEST_SENDNBIOT                  //after selftest, send nbiot server
 #endif // SUPPORT_SELFTEST
 
 /* NFC production hardening */

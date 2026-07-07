@@ -7,6 +7,7 @@
 #include "app_build_config.h"
 #include "app_log.h"
 #include "app_hw.h"
+#include "app_clock.h"
 #include "app_meter_storage.h"
 #include "app_nfc_seoul_format.h"
 
@@ -91,6 +92,19 @@ static void App_MeterGetTimestamp(uint8_t ts[6], uint8_t *p_timeValid)
     RTC_TimeTypeDef sTime = {0};
     RTC_DateTypeDef sDate = {0};
 
+    if (p_timeValid == NULL)
+    {
+        APP_LOGE("METER", "Invalie param");
+        return;
+    }
+
+    if (!IsUpdatedRTC())
+    {
+        APP_LOGE("METER", "Not yet ready rtc");
+        *p_timeValid = APP_FALSE;
+        return;
+    }
+
     if ((HAL_RTC_GetTime(APP_RTC_HANDLE, &sTime, RTC_FORMAT_BIN) == HAL_OK) &&
         (HAL_RTC_GetDate(APP_RTC_HANDLE, &sDate, RTC_FORMAT_BIN) == HAL_OK))
     {
@@ -100,10 +114,7 @@ static void App_MeterGetTimestamp(uint8_t ts[6], uint8_t *p_timeValid)
         ts[3] = sTime.Hours;
         ts[4] = sTime.Minutes;
         ts[5] = sTime.Seconds;
-        if (p_timeValid != NULL)
-        {
-            *p_timeValid = APP_TRUE;
-        }
+        *p_timeValid = APP_TRUE;
     }
     else
     {
@@ -113,10 +124,7 @@ static void App_MeterGetTimestamp(uint8_t ts[6], uint8_t *p_timeValid)
         ts[3] = 0u;
         ts[4] = 0u;
         ts[5] = 0u;
-        if (p_timeValid != NULL)
-        {
-            *p_timeValid = APP_FALSE;
-        }
+        *p_timeValid = APP_FALSE;
     }
 }
 
@@ -237,7 +245,16 @@ static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
     record.meterType = APP_METER_STORAGE_METER_TYPE_DIGITAL_UART;
     record.caliberDecimal = (uint8_t)(((caliber & 0x0Fu) << 4) | (decimalPos & 0x0Fu));
 
-    return App_MeterStoragePush(&record);
+    if(timeValid == APP_TRUE)
+    {
+        return(App_MeterStoragePush(&record));
+    }
+    else
+    {
+        APP_LOGW("METER", "Skip saving. Invalid datetime");
+    }
+
+    return APP_STATUS_FATAL;
 }
 
 void App_MeterSetStorageEnabled(uint8_t enabled)
@@ -279,7 +296,16 @@ static AppStatus_t App_MeterSaveSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxFr
     record.meterType = APP_METER_STORAGE_METER_TYPE_SC1XXX;
     record.caliberDecimal = (uint8_t)((APP_METER_STORAGE_CALIBER_UNKNOWN << 4) | 0x03u);
 
-    return App_MeterStoragePush(&record);
+    if(timeValid == APP_FALSE)
+    {
+        return(App_MeterStoragePush(&record));
+    }
+    else
+    {
+        APP_LOGW("METER", "Skip saving. Invalid datetime");
+    }
+
+    return APP_STATUS_FATAL;
 }
 
 /////////////////////////////////////////////////////////////////////////////
