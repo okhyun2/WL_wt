@@ -157,6 +157,8 @@ int main(void)
   MX_LPUART1_UART_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  //Meter spec. keep low
+  App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
   MX_ADC_Init();
   //MX_LPTIM1_Init();
   MX_RTC_Init();

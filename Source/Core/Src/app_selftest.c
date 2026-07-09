@@ -313,60 +313,28 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
 
     APP_LOGI("SELF", "Meter(Normal) UART real probe start");
 
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    HAL_Delay(50); //>= meter spec. 50ms
     APP_RETURN_IF_FALSE(App_SelfTestReinitMeterUart((g_appSelfTestNbiotExecuted == APP_TRUE) ?
                                                     APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS :
                                                     APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS) == APP_STATUS_OK,
                         APP_STATUS_UART_RX_FAILED);
 
-    //Read protocols meter(Normal)
-    //for(i = 0; i < 1000; i++)
-    {
-        //memset(meterReply, 0xFF, sizeof(meterReply));
+    APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_METER_HANDLE,
+                                              (uint8_t *)meterWakeFrame,
+                                              (uint16_t)sizeof(meterWakeFrame),
+                                              APP_SELFTEST_UART_TIMEOUT_MS),
+                            APP_STATUS_SELFTEST_DEVICE_NOT_READY);
+    status = App_SelfTestUartReceiveIt(APP_UART_METER_HANDLE,
+                                       meterReply,
+                                       APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
+                                       APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS);
+    APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
 
-        #if 0
-        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
-        HAL_Delay(50); //>= 50ms
-        App_GpioLpRestoreMeterUartPins();
-
-        /* ----- 추가: 명령 송신 전 RX 라인/에러 플래그 완전 초기화 ----- */
-        (void)HAL_UART_AbortReceive_IT(APP_UART_METER_HANDLE);
-        __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE,
-                              UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
-        __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
-
-        /* 모듈이 IMSI 응답 후 추가 \r\n을 더 보낼 시간을 짧게 보장
-         * (BC95는 명령 처리 후 약간의 지연이 있음) */
-        HAL_Delay(20);
-        __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE,
-                              UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
-        __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
-        /* ----- 끝 ----- */
-        #endif
-
-    APP_LOGI("SELF", "###########kiki0000");
-        APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_METER_HANDLE,
-                                                  (uint8_t *)meterWakeFrame,
-                                                  (uint16_t)sizeof(meterWakeFrame),
-                                                  APP_SELFTEST_UART_TIMEOUT_MS),
-                                APP_STATUS_SELFTEST_DEVICE_NOT_READY);
-    APP_LOGI("SELF", "###########kiki1111(%d)", HAL_GetTick());
-        status = App_SelfTestUartReceiveIt(APP_UART_METER_HANDLE,
-                                           meterReply,
-                                           APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
-                                           APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS);
-    APP_LOGI("SELF", "###########kiki2222(%d)", HAL_GetTick());
-        //APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
-    APP_LOGI("SELF", "###########kiki3333");
-
-        #if 1
-        HAL_Delay(100); //>= 100ms
-        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
-        HAL_Delay(100); 
-        #endif
-        App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
-        APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
-        APP_LOGI("SELF", "###########kiki4444");
-    }
+    HAL_Delay(100); //>= meter spec. 100ms
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+    APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
 
     APP_LOGI("SELF", "Meter UART reply received (%u bytes minimum)", (unsigned int)APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
 
@@ -628,11 +596,11 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_CRC, App_SelfTestCheckCrc);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_DEBUG_UART, App_SelfTestCheckDebugUart);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
-    //App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
 #ifndef SUPPORT_SELFTEST_SENDNBIOT
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiot);
 #endif // SUPPORT_SELFTEST_SENDNBIOT
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
+    //App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);
