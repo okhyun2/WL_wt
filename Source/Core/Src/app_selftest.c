@@ -599,8 +599,11 @@ AppStatus_t App_SelfTestRunBootSequence(void)
 #ifndef SUPPORT_SELFTEST_SENDNBIOT
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiot);
 #endif // SUPPORT_SELFTEST_SENDNBIOT
+#if defined(SUPPORT_METER_NORMAL)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
-    //App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
+#elif defined(SUPPORT_METER_SC1xxx)
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
+#endif
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);

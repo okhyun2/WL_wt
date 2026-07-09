@@ -442,6 +442,61 @@ AppStatus_t App_MeterStorageGetInfo(AppMeterStorageInfo_t *p_info)
     return APP_STATUS_OK;
 }
 
+static const char *App_MeterStorageGetSourceString(uint8_t srcType)
+{
+    switch (srcType)
+    {
+        case APP_METER_STORAGE_SRC_DIGITAL_UART:
+            return "DIGITAL_UART";
+
+        case APP_METER_STORAGE_SRC_SC1XXX:
+            return "SC1XXX";
+
+        default:
+            return "UNKNOWN";
+    }
+}
+
+void App_MeterStoragePrintRecord(const AppMeterStorageRecord_t *p_record)
+{
+    if(p_record == NULL) return;
+
+    APP_LOGI("MSTOR",
+             "rec seq=%u src=%s(%u) flags=0x%02X ts=%02u/%02u/%02u %02u:%02u:%02u",
+             (unsigned int)p_record->seq,
+             App_MeterStorageGetSourceString(p_record->srcType),
+             (unsigned int)p_record->srcType,
+             (unsigned int)p_record->flags,
+             (unsigned int)p_record->ts[0],
+             (unsigned int)p_record->ts[1],
+             (unsigned int)p_record->ts[2],
+             (unsigned int)p_record->ts[3],
+             (unsigned int)p_record->ts[4],
+             (unsigned int)p_record->ts[5]);
+
+    APP_LOGI("MSTOR",
+             "rec id=%lu reading=%lu status=0x%02X batt=0x%02X type=0x%02X caldec=0x%02X crc=0x%02X rsv=0x%02X",
+             (unsigned long)p_record->meterId,
+             (unsigned long)p_record->readingScaled,
+             (unsigned int)p_record->meterStatus,
+             (unsigned int)p_record->meterBattery,
+             (unsigned int)p_record->meterType,
+             (unsigned int)p_record->caliberDecimal,
+             (unsigned int)p_record->crc8,
+             (unsigned int)p_record->reserved);
+
+    APP_LOGI("MSTOR",
+             "rec flags: valid=%u sent=%u time_valid=%u reading_valid=%u overflow=%u reverse=%u leak=%u low_batt=%u",
+             (unsigned int)((p_record->flags & APP_METER_STORAGE_FLAG_VALID) != 0u),
+             (unsigned int)((p_record->flags & APP_METER_STORAGE_FLAG_SENT) != 0u),
+             (unsigned int)((p_record->flags & APP_METER_STORAGE_FLAG_TIME_VALID) != 0u),
+             (unsigned int)((p_record->flags & APP_METER_STORAGE_FLAG_READING_VALID) != 0u),
+             (unsigned int)((p_record->meterStatus & APP_METER_STORAGE_STATUS_OVERFLOW) != 0u),
+             (unsigned int)((p_record->meterStatus & APP_METER_STORAGE_STATUS_REVERSE_FLOW) != 0u),
+             (unsigned int)((p_record->meterStatus & APP_METER_STORAGE_STATUS_LEAK) != 0u),
+             (unsigned int)((p_record->meterStatus & APP_METER_STORAGE_STATUS_LOW_BATTERY) != 0u));
+}
+
 /* ================================================================
  *  Bank1 Low-level EEPROM I/O
  * ================================================================ */

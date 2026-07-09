@@ -89,6 +89,10 @@ extern "C" {
 #define SUPPORT_EEPROM
 #undef SUPPORT_FALASH
 
+//select support meter
+#define SUPPORT_METER_NORMAL
+#undef SUPPORT_METER_SC1xxx
+
 #define SUPPORT_SELFTEST
 #ifdef SUPPORT_SELFTEST
 #define APP_SELFTEST_FAIL_STOPS_BOOT                (APP_FALSE)

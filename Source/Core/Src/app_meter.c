@@ -245,6 +245,8 @@ static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
     record.meterType = APP_METER_STORAGE_METER_TYPE_DIGITAL_UART;
     record.caliberDecimal = (uint8_t)(((caliber & 0x0Fu) << 4) | (decimalPos & 0x0Fu));
 
+    App_MeterStoragePrintRecord(&record);
+
     if(timeValid == APP_TRUE)
     {
         return(App_MeterStoragePush(&record));
@@ -374,22 +376,6 @@ App_MeterResult_t App_MeterParseFrame(App_MeterUnion_t *meterPacket, const uint8
     return APP_METER_OK;
 }
 
-void App_MeterPrintData(App_MeterUnion_t *pRxFrame)
-{
-    APP_LOGI("METER", "Control Field: 0x%02X", pRxFrame->frame.C_Field);
-    APP_LOGI("METER", "Address Field: 0x%02X", pRxFrame->frame.A_Field);
-
-    /* 엔디안 안전 접근 */
-    uint32_t ident = App_MeterGetIdentificationNumber(pRxFrame);
-    uint32_t data = App_MeterGetMeasurementData(pRxFrame);
-
-    APP_LOGI("METER", "Identification: 0x%08lX(%08d)", ident, BCD_To_Decimal(ident));
-    APP_LOGI("METER", "Measurement   : 0x%08lX(%08d)", data, BCD_To_Decimal(data));
-
-    /* Raw 바이트 확인 */
-    //App_LogHexDump(APP_LOG_LEVEL_DEBUG, "METER", (const uint8_t *)pRxFrame->raw, sizeof(App_MeterFrame_t));
-}
-
 AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t length)
 {
     #if 0
@@ -413,9 +399,9 @@ AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t le
     App_MeterResult_t result = App_MeterParseFrame(&rx_frame, pRxBuf, length);
     
     if (result == APP_METER_OK) {
-        APP_LOGI("METER", "Success Meter parsing.");
+        APP_LOGD("METER", "Success Meter parsing.");
         
-        App_MeterPrintData(&rx_frame);
+        App_MeterPrintUnionDetailed(&rx_frame);
 
         //nfc update
         APP_LOGI("NFC", "Update nfc meter info.");
@@ -432,7 +418,6 @@ AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t le
         return(APP_STATUS_FATAL);
     }
 }
-
 
 //SC1xxx
 /////////////////////////////////////////////////////////////////////////////
@@ -552,3 +537,63 @@ AppStatus_t App_MeterSC1xxxProcessReceivedData(const uint8_t *pRxBuf, const uint
         return(APP_STATUS_FATAL);
     }
 }
+
+/////////////////////////////////////////////////////////////////////////////
+
+void App_MeterPrintUnionDetailed(const App_MeterUnion_t *pRxFrame)
+{
+    uint32_t ident;
+    uint32_t data;
+
+    if (pRxFrame == NULL)
+    {
+        APP_LOGE("METER", "PrintUnionDetailed: null frame");
+        return;
+    }
+
+    ident = App_MeterGetIdentificationNumber((App_MeterUnion_t *)pRxFrame);
+    data  = App_MeterGetMeasurementData((App_MeterUnion_t *)pRxFrame);
+
+    APP_LOGI("METER", "----- Meter Union Dump -----");
+    APP_LOGI("METER", "Start1      : 0x%02X", pRxFrame->frame.Start1);
+    APP_LOGI("METER", "L_Field1    : 0x%02X", pRxFrame->frame.L_Field1);
+    APP_LOGI("METER", "L_Field2    : 0x%02X", pRxFrame->frame.L_Field2);
+    APP_LOGI("METER", "Start2      : 0x%02X", pRxFrame->frame.Start2);
+    APP_LOGI("METER", "C_Field     : 0x%02X", pRxFrame->frame.C_Field);
+    APP_LOGI("METER", "A_Field     : 0x%02X", pRxFrame->frame.A_Field);
+    APP_LOGI("METER", "CI_Field    : 0x%02X", pRxFrame->frame.CI_Field);
+
+    APP_LOGI("METER", "MDH         : 0x%02X", pRxFrame->frame.UserData.MDH);
+    APP_LOGI("METER", "IdentNr raw : %02X %02X %02X %02X",
+             pRxFrame->frame.UserData.IdentNr[0],
+             pRxFrame->frame.UserData.IdentNr[1],
+             pRxFrame->frame.UserData.IdentNr[2],
+             pRxFrame->frame.UserData.IdentNr[3]);
+    APP_LOGI("METER", "Status      : 0x%02X", pRxFrame->frame.UserData.Status);
+    APP_LOGI("METER", "DIF         : 0x%02X", pRxFrame->frame.UserData.DIF);
+    APP_LOGI("METER", "VIF         : 0x%02X", pRxFrame->frame.UserData.VIF);
+    APP_LOGI("METER", "Data raw    : %02X %02X %02X %02X",
+             pRxFrame->frame.UserData.Data[0],
+             pRxFrame->frame.UserData.Data[1],
+             pRxFrame->frame.UserData.Data[2],
+             pRxFrame->frame.UserData.Data[3]);
+
+    APP_LOGI("METER", "CheckSum    : 0x%02X", pRxFrame->frame.CheckSum);
+    APP_LOGI("METER", "Stop        : 0x%02X", pRxFrame->frame.Stop);
+    APP_LOGI("METER", "----------------------------");
+
+    APP_LOGI("METER", "IdentNr     : 0x%08lX (%08d)",
+             (unsigned long)ident,
+             BCD_To_Decimal(ident));
+    APP_LOGI("METER", "Measurement : 0x%08lX (%08d)",
+             (unsigned long)data,
+             BCD_To_Decimal(data));
+
+    #if 0  //raw byte dump
+    App_LogHexDump(APP_LOG_LEVEL_INFO,
+                   "METER",
+                   (const uint8_t *)pRxFrame->raw,
+                   sizeof(App_MeterFrame_t));
+    #endif
+}
+

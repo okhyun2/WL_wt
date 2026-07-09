@@ -76,6 +76,8 @@ AppStatus_t App_MeterStorageMarkOldestSent(uint8_t sentCount);
 uint8_t App_MeterStorageCount(void);
 AppStatus_t App_MeterStorageClearAll(void);
 AppStatus_t App_MeterStorageGetInfo(AppMeterStorageInfo_t *p_info);
+void App_MeterStoragePrintRecord(const AppMeterStorageRecord_t *p_record);
+
 
 /* ================================================================
  *  Device Config (Bank1)
