@@ -211,6 +211,121 @@ static AppStatus_t App_NfcSeoulLoadOptions(AppMeterServerFormatOptions_t *p_opti
     return status;
 }
 
+static uint32_t App_NfcSeoulReadBe32(const uint8_t src[4])
+{
+    if (src == NULL)
+    {
+        return 0u;
+    }
+
+    return ((uint32_t)src[0] << 24) |
+           ((uint32_t)src[1] << 16) |
+           ((uint32_t)src[2] << 8)  |
+           ((uint32_t)src[3]);
+}
+
+static uint16_t App_NfcSeoulReadBe16(const uint8_t src[2])
+{
+    if (src == NULL)
+    {
+        return 0u;
+    }
+
+    return (uint16_t)(((uint16_t)src[0] << 8) | (uint16_t)src[1]);
+}
+
+static void App_NfcSeoulPrintSnapshot(const AppNfcSeoulSnapshot_t *p_snapshot)
+{
+    uint32_t meterId;
+    uint32_t reading;
+    uint16_t rsrp;
+
+    if (p_snapshot == NULL)
+    {
+        APP_LOGE("NFC", "snapshot print: null");
+        return;
+    }
+
+    meterId = App_NfcSeoulReadBe32(p_snapshot->meterIdBcd);
+    reading = App_NfcSeoulReadBe32(p_snapshot->reading);
+    rsrp    = App_NfcSeoulReadBe16(p_snapshot->rsrp);
+
+    APP_LOGI("NFC", "----- Seoul Snapshot -----");
+    APP_LOGI("NFC",
+             "meterIdBcd=%02X%02X%02X%02X reading=%lu recordCount=%u",
+             (unsigned int)p_snapshot->meterIdBcd[0],
+             (unsigned int)p_snapshot->meterIdBcd[1],
+             (unsigned int)p_snapshot->meterIdBcd[2],
+             (unsigned int)p_snapshot->meterIdBcd[3],
+             (unsigned long)reading,
+             (unsigned int)p_snapshot->recordCount);
+
+    APP_LOGI("NFC",
+             "reportTime=%02u/%02u/%02u %02u:%02u:%02u",
+             (unsigned int)p_snapshot->reportTime[0],
+             (unsigned int)p_snapshot->reportTime[1],
+             (unsigned int)p_snapshot->reportTime[2],
+             (unsigned int)p_snapshot->reportTime[3],
+             (unsigned int)p_snapshot->reportTime[4],
+             (unsigned int)p_snapshot->reportTime[5]);
+
+    APP_LOGI("NFC",
+             "readingTime=%02u/%02u/%02u %02u:%02u:%02u",
+             (unsigned int)p_snapshot->readingTime[0],
+             (unsigned int)p_snapshot->readingTime[1],
+             (unsigned int)p_snapshot->readingTime[2],
+             (unsigned int)p_snapshot->readingTime[3],
+             (unsigned int)p_snapshot->readingTime[4],
+             (unsigned int)p_snapshot->readingTime[5]);
+
+    APP_LOGI("NFC",
+             "readingRaw=%02X %02X %02X %02X meterIdRaw=%02X %02X %02X %02X",
+             (unsigned int)p_snapshot->reading[0],
+             (unsigned int)p_snapshot->reading[1],
+             (unsigned int)p_snapshot->reading[2],
+             (unsigned int)p_snapshot->reading[3],
+             (unsigned int)p_snapshot->meterIdBcd[0],
+             (unsigned int)p_snapshot->meterIdBcd[1],
+             (unsigned int)p_snapshot->meterIdBcd[2],
+             (unsigned int)p_snapshot->meterIdBcd[3]);
+
+    APP_LOGI("NFC",
+             "meterCode=0x%02X caliberDecimal=0x%02X alarmStatus=0x%02X",
+             (unsigned int)p_snapshot->meterCode,
+             (unsigned int)p_snapshot->caliberDecimal,
+             (unsigned int)p_snapshot->alarmStatus);
+
+    APP_LOGI("NFC",
+             "terminalId=%02X%02X%02X%02X fw=%u.%u fmt=0x%02X",
+             (unsigned int)p_snapshot->terminalId[0],
+             (unsigned int)p_snapshot->terminalId[1],
+             (unsigned int)p_snapshot->terminalId[2],
+             (unsigned int)p_snapshot->terminalId[3],
+             (unsigned int)p_snapshot->firmwareVersion[0],
+             (unsigned int)p_snapshot->firmwareVersion[1],
+             (unsigned int)p_snapshot->formatVersion);
+
+    APP_LOGI("NFC",
+             "rsrp=0x%04X ack=0x%02X carrier=0x%02X modem=0x%02X battery=0x%02X comm=0x%02X",
+             (unsigned int)rsrp,
+             (unsigned int)p_snapshot->ackCount,
+             (unsigned int)p_snapshot->carrier,
+             (unsigned int)p_snapshot->modemStatus,
+             (unsigned int)p_snapshot->battery,
+             (unsigned int)p_snapshot->commState);
+
+    APP_LOGI("NFC",
+             "alarm bits: overflow=%u reverse=%u leak=%u",
+             (unsigned int)((p_snapshot->alarmStatus & APP_METER_STORAGE_STATUS_OVERFLOW) != 0u),
+             (unsigned int)((p_snapshot->alarmStatus & APP_METER_STORAGE_STATUS_REVERSE_FLOW) != 0u),
+             (unsigned int)((p_snapshot->alarmStatus & APP_METER_STORAGE_STATUS_LEAK) != 0u));
+
+    APP_LOGI("NFC",
+             "commState=%s meterIdBe=0x%08lX",
+             (p_snapshot->commState == APP_NFC_SEOUL_COMM_ON) ? "ON" : "OFF",
+             (unsigned long)meterId);
+}
+
 static void App_NfcSeoulBuildSnapshot(AppNfcSeoulSnapshot_t *p_snapshot)
 {
     AppMeterServerFormatOptions_t options;
@@ -338,6 +453,7 @@ static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_pay
     }
 
     App_NfcSeoulBuildSnapshot(&snapshot);
+    App_NfcSeoulPrintSnapshot(&snapshot);
 
     cursor = 0u;
     p_payload[cursor++] = APP_NFC_SEOUL_CMD_RES_GROUP;

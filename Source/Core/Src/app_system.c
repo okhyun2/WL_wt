@@ -24,6 +24,68 @@ BootInfo_t g_boot_info;
 
 static void Print_BootInfo(BootInfo_t *pBootInfo);
 
+static uint8_t App_SystemCanDebugLog(void)
+{
+    const AppLogContext_t *p_logContext;
+
+    p_logContext = App_LogGetContext();
+    return ((g_appSystemContext.logReady == APP_TRUE) &&
+            (p_logContext != NULL) &&
+            (p_logContext->initialized == APP_TRUE)) ? APP_TRUE : APP_FALSE;
+}
+
+static const char *App_SystemBuildWakeupFlagString(uint32_t wakeFlags)
+{
+    static char wakeFlagString[96];
+    uint8_t first;
+
+    if (wakeFlags == WAKEUP_FLAG_NONE)
+    {
+        return "NONE";
+    }
+
+    wakeFlagString[0] = '\0';
+    first = APP_TRUE;
+
+#define APP_SYSTEM_APPEND_WAKE_FLAG(name_literal)                \
+    do                                                           \
+    {                                                            \
+        if (first == APP_FALSE)                                  \
+        {                                                        \
+            (void)strncat(wakeFlagString, "|", sizeof(wakeFlagString) - strlen(wakeFlagString) - 1u); \
+        }                                                        \
+        (void)strncat(wakeFlagString, (name_literal), sizeof(wakeFlagString) - strlen(wakeFlagString) - 1u); \
+        first = APP_FALSE;                                       \
+    } while (0)
+
+    if ((wakeFlags & WAKEUP_FLAG_LPTIM1_ARR) != 0u)  { APP_SYSTEM_APPEND_WAKE_FLAG("LPTIM1_ARR"); }
+    if ((wakeFlags & WAKEUP_FLAG_LPTIM1_CMP) != 0u)  { APP_SYSTEM_APPEND_WAKE_FLAG("LPTIM1_CMP"); }
+    if ((wakeFlags & WAKEUP_FLAG_RTC_ALARM_A) != 0u) { APP_SYSTEM_APPEND_WAKE_FLAG("RTC_ALARM_A"); }
+    if ((wakeFlags & WAKEUP_FLAG_RTC_ALARM_B) != 0u) { APP_SYSTEM_APPEND_WAKE_FLAG("RTC_ALARM_B"); }
+    if ((wakeFlags & WAKEUP_FLAG_RTC_WUT) != 0u)     { APP_SYSTEM_APPEND_WAKE_FLAG("RTC_WUT"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN0) != 0u)   { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI0"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN1) != 0u)   { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI1"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN2) != 0u)   { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI2"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN3) != 0u)   { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI3"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN4) != 0u)   { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI4"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN5) != 0u)   { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI5"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN6) != 0u)   { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI6"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN7) != 0u)   { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI7"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN8) != 0u)   { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI8"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN9) != 0u)   { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI9"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN10) != 0u)  { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI10"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN11) != 0u)  { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI11"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN12) != 0u)  { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI12"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN13) != 0u)  { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI13"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN14) != 0u)  { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI14"); }
+    if ((wakeFlags & WAKEUP_FLAG_EXTI_PIN15) != 0u)  { APP_SYSTEM_APPEND_WAKE_FLAG("EXTI15"); }
+
+#undef APP_SYSTEM_APPEND_WAKE_FLAG
+
+    return wakeFlagString;
+}
+
+
 static void handle_lptim1_wakeup(uint32_t flags)
 {
     if (flags & WAKEUP_FLAG_LPTIM1_ARR) {
@@ -95,6 +157,17 @@ void wakeup_process_all_pending(void)
         return;
     }
 
+    if (App_SystemCanDebugLog() == APP_TRUE)
+    {
+        APP_LOGI("LP",
+                 "Wake pending flags=0x%08lX(%s) raw_lptim=0x%08lX raw_rtc=0x%08lX raw_exti=0x%08lX",
+                 (unsigned long)pending_flags,
+                 App_SystemBuildWakeupFlagString(pending_flags),
+                 (unsigned long)g_wakeup_ctx.raw_lptim_isr,
+                 (unsigned long)g_wakeup_ctx.raw_rtc_isr,
+                 (unsigned long)g_wakeup_ctx.raw_exti_pr);
+    }
+
     /* 소스 개수 계산 */
     uint32_t temp = pending_flags;
     g_wakeup_ctx.source_count = 0;
@@ -130,9 +203,25 @@ void wakeup_process_all_pending(void)
         g_wakeup_ctx.processed_flags |= exti_flags;
     }
 
+    if (App_SystemCanDebugLog() == APP_TRUE)
+    {
+        APP_LOGI("LP",
+                 "Wake processed flags=0x%08lX(%s) source_count=%u",
+                 (unsigned long)g_wakeup_ctx.processed_flags,
+                 App_SystemBuildWakeupFlagString(g_wakeup_ctx.processed_flags),
+                 (unsigned int)g_wakeup_ctx.source_count);
+    }
+
     /* 미처리 플래그 확인 */
     uint32_t unhandled = pending_flags & ~g_wakeup_ctx.processed_flags;
     if (unhandled) {
+        if (App_SystemCanDebugLog() == APP_TRUE)
+        {
+            APP_LOGE("LP",
+                     "Wake unhandled flags=0x%08lX(%s)",
+                     (unsigned long)unhandled,
+                     App_SystemBuildWakeupFlagString(unhandled));
+        }
         /* 예상치 못한 wakeup 소스 처리 또는 오류 처리 */
         Error_Handler();
     }
@@ -201,16 +290,6 @@ static const char *App_SystemBuildWakeSourceString(uint32_t wakeMask)
 #undef APP_SYSTEM_APPEND_WAKE
 
     return g_appSystemWakeString;
-}
-
-static uint8_t App_SystemCanDebugLog(void)
-{
-    const AppLogContext_t *p_logContext;
-
-    p_logContext = App_LogGetContext();
-    return ((g_appSystemContext.logReady == APP_TRUE) &&
-            (p_logContext != NULL) &&
-            (p_logContext->initialized == APP_TRUE)) ? APP_TRUE : APP_FALSE;
 }
 
 static void App_SystemResetStopQualification(void)
@@ -720,6 +799,15 @@ static AppStatus_t App_SystemEnterStopMode(void)
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
 
+    if (App_SystemCanDebugLog() == APP_TRUE)
+    {
+        APP_LOGI("LP",
+                 "STOP enter prep: rtc_before=%llu old_wake_mask=0x%08lX pending_flags=0x%08lX",
+                 (unsigned long long)rtc_time_before_stop,
+                 (unsigned long)g_appSystemContext.oldWakeSourceMask,
+                 (unsigned long)g_wakeup_ctx.pending_flags);
+    }
+
     HAL_PWREx_EnableUltraLowPower();   /* VREFINT off in Stop */
     HAL_PWREx_EnableFastWakeUp();      /* VREFINT 안정 대기 skip */
     __HAL_FLASH_SLEEP_POWERDOWN_ENABLE();
@@ -865,6 +953,15 @@ void App_SystemHandleLptim1AutoReloadMatchCallback(void)
     g_appSystemContext.lptimWakeEventCount++;
     App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_LPTIM);
     App_SystemQueueStateCommand(APP_FSM_STATE_LPTIM_WAKE_SERVICE);
+
+    if (App_SystemCanDebugLog() == APP_TRUE)
+    {
+        APP_LOGI("LP",
+                 "Wake source callback: LPTIM count=%lu raw_isr=0x%08lX pending=0x%08lX",
+                 (unsigned long)g_appSystemContext.lptimWakeEventCount,
+                 (unsigned long)g_wakeup_ctx.raw_lptim_isr,
+                 (unsigned long)g_wakeup_ctx.pending_flags);
+    }
 }
 
 void App_SystemHandleRtcCallBack(void)
@@ -873,10 +970,28 @@ void App_SystemHandleRtcCallBack(void)
     App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_RTC);
     App_SystemQueueStateCommand(APP_FSM_STATE_RTC_WAKE_SERVICE);
     App_SystemQueueStateCommand(APP_FSM_STATE_WATCHDOG_FEED);
+
+    if (App_SystemCanDebugLog() == APP_TRUE)
+    {
+        APP_LOGI("LP",
+                 "Wake source callback: RTC count=%lu raw_rtc=0x%08lX pending=0x%08lX",
+                 (unsigned long)g_appSystemContext.rtcWakeEventCount,
+                 (unsigned long)g_wakeup_ctx.raw_rtc_isr,
+                 (unsigned long)g_wakeup_ctx.pending_flags);
+    }
 }
 
 void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
 {
+    if (App_SystemCanDebugLog() == APP_TRUE)
+    {
+        APP_LOGI("LP",
+                 "Wake source callback: EXTI pinmask=0x%04X raw_exti=0x%08lX pending=0x%08lX",
+                 (unsigned int)GPIO_Pin,
+                 (unsigned long)g_wakeup_ctx.raw_exti_pr,
+                 (unsigned long)g_wakeup_ctx.pending_flags);
+    }
+
     switch (GPIO_Pin)
     {
         case NFC_ED_Pin:
@@ -885,6 +1000,10 @@ void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
             break;
 
         default:
+            if (App_SystemCanDebugLog() == APP_TRUE)
+            {
+                APP_LOGW("LP", "Unhandled EXTI wake pinmask=0x%04X", (unsigned int)GPIO_Pin);
+            }
             break;
     }
 }
