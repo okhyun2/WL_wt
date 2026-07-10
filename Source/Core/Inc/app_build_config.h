@@ -93,7 +93,7 @@ extern "C" {
 #define SUPPORT_METER_NORMAL
 #undef SUPPORT_METER_SC1xxx
 
-#undef SUPPORT_SELFTEST
+#define SUPPORT_SELFTEST
 #ifdef SUPPORT_SELFTEST
 #define APP_SELFTEST_FAIL_STOPS_BOOT                (APP_FALSE)
 #define APP_SELFTEST_BUZZER_BOOT_BEEP_COUNT         (2u)
@@ -153,9 +153,9 @@ extern "C" {
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
 #define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
 #define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
-#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (1*60*1000u) //0:don't stop
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (10*1000u) //0:don't stop
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (10*60*1000u) //0:don't stop
+#define APP_RTC_WAKEUP_PERIOD_MS                    (60*1000u) //0:don't stop
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
 
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)
@@ -164,6 +164,8 @@ extern "C" {
 
 #define APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT          (2u)
 #define APP_LP_STOP_DEBUG_DRY_RUN                   (APP_FALSE)
+#define APP_LP_TEST_FORCE_ADC_FULL_OFF_BEFORE_STOP  (APP_TRUE)
+#define APP_NFC_ENTER_STANDBY_BEFORE_MCU_STOP      (APP_TRUE)
 
 #define APP_MSGQ_DEPTH                              (16u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)

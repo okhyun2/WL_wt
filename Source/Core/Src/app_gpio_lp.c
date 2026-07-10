@@ -630,12 +630,6 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
 
     //NFC SCL/SDA pin
     {
-        NFC_Result_t ret;
-        if( (ret = NFC_LP_EnterStop(&g_nfcLpHandle)) != NFC_RESULT_OK)
-        {
-            APP_LOGE("NFC", "Can't enter stop mode!(%d)", ret);
-        }
-
         App_GpioLpConfigAnalogNoPull(NFC_SCL_GPIO_Port, NFC_SCL_Pin | NFC_SDA_Pin);
     }
 

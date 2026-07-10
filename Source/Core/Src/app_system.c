@@ -23,6 +23,10 @@ extern NFC_NTP53321_Handle_t g_nfcTagHandle;
 BootInfo_t g_boot_info;
 
 static void Print_BootInfo(BootInfo_t *pBootInfo);
+static void App_SystemForceAdcFullOffBeforeStop(void);
+static AppStatus_t App_SystemRestoreAdcAfterWakeFromStop(void);
+static void App_SystemRollbackNfcStandbyIfNeeded(uint8_t standbyPrepareState);
+static void App_SystemRecoverNfcAfterWake(uint8_t standbyPrepareState);
 
 static uint8_t App_SystemCanDebugLog(void)
 {
@@ -705,10 +709,164 @@ static AppStatus_t App_SystemInitFsm(void)
 
 static uint64_t rtc_time_before_stop = 0;
 
+static void App_SystemForceAdcFullOffBeforeStop(void)
+{
+#if (APP_LP_TEST_FORCE_ADC_FULL_OFF_BEFORE_STOP == APP_TRUE)
+    ADC_ChannelConfTypeDef sConfig = {0};
+
+    __HAL_RCC_ADC1_CLK_ENABLE();
+
+    sConfig.Rank = ADC_RANK_NONE;
+    sConfig.Channel = ADC_CHANNEL_1;
+    (void)HAL_ADC_ConfigChannel(APP_ADC_BATTERY_HANDLE, &sConfig);
+    sConfig.Channel = ADC_CHANNEL_VREFINT;
+    (void)HAL_ADC_ConfigChannel(APP_ADC_BATTERY_HANDLE, &sConfig);
+    sConfig.Channel = ADC_CHANNEL_TEMPSENSOR;
+    (void)HAL_ADC_ConfigChannel(APP_ADC_BATTERY_HANDLE, &sConfig);
+
+    (void)HAL_ADC_Stop(APP_ADC_BATTERY_HANDLE);
+    (void)HAL_ADC_DeInit(APP_ADC_BATTERY_HANDLE);
+
+    CLEAR_BIT(ADC->CCR, ADC_CCR_VREFEN | ADC_CCR_TSEN);
+
+    if ((ADC1->CR & ADC_CR_ADEN) != 0u)
+    {
+        SET_BIT(ADC1->CR, ADC_CR_ADDIS);
+        for (volatile uint32_t wait = 0u; wait < 10000u; wait++)
+        {
+            if ((ADC1->CR & ADC_CR_ADEN) == 0u)
+            {
+                break;
+            }
+        }
+    }
+
+    CLEAR_BIT(ADC1->CR, ADC_CR_ADVREGEN);
+    __HAL_RCC_ADC1_FORCE_RESET();
+    __HAL_RCC_ADC1_RELEASE_RESET();
+    __HAL_RCC_ADC1_CLK_DISABLE();
+#endif
+}
+
+static AppStatus_t App_SystemRestoreAdcAfterWakeFromStop(void)
+{
+#if (APP_LP_TEST_FORCE_ADC_FULL_OFF_BEFORE_STOP == APP_TRUE)
+    ADC_ChannelConfTypeDef sConfig = {0};
+
+    __HAL_RCC_ADC1_CLK_ENABLE();
+
+    APP_ADC_BATTERY_HANDLE->Instance = ADC1;
+    APP_ADC_BATTERY_HANDLE->Init.OversamplingMode = DISABLE;
+    APP_ADC_BATTERY_HANDLE->Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV1;
+    APP_ADC_BATTERY_HANDLE->Init.Resolution = ADC_RESOLUTION_12B;
+    APP_ADC_BATTERY_HANDLE->Init.SamplingTime = ADC_SAMPLETIME_160CYCLES_5;
+    APP_ADC_BATTERY_HANDLE->Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
+    APP_ADC_BATTERY_HANDLE->Init.DataAlign = ADC_DATAALIGN_RIGHT;
+    APP_ADC_BATTERY_HANDLE->Init.ContinuousConvMode = DISABLE;
+    APP_ADC_BATTERY_HANDLE->Init.DiscontinuousConvMode = DISABLE;
+    APP_ADC_BATTERY_HANDLE->Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+    APP_ADC_BATTERY_HANDLE->Init.ExternalTrigConv = ADC_SOFTWARE_START;
+    APP_ADC_BATTERY_HANDLE->Init.DMAContinuousRequests = DISABLE;
+    APP_ADC_BATTERY_HANDLE->Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+    APP_ADC_BATTERY_HANDLE->Init.Overrun = ADC_OVR_DATA_PRESERVED;
+    APP_ADC_BATTERY_HANDLE->Init.LowPowerAutoWait = DISABLE;
+    APP_ADC_BATTERY_HANDLE->Init.LowPowerFrequencyMode = ENABLE;
+    APP_ADC_BATTERY_HANDLE->Init.LowPowerAutoPowerOff = DISABLE;
+
+    if (HAL_ADC_Init(APP_ADC_BATTERY_HANDLE) != HAL_OK)
+    {
+        return APP_STATUS_INIT_FAILED;
+    }
+
+    sConfig.Channel = ADC_CHANNEL_1;
+    sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
+    if (HAL_ADC_ConfigChannel(APP_ADC_BATTERY_HANDLE, &sConfig) != HAL_OK)
+    {
+        return APP_STATUS_INIT_FAILED;
+    }
+#endif
+    return APP_STATUS_OK;
+}
+
+#define APP_SYSTEM_NFC_STANDBY_PREP_NONE      (0u)
+#define APP_SYSTEM_NFC_STANDBY_PREP_ALREADY   (1u)
+#define APP_SYSTEM_NFC_STANDBY_PREP_ENTERED   (2u)
+
+uint8_t App_SystemPrepareNfcStandbyForStop(void)
+{
+#if (APP_NFC_ENTER_STANDBY_BEFORE_MCU_STOP == APP_TRUE)
+    NFC_Result_t nfcRet;
+
+    if (g_nfcTagHandle.state == NFC_STATE_UNINITIALIZED ||
+        g_nfcTagHandle.state == NFC_STATE_ERROR)
+    {
+        APP_LOGW("NFC", "Skip standby prepare: state=%u", (unsigned int)g_nfcTagHandle.state);
+        return APP_SYSTEM_NFC_STANDBY_PREP_NONE;
+    }
+
+    if (g_nfcTagHandle.state == NFC_STATE_STOP)
+    {
+        APP_LOGI("NFC", "NTP53321 already in standby state before MCU STOP");
+        return APP_SYSTEM_NFC_STANDBY_PREP_ALREADY;
+    }
+
+    nfcRet = NFC_NTP53321_EnterStandby(&g_nfcTagHandle);
+    if (nfcRet == NFC_RESULT_OK)
+    {
+        APP_LOGI("NFC", "NTP53321 standby entered before MCU STOP");
+        return APP_SYSTEM_NFC_STANDBY_PREP_ENTERED;
+    }
+
+    APP_LOGW("NFC", "NTP53321 standby enter failed before MCU STOP ret=%d", (int)nfcRet);
+#endif
+    return APP_SYSTEM_NFC_STANDBY_PREP_NONE;
+}
+
+static void App_SystemRollbackNfcStandbyIfNeeded(uint8_t standbyPrepareState)
+{
+#if (APP_NFC_ENTER_STANDBY_BEFORE_MCU_STOP == APP_TRUE)
+    if (standbyPrepareState == APP_SYSTEM_NFC_STANDBY_PREP_ENTERED)
+    {
+        (void)NFC_NTP53321_ExitStandby(&g_nfcTagHandle);
+    }
+#else
+    (void)standbyPrepareState;
+#endif
+}
+
+static void App_SystemRecoverNfcAfterWake(uint8_t standbyPrepareState)
+{
+#if (APP_NFC_ENTER_STANDBY_BEFORE_MCU_STOP == APP_TRUE)
+    if ((standbyPrepareState == APP_SYSTEM_NFC_STANDBY_PREP_ALREADY) ||
+        (standbyPrepareState == APP_SYSTEM_NFC_STANDBY_PREP_ENTERED))
+    {
+        if ((g_appSystemContext.wakeSourceMask & APP_SYSTEM_WAKE_SRC_NFC_ED) != 0u)
+        {
+            NFC_Result_t nfcRet = NFC_NTP53321_ExitStandby(&g_nfcTagHandle);
+            if (nfcRet != NFC_RESULT_OK)
+            {
+                APP_LOGW("NFC", "Wake by NFC_ED but ExitStandby failed ret=%d", (int)nfcRet);
+            }
+        }
+        else
+        {
+            APP_LOGI("NFC", "Non-NFC wake while tag standby state=%u kept", (unsigned int)g_nfcTagHandle.state);
+        }
+        return;
+    }
+#endif
+
+    g_nfcTagHandle.stats.total_sleep_ticks += (HAL_GetTick() - g_nfcTagHandle.sleep_enter_tick);
+    g_nfcTagHandle.state = NFC_STATE_ACTIVE;
+    (void)standbyPrepareState;
+}
+
 static AppStatus_t App_SystemEnterStopMode(void)
 {
     AppStatus_t status;
-
+    uint8_t standbyPrepareState = APP_SYSTEM_NFC_STANDBY_PREP_NONE;
+    AppStatus_t adcRestoreStatus;
+	
     APP_LOGI("LP", "Enter STOP mode");
 
     g_appSystemContext.stopCandidateCount++;
@@ -740,12 +898,17 @@ static AppStatus_t App_SystemEnterStopMode(void)
         APP_LOGI("LPTIM", "STOP periodic:%ds", wakeupSeconds);
     }
 
+    standbyPrepareState = App_SystemPrepareNfcStandbyForStop();
+
     status = App_SystemPrepareForStop();
     if (status != APP_STATUS_OK)
     {
+        App_SystemRollbackNfcStandbyIfNeeded(standbyPrepareState);
         APP_LOGE("LP", "systemPrepareForStop");
         return status;
     }
+
+    App_SystemForceAdcFullOffBeforeStop();
 
     g_appSystemContext.lastLowPowerMode = APP_SYSTEM_LP_MODE_STOP;
     g_appSystemContext.lastStopEntryTickMs = HAL_GetTick();
@@ -771,7 +934,16 @@ static AppStatus_t App_SystemEnterStopMode(void)
     status = App_SystemRecoverFromStop();
     if (status != APP_STATUS_OK)
     {
+        App_SystemRollbackNfcStandbyIfNeeded(standbyPrepareState);
         return status;
+    }
+    App_SystemRollbackNfcStandbyIfNeeded(standbyPrepareState);
+	
+	adcRestoreStatus = App_SystemRestoreAdcAfterWakeFromStop();
+    if (adcRestoreStatus != APP_STATUS_OK)
+    {
+        APP_LOGE("LP", "ADC restore after STOP dry-run failed: status=%lu", (unsigned long)adcRestoreStatus);
+        return adcRestoreStatus;
     }
 #ifdef DEBUG
     if (App_SystemCanDebugLog() == APP_TRUE)
@@ -830,6 +1002,12 @@ static AppStatus_t App_SystemEnterStopMode(void)
     {
         return status;
     }
+    adcRestoreStatus = App_SystemRestoreAdcAfterWakeFromStop();
+    if (adcRestoreStatus != APP_STATUS_OK)
+    {
+        APP_LOGE("LP", "ADC restore after STOP failed: status=%lu", (unsigned long)adcRestoreStatus);
+        return adcRestoreStatus;
+    }
 
     // Wake-up 후 경과 시간 계산 및 보정
     uint64_t rtc_time_after = RTC_GetTimeMs() + 100; //100msec tunnning
@@ -841,8 +1019,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
     wakeup_process_all_pending();
 
     //nfc
-    g_nfcTagHandle.stats.total_sleep_ticks += (HAL_GetTick() - g_nfcTagHandle.sleep_enter_tick);
-    g_nfcTagHandle.state = NFC_STATE_ACTIVE;
+    App_SystemRecoverNfcAfterWake(standbyPrepareState);
 
     /* Wakeup 직후 WWDG 즉시 Refresh (안전 마진 확보) */
     HAL_WWDG_Refresh(APP_WWDG_HANDLE);
