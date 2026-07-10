@@ -838,19 +838,17 @@ static void App_SystemRecoverNfcAfterWake(uint8_t standbyPrepareState)
 {
 #if (APP_NFC_ENTER_STANDBY_BEFORE_MCU_STOP == APP_TRUE)
     if ((standbyPrepareState == APP_SYSTEM_NFC_STANDBY_PREP_ALREADY) ||
-        (standbyPrepareState == APP_SYSTEM_NFC_STANDBY_PREP_ENTERED))
+        (standbyPrepareState == APP_SYSTEM_NFC_STANDBY_PREP_ENTERED) ||
+        (g_nfcTagHandle.state == NFC_STATE_STOP))
     {
-        if ((g_appSystemContext.wakeSourceMask & APP_SYSTEM_WAKE_SRC_NFC_ED) != 0u)
+        NFC_Result_t nfcRet = NFC_NTP53321_ExitStandby(&g_nfcTagHandle);
+        if (nfcRet != NFC_RESULT_OK)
         {
-            NFC_Result_t nfcRet = NFC_NTP53321_ExitStandby(&g_nfcTagHandle);
-            if (nfcRet != NFC_RESULT_OK)
-            {
-                APP_LOGW("NFC", "Wake by NFC_ED but ExitStandby failed ret=%d", (int)nfcRet);
-            }
+            APP_LOGW("NFC", "ExitStandby after wake failed ret=%d", (int)nfcRet);
         }
         else
         {
-            APP_LOGI("NFC", "Non-NFC wake while tag standby state=%u kept", (unsigned int)g_nfcTagHandle.state);
+            APP_LOGI("NFC", "NTP53321 exited standby after wake");
         }
         return;
     }
@@ -937,7 +935,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
         App_SystemRollbackNfcStandbyIfNeeded(standbyPrepareState);
         return status;
     }
-    App_SystemRollbackNfcStandbyIfNeeded(standbyPrepareState);
+    App_SystemRecoverNfcAfterWake(standbyPrepareState);
 	
 	adcRestoreStatus = App_SystemRestoreAdcAfterWakeFromStop();
     if (adcRestoreStatus != APP_STATUS_OK)
@@ -963,7 +961,9 @@ static AppStatus_t App_SystemEnterStopMode(void)
 
     // nfc prepare
     g_nfcTagHandle.sleep_enter_tick = HAL_GetTick();
+#if (APP_NFC_ENTER_STANDBY_BEFORE_MCU_STOP != APP_TRUE)
     g_nfcTagHandle.state            = NFC_STATE_STOP;
+#endif
 
     // Stop 진입 전 RTC 시간 저장
     rtc_time_before_stop = RTC_GetTimeMs();
@@ -1000,14 +1000,11 @@ static AppStatus_t App_SystemEnterStopMode(void)
     status = App_SystemRecoverFromStop();
     if (status != APP_STATUS_OK)
     {
+        App_SystemRollbackNfcStandbyIfNeeded(standbyPrepareState);
         return status;
     }
-    adcRestoreStatus = App_SystemRestoreAdcAfterWakeFromStop();
-    if (adcRestoreStatus != APP_STATUS_OK)
-    {
-        APP_LOGE("LP", "ADC restore after STOP failed: status=%lu", (unsigned long)adcRestoreStatus);
-        return adcRestoreStatus;
-    }
+
+    App_SystemRecoverNfcAfterWake(standbyPrepareState);
 
     // Wake-up 후 경과 시간 계산 및 보정
     uint64_t rtc_time_after = RTC_GetTimeMs() + 100; //100msec tunnning
@@ -1017,9 +1014,6 @@ static AppStatus_t App_SystemEnterStopMode(void)
     g_tick_offset += elapsed_ms;
 
     wakeup_process_all_pending();
-
-    //nfc
-    App_SystemRecoverNfcAfterWake(standbyPrepareState);
 
     /* Wakeup 직후 WWDG 즉시 Refresh (안전 마진 확보) */
     HAL_WWDG_Refresh(APP_WWDG_HANDLE);
