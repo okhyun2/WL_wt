@@ -1292,7 +1292,18 @@ AppStatus_t App_SystemInit(void)
     App_MeterServerOptionsInfo();
 
     App_NBIoTAtInit();
+    App_MeterInit();
     App_NfcInit();
+
+    status = App_SystemInitFsm();
+    if (status != APP_STATUS_OK)
+    {
+        g_appSystemContext.fsmStatus = status;
+        return status;
+    }
+
+    g_appSystemContext.initialized = APP_TRUE;
+    g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
 
     // Connection & update rtc NBIoT
     {
@@ -1321,15 +1332,6 @@ AppStatus_t App_SystemInit(void)
     }
 #endif // SUPPORT_SELFTEST
 
-    status = App_SystemInitFsm();
-    if (status != APP_STATUS_OK)
-    {
-        g_appSystemContext.fsmStatus = status;
-        return status;
-    }
-
-    g_appSystemContext.initialized = APP_TRUE;
-    g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
 
 #ifdef DEBUG
     APP_LOGD("SYS", "Application ready: boot=%lu/%lu stop_req=%u",

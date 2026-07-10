@@ -43,6 +43,14 @@ static void App_FsmNfcWakeupCallback(NFC_WakeupEvent_t event)
     g_nfcWakeEvent = event;
 }
 
+AppStatus_t App_MeterInit(void)
+{
+    // Meter spec. keep low
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+
+    return APP_STATUS_OK;
+}
+
 AppStatus_t App_NfcInit(void)
 {
     if (g_nfcReady == APP_TRUE)
@@ -798,8 +806,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_METER_INIT:
-            //Meter spec. keep low
-            App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+            App_MeterInit();
 
             App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
