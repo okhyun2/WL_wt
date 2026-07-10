@@ -90,24 +90,24 @@ static AppStatus_t App_SelfTestReinitMeterUart(uint32_t settleDelayMs)
 
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
 
+    App_GpioLpRestoreMeterUartPins();
+
     (void)HAL_UART_AbortReceive_IT(APP_UART_METER_HANDLE);
     __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE,
                           UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
     __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
 
-    (void)HAL_UART_DeInit(APP_UART_METER_HANDLE);
+    //(void)HAL_UART_DeInit(APP_UART_METER_HANDLE);
     HAL_Delay(APP_SELFTEST_UART_METER_REINIT_PREP_DELAY_MS);
 
-    App_GpioLpRestoreMeterUartPins();
+    //halStatus = HAL_UART_Init(APP_UART_METER_HANDLE);
+    //APP_RETURN_IF_FALSE((halStatus == HAL_OK), APP_STATUS_UART_RX_FAILED);
 
-    halStatus = HAL_UART_Init(APP_UART_METER_HANDLE);
-    APP_RETURN_IF_FALSE((halStatus == HAL_OK), APP_STATUS_UART_RX_FAILED);
-
-    USART2->CR1 |= USART_CR1_RE;
+    //USART2->CR1 |= USART_CR1_RE;
     __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE,
                           UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
     __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
-    __HAL_UART_CLEAR_IDLEFLAG(APP_UART_METER_HANDLE);
+    //__HAL_UART_CLEAR_IDLEFLAG(APP_UART_METER_HANDLE);
 
     HAL_Delay(settleDelayMs);
 
@@ -313,7 +313,7 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
 
     APP_LOGI("SELF", "Meter(Normal) UART real probe start");
 
-    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
     HAL_Delay(50); //>= meter spec. 50ms
     APP_RETURN_IF_FALSE(App_SelfTestReinitMeterUart((g_appSelfTestNbiotExecuted == APP_TRUE) ?
                                                     APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS :
