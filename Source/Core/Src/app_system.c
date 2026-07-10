@@ -1006,6 +1006,13 @@ static AppStatus_t App_SystemEnterStopMode(void)
 
     App_SystemRecoverNfcAfterWake(standbyPrepareState);
 
+    adcRestoreStatus = App_SystemRestoreAdcAfterWakeFromStop();
+    if (adcRestoreStatus != APP_STATUS_OK)
+    {
+        APP_LOGE("LP", "ADC restore after STOP wake failed: status=%lu", (unsigned long)adcRestoreStatus);
+        return adcRestoreStatus;
+    }
+
     // Wake-up 후 경과 시간 계산 및 보정
     uint64_t rtc_time_after = RTC_GetTimeMs() + 100; //100msec tunnning
     uint32_t elapsed_ms = CalcElapsedMs(rtc_time_before_stop, rtc_time_after);
@@ -1286,6 +1293,25 @@ AppStatus_t App_SystemInit(void)
 
     App_NBIoTAtInit();
     App_NfcInit();
+
+    // Connection & update rtc NBIoT
+    {
+        (void)App_SystemSetNbiotPowered(APP_TRUE);
+
+        APP_WWDGFeed();
+        APP_RETURN_IF_FALSE(App_NBIoTBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+        APP_WWDGFeed();
+        APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+        APP_WWDGFeed();
+        App_NBIoTReadIdentity(APP_TRUE);
+        App_NBIoTReadQuality(APP_TRUE);
+
+        APP_WWDGFeed();
+        App_NBIoTTransmitUdp();
+        APP_WWDGFeed();
+
+        (void)App_SystemSetNbiotPowered(APP_FALSE);
+    }
 
 #ifdef SUPPORT_SELFTEST
     status = App_SystemRunBootSelfTest();

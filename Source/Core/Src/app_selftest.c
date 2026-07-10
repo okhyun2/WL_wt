@@ -392,6 +392,7 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
     return (status);
 }
 
+#ifndef SUPPORT_SELFTEST_SENDNBIOT
 /**
  * @brief NB-IoT pseudo connectivity probe.
  *
@@ -400,7 +401,6 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
-#ifndef SUPPORT_SELFTEST_SENDNBIOT
 static AppStatus_t App_SelfTestCheckNbiot(void)
 {
     AppStatus_t status = APP_STATUS_OK;
@@ -432,7 +432,7 @@ cleanup:
     HAL_Delay(APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS);
     return status;
 }
-#endif // SUPPORT_SELFTEST_NBIOT
+#endif // SUPPORT_SELFTEST_SENDNBIOT
 
 /**
  * @brief Shared I2C pseudo/real ready check.

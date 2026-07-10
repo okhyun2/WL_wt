@@ -570,6 +570,65 @@ NFC_Result_t NFC_NTP53321_EnterStandby(NFC_NTP53321_Handle_t *hntag)
  * VCC_SUPPLY_OK(bit1) 와 NFC_BOOT_OK(STATUS1 bit6) 확인.
  * I2C 통신이 다시 가능한지 검증.
  */
+#define NFC_EXIT_STANDBY_SETTLE_DELAY_MS        10U
+#define NFC_EXIT_STANDBY_READY_POLL_MAX         5U
+#define NFC_EXIT_STANDBY_READY_POLL_DELAY_MS    2U
+
+static NFC_Result_t nfc_wait_i2c_ready_after_standby(NFC_NTP53321_Handle_t *hntag)
+{
+    HAL_StatusTypeDef hal_ret;
+    uint32_t hal_err;
+    uint32_t hal_state;
+    uint8_t attempt;
+
+    if ((hntag == NULL) || (hntag->hi2c == NULL))
+    {
+        return NFC_RESULT_ERROR_INVALID_PARAM;
+    }
+
+    HAL_Delay(NFC_EXIT_STANDBY_SETTLE_DELAY_MS);
+
+    for (attempt = 0U; attempt < NFC_EXIT_STANDBY_READY_POLL_MAX; attempt++)
+    {
+        hal_ret = HAL_I2C_IsDeviceReady(hntag->hi2c,
+                                        NFC_NTP53321_I2C_ADDR,
+                                        1U,
+                                        NFC_NTP53321_I2C_TIMEOUT);
+        if (hal_ret == HAL_OK)
+        {
+            return NFC_RESULT_OK;
+        }
+
+        hal_err = HAL_I2C_GetError(hntag->hi2c);
+        hal_state = HAL_I2C_GetState(hntag->hi2c);
+        hntag->stats.i2c_error_count++;
+
+        if (attempt + 1U < NFC_EXIT_STANDBY_READY_POLL_MAX)
+        {
+            APP_LOGW("NFC",
+                     "ExitStandby ready wait: not ready attempt=%u/%u hal=%d err=0x%08lX state=%lu",
+                     (unsigned int)(attempt + 1U),
+                     (unsigned int)NFC_EXIT_STANDBY_READY_POLL_MAX,
+                     (int)hal_ret,
+                     (unsigned long)hal_err,
+                     (unsigned long)hal_state);
+            HAL_Delay(NFC_EXIT_STANDBY_READY_POLL_DELAY_MS);
+        }
+        else
+        {
+            APP_LOGE("NFC",
+                     "ExitStandby ready wait failed attempt=%u/%u hal=%d err=0x%08lX state=%lu",
+                     (unsigned int)(attempt + 1U),
+                     (unsigned int)NFC_EXIT_STANDBY_READY_POLL_MAX,
+                     (int)hal_ret,
+                     (unsigned long)hal_err,
+                     (unsigned long)hal_state);
+        }
+    }
+
+    return NFC_RESULT_ERROR_BUSY;
+}
+
 NFC_Result_t NFC_NTP53321_ExitStandby(NFC_NTP53321_Handle_t *hntag)
 {
     NFC_Result_t ret;
@@ -577,6 +636,13 @@ NFC_Result_t NFC_NTP53321_ExitStandby(NFC_NTP53321_Handle_t *hntag)
     uint8_t      status1 = 0U;
 
     if (hntag == NULL) return NFC_RESULT_ERROR_INVALID_PARAM;
+
+    ret = nfc_wait_i2c_ready_after_standby(hntag);
+    if (ret != NFC_RESULT_OK)
+    {
+        APP_LOGE("NFC", "ExitStandby: I2C ready polling failed (ret=%d)", ret);
+        return NFC_RESULT_ERROR_BUSY;
+    }
 
     /* STATUS0 읽기 시도 — 성공하면 Standby에서 복귀된 것 */
     ret = NFC_NTP53321_ReadSessionReg(hntag,
@@ -685,16 +751,25 @@ static NFC_Result_t nfc_i2c_mem_write(NFC_NTP53321_Handle_t *h,
 
         hal_err = HAL_I2C_GetError(h->hi2c);
         h->stats.i2c_error_count++;
-        APP_LOGE("NFC", "Mem_Write err addr=0x%04X len=%u retry=%u hal=%d err=0x%08lX state=%lu",
+        if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
+        {
+            APP_LOGE("NFC", "Mem_Write err addr=0x%04X len=%u retry=%u hal=%d err=0x%08lX state=%lu",
+                     (unsigned int)block_addr,
+                     (unsigned int)len,
+                     (unsigned int)retry,
+                     (int)hal_ret,
+                     (unsigned long)hal_err,
+                     (unsigned long)HAL_I2C_GetState(h->hi2c));
+            return NFC_RESULT_ERROR_I2C_RETRY;
+        }
+
+        APP_LOGW("NFC", "Mem_Write retry addr=0x%04X len=%u retry=%u hal=%d err=0x%08lX state=%lu",
                  (unsigned int)block_addr,
                  (unsigned int)len,
                  (unsigned int)retry,
                  (int)hal_ret,
                  (unsigned long)hal_err,
                  (unsigned long)HAL_I2C_GetState(h->hi2c));
-
-        if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
-            return NFC_RESULT_ERROR_I2C_RETRY;
 
         HAL_Delay(5U);
         retry++;
@@ -720,11 +795,15 @@ static NFC_Result_t nfc_i2c_mem_read(NFC_NTP53321_Handle_t *h,
         if (hal_ret == HAL_OK) return NFC_RESULT_OK;
 
         h->stats.i2c_error_count++;
-        APP_LOGE("NFC", "Mem_Read  err addr=0x%04X retry=%u hal=%d",
-                 block_addr, (unsigned int)retry, (int)hal_ret);
-
         if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
+        {
+            APP_LOGE("NFC", "Mem_Read err addr=0x%04X retry=%u hal=%d",
+                     block_addr, (unsigned int)retry, (int)hal_ret);
             return NFC_RESULT_ERROR_I2C_RETRY;
+        }
+
+        APP_LOGW("NFC", "Mem_Read retry addr=0x%04X retry=%u hal=%d",
+                 block_addr, (unsigned int)retry, (int)hal_ret);
 
         HAL_Delay(5U);
         retry++;
@@ -777,7 +856,21 @@ static NFC_Result_t nfc_i2c_reg_write(NFC_NTP53321_Handle_t *h,
 
         hal_err = HAL_I2C_GetError(h->hi2c);
         h->stats.i2c_error_count++;
-        APP_LOGE("NFC", "Reg_Write err blk=0x%04X rega=0x%02X mask=0x%02X val=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+        if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
+        {
+            APP_LOGE("NFC", "Reg_Write err blk=0x%04X rega=0x%02X mask=0x%02X val=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+                     (unsigned int)block_addr,
+                     (unsigned int)reg_offset,
+                     (unsigned int)mask,
+                     (unsigned int)value,
+                     (unsigned int)retry,
+                     (int)hal_ret,
+                     (unsigned long)hal_err,
+                     (unsigned long)HAL_I2C_GetState(h->hi2c));
+            return NFC_RESULT_ERROR_I2C_RETRY;
+        }
+
+        APP_LOGW("NFC", "Reg_Write retry blk=0x%04X rega=0x%02X mask=0x%02X val=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
                  (unsigned int)block_addr,
                  (unsigned int)reg_offset,
                  (unsigned int)mask,
@@ -786,9 +879,6 @@ static NFC_Result_t nfc_i2c_reg_write(NFC_NTP53321_Handle_t *h,
                  (int)hal_ret,
                  (unsigned long)hal_err,
                  (unsigned long)HAL_I2C_GetState(h->hi2c));
-
-        if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
-            return NFC_RESULT_ERROR_I2C_RETRY;
 
         HAL_Delay(5U);
         retry++;
@@ -837,13 +927,26 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
             hal_err = HAL_I2C_GetError(h->hi2c);
             hal_state = HAL_I2C_GetState(h->hi2c);
             h->stats.i2c_error_count++;
-            APP_LOGE("NFC", "Reg_Read TX err blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
-                     (unsigned int)block_addr,
-                     (unsigned int)reg_offset,
-                     (unsigned int)retry,
-                     (int)hal_ret,
-                     (unsigned long)hal_err,
-                     (unsigned long)hal_state);
+            if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
+            {
+                APP_LOGE("NFC", "Reg_Read TX err blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+                         (unsigned int)block_addr,
+                         (unsigned int)reg_offset,
+                         (unsigned int)retry,
+                         (int)hal_ret,
+                         (unsigned long)hal_err,
+                         (unsigned long)hal_state);
+            }
+            else
+            {
+                APP_LOGW("NFC", "Reg_Read TX retry blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+                         (unsigned int)block_addr,
+                         (unsigned int)reg_offset,
+                         (unsigned int)retry,
+                         (int)hal_ret,
+                         (unsigned long)hal_err,
+                         (unsigned long)hal_state);
+            }
             goto retry_label;
         }
 
@@ -876,13 +979,26 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
         hal_err = HAL_I2C_GetError(h->hi2c);
         hal_state = HAL_I2C_GetState(h->hi2c);
         h->stats.i2c_error_count++;
-        APP_LOGE("NFC", "Reg_Read RX err blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
-                 (unsigned int)block_addr,
-                 (unsigned int)reg_offset,
-                 (unsigned int)retry,
-                 (int)hal_ret,
-                 (unsigned long)hal_err,
-                 (unsigned long)hal_state);
+        if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
+        {
+            APP_LOGE("NFC", "Reg_Read RX err blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+                     (unsigned int)block_addr,
+                     (unsigned int)reg_offset,
+                     (unsigned int)retry,
+                     (int)hal_ret,
+                     (unsigned long)hal_err,
+                     (unsigned long)hal_state);
+        }
+        else
+        {
+            APP_LOGW("NFC", "Reg_Read RX retry blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+                     (unsigned int)block_addr,
+                     (unsigned int)reg_offset,
+                     (unsigned int)retry,
+                     (int)hal_ret,
+                     (unsigned long)hal_err,
+                     (unsigned long)hal_state);
+        }
 
 retry_label:
         if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
