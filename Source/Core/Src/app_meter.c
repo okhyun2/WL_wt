@@ -128,35 +128,19 @@ static void App_MeterGetTimestamp(uint8_t ts[6], uint8_t *p_timeValid)
     }
 }
 
-static uint8_t App_MeterDecodeDigitalDecimal(uint8_t vif)
+static uint8_t App_MeterDecodeDecimalPos(uint8_t vif)
 {
-    if ((vif >= 0x10u) && (vif <= 0x16u))
-    {
-        return (uint8_t)(0x16u - vif);
-    }
-
-    if (vif == 0x17u)
-    {
-        return 0u;
-    }
-
-    return 3u;
+    return (uint8_t)(vif & 0x0Fu);
 }
 
 static uint8_t App_MeterDecodeDigitalCaliber(uint8_t dif)
 {
-    return (uint8_t)(dif & 0x0Fu);
+    return (uint8_t)((dif & 0xF0u)>>4);
 }
 
 static uint32_t App_MeterScaleToMilli(uint32_t value, uint8_t decimal)
 {
-    while (decimal < 3u)
-    {
-        value *= 10u;
-        decimal++;
-    }
-
-    while (decimal > 3u)
+    while (decimal > 0u)
     {
         value /= 10u;
         decimal--;
@@ -229,7 +213,7 @@ static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
     dataRaw = App_MeterGetMeasurementData((App_MeterUnion_t *)pRxFrame);
     identDecimal = BCD_To_Decimal(identRaw);
     dataDecimal = BCD_To_Decimal(dataRaw);
-    decimalPos = App_MeterDecodeDigitalDecimal(pRxFrame->frame.UserData.VIF);
+    decimalPos = App_MeterDecodeDecimalPos(pRxFrame->frame.UserData.VIF);
     caliber = App_MeterDecodeDigitalCaliber(pRxFrame->frame.UserData.DIF);
 
     record.srcType = APP_METER_STORAGE_SRC_DIGITAL_UART;
@@ -239,11 +223,11 @@ static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
         record.flags |= APP_METER_STORAGE_FLAG_TIME_VALID;
     }
     record.meterId = identDecimal;
-    record.readingScaled = App_MeterScaleToMilli(dataDecimal, decimalPos);
+    record.readingScaled = App_MeterScaleToMilli(dataDecimal, 0); //no scale.
+    record.caliberDecimal = (uint8_t)(((caliber & 0x0Fu) << 4) | (decimalPos & 0x0Fu));
     record.meterStatus = App_MeterNormalizeDigitalStatus(pRxFrame->frame.UserData.Status);
     record.meterBattery = (uint8_t)(pRxFrame->frame.UserData.Status & 0x1Fu);
     record.meterType = APP_METER_STORAGE_METER_TYPE_DIGITAL_UART;
-    record.caliberDecimal = (uint8_t)(((caliber & 0x0Fu) << 4) | (decimalPos & 0x0Fu));
 
     App_MeterStoragePrintRecord(&record);
 

@@ -475,13 +475,13 @@ void App_MeterStoragePrintRecord(const AppMeterStorageRecord_t *p_record)
              (unsigned int)p_record->ts[5]);
 
     APP_LOGI("MSTOR",
-             "rec id=%lu reading=%lu status=0x%02X batt=0x%02X type=0x%02X caldec=0x%02X crc=0x%02X rsv=0x%02X",
+             "rec id=%lu reading=%lu caldec=0x%02X status=0x%02X batt=0x%02X type=0x%02X crc=0x%02X rsv=0x%02X",
              (unsigned long)p_record->meterId,
              (unsigned long)p_record->readingScaled,
+             (unsigned int)p_record->caliberDecimal,
              (unsigned int)p_record->meterStatus,
              (unsigned int)p_record->meterBattery,
              (unsigned int)p_record->meterType,
-             (unsigned int)p_record->caliberDecimal,
              (unsigned int)p_record->crc8,
              (unsigned int)p_record->reserved);
 
