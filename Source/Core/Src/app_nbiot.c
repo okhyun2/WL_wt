@@ -12,9 +12,6 @@
 #include "app_meter_storage.h"
 #include "app_meter_server_format.h"
 
-#define MY_SERVER_DOMAIN              "acorp2.iptime.org"
-#define WARMUPDNS_SERVER_DOMAIN       "www.google.com"
-
 #define APP_BC95_AT_CMD_PING          "AT\r\n"
 #define APP_BC95_AT_CMD_IMEI          "AT+CGSN=1\r\n"
 #define APP_BC95_AT_CMD_IMSI          "AT+CIMI\r\n"
@@ -2377,6 +2374,7 @@ AppStatus_t App_Bc95AtResolveHostRobust(const char *p_hostname, char *p_ipOut, u
     return APP_STATUS_UART_TIMEOUT;
 }
 
+#ifdef NBIOT_SUPPORT_DNS
 static AppStatus_t App_Bc95AtWarmupDns(const char *p_hostname)
 {
     AppStatus_t status;
@@ -2403,6 +2401,7 @@ static AppStatus_t App_Bc95AtWarmupDns(const char *p_hostname)
     APP_LOGI("NBIOT", "[DNS] warmup skipped");
     return APP_STATUS_UART_TIMEOUT;
 }
+#endif // NBIOT_SUPPORT_DNS
 
 /* ============================================================
  *  UDP socket / send
@@ -2807,7 +2806,7 @@ void App_Bc95AtCloseAllSockets(void)
     }
 }
 
-AppStatus_t App_Bc95AtUdpSendOnce(const char *p_hostname, uint16_t port,
+AppStatus_t App_Bc95AtUdpSendOnce(const char *p_host, uint16_t port,
                                   const uint8_t *p_data, uint16_t length,
                                   AppBc95UdpResult_t *p_result)
 {
@@ -2823,20 +2822,27 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_hostname, uint16_t port,
     result.lastStage = APP_BC95_UDP_STAGE_NONE;
     ipBuf[0] = '\0';
 
-    APP_RETURN_IF_FALSE((p_hostname != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_host != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((p_data != NULL) && (length > 0u), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((length <= APP_BC95_UDP_MAX_PAYLOAD), APP_STATUS_INVALID_PARAM);
 
     /* 1) DNS */
     result.lastStage = APP_BC95_UDP_STAGE_RESOLVE;
-    status = App_Bc95AtResolveHostRobust(p_hostname, ipBuf, sizeof(ipBuf));
+#ifdef NBIOT_SUPPORT_DNS
+    status = App_Bc95AtResolveHostRobust(p_host, ipBuf, sizeof(ipBuf));
     if ((status != APP_STATUS_OK) || (ipBuf[0] == '\0'))
     {
-        APP_LOGE("NBIOT", "DNS resolve failed for %s", p_hostname);
-        if (p_result != NULL) (void)memcpy(p_result, &result, sizeof(*p_result));
+        APP_LOGE("NBIOT", "DNS resolve failed for %s", p_host);
+        if (p_result != NULL)
+            (void)memcpy(p_result, &result, sizeof(*p_result));
         return (status != APP_STATUS_OK) ? status : APP_STATUS_FATAL;
     }
     (void)strncpy(result.resolvedIp, ipBuf, sizeof(result.resolvedIp) - 1u);
+#else
+    (void)strcpy(ipBuf, p_host);
+    (void)strcpy(result.resolvedIp, ipBuf);
+#endif
+
 
     /* 2) Create socket (재시도) */
     result.lastStage = APP_BC95_UDP_STAGE_CREATE;
@@ -2899,8 +2905,8 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_hostname, uint16_t port,
     if (status == APP_STATUS_OK)
     {
         result.lastStage = APP_BC95_UDP_STAGE_DONE;
-        APP_LOGI("NBIOT", "UDP send done: %s(%s):%u, %u bytes, seq=%u",
-                 p_hostname, ipBuf, (unsigned)port, (unsigned)length, (unsigned)seq);
+        APP_LOGI("NBIOT", "UDP send done: %s:%u, %u bytes, seq=%u",
+                 ipBuf, (unsigned)port, (unsigned)length, (unsigned)seq);
     }
     else
     {
@@ -3415,7 +3421,10 @@ AppStatus_t App_NBIoTNetworkBringUp(void)
     /* 네트워크 시간 → RTC 동기화 */
     (void)App_NBIoTSyncTime();
 
+#ifdef NBIOT_SUPPORT_DNS
     (void)App_Bc95AtWarmupDns(WARMUPDNS_SERVER_DOMAIN);
+#endif // NBIOT_SUPPORT_DNS
+
     APP_LOGI("NBIOT", "Network ready");
     return APP_STATUS_OK;
 }
@@ -3523,7 +3532,11 @@ AppStatus_t App_NBIoTTransmitUdp(void)
     status = App_MeterServerFormatBuildFromStorage(&opt, packet, sizeof(packet), &buildResult);
     if (status == APP_STATUS_OK)
     {
+#ifdef NBIOT_SUPPORT_DNS
         status = App_Bc95AtUdpSendOnce(MY_SERVER_DOMAIN, port, packet, buildResult.packetLength, &sendResult);
+#else
+        status = App_Bc95AtUdpSendOnce(MY_SERVER_IP, port, packet, buildResult.packetLength, &sendResult);
+#endif // NBIOT_SUPPORT_DNS
         if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u))
         {
             AppStatus_t clearStatus = App_MeterStorageClearAll();

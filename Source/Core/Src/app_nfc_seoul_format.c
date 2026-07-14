@@ -364,6 +364,7 @@ static void App_NfcSeoulBuildSnapshot(AppNfcSeoulSnapshot_t *p_snapshot)
     if (App_NfcSeoulLoadOptions(&options) == APP_STATUS_OK)
     {
         p_snapshot->battery = options.terminalBattery.value;
+        memcpy(p_snapshot->terminalId, &options.deviceSerialBcd[1], (uint8_t)sizeof(p_snapshot->terminalId)); //get last 4byte
 
         if (App_NfcSeoulIsAllZero(options.wirelessQuality, (uint8_t)sizeof(options.wirelessQuality)) != APP_TRUE)
         {

@@ -387,14 +387,15 @@ AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t le
         
         App_MeterPrintUnionDetailed(&rx_frame);
 
-        //nfc update
-        APP_LOGI("NFC", "Update nfc meter info.");
-        (void)App_NfcSeoulNotifyStorageChanged();
-
         if (App_MeterIsStorageEnabled() == APP_TRUE)
         {
             APP_RETURN_IF_FALSE(App_MeterSaveDigitalRecord(&rx_frame) == APP_STATUS_OK, APP_STATUS_FATAL);
         }
+
+        //nfc update
+        APP_LOGI("NFC", "Update nfc meter info.");
+        (void)App_NfcSeoulNotifyStorageChanged();
+
         return(APP_STATUS_OK);
         
     } else {

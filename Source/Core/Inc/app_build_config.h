@@ -42,6 +42,14 @@ extern "C" {
 #define APP_FW_VERSION_MAJOR                        (0u)
 #define APP_FW_VERSION_MINOR                        (7u)
 
+#define NBIOT_SUPPORT_DNS
+#ifdef NBIOT_SUPPORT_DNS
+#define MY_SERVER_DOMAIN              "acorp2.iptime.org"
+#define WARMUPDNS_SERVER_DOMAIN       "www.google.com"
+#else
+#define MY_SERVER_IP                    "125.138.79.82"
+#endif // NBIOT_SUPPORT_DNS
+
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
 
 #define APP_DEFAULT_RTC_YEAR                        (2026)
