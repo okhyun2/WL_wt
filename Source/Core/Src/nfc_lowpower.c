@@ -86,7 +86,7 @@ NFC_Result_t NFC_LP_HandleWakeup(NFC_LP_Handle_t *hlp)
 
     /* Debounce: ignore wakeup events within NFC_ED_DEBOUNCE_MS */
     if ((now - last_wakeup_tick) < NFC_ED_DEBOUNCE_MS) {
-        APP_LOGI("NFC", "Debounce filtered (%lu ms elapsed)",
+        APP_LOGD("NFC", "Debounce filtered (%lu ms elapsed)",
                (unsigned long)(now - last_wakeup_tick));
         NFC_NTP53321_ClearEDFlag(hlp->hntag);
         return NFC_RESULT_OK;
@@ -98,10 +98,10 @@ NFC_Result_t NFC_LP_HandleWakeup(NFC_LP_Handle_t *hlp)
     if (NFC_NTP53321_IsEDTriggered(hlp->hntag)) {
         event = NFC_WAKEUP_EVENT_ED_PIN;
         NFC_NTP53321_ClearEDFlag(hlp->hntag);
-        APP_LOGI("NFC", "Wakeup: ED pin (total=%lu)",
+        APP_LOGD("NFC", "Wakeup: ED pin (total=%lu)",
                (unsigned long)hlp->stats.total_wakeups);
     } else {
-        APP_LOGI("NFC", "Wakeup: unknown event");
+        APP_LOGW("NFC", "Wakeup: unknown event");
     }
 
     /* Measure processing time (callback only, excludes LED delays) */

@@ -603,7 +603,7 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         return APP_STATUS_OK;
     }
 
-    APP_LOGW("GPIO", "STOP External interface pins(UART, I2C, gpios..)");
+    APP_LOGI("GPIO", "STOP External interface pins(UART, I2C, gpios..)");
 
     App_GpioLpEnablePortClocks();
     App_GpioLpApplyUnusedPins();

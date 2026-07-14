@@ -455,6 +455,7 @@ static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_pay
 
     App_NfcSeoulBuildSnapshot(&snapshot);
     App_NfcSeoulPrintSnapshot(&snapshot);
+    App_LogHexDump(APP_LOG_LEVEL_INFO, "NFC", (const uint8_t *)&snapshot, sizeof(AppNfcSeoulSnapshot_t));
 
     cursor = 0u;
     p_payload[cursor++] = APP_NFC_SEOUL_CMD_RES_GROUP;
@@ -876,14 +877,34 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
         }
     }
 
-    nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, true);
-    if (nfcRet != NFC_RESULT_OK)
+    uint8_t attempt;
+
+    /* mirror enable + ready 확인을 재시도 (I2C_IF_LOCKED / arbitration 충돌 흡수) */
+    #define APP_NFC_SEOUL_MIRROR_RETRY_MAX   (10u)
+    #define APP_NFC_SEOUL_MIRROR_RETRY_DELAY (5u)
+
+    for (attempt = 0u; attempt < APP_NFC_SEOUL_MIRROR_RETRY_MAX; attempt++)
     {
-        APP_LOGW("NFC", "Seoul SRAM mirror enable returned %d before SRAM write", (int)nfcRet);
+        nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, true);
+        if (nfcRet == NFC_RESULT_OK)
+        {
+            HAL_Delay(APP_NFC_SEOUL_MIRROR_RETRY_DELAY);
+            if (App_NfcSeoulIsSramMirrorReady() == APP_TRUE)
+            {
+                break;   /* 준비 완료 */
+            }
+        }
+        HAL_Delay(APP_NFC_SEOUL_MIRROR_RETRY_DELAY);
     }
-    HAL_Delay(5U);
-    if (App_NfcSeoulIsSramMirrorReady() != APP_TRUE)
+    if(attempt >= APP_NFC_SEOUL_MIRROR_RETRY_MAX)
     {
+        /* I2C_IF_LOCKED(=BUSY) 등은 잠깐 후 재시도 */
+        APP_LOGE("NFC", "Seoul mirror enable retry %u/%u ret=%d",
+                 (unsigned int)(attempt + 1u),
+                 (unsigned int)APP_NFC_SEOUL_MIRROR_RETRY_MAX,
+                 (int)nfcRet);
+
+        g_appNfcSeoulSramSyncPending = APP_TRUE;
         return APP_STATUS_NOT_INITIALIZED;
     }
 
@@ -1117,6 +1138,7 @@ AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void)
         return APP_STATUS_OK;
     }
 
+#if 0 //kiki sram debug
     status = App_NfcSeoulBuildResponsePayload(APP_NFC_SEOUL_CMD_STOR_RES,
                                               payload,
                                               (uint8_t)sizeof(payload),
@@ -1126,11 +1148,21 @@ AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void)
         g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
         return status;
     }
+#else
+    /* storage 재조회 대신 EEPROM에 이미 검증된 payload를 그대로 재사용 */
+    if (App_NfcSeoulTryExtractPayload(APP_NFC_SEOUL_NDEF_EEPROM_BLOCK,
+                                      payload, &payloadLength) != APP_TRUE)
+    {
+        APP_LOGE("NFC", "Read eeprom fail");
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+#endif
 
 #if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
     App_NfcSeoulApplyTestModeLiveFields(payload, payloadLength);
 #endif
 
+    App_LogHexDump(APP_LOG_LEVEL_INFO, "NFC", (const uint8_t *)payload, payloadLength);
     status = App_NfcSeoulWriteSramPayloadOnly(payload, payloadLength);
     if (status == APP_STATUS_OK)
     {

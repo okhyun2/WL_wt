@@ -256,7 +256,7 @@ NFC_Result_t NFC_NTP53321_EnableSRAMMirror(NFC_NTP53321_Handle_t *hntag, bool en
 
         if ((status1 & NFC_STATUS1_I2C_IF_LOCKED) != 0u)
         {
-            APP_LOGE("NFC", "I2C_IF_LOCKED");
+            APP_LOGD("NFC", "I2C_IF_LOCKED");
             return NFC_RESULT_ERROR_BUSY;
         }
 
