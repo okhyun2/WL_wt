@@ -103,6 +103,7 @@ static uint8_t  g_appBc95AtQualityBcd[APP_BC95_QUALITY_BCD_BYTES];
 static AppBc95Quality_t g_appBc95AtQuality;
 static AppBc95NetStatus_t g_appBc95AtNetStatus;
 static AppNbiotCarrierContext_t g_appNbiotCarrierContext;
+static uint8_t g_appBc95UsimFatal = APP_FALSE;
 
 /* UDP seq 단조 증가 카운터 (stale URC 매칭 방지) */
 static uint8_t g_appBc95UdpSeqCounter = 0u;
@@ -929,6 +930,7 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
 
     APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
 
+    g_appBc95UsimFatal = APP_FALSE;
     startTick = HAL_GetTick();
     APP_LOGI("NBIOT", "Wait for USIM ready (timeout=%lums)...", (unsigned long)timeoutMs);
 
@@ -961,6 +963,7 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
                     (cmeErr == 16) || (cmeErr == 311) || (cmeErr == 313) ||
                     (cmeErr == 315) || (cmeErr == 317) || (cmeErr == 318))
                 {
+                    g_appBc95UsimFatal = APP_TRUE;
                     APP_LOGE("NBIOT", "USIM fatal (CME=%ld)", (long)cmeErr);
                     return APP_STATUS_FATAL;
                 }
@@ -982,9 +985,10 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
         elapsed = HAL_GetTick() - startTick;
         if (elapsed >= timeoutMs)
         {
-            APP_LOGE("NBIOT", "USIM wait timeout (attempt=%lu, elapsed=%lums)",
+            g_appBc95UsimFatal = APP_TRUE;
+            APP_LOGE("NBIOT", "USIM fatal (timeout/no response, attempt=%lu, elapsed=%lums)",
                      (unsigned long)attempt, (unsigned long)elapsed);
-            return APP_STATUS_UART_TIMEOUT;
+            return APP_STATUS_FATAL;
         }
 
         App_Bc95AtDelayWithFeed(APP_BC95_USIM_READY_POLL_MS);
@@ -2188,6 +2192,14 @@ static AppStatus_t App_NbiotCarrierWaitForCereg0(uint32_t timeoutMs)
 static AppStatus_t App_NbiotCarrierRecoverAfterAttachFailure(AppStatus_t lastStatus)
 {
     uint32_t elapsedMs = HAL_GetTick() - g_appNbiotCarrierContext.attachStartTick;
+
+    if (g_appBc95UsimFatal == APP_TRUE)
+    {
+        APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                 " no-USIM fatal -> abort without reset (elapsed=%lums)",
+                 (unsigned long)elapsedMs);
+        return APP_STATUS_FATAL;
+    }
 
     if (elapsedMs >= APP_NBIOT_ATTACH_TOTAL_FAIL_LIMIT_MS)
     {
@@ -3617,6 +3629,7 @@ AppStatus_t App_NBIoTAtInit(void)
     (void)memset(&g_appNbiotCarrierContext, 0, sizeof(g_appNbiotCarrierContext));
 
     g_appBc95UdpSeqCounter = 0u;
+    g_appBc95UsimFatal = APP_FALSE;
     g_appBc95AtInitialized = APP_TRUE;
 
     APP_LOGI("NBIOT", "NBIoT Init");
@@ -3638,7 +3651,14 @@ AppStatus_t App_NBIoTBringUp(void)
     status = App_Bc95AtWaitForUsim(APP_BC95_USIM_READY_TIMEOUT_MS);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "Module usim timeout");
+        if (g_appBc95UsimFatal == APP_TRUE)
+        {
+            APP_LOGE("NBIOT", "Module usim fatal");
+        }
+        else
+        {
+            APP_LOGE("NBIOT", "Module usim timeout");
+        }
         return status;
     }
 

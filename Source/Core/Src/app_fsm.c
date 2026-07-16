@@ -717,6 +717,35 @@ static void App_FsmExecuteResetBoot(void)
     }
 }
 
+static AppStatus_t App_FsmHandleFatalLowPower(const char *p_reason, AppStatus_t fatalStatus)
+{
+    AppStatus_t powerOffStatus;
+
+    APP_LOGW("FSM", "[[FatalLP]] %s status=%d -> power off NB-IoT and request no-wake STOP",
+             (p_reason != NULL) ? p_reason : "fatal",
+             (int)fatalStatus);
+
+    powerOffStatus = App_NBIoTCarrierPowerOffMandatory();
+    if (powerOffStatus != APP_STATUS_OK)
+    {
+        APP_LOGW("FSM", "[[FatalLP]] mandatory power off failed status=%d -> direct power cut",
+                 (int)powerOffStatus);
+        (void)App_SystemSetNbiotPowered(APP_FALSE);
+    }
+
+    g_appFsmWakeCollectionPending = APP_FALSE;
+    App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT,
+                         APP_FSM_STATE_NBIOT_INIT,
+                         APP_FALSE,
+                         APP_FALSE,
+                         fatalStatus);
+    g_appFsmContext.summary.lowPowerRequested = APP_TRUE;
+    App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
+
+    APP_RETURN_IF_FALSE(App_SystemRequestLowPowerNoWake(APP_TRUE) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandParam0)
 {
     AppFsmComponentContext_t *p_component;
@@ -930,6 +959,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
         {
             uint8_t isFirstBootRoutine = (g_appFsmFirstAttachCycleDone != APP_TRUE) ? APP_TRUE : APP_FALSE;
+            AppStatus_t attachStatus;
 
 #if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
             if ((isFirstBootRoutine != APP_TRUE) && (g_appFsmWakeCollectionPending == APP_TRUE))
@@ -940,7 +970,11 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             }
 #endif /* APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 
-            APP_RETURN_IF_FALSE(App_NBIoTCarrierAttachMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
+            attachStatus = App_NBIoTCarrierAttachMandatory();
+            if (attachStatus != APP_STATUS_OK)
+            {
+                return App_FsmHandleFatalLowPower("attach fatal", attachStatus);
+            }
             App_NBIoTReadIdentity(APP_TRUE);
             App_NBIoTReadQuality(APP_TRUE);
 

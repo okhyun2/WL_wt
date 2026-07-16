@@ -387,17 +387,12 @@ static AppStatus_t App_SystemRtcInitBase(void)
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
+static AppStatus_t App_SystemRtcConfigureWakeupTimerSeconds(uint32_t wakeupSeconds,
+                                                            uint32_t *pWakeupSeconds)
 {
     AppStatus_t status;
-    uint32_t wakeupSeconds;
 
-    wakeupSeconds = (APP_RTC_WAKEUP_PERIOD_MS + 999u) / 1000u;
-    if (wakeupSeconds == 0u)
-    {
-        wakeupSeconds = 1u;
-    }
-
+    APP_RETURN_IF_FALSE(wakeupSeconds != 0u, APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE(wakeupSeconds <= 0x10000u, APP_STATUS_INVALID_PARAM);
 
     status = App_SystemRtcInitBase();
@@ -422,8 +417,34 @@ static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
     SET_BIT(RTC->CR, RTC_CR_WUTIE | RTC_CR_WUTE);
     App_SystemRtcWriteProtectionEnable();
 
-    *pWakeupSeconds = wakeupSeconds;
+    if (pWakeupSeconds != NULL)
+    {
+        *pWakeupSeconds = wakeupSeconds;
+    }
     return APP_STATUS_OK;
+}
+
+static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
+{
+    uint32_t wakeupSeconds;
+
+    wakeupSeconds = (APP_RTC_WAKEUP_PERIOD_MS + 999u) / 1000u;
+    if (wakeupSeconds == 0u)
+    {
+        wakeupSeconds = 1u;
+    }
+
+    return App_SystemRtcConfigureWakeupTimerSeconds(wakeupSeconds, pWakeupSeconds);
+}
+
+static void App_SystemRtcDisableWakeupTimer(void)
+{
+    App_SystemRtcWriteProtectionDisable();
+    CLEAR_BIT(RTC->CR, RTC_CR_WUTE | RTC_CR_WUTIE);
+    (void)App_SystemRtcWaitFlagSet(RTC_ISR_WUTWF);
+    CLEAR_BIT(RTC->ISR, RTC_ISR_WUTF);
+    EXTI->PR = EXTI_PR_PIF20;
+    App_SystemRtcWriteProtectionEnable();
 }
 
 static AppStatus_t App_SystemInitRtcWakeup(void)
@@ -878,12 +899,19 @@ static AppStatus_t App_SystemEnterStopMode(void)
     uint8_t standbyPrepareState = APP_SYSTEM_NFC_STANDBY_PREP_NONE;
     AppStatus_t adcRestoreStatus;
 	
-    APP_LOGI("LP", "Enter STOP mode");
+    APP_LOGI("LP", "Enter STOP mode%s",
+             (g_appSystemContext.stopNoWakeRequested == APP_TRUE) ? " (fatal/no-wake)" : "");
 
     g_appSystemContext.stopCandidateCount++;
 
-    if( (g_appSystemContext.oldWakeSourceMask == APP_SYSTEM_WAKE_SRC_NONE) ||
-        (g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_RTC) )
+    if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
+    {
+        App_SystemRtcDisableWakeupTimer();
+        g_appSystemContext.oldWakeSourceMask &= ~(APP_SYSTEM_WAKE_SRC_RTC | APP_SYSTEM_WAKE_SRC_LPTIM);
+        APP_LOGW("LP", "fatal no-wake STOP: periodic RTC/LPTIM wake disabled");
+    }
+    else if( (g_appSystemContext.oldWakeSourceMask == APP_SYSTEM_WAKE_SRC_NONE) ||
+             (g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_RTC) )
     {
         uint32_t wakeupSeconds = 0;
         APP_LOGD("LP", "RTCConfigureWakeupTimer");
@@ -1026,6 +1054,14 @@ static AppStatus_t App_SystemEnterStopMode(void)
         return adcRestoreStatus;
     }
 
+    if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
+    {
+        APP_LOGW("LP", "fatal no-wake STOP woke unexpectedly -> re-enter STOP");
+        g_appSystemContext.stopRequested = APP_TRUE;
+        g_appSystemContext.stopQualificationCount = APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT;
+        return APP_STATUS_OK;
+    }
+
     // Wake-up 후 경과 시간 계산 및 보정
     uint64_t rtc_time_after = RTC_GetTimeMs() + 100; //100msec tunnning
     uint32_t elapsed_ms = CalcElapsedMs(rtc_time_before_stop, rtc_time_after);
@@ -1141,6 +1177,12 @@ static void App_SystemHandleIdle(void)
 
 void App_SystemHandleLptim1AutoReloadMatchCallback(void)
 {
+    if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
+    {
+        APP_LOGW("LP", "Ignore LPTIM wake in fatal no-wake STOP");
+        return;
+    }
+
     g_appSystemContext.lptimWakeEventCount++;
     App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_LPTIM);
     App_SystemQueueStateCommand(APP_FSM_STATE_LPTIM_WAKE_SERVICE);
@@ -1157,6 +1199,12 @@ void App_SystemHandleLptim1AutoReloadMatchCallback(void)
 
 void App_SystemHandleRtcCallBack(void)
 {
+    if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
+    {
+        APP_LOGW("LP", "Ignore RTC wake in fatal no-wake STOP");
+        return;
+    }
+
     g_appSystemContext.rtcWakeEventCount++;
     App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_RTC);
     App_SystemQueueStateCommand(APP_FSM_STATE_RTC_WAKE_SERVICE);
@@ -1174,6 +1222,12 @@ void App_SystemHandleRtcCallBack(void)
 
 void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
 {
+    if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
+    {
+        APP_LOGW("LP", "Ignore EXTI wake pinmask=0x%04X in fatal no-wake STOP", (unsigned int)GPIO_Pin);
+        return;
+    }
+
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
         APP_LOGI("LP",
@@ -1443,6 +1497,7 @@ AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
     }
     else
     {
+        g_appSystemContext.stopNoWakeRequested = APP_FALSE;
         App_SystemResetStopQualification();
     }
 #ifdef DEBUG
@@ -1458,6 +1513,13 @@ AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
     }
 #endif
     return APP_STATUS_OK;
+}
+
+AppStatus_t App_SystemRequestLowPowerNoWake(uint8_t allowStopNoWake)
+{
+    APP_RETURN_IF_FALSE((allowStopNoWake == APP_FALSE) || (allowStopNoWake == APP_TRUE), APP_STATUS_INVALID_PARAM);
+    g_appSystemContext.stopNoWakeRequested = allowStopNoWake;
+    return App_SystemRequestLowPower(allowStopNoWake);
 }
 
 const AppSystemContext_t *App_SystemGetContext(void)

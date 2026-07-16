@@ -134,6 +134,7 @@ typedef struct
     uint8_t selfTestFailed;
     uint8_t fsmReady;
     uint8_t stopRequested;
+    uint8_t stopNoWakeRequested;
     uint8_t stopQualificationCount;
     AppBootStage_t bootStage;
     AppStatus_t selfTestStatus;
@@ -182,6 +183,7 @@ AppStatus_t App_SystemPrepareForStop(void);
 AppStatus_t App_SystemRecoverFromStop(void);
 AppStatus_t App_SystemSetNbiotPowered(uint8_t powered);
 AppStatus_t App_SystemRequestLowPower(uint8_t allowStop);
+AppStatus_t App_SystemRequestLowPowerNoWake(uint8_t allowStopNoWake);
 void App_SystemNotifyWakeSource(uint32_t sourceMask);
 void App_SystemHandleLptim1AutoReloadMatchCallback(void);
 void App_SystemHandleRtcCallBack(void);
