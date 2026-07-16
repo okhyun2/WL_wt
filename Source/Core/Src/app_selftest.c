@@ -274,6 +274,11 @@ static AppStatus_t App_SelfTestCheckBatteryAdc(void)
         (unsigned long)vdda_mv,
         (unsigned long)vbat_mv);
 
+    {
+        uint8_t voltX10 = (uint8_t)((vbat_mv + 50u) / 100u);
+        App_UpdateBatteryToOptions(voltX10, 0u);
+    }
+
     return APP_STATUS_OK;
 }
 
@@ -386,7 +391,7 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
         App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
     }
 
-    App_MeterSetStorageEnabled(APP_FALSE);
+    App_MeterSetStorageEnabled(APP_TRUE);
     status = App_MeterSC1xxxProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
     App_MeterSetStorageEnabled(APP_TRUE);
     return (status);
@@ -576,8 +581,14 @@ AppStatus_t App_SelfTestInit(void)
     (void)memset(&g_appSelfTestContext, 0, sizeof(g_appSelfTestContext));
     g_appSelfTestContext.initialized = APP_TRUE;
     g_appSelfTestContext.lastSequenceStatus = APP_STATUS_NOT_INITIALIZED;
+    g_appSelfTestNbiotExecuted = APP_FALSE;
 
     return APP_STATUS_OK;
+}
+
+void App_SelfTestSetNbiotExecutedHint(uint8_t executed)
+{
+    g_appSelfTestNbiotExecuted = (executed != APP_FALSE) ? APP_TRUE : APP_FALSE;
 }
 
 AppStatus_t App_SelfTestRunBootSequence(void)
@@ -587,7 +598,6 @@ AppStatus_t App_SelfTestRunBootSequence(void)
 
     g_appSelfTestContext.running = APP_TRUE;
     g_appSelfTestContext.lastRunTickMs = HAL_GetTick();
-    g_appSelfTestNbiotExecuted = APP_FALSE;
     g_appSelfTestContext.passCount = 0u;
     g_appSelfTestContext.failCount = 0u;
     (void)memset(g_appSelfTestContext.items, 0, sizeof(g_appSelfTestContext.items));
@@ -613,6 +623,40 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     g_appSelfTestContext.lastSequenceStatus = (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
 
     APP_LOGI("SELF", "------ Boot self-test summary: pass=%lu fail=%lu",
+                                 (unsigned long)g_appSelfTestContext.passCount,
+                                 (unsigned long)g_appSelfTestContext.failCount);
+
+    return g_appSelfTestContext.lastSequenceStatus;
+}
+
+AppStatus_t App_SelfTestRunDataCollectionSequence(void)
+{
+    APP_RETURN_IF_FALSE(g_appSelfTestContext.initialized == APP_TRUE, APP_STATUS_NOT_INITIALIZED);
+    APP_RETURN_IF_FALSE(App_LogGetContext()->initialized == APP_TRUE, APP_STATUS_LOG_INIT_FAILED);
+
+    g_appSelfTestContext.running = APP_TRUE;
+    g_appSelfTestContext.lastRunTickMs = HAL_GetTick();
+    g_appSelfTestContext.passCount = 0u;
+    g_appSelfTestContext.failCount = 0u;
+    (void)memset(g_appSelfTestContext.items, 0, sizeof(g_appSelfTestContext.items));
+
+    APP_LOGI("SELF", "Operational data collection start");
+
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc);
+#if defined(SUPPORT_METER_NORMAL)
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
+#elif defined(SUPPORT_METER_SC1xxx)
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
+#endif
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_GPIO_INPUTS, App_SelfTestCheckInputLines);
+
+    g_appSelfTestContext.running = APP_FALSE;
+    g_appSelfTestContext.lastSequenceStatus = (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
+
+    APP_LOGI("SELF", "Operational data collection done: pass=%lu fail=%lu",
                                  (unsigned long)g_appSelfTestContext.passCount,
                                  (unsigned long)g_appSelfTestContext.failCount);
 

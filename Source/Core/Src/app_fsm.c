@@ -34,6 +34,8 @@ NFC_LP_Handle_t g_nfcLpHandle;
 static volatile uint8_t g_nfcIrqPending;
 static volatile NFC_WakeupEvent_t g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
 static uint8_t g_nfcReady = APP_FALSE;
+static uint8_t g_appFsmInitialBootRoutineQueued = APP_FALSE;
+static uint8_t g_appFsmWakeCollectionPending = APP_FALSE;
 
 static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTES;
 static const uint8_t g_nfcAdminKey[NFC_AUTH_KEY_SIZE] = APP_NFC_ADMIN_KEY_BYTES;
@@ -925,10 +927,35 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
+        {
+            const AppSystemContext_t *p_systemContext = App_SystemGetContext();
+            uint8_t isFirstBootRoutine = APP_FALSE;
+
+            if ((p_systemContext != NULL) && (p_systemContext->selfTestCompleted != APP_TRUE))
+            {
+                isFirstBootRoutine = APP_TRUE;
+            }
+
+#ifdef SUPPORT_SELFTEST
+            if ((isFirstBootRoutine == APP_FALSE) && (g_appFsmWakeCollectionPending == APP_TRUE))
+            {
+                APP_LOGI("FSM", "[[WakeRoutine]] collect device data before attach");
+                APP_RETURN_IF_FALSE(App_SystemRunWakeDataCollection() == APP_STATUS_OK, APP_STATUS_FATAL);
+                g_appFsmWakeCollectionPending = APP_FALSE;
+            }
+#endif // SUPPORT_SELFTEST
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierAttachMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
             App_NBIoTReadIdentity(APP_TRUE);
             App_NBIoTReadQuality(APP_TRUE);
+
+#ifdef SUPPORT_SELFTEST
+            if (isFirstBootRoutine == APP_TRUE)
+            {
+                APP_LOGI("FSM", "[[BootRoutine]] attach success -> run full selftest");
+                APP_RETURN_IF_FALSE(App_SystemRunBootSelfTest() == APP_STATUS_OK, APP_STATUS_FATAL);
+            }
+#endif // SUPPORT_SELFTEST
 
             App_NBIoTTransmitUdp();
 
@@ -938,6 +965,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
+        }
 
         case APP_FSM_STATE_SERVER_INIT:
             /* pseudo code*/
@@ -984,15 +1012,17 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_RTC_APPLY_SYNC:
             /* pseudo code*/
-#ifdef SUPPORT_SELFTEST
-            APP_LOGI("FSM", "########################kiki000. run selftest");
-            App_SystemRunBootSelfTest();
-#endif // SUPPORT_SELFTEST
-
             /*
                 do something;
                 APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
+            if (g_appFsmWakeCollectionPending != APP_TRUE)
+            {
+                g_appFsmWakeCollectionPending = APP_TRUE;
+                APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+                App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+                APP_LOGI("FSM", "[[WakeRoutine]] RTC wake -> queue collect/attach/send/poweroff");
+            }
             // Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_READY, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
@@ -1025,9 +1055,17 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 do something;
                 APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
+            if (g_appFsmWakeCollectionPending != APP_TRUE)
+            {
+                g_appFsmWakeCollectionPending = APP_TRUE;
+                APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+                App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+                APP_LOGI("FSM", "[[WakeRoutine]] LPTIM wake -> queue collect/attach/send/poweroff");
+            }
             //Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_LPTIM, APP_FSM_STATE_LPTIM_READY, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+            break;
         case APP_FSM_STATE_LPTIM_READY:
             App_FsmMarkComponent(APP_FSM_COMPONENT_LPTIM, APP_FSM_STATE_LPTIM_READY, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
@@ -1084,6 +1122,13 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_STORAGE_RELEASE:
+            if (g_appFsmInitialBootRoutineQueued != APP_TRUE)
+            {
+                g_appFsmInitialBootRoutineQueued = APP_TRUE;
+                APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+                App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+                APP_LOGI("FSM", "[[BootRoutine]] queue first attach/selftest/send/poweroff cycle");
+            }
             App_FsmMarkComponent(APP_FSM_COMPONENT_STORAGE, APP_FSM_STATE_STORAGE_RELEASE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
@@ -1120,6 +1165,8 @@ AppStatus_t App_FsmInit(void)
     g_appFsmContext.summary.decision = APP_FSM_DECISION_BOOT;
     g_appFsmContext.summary.currentState = APP_FSM_STATE_INIT;
     g_appFsmContext.initialized = APP_TRUE;
+    g_appFsmInitialBootRoutineQueued = APP_FALSE;
+    g_appFsmWakeCollectionPending = APP_FALSE;
 
     return App_FsmQueueStateBack(APP_FSM_STATE_BOOT, 0u, 0u);
 }

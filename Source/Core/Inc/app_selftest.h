@@ -72,6 +72,8 @@ AppStatus_t App_SelfTestInit(void);
  *         one or more checks fail, or another error code on fatal setup issues.
  */
 AppStatus_t App_SelfTestRunBootSequence(void);
+void App_SelfTestSetNbiotExecutedHint(uint8_t executed);
+AppStatus_t App_SelfTestRunDataCollectionSequence(void);
 
 /**
  * @brief Play the error buzzer pattern.

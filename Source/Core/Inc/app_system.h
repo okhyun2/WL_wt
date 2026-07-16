@@ -192,6 +192,7 @@ const char *App_SystemGetVersionString(void);
 const char *App_SystemGetWakeSourceString(void);
 const char *App_SystemGetLowPowerModeString(void);
 AppStatus_t App_SystemRunBootSelfTest(void);
+AppStatus_t App_SystemRunWakeDataCollection(void);
 void Get_BootInfo(BootInfo_t *pBootInfo);
 uint8_t App_SystemPrepareNfcStandbyForStop(void);
 

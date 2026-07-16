@@ -636,6 +636,7 @@ AppStatus_t App_SystemRunBootSelfTest(void)
         return APP_STATUS_SELFTEST_INIT_FAILED;
     }
 
+    App_SelfTestSetNbiotExecutedHint(APP_TRUE);
     status = App_SelfTestRunBootSequence();
     g_appSystemContext.selfTestCompleted = APP_TRUE;
     g_appSystemContext.selfTestStatus = status;
@@ -645,27 +646,6 @@ AppStatus_t App_SystemRunBootSelfTest(void)
     if (status == APP_STATUS_OK)
     {
         APP_LOGI("SELF", "------ Boot self-test finished without failures");
-
-#ifdef SUPPORT_SELFTEST_SENDNBIOT
-        {
-            (void)App_SystemSetNbiotPowered(APP_TRUE);
-
-            APP_WWDGFeed();
-            APP_RETURN_IF_FALSE(App_NBIoTBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
-            APP_WWDGFeed();
-            APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
-            APP_WWDGFeed();
-            App_NBIoTReadIdentity(APP_TRUE);
-            App_NBIoTReadQuality(APP_TRUE);
-
-            APP_WWDGFeed();
-            App_NBIoTTransmitUdp();
-            APP_WWDGFeed();
-
-            (void)App_SystemSetNbiotPowered(APP_FALSE);
-        }
-#endif // SUPPORT_SELFTEST_SENDNBIOT
-
         return APP_STATUS_OK;
     }
 
@@ -679,6 +659,39 @@ AppStatus_t App_SystemRunBootSelfTest(void)
     return APP_STATUS_OK;
 }
 #endif // SUPPORT_SELFTEST
+
+AppStatus_t App_SystemRunWakeDataCollection(void)
+{
+#ifdef SUPPORT_SELFTEST
+    AppStatus_t status;
+
+    APP_LOGI("SELF", "######################## run wake data collection");
+
+    status = App_SelfTestInit();
+    if (status != APP_STATUS_OK)
+    {
+        return APP_STATUS_SELFTEST_INIT_FAILED;
+    }
+
+    App_SelfTestSetNbiotExecutedHint(APP_FALSE);
+    status = App_SelfTestRunDataCollectionSequence();
+
+    if (status == APP_STATUS_OK)
+    {
+        APP_LOGI("SELF", "------ Wake data collection finished without failures");
+        return APP_STATUS_OK;
+    }
+
+    APP_LOGW("SELF", "!!!!!! Wake data collection completed with one or more failures");
+
+    if (APP_SELFTEST_FAIL_STOPS_BOOT == APP_TRUE)
+    {
+        return status;
+    }
+#endif
+
+    return APP_STATUS_OK;
+}
 
 static AppStatus_t App_SystemInitFsm(void)
 {
@@ -1305,33 +1318,7 @@ AppStatus_t App_SystemInit(void)
     g_appSystemContext.initialized = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
 
-#ifdef SUPPORT_SELFTEST
-    // Connection & update rtc NBIoT
-    {
-        (void)App_SystemSetNbiotPowered(APP_TRUE);
-
-        APP_WWDGFeed();
-        APP_RETURN_IF_FALSE(App_NBIoTBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
-        APP_WWDGFeed();
-        APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
-        APP_WWDGFeed();
-        App_NBIoTReadIdentity(APP_TRUE);
-        App_NBIoTReadQuality(APP_TRUE);
-
-        APP_WWDGFeed();
-        App_NBIoTTransmitUdp();
-        APP_WWDGFeed();
-
-        (void)App_SystemSetNbiotPowered(APP_FALSE);
-    }
-
-    status = App_SystemRunBootSelfTest();
-    if (status != APP_STATUS_OK)
-    {
-        return status;
-    }
-#endif // SUPPORT_SELFTEST
-
+    APP_LOGI("SYS", "Initial attach/selftest/report and wake report routines delegated to FSM");
 
 #ifdef DEBUG
     APP_LOGD("SYS", "Application ready: boot=%lu/%lu stop_req=%u",
