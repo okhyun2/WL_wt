@@ -899,10 +899,6 @@ static AppStatus_t App_SystemEnterStopMode(void)
     uint8_t standbyPrepareState = APP_SYSTEM_NFC_STANDBY_PREP_NONE;
     AppStatus_t adcRestoreStatus;
 	
-    APP_LOGW("LP", "STOP entry flags: stop=%u no_wake=%u",
-         (unsigned int)g_appSystemContext.stopRequested,
-         (unsigned int)g_appSystemContext.stopNoWakeRequested);
-
     APP_LOGI("LP", "Enter STOP mode%s",
              (g_appSystemContext.stopNoWakeRequested == APP_TRUE) ? " (fatal/no-wake)" : "");
 
@@ -1136,7 +1132,22 @@ static void App_SystemHandleIdle(void)
 
         if (g_appSystemContext.stopQualificationCount >= APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT)
         {
+            APP_LOGW("LP",
+                     "STOP handoff(before clear): stop=%u no_wake=%u qualify=%u decision=%s idle=%lu dispatch=%lu",
+                     (unsigned int)g_appSystemContext.stopRequested,
+                     (unsigned int)g_appSystemContext.stopNoWakeRequested,
+                     (unsigned int)g_appSystemContext.stopQualificationCount,
+                     App_FsmGetDecisionString(),
+                     (unsigned long)g_appSystemContext.idleCounter,
+                     (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
+
             g_appSystemContext.stopRequested = APP_FALSE;
+
+            APP_LOGW("LP",
+                     "STOP handoff(after clear): stop=%u no_wake=%u",
+                     (unsigned int)g_appSystemContext.stopRequested,
+                     (unsigned int)g_appSystemContext.stopNoWakeRequested);
+
             App_SystemResetStopQualification();
             status = App_SystemEnterStopMode();
             if (status != APP_STATUS_OK)
@@ -1485,7 +1496,6 @@ AppStatus_t App_SystemSetNbiotPowered(uint8_t powered)
     return App_GpioLpSetNbiotPowered(powered);
 }
 
-#if 1
 AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
 {
     uint8_t previousRequest;
@@ -1497,6 +1507,15 @@ AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
 
     previousRequest = g_appSystemContext.stopRequested;
     g_appSystemContext.stopRequested = allowStop;
+
+#ifdef DEBUG
+    APP_LOGD("LP",
+             "STOP request update: prev=%u new=%u no_wake=%u caller_tick=%lu",
+             (unsigned int)previousRequest,
+             (unsigned int)allowStop,
+             (unsigned int)g_appSystemContext.stopNoWakeRequested,
+             (unsigned long)HAL_GetTick());
+#endif
 
     if (allowStop == APP_TRUE)
     {
@@ -1532,6 +1551,11 @@ AppStatus_t App_SystemRequestLowPowerNoWake(uint8_t allowStopNoWake)
 {
     APP_RETURN_IF_FALSE((allowStopNoWake == APP_FALSE) || (allowStopNoWake == APP_TRUE), APP_STATUS_INVALID_PARAM);
 
+    APP_LOGW("LP",
+             "STOP no-wake request: new=%u before stop=%u",
+             (unsigned int)allowStopNoWake,
+             (unsigned int)g_appSystemContext.stopRequested);
+
     if (allowStopNoWake == APP_TRUE)
     {
         g_appSystemContext.stopNoWakeRequested = APP_TRUE;
@@ -1542,48 +1566,6 @@ AppStatus_t App_SystemRequestLowPowerNoWake(uint8_t allowStopNoWake)
     g_appSystemContext.stopNoWakeRequested = APP_FALSE;
     return App_SystemRequestLowPower(APP_FALSE);
 }
-#else
-AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
-{
-    uint8_t previousRequest;
-#ifdef DEBUG
-    const AppFsmSummary_t *p_fsmSummary;
-#endif
-
-    APP_RETURN_IF_FALSE((allowStop == APP_FALSE) || (allowStop == APP_TRUE), APP_STATUS_INVALID_PARAM);
-    previousRequest = g_appSystemContext.stopRequested;
-    g_appSystemContext.stopRequested = allowStop;
-    if (allowStop == APP_TRUE)
-    {
-        g_appSystemContext.lastStopRequestTickMs = HAL_GetTick();
-    }
-    else
-    {
-        g_appSystemContext.stopNoWakeRequested = APP_FALSE;
-        App_SystemResetStopQualification();
-    }
-#ifdef DEBUG
-    p_fsmSummary = App_FsmGetSummary();
-    if ((previousRequest != allowStop) && (App_SystemCanDebugLog() == APP_TRUE))
-    {
-        APP_LOGD("LP",
-                       "stop_request=%u decision=%s dispatch=%lu qualify=%u",
-                       (unsigned int)allowStop,
-                       App_FsmGetDecisionString(),
-                       (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u),
-                       (unsigned int)g_appSystemContext.stopQualificationCount);
-    }
-#endif
-    return APP_STATUS_OK;
-}
-
-AppStatus_t App_SystemRequestLowPowerNoWake(uint8_t allowStopNoWake)
-{
-    APP_RETURN_IF_FALSE((allowStopNoWake == APP_FALSE) || (allowStopNoWake == APP_TRUE), APP_STATUS_INVALID_PARAM);
-    g_appSystemContext.stopNoWakeRequested = allowStopNoWake;
-    return App_SystemRequestLowPower(allowStopNoWake);
-}
-#endif
 
 const AppSystemContext_t *App_SystemGetContext(void)
 {
