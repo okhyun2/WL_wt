@@ -899,6 +899,10 @@ static AppStatus_t App_SystemEnterStopMode(void)
     uint8_t standbyPrepareState = APP_SYSTEM_NFC_STANDBY_PREP_NONE;
     AppStatus_t adcRestoreStatus;
 	
+    APP_LOGW("LP", "STOP entry flags: stop=%u no_wake=%u",
+         (unsigned int)g_appSystemContext.stopRequested,
+         (unsigned int)g_appSystemContext.stopNoWakeRequested);
+
     APP_LOGI("LP", "Enter STOP mode%s",
              (g_appSystemContext.stopNoWakeRequested == APP_TRUE) ? " (fatal/no-wake)" : "");
 
@@ -1481,6 +1485,64 @@ AppStatus_t App_SystemSetNbiotPowered(uint8_t powered)
     return App_GpioLpSetNbiotPowered(powered);
 }
 
+#if 1
+AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
+{
+    uint8_t previousRequest;
+#ifdef DEBUG
+    const AppFsmSummary_t *p_fsmSummary;
+#endif
+
+    APP_RETURN_IF_FALSE((allowStop == APP_FALSE) || (allowStop == APP_TRUE), APP_STATUS_INVALID_PARAM);
+
+    previousRequest = g_appSystemContext.stopRequested;
+    g_appSystemContext.stopRequested = allowStop;
+
+    if (allowStop == APP_TRUE)
+    {
+        g_appSystemContext.lastStopRequestTickMs = HAL_GetTick();
+    }
+    else
+    {
+        /* 중요:
+         * 일반 STOP 취소는 stopRequested만 해제한다.
+         * stopNoWakeRequested는 여기서 건드리지 않는다.
+         * no-wake 정책은 App_SystemRequestLowPowerNoWake()만 관리한다.
+         */
+        App_SystemResetStopQualification();
+    }
+
+#ifdef DEBUG
+    p_fsmSummary = App_FsmGetSummary();
+    if ((previousRequest != allowStop) && (App_SystemCanDebugLog() == APP_TRUE))
+    {
+        APP_LOGD("LP",
+                 "stop_request=%u decision=%s dispatch=%lu qualify=%u no_wake=%u",
+                 (unsigned int)allowStop,
+                 App_FsmGetDecisionString(),
+                 (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u),
+                 (unsigned int)g_appSystemContext.stopQualificationCount,
+                 (unsigned int)g_appSystemContext.stopNoWakeRequested);
+    }
+#endif
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_SystemRequestLowPowerNoWake(uint8_t allowStopNoWake)
+{
+    APP_RETURN_IF_FALSE((allowStopNoWake == APP_FALSE) || (allowStopNoWake == APP_TRUE), APP_STATUS_INVALID_PARAM);
+
+    if (allowStopNoWake == APP_TRUE)
+    {
+        g_appSystemContext.stopNoWakeRequested = APP_TRUE;
+        return App_SystemRequestLowPower(APP_TRUE);
+    }
+
+    /* no-wake 해제는 전용 경로에서만 명시적으로 수행 */
+    g_appSystemContext.stopNoWakeRequested = APP_FALSE;
+    return App_SystemRequestLowPower(APP_FALSE);
+}
+#else
 AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
 {
     uint8_t previousRequest;
@@ -1521,6 +1583,7 @@ AppStatus_t App_SystemRequestLowPowerNoWake(uint8_t allowStopNoWake)
     g_appSystemContext.stopNoWakeRequested = allowStopNoWake;
     return App_SystemRequestLowPower(allowStopNoWake);
 }
+#endif
 
 const AppSystemContext_t *App_SystemGetContext(void)
 {
