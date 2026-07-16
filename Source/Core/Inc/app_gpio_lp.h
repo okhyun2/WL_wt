@@ -56,6 +56,7 @@ typedef struct
     uint8_t initialized;
     uint8_t stopPrepared;
     uint8_t nbiotPowered;
+    uint8_t nbiotInterfaceIsolated;
     uint32_t lastDisabledClockMask;
     AppGpioLpConfig_t config;
 } AppGpioLpContext_t;

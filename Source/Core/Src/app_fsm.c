@@ -36,6 +36,7 @@ static volatile NFC_WakeupEvent_t g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
 static uint8_t g_nfcReady = APP_FALSE;
 static uint8_t g_appFsmInitialBootRoutineQueued = APP_FALSE;
 static uint8_t g_appFsmWakeCollectionPending = APP_FALSE;
+static uint8_t g_appFsmFirstAttachCycleDone = APP_FALSE;
 
 static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTES;
 static const uint8_t g_nfcAdminKey[NFC_AUTH_KEY_SIZE] = APP_NFC_ADMIN_KEY_BYTES;
@@ -928,22 +929,16 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
         {
-            const AppSystemContext_t *p_systemContext = App_SystemGetContext();
-            uint8_t isFirstBootRoutine = APP_FALSE;
+            uint8_t isFirstBootRoutine = (g_appFsmFirstAttachCycleDone != APP_TRUE) ? APP_TRUE : APP_FALSE;
 
-            if ((p_systemContext != NULL) && (p_systemContext->selfTestCompleted != APP_TRUE))
-            {
-                isFirstBootRoutine = APP_TRUE;
-            }
-
-#ifdef SUPPORT_SELFTEST
-            if ((isFirstBootRoutine == APP_FALSE) && (g_appFsmWakeCollectionPending == APP_TRUE))
+#if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
+            if ((isFirstBootRoutine != APP_TRUE) && (g_appFsmWakeCollectionPending == APP_TRUE))
             {
                 APP_LOGI("FSM", "[[WakeRoutine]] collect device data before attach");
                 APP_RETURN_IF_FALSE(App_SystemRunWakeDataCollection() == APP_STATUS_OK, APP_STATUS_FATAL);
                 g_appFsmWakeCollectionPending = APP_FALSE;
             }
-#endif // SUPPORT_SELFTEST
+#endif /* APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierAttachMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
             App_NBIoTReadIdentity(APP_TRUE);
@@ -955,11 +950,20 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 APP_LOGI("FSM", "[[BootRoutine]] attach success -> run full selftest");
                 APP_RETURN_IF_FALSE(App_SystemRunBootSelfTest() == APP_STATUS_OK, APP_STATUS_FATAL);
             }
+#else
+#if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
+            if (isFirstBootRoutine == APP_TRUE)
+            {
+                APP_LOGI("FSM", "[[BootRoutine]] attach success -> collect device data before first send");
+                APP_RETURN_IF_FALSE(App_SystemRunWakeDataCollection() == APP_STATUS_OK, APP_STATUS_FATAL);
+            }
+#endif /* APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 #endif // SUPPORT_SELFTEST
 
             App_NBIoTTransmitUdp();
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierPowerOffMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
+            g_appFsmFirstAttachCycleDone = APP_TRUE;
 
             //Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
@@ -1167,6 +1171,7 @@ AppStatus_t App_FsmInit(void)
     g_appFsmContext.initialized = APP_TRUE;
     g_appFsmInitialBootRoutineQueued = APP_FALSE;
     g_appFsmWakeCollectionPending = APP_FALSE;
+    g_appFsmFirstAttachCycleDone = APP_FALSE;
 
     return App_FsmQueueStateBack(APP_FSM_STATE_BOOT, 0u, 0u);
 }

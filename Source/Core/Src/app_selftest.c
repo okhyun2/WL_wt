@@ -10,7 +10,7 @@
 #include "app_nbiot.h"
 #include "app_log.h"
 
-#ifdef SUPPORT_SELFTEST
+#if defined(SUPPORT_SELFTEST) || (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
 /**
  * @file    app_selftest.c
  * @brief   Boot-time peripheral initialization/check pseudo-code runner.
@@ -550,7 +550,9 @@ static AppStatus_t App_SelfTestCheckInputLines(void)
  * @param item Target self-test item.
  * @param p_checkFunction Test function pointer.
  */
-static void App_SelfTestRunItem(AppSelfTestItem_t item, AppStatus_t (*p_checkFunction)(void))
+static void App_SelfTestRunItemWithPolicy(AppSelfTestItem_t item,
+                                      AppStatus_t (*p_checkFunction)(void),
+                                      uint8_t beepOnFail)
 {
     AppStatus_t status;
 
@@ -572,8 +574,16 @@ static void App_SelfTestRunItem(AppSelfTestItem_t item, AppStatus_t (*p_checkFun
     else
     {
         APP_LOGE("SELF", "%s FAIL status=%lu", App_SelfTestItemToString(item), (unsigned long)status);
-        (void)App_SelfTestSignalErrorBuzzer();
+        if (beepOnFail == APP_TRUE)
+        {
+            (void)App_SelfTestSignalErrorBuzzer();
+        }
     }
+}
+
+static void App_SelfTestRunItem(AppSelfTestItem_t item, AppStatus_t (*p_checkFunction)(void))
+{
+    App_SelfTestRunItemWithPolicy(item, p_checkFunction, APP_TRUE);
 }
 
 AppStatus_t App_SelfTestInit(void)
@@ -642,16 +652,16 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
 
     APP_LOGI("SELF", "Operational data collection start");
 
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
 #if defined(SUPPORT_METER_NORMAL)
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart, APP_FALSE);
 #elif defined(SUPPORT_METER_SC1xxx)
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart, APP_FALSE);
 #endif
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_GPIO_INPUTS, App_SelfTestCheckInputLines);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c, APP_FALSE);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c, APP_FALSE);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog, APP_FALSE);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_GPIO_INPUTS, App_SelfTestCheckInputLines, APP_FALSE);
 
     g_appSelfTestContext.running = APP_FALSE;
     g_appSelfTestContext.lastSequenceStatus = (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;

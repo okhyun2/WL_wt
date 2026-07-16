@@ -662,7 +662,7 @@ AppStatus_t App_SystemRunBootSelfTest(void)
 
 AppStatus_t App_SystemRunWakeDataCollection(void)
 {
-#ifdef SUPPORT_SELFTEST
+#if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
     AppStatus_t status;
 
     APP_LOGI("SELF", "######################## run wake data collection");

@@ -301,6 +301,11 @@ static void App_GpioLpRestoreNbiotInterface(void)
 {
     GPIO_InitTypeDef gpioInit;
 
+    if (g_appGpioLpContext.nbiotInterfaceIsolated == 0u)
+    {
+        return;
+    }
+
     __HAL_RCC_LPUART1_CLK_ENABLE();
 
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_SET);
@@ -343,6 +348,7 @@ static void App_GpioLpRestoreNbiotInterface(void)
         HAL_Delay(5);
     }
 
+    g_appGpioLpContext.nbiotInterfaceIsolated = 0u;
     APP_LOGI("GPIO", "NB-IoT power on");
 }
 
@@ -351,6 +357,11 @@ static void App_GpioLpRestoreNbiotInterface(void)
  */
 static void App_GpioLpIsolateNbiotInterface(void)
 {
+    if (g_appGpioLpContext.nbiotInterfaceIsolated == 1u)
+    {
+        return;
+    }
+
     APP_LOGI("GPIO", "NB-IoT power off");
 
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
@@ -364,6 +375,7 @@ static void App_GpioLpIsolateNbiotInterface(void)
 
     App_GpioLpConfigAnalogNoPull(NBIoT_RX_GPIO_Port, NBIoT_RX_Pin | NBIoT_TX_Pin);
     HAL_Delay(1000u);   /* 캐패시터 방전 */
+    g_appGpioLpContext.nbiotInterfaceIsolated = 1u;
 }
 
 /**
@@ -546,6 +558,7 @@ AppStatus_t App_GpioLpInit(const AppGpioLpConfig_t *p_config)
     (void)memset(&g_appGpioLpContext, 0, sizeof(g_appGpioLpContext));
     g_appGpioLpContext.config = *p_config;
     g_appGpioLpContext.nbiotPowered = 0u;
+    g_appGpioLpContext.nbiotInterfaceIsolated = 0u;
     g_appGpioLpContext.initialized = 1u;
 
     return APP_STATUS_OK;
@@ -699,6 +712,13 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
     App_GpioLpEnablePortClocks();
     App_GpioLpEnablePeripheralClocks(g_appGpioLpContext.lastDisabledClockMask);
 
+    if (g_appGpioLpContext.nbiotInterfaceIsolated == 1u)
+    {
+        App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
+        App_GpioLpConfigAnalogNoPull(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin);
+        App_GpioLpConfigAnalogNoPull(NBIoT_RX_GPIO_Port, NBIoT_RX_Pin | NBIoT_TX_Pin);
+    }
+
     App_GpioLpApplyUnusedPins();
     App_GpioLpApplyStaticControlPins();
     App_GpioLpRestoreWakeInputs();
@@ -709,11 +729,6 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
     App_GpioLpRestoreTempI2cPins();
     App_GpioLpRestorePiezoPin();
     App_GpioLpRestoreExternalWatchdogPin();
-
-    if(g_appGpioLpContext.nbiotPowered == 0u)
-    {
-        App_GpioLpIsolateNbiotInterface();
-    }
 
     App_GpioLpApplySwdPolicy();
 

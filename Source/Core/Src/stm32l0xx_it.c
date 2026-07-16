@@ -63,18 +63,18 @@ extern void App_FsmNfcEdIrqHandler(void);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   App_DebugConsoleOnUartRxCompleteIsr(huart);
-#ifdef SUPPORT_SELFTEST
+#if defined(SUPPORT_SELFTEST) || (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
   App_SelfTestOnUartRxCompleteIsr(huart);
-#endif // SUPPORT_SELFTEST
+#endif /* SUPPORT_SELFTEST || APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
   App_Bc95AtOnUartRxCompleteIsr(huart);
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
   App_DebugConsoleOnUartErrorIsr(huart);
-#ifdef SUPPORT_SELFTEST
+#if defined(SUPPORT_SELFTEST) || (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
   App_SelfTestOnUartErrorIsr(huart);
-#endif // SUPPORT_SELFTEST
+#endif /* SUPPORT_SELFTEST || APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
   App_Bc95AtOnUartErrorIsr(huart);
 }
 

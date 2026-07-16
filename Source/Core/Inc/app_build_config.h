@@ -102,7 +102,8 @@ extern "C" {
 #undef SUPPORT_METER_SC1xxx
 
 #undef SUPPORT_SELFTEST
-#ifdef SUPPORT_SELFTEST
+#define APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE       (APP_TRUE)
+#if defined(SUPPORT_SELFTEST) || (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
 #define APP_SELFTEST_FAIL_STOPS_BOOT                (APP_FALSE)
 #define APP_SELFTEST_BUZZER_BOOT_BEEP_COUNT         (2u)
 #define APP_SELFTEST_BUZZER_ERROR_BEEP_COUNT        (3u)
@@ -125,8 +126,10 @@ extern "C" {
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x54u)
 #define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x70u)
 
+#ifdef SUPPORT_SELFTEST
 #define SUPPORT_SELFTEST_SENDNBIOT                  //after selftest, send nbiot server
 #endif // SUPPORT_SELFTEST
+#endif /* SUPPORT_SELFTEST || APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 
 /* NFC production hardening */
 #define APP_NFC_MASTER_KEY_BYTES                      { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C }
