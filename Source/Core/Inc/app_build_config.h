@@ -101,7 +101,7 @@ extern "C" {
 #define SUPPORT_METER_NORMAL
 #undef SUPPORT_METER_SC1xxx
 
-#define SUPPORT_SELFTEST
+#undef SUPPORT_SELFTEST
 #ifdef SUPPORT_SELFTEST
 #define APP_SELFTEST_FAIL_STOPS_BOOT                (APP_FALSE)
 #define APP_SELFTEST_BUZZER_BOOT_BEEP_COUNT         (2u)
@@ -174,6 +174,18 @@ extern "C" {
 #define APP_LP_STOP_DEBUG_DRY_RUN                   (APP_FALSE)
 #define APP_LP_TEST_FORCE_ADC_FULL_OFF_BEFORE_STOP  (APP_TRUE)
 #define APP_NFC_ENTER_STANDBY_BEFORE_MCU_STOP      (APP_TRUE)
+
+/* LGU+ Step1 Carrier Mandatory Layer */
+#define APP_NBIOT_MANDATORY_LAYER_ENABLE           (APP_TRUE)
+#define APP_NBIOT_ATTACH_TIMEOUT_MS                (60000u)
+#define APP_NBIOT_ATTACH_TOTAL_FAIL_LIMIT_MS       (600000u)
+#define APP_NBIOT_ATTACH_SW_RESET_MAX              (3u)
+#define APP_NBIOT_ATTACH_HW_RESET_MAX              (1u)
+#define APP_NBIOT_DETACH_WAIT_CEREG0_MS            (15000u)
+#define APP_NBIOT_DETACH_POLL_INTERVAL_MS          (1000u)
+#define APP_NBIOT_AT_NORESP_RETRY_MAX              (3u)
+#define APP_NBIOT_SW_RESET_SETTLE_MS               (1500u)
+#define APP_NBIOT_HW_RESET_SETTLE_MS               (2000u)
 
 #define APP_MSGQ_DEPTH                              (16u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)

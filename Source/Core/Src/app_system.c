@@ -1305,6 +1305,7 @@ AppStatus_t App_SystemInit(void)
     g_appSystemContext.initialized = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
 
+#ifdef SUPPORT_SELFTEST
     // Connection & update rtc NBIoT
     {
         (void)App_SystemSetNbiotPowered(APP_TRUE);
@@ -1324,7 +1325,6 @@ AppStatus_t App_SystemInit(void)
         (void)App_SystemSetNbiotPowered(APP_FALSE);
     }
 
-#ifdef SUPPORT_SELFTEST
     status = App_SystemRunBootSelfTest();
     if (status != APP_STATUS_OK)
     {

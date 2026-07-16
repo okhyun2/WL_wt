@@ -906,6 +906,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 do something;
                 APP_RETURN_IF_FALSE(App_NbiotInit() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
@@ -925,15 +926,13 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
 
-            //TODO kiki test
-            APP_RETURN_IF_FALSE(App_NBIoTBringUpWithReset(2u) == APP_STATUS_OK, APP_STATUS_FATAL);
-            APP_RETURN_IF_FALSE(App_NBIoTNetworkBringUp() == APP_STATUS_OK, APP_STATUS_FATAL);
+            APP_RETURN_IF_FALSE(App_NBIoTCarrierAttachMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
             App_NBIoTReadIdentity(APP_TRUE);
             App_NBIoTReadQuality(APP_TRUE);
 
             App_NBIoTTransmitUdp();
 
-            (void)App_SystemSetNbiotPowered(APP_FALSE);
+            APP_RETURN_IF_FALSE(App_NBIoTCarrierPowerOffMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
 
             //Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);

@@ -42,7 +42,9 @@
 
 #define APP_BC95_AT_CMD_CFUN_QUERY           "AT+CFUN?\r\n"
 #define APP_BC95_AT_CMD_CFUN_SET_FULL        "AT+CFUN=1\r\n"
+#define APP_BC95_AT_CMD_CFUN_SET_MIN         "AT+CFUN=0\r\n"
 #define APP_BC95_AT_CMD_CGATT_QUERY          "AT+CGATT?\r\n"
+#define APP_BC95_AT_CMD_CGATT_DETACH         "AT+CGATT=0\r\n"
 #define APP_BC95_AT_CMD_CEREG_QUERY          "AT+CEREG?\r\n"
 #define APP_BC95_AT_CMD_CGPADDR_QUERY        "AT+CGPADDR\r\n"
 
@@ -60,6 +62,11 @@
 #define APP_BC95_AT_DRAIN_GUARD_MS           (5u)
 #define APP_BC95_AT_LINE_QUEUE_DEPTH         (12u)
 #define APP_BC95_AT_LINE_MAX_LEN             (96u)
+
+#define APP_NBIOT_REPORT_LOG_ATTACH         "[[Attach]]"
+#define APP_NBIOT_REPORT_LOG_RESET          "[[Reset]]"
+#define APP_NBIOT_REPORT_LOG_DETACH         "[[Detach]]"
+#define APP_NBIOT_REPORT_LOG_POWEROFF       "[[PowerOff]]"
 
 /* ============================================================
  *  내부 상태
@@ -95,6 +102,7 @@ static uint8_t  g_appBc95AtImsiBcd[APP_BC95_IMSI_BCD_BYTES];
 static uint8_t  g_appBc95AtQualityBcd[APP_BC95_QUALITY_BCD_BYTES];
 static AppBc95Quality_t g_appBc95AtQuality;
 static AppBc95NetStatus_t g_appBc95AtNetStatus;
+static AppNbiotCarrierContext_t g_appNbiotCarrierContext;
 
 /* UDP seq 단조 증가 카운터 (stale URC 매칭 방지) */
 static uint8_t g_appBc95UdpSeqCounter = 0u;
@@ -2022,6 +2030,210 @@ const char *App_Bc95AtGetNetPhaseString(AppBc95NetPhase_t phase)
 
 const AppBc95NetStatus_t *App_Bc95AtGetLastNetStatus(void) { return &g_appBc95AtNetStatus; }
 
+static const char *App_NbiotCarrierAttachStateString(AppNbiotCarrierAttachState_t state)
+{
+    switch (state)
+    {
+        case APP_NBIOT_ATTACH_STATE_IDLE:         return "idle";
+        case APP_NBIOT_ATTACH_STATE_BOOT_WAIT:    return "boot_wait";
+        case APP_NBIOT_ATTACH_STATE_NETWORK_WAIT: return "network_wait";
+        case APP_NBIOT_ATTACH_STATE_READY:        return "ready";
+        case APP_NBIOT_ATTACH_STATE_SW_RESET:     return "sw_reset";
+        case APP_NBIOT_ATTACH_STATE_HW_RESET:     return "hw_reset";
+        case APP_NBIOT_ATTACH_STATE_ABORT:        return "abort";
+        default:                                  return "invalid";
+    }
+}
+
+static const char *App_NbiotCarrierPowerOffStateString(AppNbiotCarrierPowerOffState_t state)
+{
+    switch (state)
+    {
+        case APP_NBIOT_POWEROFF_STATE_IDLE:        return "idle";
+        case APP_NBIOT_POWEROFF_STATE_DETACH_REQ:  return "detach_req";
+        case APP_NBIOT_POWEROFF_STATE_WAIT_CEREG0: return "wait_cereg0";
+        case APP_NBIOT_POWEROFF_STATE_FORCE_OFF:   return "force_off";
+        case APP_NBIOT_POWEROFF_STATE_DONE:        return "done";
+        default:                                   return "invalid";
+    }
+}
+
+static const char *App_NbiotCarrierResetTypeString(AppNbiotCarrierResetType_t type)
+{
+    switch (type)
+    {
+        case APP_NBIOT_CARRIER_RESET_NONE: return "none";
+        case APP_NBIOT_CARRIER_RESET_SW:   return "sw";
+        case APP_NBIOT_CARRIER_RESET_HW:   return "hw";
+        default:                           return "invalid";
+    }
+}
+
+static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
+                                                 uint32_t rxTimeoutMs,
+                                                 const char *p_cmdLabel,
+                                                 const char *p_logPrefix)
+{
+    AppStatus_t status;
+    AppBc95AtStatus_t atStatus;
+    uint16_t rxLen = 0u;
+
+    APP_RETURN_IF_FALSE((p_cmd != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_cmdLabel != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_logPrefix != NULL), APP_STATUS_INVALID_PARAM);
+
+    APP_LOGI("NBIOT", "%s TX %s", p_logPrefix, p_cmdLabel);
+    status = App_Bc95AtSendWithRetry(p_cmd,
+                                     g_appBc95AtRxBuf,
+                                     (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                     rxTimeoutMs,
+                                     &rxLen,
+                                     APP_NBIOT_AT_NORESP_RETRY_MAX);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGE("NBIOT", "%s %s send fail (status=%d)", p_logPrefix, p_cmdLabel, (int)status);
+        return status;
+    }
+
+    atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
+    if (atStatus != APP_BC95_AT_OK)
+    {
+        APP_LOGE("NBIOT", "%s %s not OK (parse=%s)",
+                 p_logPrefix, p_cmdLabel, App_Bc95AtGetStatusString(atStatus));
+        return APP_STATUS_FATAL;
+    }
+
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_NbiotCarrierPerformSwReset(void)
+{
+    AppStatus_t status;
+
+    APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_RESET " SW reset sequence start (AT+CFUN=0 -> AT+CFUN=1)");
+
+    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CFUN_SET_MIN,
+                                           APP_BC95_AT_RX_TIMEOUT_MS,
+                                           "AT+CFUN=0",
+                                           APP_NBIOT_REPORT_LOG_RESET);
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    App_Bc95AtDelayWithFeed(APP_NBIOT_SW_RESET_SETTLE_MS);
+
+    status = App_Bc95AtSetFullFunction();
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_RESET " AT+CFUN=1 failed (status=%d)", (int)status);
+        return status;
+    }
+
+    App_Bc95AtDelayWithFeed(APP_NBIOT_SW_RESET_SETTLE_MS);
+    (void)App_NBIoTAtInit();
+    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_RESET " SW reset sequence complete");
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_NbiotCarrierPerformHwReset(void)
+{
+    APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_RESET " HW reset sequence start (power cycle)");
+    App_HwNbiotPowerCycle();
+    App_Bc95AtDelayWithFeed(APP_NBIOT_HW_RESET_SETTLE_MS);
+    (void)App_NBIoTAtInit();
+    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_RESET " HW reset sequence complete");
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_NbiotCarrierWaitForCereg0(uint32_t timeoutMs)
+{
+    AppStatus_t status;
+    AppBc95NetStatus_t snapshot;
+    uint32_t startTick = HAL_GetTick();
+
+    while ((HAL_GetTick() - startTick) < timeoutMs)
+    {
+        (void)memset(&snapshot, 0, sizeof(snapshot));
+        status = App_Bc95AtQueryNetStatus(&snapshot);
+        if (status == APP_STATUS_OK)
+        {
+            g_appNbiotCarrierContext.lastNetStatus = snapshot;
+            APP_LOGD("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " poll: phase=%s CEREG=%s CGATT=%u",
+                     App_Bc95AtGetNetPhaseString(snapshot.phase),
+                     App_Bc95AtGetCeregStatString(snapshot.ceregStat),
+                     (unsigned)snapshot.cgattState);
+
+            if ((snapshot.ceregStat == APP_BC95_CEREG_NOT_REGISTERED) || (snapshot.cfunValue != 1u))
+            {
+                APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " complete: CEREG=%s CGATT=%u",
+                         App_Bc95AtGetCeregStatString(snapshot.ceregStat),
+                         (unsigned)snapshot.cgattState);
+                return APP_STATUS_OK;
+            }
+        }
+        else
+        {
+            APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " poll query fail (status=%d)", (int)status);
+        }
+
+        App_Bc95AtDelayWithFeed(APP_NBIOT_DETACH_POLL_INTERVAL_MS);
+    }
+
+    APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " timeout waiting CEREG:0");
+    return APP_STATUS_UART_TIMEOUT;
+}
+
+static AppStatus_t App_NbiotCarrierRecoverAfterAttachFailure(AppStatus_t lastStatus)
+{
+    uint32_t elapsedMs = HAL_GetTick() - g_appNbiotCarrierContext.attachStartTick;
+
+    if (elapsedMs >= APP_NBIOT_ATTACH_TOTAL_FAIL_LIMIT_MS)
+    {
+        APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                 " fail limit reached elapsed=%lums sw=%u hw=%u last=%d",
+                 (unsigned long)elapsedMs,
+                 (unsigned)g_appNbiotCarrierContext.swResetCount,
+                 (unsigned)g_appNbiotCarrierContext.hwResetCount,
+                 (int)lastStatus);
+        return (lastStatus != APP_STATUS_OK) ? lastStatus : APP_STATUS_FATAL;
+    }
+
+    if (g_appNbiotCarrierContext.swResetCount < APP_NBIOT_ATTACH_SW_RESET_MAX)
+    {
+        g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_SW_RESET;
+        g_appNbiotCarrierContext.lastResetType = APP_NBIOT_CARRIER_RESET_SW;
+        g_appNbiotCarrierContext.swResetCount++;
+        APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_RESET
+                 " escalate to SW reset %u/%u (elapsed=%lums)",
+                 (unsigned)g_appNbiotCarrierContext.swResetCount,
+                 (unsigned)APP_NBIOT_ATTACH_SW_RESET_MAX,
+                 (unsigned long)elapsedMs);
+        return App_NbiotCarrierPerformSwReset();
+    }
+
+    if (g_appNbiotCarrierContext.hwResetCount < APP_NBIOT_ATTACH_HW_RESET_MAX)
+    {
+        g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_HW_RESET;
+        g_appNbiotCarrierContext.lastResetType = APP_NBIOT_CARRIER_RESET_HW;
+        g_appNbiotCarrierContext.hwResetCount++;
+        APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_RESET
+                 " escalate to HW reset %u/%u (elapsed=%lums)",
+                 (unsigned)g_appNbiotCarrierContext.hwResetCount,
+                 (unsigned)APP_NBIOT_ATTACH_HW_RESET_MAX,
+                 (unsigned long)elapsedMs);
+        return App_NbiotCarrierPerformHwReset();
+    }
+
+    APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_RESET
+             " reset recovery exhausted sw=%u hw=%u elapsed=%lums last=%d",
+             (unsigned)g_appNbiotCarrierContext.swResetCount,
+             (unsigned)g_appNbiotCarrierContext.hwResetCount,
+             (unsigned long)elapsedMs,
+             (int)lastStatus);
+    return (lastStatus != APP_STATUS_OK) ? lastStatus : APP_STATUS_FATAL;
+}
+
 /* ============================================================
  *  UDP / DNS
  * ============================================================ */
@@ -2756,7 +2968,9 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
     }
 }
 
-AppStatus_t App_Bc95AtCloseSocket(int32_t socketId)
+static AppStatus_t App_Bc95AtCloseSocketInternal(int32_t socketId,
+                                                    uint8_t quietNoSocket,
+                                                    AppBc95AtStatus_t *p_atStatusOut)
 {
     AppStatus_t status;
     AppBc95AtStatus_t atStatus;
@@ -2767,6 +2981,11 @@ AppStatus_t App_Bc95AtCloseSocket(int32_t socketId)
 
     APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((socketId >= 0), APP_STATUS_INVALID_PARAM);
+
+    if (p_atStatusOut != NULL)
+    {
+        *p_atStatusOut = APP_BC95_AT_OK;
+    }
 
     printed = snprintf(appBc95AtCmdTxBuf, sizeof(appBc95AtCmdTxBuf),
                        APP_BC95_AT_CMD_NSOCL_FMT, (long)socketId);
@@ -2779,31 +2998,81 @@ AppStatus_t App_Bc95AtCloseSocket(int32_t socketId)
                                    APP_BC95_SOCKET_TIMEOUT_MS, &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGI("NBIOT", "NSOCL send fail (sock=%ld, status=%d)", (long)socketId, (int)status);
+        if (quietNoSocket != APP_TRUE)
+        {
+            APP_LOGI("NBIOT", "NSOCL send fail (sock=%ld, status=%d)", (long)socketId, (int)status);
+        }
         return status;
     }
 
     cmeErr = 0;
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
+    if (p_atStatusOut != NULL)
+    {
+        *p_atStatusOut = atStatus;
+    }
     if (atStatus != APP_BC95_AT_OK)
     {
-        APP_LOGI("NBIOT", "NSOCL not OK (sock=%ld, parse=%s)",
-                 (long)socketId, App_Bc95AtGetStatusString(atStatus));
+        if (quietNoSocket != APP_TRUE)
+        {
+            APP_LOGI("NBIOT", "NSOCL not OK (sock=%ld, parse=%s)",
+                     (long)socketId, App_Bc95AtGetStatusString(atStatus));
+        }
         return APP_STATUS_FATAL;
     }
     APP_LOGD("NBIOT", "UDP socket closed: %ld", (long)socketId);
     return APP_STATUS_OK;
 }
 
+AppStatus_t App_Bc95AtCloseSocket(int32_t socketId)
+{
+    return App_Bc95AtCloseSocketInternal(socketId, APP_FALSE, NULL);
+}
+
 void App_Bc95AtCloseAllSockets(void)
 {
     int sid;
+    uint32_t closedCount = 0u;
+    uint32_t alreadyClosedCount = 0u;
+    uint32_t sendFailCount = 0u;
+    uint32_t otherFailCount = 0u;
+
     APP_LOGI("NBIOT", "Closing all possible sockets (0..%d)", APP_BC95_UDP_SOCKET_ID_MAX);
     for (sid = 0; sid <= APP_BC95_UDP_SOCKET_ID_MAX; sid++)
     {
-        (void)App_Bc95AtCloseSocket((int32_t)sid);
+        AppStatus_t closeStatus;
+        AppBc95AtStatus_t atStatus = APP_BC95_AT_OK;
+
+        closeStatus = App_Bc95AtCloseSocketInternal((int32_t)sid, APP_TRUE, &atStatus);
+        if (closeStatus == APP_STATUS_OK)
+        {
+            closedCount++;
+        }
+        else if ((closeStatus == APP_STATUS_FATAL) &&
+                 ((atStatus == APP_BC95_AT_ERR_AT_ERROR) ||
+                  (atStatus == APP_BC95_AT_ERR_NO_OK)))
+        {
+            alreadyClosedCount++;
+        }
+        else if ((closeStatus == APP_STATUS_UART_RX_FAILED) ||
+                 (closeStatus == APP_STATUS_UART_TX_FAILED) ||
+                 (closeStatus == APP_STATUS_UART_TIMEOUT))
+        {
+            sendFailCount++;
+        }
+        else
+        {
+            otherFailCount++;
+        }
         APP_WWDGFeed();
     }
+
+    APP_LOGI("NBIOT",
+             "Socket cleanup summary: closed=%lu already_closed=%lu send_fail=%lu other_fail=%lu",
+             (unsigned long)closedCount,
+             (unsigned long)alreadyClosedCount,
+             (unsigned long)sendFailCount,
+             (unsigned long)otherFailCount);
 }
 
 AppStatus_t App_Bc95AtUdpSendOnce(const char *p_host, uint16_t port,
@@ -3102,7 +3371,7 @@ AppStatus_t App_Bc95AtEnableAutoTimezone(void)
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
     if (atStatus != APP_BC95_AT_OK)
     {
-        APP_LOGI("NBIOT", "CTZU=1 not OK (parse=%s) - ignored",
+        APP_LOGD("NBIOT", "CTZU=1 not OK (parse=%s) - ignored(optional feature not supported)",
                  App_Bc95AtGetStatusString(atStatus));
         return APP_STATUS_FATAL;
     }
@@ -3344,6 +3613,7 @@ AppStatus_t App_NBIoTAtInit(void)
     (void)memset(&g_appBc95AtQuality, 0, sizeof(g_appBc95AtQuality));
     (void)memset(g_appBc95AtQualityBcd, 0, sizeof(g_appBc95AtQualityBcd));
     (void)memset(&g_appBc95AtNetStatus, 0, sizeof(g_appBc95AtNetStatus));
+    (void)memset(&g_appNbiotCarrierContext, 0, sizeof(g_appNbiotCarrierContext));
 
     g_appBc95UdpSeqCounter = 0u;
     g_appBc95AtInitialized = APP_TRUE;
@@ -3427,6 +3697,97 @@ AppStatus_t App_NBIoTNetworkBringUp(void)
 
     APP_LOGI("NBIOT", "Network ready");
     return APP_STATUS_OK;
+}
+
+AppStatus_t App_NBIoTCarrierAttachMandatory(void)
+{
+#if (APP_NBIOT_MANDATORY_LAYER_ENABLE != APP_TRUE)
+    return App_NBIoTNetworkBringUp();
+#else
+    AppStatus_t status;
+    AppStatus_t recoverStatus;
+    AppBc95NetStatus_t netStatus;
+
+    if (g_appBc95AtInitialized != APP_TRUE)
+    {
+        (void)App_NBIoTAtInit();
+    }
+
+    (void)memset(&g_appNbiotCarrierContext, 0, sizeof(g_appNbiotCarrierContext));
+    g_appNbiotCarrierContext.attachStartTick = HAL_GetTick();
+    g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_BOOT_WAIT;
+    g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_IDLE;
+    g_appNbiotCarrierContext.lastResetType = APP_NBIOT_CARRIER_RESET_NONE;
+
+    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+             " mandatory start (window=%lums total=%lums swMax=%u hwMax=%u)",
+             (unsigned long)APP_NBIOT_ATTACH_TIMEOUT_MS,
+             (unsigned long)APP_NBIOT_ATTACH_TOTAL_FAIL_LIMIT_MS,
+             (unsigned)APP_NBIOT_ATTACH_SW_RESET_MAX,
+             (unsigned)APP_NBIOT_ATTACH_HW_RESET_MAX);
+
+    while (1)
+    {
+        (void)memset(&netStatus, 0, sizeof(netStatus));
+        g_appNbiotCarrierContext.attachAttemptCount++;
+        g_appNbiotCarrierContext.lastAttemptTick = HAL_GetTick();
+        g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_BOOT_WAIT;
+
+        APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                 " attempt=%u state=%s",
+                 (unsigned)g_appNbiotCarrierContext.attachAttemptCount,
+                 App_NbiotCarrierAttachStateString(g_appNbiotCarrierContext.attachState));
+
+        status = App_NBIoTBringUp();
+        if (status == APP_STATUS_OK)
+        {
+            g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_NETWORK_WAIT;
+            status = App_Bc95AtWaitForNetwork(APP_NBIOT_ATTACH_TIMEOUT_MS, &netStatus);
+            g_appNbiotCarrierContext.lastNetStatus = netStatus;
+        }
+
+        g_appNbiotCarrierContext.lastStatus = status;
+
+        if (status == APP_STATUS_OK)
+        {
+            g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_READY;
+            (void)App_Bc95AtEnableAutoTimezone();
+            (void)App_NBIoTSyncTime();
+#ifdef NBIOT_SUPPORT_DNS
+            (void)App_Bc95AtWarmupDns(WARMUPDNS_SERVER_DOMAIN);
+#endif // NBIOT_SUPPORT_DNS
+            APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                     " success attempt=%u elapsed=%lums phase=%s ip=%s",
+                     (unsigned)g_appNbiotCarrierContext.attachAttemptCount,
+                     (unsigned long)(HAL_GetTick() - g_appNbiotCarrierContext.attachStartTick),
+                     App_Bc95AtGetNetPhaseString(netStatus.phase),
+                     netStatus.ipAddr);
+            return APP_STATUS_OK;
+        }
+
+        APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                 " fail attempt=%u status=%d phase=%s CEREG=%s CGATT=%u ip=%s",
+                 (unsigned)g_appNbiotCarrierContext.attachAttemptCount,
+                 (int)status,
+                 App_Bc95AtGetNetPhaseString(netStatus.phase),
+                 App_Bc95AtGetCeregStatString(netStatus.ceregStat),
+                 (unsigned)netStatus.cgattState,
+                 netStatus.ipAddr);
+
+        recoverStatus = App_NbiotCarrierRecoverAfterAttachFailure(status);
+        if (recoverStatus != APP_STATUS_OK)
+        {
+            g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_ABORT;
+            g_appNbiotCarrierContext.lastStatus = recoverStatus;
+            APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                     " abort state=%s reset=%s status=%d",
+                     App_NbiotCarrierAttachStateString(g_appNbiotCarrierContext.attachState),
+                     App_NbiotCarrierResetTypeString(g_appNbiotCarrierContext.lastResetType),
+                     (int)recoverStatus);
+            return recoverStatus;
+        }
+    }
+#endif
 }
 
 AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo)
@@ -3568,4 +3929,85 @@ AppStatus_t App_NBIoTTransmitUdp(void)
                  (unsigned)sendResult.sendConfirmed);
     }
     return status;
+}
+
+AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
+{
+#if (APP_NBIOT_MANDATORY_LAYER_ENABLE != APP_TRUE)
+    return App_GpioLpSetNbiotPowered(APP_FALSE);
+#else
+    AppStatus_t status = APP_STATUS_OK;
+    AppStatus_t detachWaitStatus = APP_STATUS_OK;
+    AppStatus_t cfunMinStatus = APP_STATUS_OK;
+
+    g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_DETACH_REQ;
+    g_appNbiotCarrierContext.lastDetachTick = HAL_GetTick();
+
+    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
+             " mandatory start (close sockets + AT+CGATT=0 + wait CEREG:0 + AT+CFUN=0)");
+
+    App_Bc95AtCloseAllSockets();
+
+    if (g_appBc95AtInitialized == APP_TRUE)
+    {
+        status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CGATT_DETACH,
+                                               APP_BC95_AT_RX_TIMEOUT_MS,
+                                               "AT+CGATT=0",
+                                               APP_NBIOT_REPORT_LOG_DETACH);
+        if (status == APP_STATUS_OK)
+        {
+            g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_WAIT_CEREG0;
+            detachWaitStatus = App_NbiotCarrierWaitForCereg0(APP_NBIOT_DETACH_WAIT_CEREG0_MS);
+            if (detachWaitStatus != APP_STATUS_OK)
+            {
+                APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_DETACH
+                         " incomplete -> force power off (status=%d)", (int)detachWaitStatus);
+            }
+        }
+        else
+        {
+            detachWaitStatus = status;
+            APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_DETACH
+                     " command failed -> force power off (status=%d)", (int)status);
+        }
+
+        cfunMinStatus = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CFUN_SET_MIN,
+                                                      APP_BC95_AT_RX_TIMEOUT_MS,
+                                                      "AT+CFUN=0",
+                                                      APP_NBIOT_REPORT_LOG_POWEROFF);
+        if (cfunMinStatus != APP_STATUS_OK)
+        {
+            APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
+                     " CFUN=0 failed before power cut (status=%d)", (int)cfunMinStatus);
+        }
+    }
+    else
+    {
+        APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
+                 " AT context not initialized, direct power off");
+    }
+
+    g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_FORCE_OFF;
+    status = App_GpioLpSetNbiotPowered(APP_FALSE);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF " power pin off failed (status=%d)", (int)status);
+        g_appNbiotCarrierContext.lastStatus = status;
+        return status;
+    }
+
+    g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_DONE;
+    g_appNbiotCarrierContext.lastStatus = APP_STATUS_OK;
+    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
+             " done state=%s detachStatus=%d cfun0Status=%d",
+             App_NbiotCarrierPowerOffStateString(g_appNbiotCarrierContext.powerOffState),
+             (int)detachWaitStatus,
+             (int)cfunMinStatus);
+    return APP_STATUS_OK;
+#endif
+}
+
+const AppNbiotCarrierContext_t *App_NBIoTCarrierGetContext(void)
+{
+    return &g_appNbiotCarrierContext;
 }

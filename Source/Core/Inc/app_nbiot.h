@@ -283,10 +283,55 @@ extern void RTC_SetTime(int year, int month, int date, int hour, int min, int se
 #define APP_NBIOT_BRINGUP_MAX_RESET         (3u)
 #endif
 
+typedef enum
+{
+    APP_NBIOT_ATTACH_STATE_IDLE = 0,
+    APP_NBIOT_ATTACH_STATE_BOOT_WAIT,
+    APP_NBIOT_ATTACH_STATE_NETWORK_WAIT,
+    APP_NBIOT_ATTACH_STATE_READY,
+    APP_NBIOT_ATTACH_STATE_SW_RESET,
+    APP_NBIOT_ATTACH_STATE_HW_RESET,
+    APP_NBIOT_ATTACH_STATE_ABORT
+} AppNbiotCarrierAttachState_t;
+
+typedef enum
+{
+    APP_NBIOT_POWEROFF_STATE_IDLE = 0,
+    APP_NBIOT_POWEROFF_STATE_DETACH_REQ,
+    APP_NBIOT_POWEROFF_STATE_WAIT_CEREG0,
+    APP_NBIOT_POWEROFF_STATE_FORCE_OFF,
+    APP_NBIOT_POWEROFF_STATE_DONE
+} AppNbiotCarrierPowerOffState_t;
+
+typedef enum
+{
+    APP_NBIOT_CARRIER_RESET_NONE = 0,
+    APP_NBIOT_CARRIER_RESET_SW,
+    APP_NBIOT_CARRIER_RESET_HW
+} AppNbiotCarrierResetType_t;
+
+typedef struct
+{
+    AppNbiotCarrierAttachState_t attachState;
+    AppNbiotCarrierPowerOffState_t powerOffState;
+    AppNbiotCarrierResetType_t lastResetType;
+    AppStatus_t lastStatus;
+    uint32_t attachStartTick;
+    uint32_t lastAttemptTick;
+    uint32_t lastDetachTick;
+    uint8_t swResetCount;
+    uint8_t hwResetCount;
+    uint8_t attachAttemptCount;
+    AppBc95NetStatus_t lastNetStatus;
+} AppNbiotCarrierContext_t;
+
 AppStatus_t App_NBIoTAtInit(void);
 AppStatus_t App_NBIoTBringUp(void);
 AppStatus_t App_NBIoTBringUpWithReset(uint8_t maxResetRetry);
 AppStatus_t App_NBIoTNetworkBringUp(void);
+AppStatus_t App_NBIoTCarrierAttachMandatory(void);
+AppStatus_t App_NBIoTCarrierPowerOffMandatory(void);
+const AppNbiotCarrierContext_t *App_NBIoTCarrierGetContext(void);
 AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTTransmitUdp(void);
