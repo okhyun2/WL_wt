@@ -2103,6 +2103,7 @@ static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
         return APP_STATUS_FATAL;
     }
 
+    APP_LOGI("NBIOT", "%s %s OK", p_logPrefix, p_cmdLabel);
     return APP_STATUS_OK;
 }
 
@@ -2159,7 +2160,7 @@ static AppStatus_t App_NbiotCarrierWaitForCereg0(uint32_t timeoutMs)
         if (status == APP_STATUS_OK)
         {
             g_appNbiotCarrierContext.lastNetStatus = snapshot;
-            APP_LOGD("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " poll: phase=%s CEREG=%s CGATT=%u",
+            APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " poll: phase=%s CEREG=%s CGATT=%u",
                      App_Bc95AtGetNetPhaseString(snapshot.phase),
                      App_Bc95AtGetCeregStatString(snapshot.ceregStat),
                      (unsigned)snapshot.cgattState);
