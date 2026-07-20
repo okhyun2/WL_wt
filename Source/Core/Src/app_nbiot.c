@@ -1756,6 +1756,10 @@ AppStatus_t App_Bc95AtSetFullFunction(void)
     }
 
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
+#ifdef NBIoT_SIMULATION_CODE
+    APP_LOGI("NBIOT", "Forcely err timeout CFUN=1 test..."); // NBIoT simulation test
+    atStatus = APP_BC95_AT_ERR_TIMEOUT;
+#endif // NBIoT_SIMULATION_CODE
     if (atStatus != APP_BC95_AT_OK)
     {
         APP_LOGE("NBIOT", "CFUN=1 not OK (parse=%s)",
@@ -1836,7 +1840,12 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
     if (st == APP_STATUS_OK)
     {
         atSt = App_Bc95AtParseCereg((const char *)g_appBc95AtRxBuf, &ceregN, &ceregStat);
-        if (atSt == APP_BC95_AT_OK) p_status->ceregStat = (AppBc95CeregStat_t)ceregStat;
+#ifdef NBIoT_SIMULATION_CODE
+        APP_LOGI("NBIOT", "Forcely err timeout CEREG:0 test..."); // NBIoT simulation test
+        atSt = APP_BC95_AT_ERR_FORMAT;
+#endif // NBIoT_SIMULATION_CODE
+        if (atSt == APP_BC95_AT_OK)
+            p_status->ceregStat = (AppBc95CeregStat_t)ceregStat;
     }
 
     /* CGATT? */
@@ -1849,7 +1858,12 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
     if (st == APP_STATUS_OK)
     {
         atSt = App_Bc95AtParseCgatt((const char *)g_appBc95AtRxBuf, &cgattVal);
-        if (atSt == APP_BC95_AT_OK) p_status->cgattState = (uint8_t)cgattVal;
+#ifdef NBIoT_SIMULATION_CODE
+        APP_LOGI("NBIOT", "Forcely err timeout CGATT:0 test..."); // NBIoT simulation test
+        atSt = APP_BC95_AT_ERR_FORMAT;
+#endif // NBIoT_SIMULATION_CODE
+        if (atSt == APP_BC95_AT_OK)
+            p_status->cgattState = (uint8_t)cgattVal;
     }
 
     /* CGPADDR (등록 시에만) */
@@ -3029,6 +3043,12 @@ static AppStatus_t App_Bc95AtCloseSocketInternal(int32_t socketId,
                                    g_appBc95AtRxBuf,
                                    (uint16_t)sizeof(g_appBc95AtRxBuf),
                                    APP_BC95_SOCKET_TIMEOUT_MS, &rxLen);
+
+#ifdef NBIoT_SIMULATION_CODE
+    APP_LOGI("NBIOT", "Forcely err NSOCL send fail test..."); // NBIoT simulation test
+    status = APP_STATUS_INVALID_PARAM;
+    quietNoSocket = APP_FALSE;
+#endif // NBIoT_SIMULATION_CODE
     if (status != APP_STATUS_OK)
     {
         if (quietNoSocket != APP_TRUE)
@@ -3044,6 +3064,10 @@ static AppStatus_t App_Bc95AtCloseSocketInternal(int32_t socketId,
     {
         *p_atStatusOut = atStatus;
     }
+#ifdef NBIoT_SIMULATION_CODE
+    APP_LOGI("NBIOT", "Forcely err NSOCL not OK test..."); // NBIoT simulation test
+    atStatus = APP_BC95_AT_ERR_AT_ERROR;
+#endif // NBIoT_SIMULATION_CODE
     if (atStatus != APP_BC95_AT_OK)
     {
         if (quietNoSocket != APP_TRUE)
@@ -3662,6 +3686,10 @@ AppStatus_t App_NBIoTAtInit(void)
     g_appBc95UdpSeqCounter = 0u;
     g_appBc95UsimFatal = APP_FALSE;
     g_appBc95AtInitialized = APP_TRUE;
+#ifdef NBIoT_SIMULATION_CODE
+    APP_LOGI("NBIOT", "Forcely err not initializedBC95 test..."); // NBIoT simulation test
+    g_appBc95AtInitialized = APP_FALSE;
+#endif // NBIoT_SIMULATION_CODE
 
     APP_LOGI("NBIOT", "NBIoT Init");
 

@@ -309,6 +309,15 @@ static void App_GpioLpRestoreNbiotInterface(void)
     __HAL_RCC_LPUART1_CLK_ENABLE();
 
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_SET);
+    if (HAL_GPIO_ReadPin(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin) != GPIO_PIN_SET)
+    {
+        APP_LOGE("GPIO", "Fail. NB-IoT power on");
+    }
+    else
+    {
+        APP_LOGD("GPIO", "Ok. NB-IoT power on");
+    }
+
     App_GpioLpConfigOutput(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin, GPIO_PIN_SET);
 
     (void)memset(&gpioInit, 0, sizeof(gpioInit));
@@ -365,6 +374,14 @@ static void App_GpioLpIsolateNbiotInterface(void)
     APP_LOGI("GPIO", "NB-IoT power off");
 
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
+    if (HAL_GPIO_ReadPin(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin) != GPIO_PIN_RESET)
+    {
+        APP_LOGE("GPIO", "Fail. NB-IoT power off");
+    }
+    else
+    {
+        APP_LOGD("GPIO", "Ok. NB-IoT power off");
+    }
     App_GpioLpConfigAnalogNoPull(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin);
 
     /* 진행 중인 송신 완료 대기 */
