@@ -121,8 +121,14 @@ static AppBc95AtRxErrorInfo_t g_appBc95AtRxErrorInfo;
 static void App_HwNbiotPowerCycle(void)
 {
     APP_LOGD("NBIOT", "App_HwNbiotPowerCycle");
-    App_GpioLpSetNbiotPowered(APP_FALSE); //off
-    App_GpioLpSetNbiotPowered(APP_TRUE); //on
+    App_GpioLpSetNbiotPowered(APP_FALSE); /* off */
+    /*
+     * Hold power-off briefly so the modem performs a clean reboot, but do not
+     * wait after power-on here; the next boot-wait path must start immediately
+     * so the boot banner can be captured.
+     */
+    HAL_Delay(200u);
+    App_GpioLpSetNbiotPowered(APP_TRUE);  /* on */
 }
 
 /* ============================================================
@@ -2145,7 +2151,14 @@ static AppStatus_t App_NbiotCarrierPerformHwReset(void)
 {
     APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_RESET " HW reset sequence start (power cycle)");
     App_HwNbiotPowerCycle();
-    App_Bc95AtDelayWithFeed(APP_NBIOT_HW_RESET_SETTLE_MS);
+    /*
+     * Do not add a post-power-on settle delay here.
+     *
+     * The next attach attempt enters App_Bc95AtWaitUntilReady() and starts the
+     * boot-banner wait. A long delay here causes the modem's early boot banner
+     * to be emitted before UART RX is armed, so banner capture fails after HW
+     * reset even though the modem is actually alive.
+     */
     (void)App_NBIoTAtInit();
     APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_RESET " HW reset sequence complete");
     return APP_STATUS_OK;
@@ -2238,13 +2251,20 @@ static AppStatus_t App_NbiotCarrierRecoverAfterAttachFailure(AppStatus_t lastSta
         return App_NbiotCarrierPerformHwReset();
     }
 
-    APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_RESET
-             " reset recovery exhausted sw=%u hw=%u elapsed=%lums last=%d",
+    APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_RESET
+             " reset recovery exhausted sw=%u hw=%u elapsed=%lums last=%d -> continue attach retries until fail-limit",
              (unsigned)g_appNbiotCarrierContext.swResetCount,
              (unsigned)g_appNbiotCarrierContext.hwResetCount,
              (unsigned long)elapsedMs,
              (int)lastStatus);
-    return (lastStatus != APP_STATUS_OK) ? lastStatus : APP_STATUS_FATAL;
+
+    /*
+     * ATT-07: after SW/HW reset quota is exhausted, do not abort immediately.
+     * Keep retrying attach without additional reset until the cumulative
+     * fail-limit (APP_NBIOT_ATTACH_TOTAL_FAIL_LIMIT_MS) is reached.
+     */
+    g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_BOOT_WAIT;
+    return APP_STATUS_OK;
 }
 
 /* ============================================================
@@ -3626,7 +3646,18 @@ AppStatus_t App_NBIoTAtInit(void)
     (void)memset(&g_appBc95AtQuality, 0, sizeof(g_appBc95AtQuality));
     (void)memset(g_appBc95AtQualityBcd, 0, sizeof(g_appBc95AtQualityBcd));
     (void)memset(&g_appBc95AtNetStatus, 0, sizeof(g_appBc95AtNetStatus));
-    (void)memset(&g_appNbiotCarrierContext, 0, sizeof(g_appNbiotCarrierContext));
+    /*
+     * ATT-05/06/07: do NOT clear g_appNbiotCarrierContext here.
+     *
+     * App_NBIoTAtInit() is called after SW/HW reset recovery inside one mandatory
+     * attach session. Clearing the carrier context here resets attachAttemptCount,
+     * swResetCount, hwResetCount, and lastResetType back to zero, which makes the
+     * logs repeat as attempt=1 and SW reset 1/3 forever even though elapsed time is
+     * still cumulative.
+     *
+     * The carrier context is intentionally initialized once at the start of
+     * App_NBIoTCarrierAttachMandatory().
+     */
 
     g_appBc95UdpSeqCounter = 0u;
     g_appBc95UsimFatal = APP_FALSE;
