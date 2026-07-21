@@ -100,6 +100,7 @@ void App_MeterServerOptionsSetPeriod   (AppMeterServerFormatOptions_t *p_options
 /* 채워진 options를 EEPROM에 저장 (변경된 경우에만 실제 write) */
 AppStatus_t App_MeterServerOptionsUpdate(const AppMeterServerFormatOptions_t *p_options);
 
+void App_ReservedEepromInfo(void);
 
 #ifdef __cplusplus
 }

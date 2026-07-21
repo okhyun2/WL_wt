@@ -141,7 +141,7 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
 
     status = App_MeterStorageGetInfo(&info);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    APP_LOGI("MSTOR", "Saved meter data count:%d(%s)", info.count, (info.count > 0)? "build send data":"skip build send data");
+    APP_LOGI("MSTOR", "Saved meter record count:%d(%s)", info.count, (info.count > 0)? "build send data":"skip build send data");
     APP_RETURN_IF_FALSE(info.count > 0u, APP_STATUS_INVALID_PARAM);
 
     qualityLength = (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_LORA)
@@ -409,7 +409,7 @@ AppStatus_t App_MeterServerOptionsClear(void)
 
 void App_MeterServerOptionsInfo(void)
 {
-    APP_LOGI("OPT", "Bank1 options: addr=0x%08lx, size=%lu, slot(cnt=%u, payload=%lu)",
+    APP_LOGI("OPT", "EEPROM options: address:0x%08lx, size:%lubyte, slot(cnt=%u, size=%lubyte)",
              (uint32_t)(DATA_EEPROM_BASE + APP_STORAGE_METER_OPTION_EEPROM_OFFSET_BYTES),
              (uint32_t)APP_STORAGE_METER_OPTION_EEPROM_SIZE_BYTES,
              (unsigned)APP_STORAGE_OPTION_SLOT_COUNT,
@@ -591,3 +591,12 @@ AppStatus_t App_MeterServerOptionsUpdate(const AppMeterServerFormatOptions_t *p_
     APP_LOGI("OPT", "update: write new options");
     return App_MeterServerOptionsSave(p_options);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+void App_ReservedEepromInfo(void)
+{
+    APP_LOGI("OPT", "EEPROM reserved: address:0x%08lx, size:%lubyte",
+             (uint32_t)(DATA_EEPROM_BASE + APP_STORAGE_RESERVED_EEPROM_OFFSET_BYTES),
+             (uint32_t)APP_STORAGE_RESERVED_EEPROM_SIZE_BYTES);
+}
+

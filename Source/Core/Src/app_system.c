@@ -1133,7 +1133,7 @@ static void App_SystemHandleIdle(void)
         if (g_appSystemContext.stopQualificationCount >= APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT)
         {
             APP_LOGW("LP",
-                     "STOP handoff(before clear): stop=%u no_wake=%u qualify=%u decision=%s idle=%lu dispatch=%lu",
+                     "STOP handoff: stop=%u no_wake=%u qualify=%u decision=%s idle=%lu dispatch=%lu",
                      (unsigned int)g_appSystemContext.stopRequested,
                      (unsigned int)g_appSystemContext.stopNoWakeRequested,
                      (unsigned int)g_appSystemContext.stopQualificationCount,
@@ -1142,11 +1142,6 @@ static void App_SystemHandleIdle(void)
                      (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
 
             g_appSystemContext.stopRequested = APP_FALSE;
-
-            APP_LOGW("LP",
-                     "STOP handoff(after clear): stop=%u no_wake=%u",
-                     (unsigned int)g_appSystemContext.stopRequested,
-                     (unsigned int)g_appSystemContext.stopNoWakeRequested);
 
             App_SystemResetStopQualification();
             status = App_SystemEnterStopMode();
@@ -1369,9 +1364,10 @@ AppStatus_t App_SystemInit(void)
     // booting info
     Print_BootInfo(&g_boot_info);
 
-    App_MeterStorageInfo();
     App_DeviceConfigInfo();
     App_MeterServerOptionsInfo();
+    App_ReservedEepromInfo();
+    App_MeterStorageInfo();
 
     App_NBIoTAtInit();
     App_MeterInit();
