@@ -2265,20 +2265,13 @@ static AppStatus_t App_NbiotCarrierRecoverAfterAttachFailure(AppStatus_t lastSta
         return App_NbiotCarrierPerformHwReset();
     }
 
-    APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_RESET
-             " reset recovery exhausted sw=%u hw=%u elapsed=%lums last=%d -> continue attach retries until fail-limit",
+    APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_RESET
+             " reset recovery exhausted sw=%u hw=%u elapsed=%lums last=%d",
              (unsigned)g_appNbiotCarrierContext.swResetCount,
              (unsigned)g_appNbiotCarrierContext.hwResetCount,
              (unsigned long)elapsedMs,
              (int)lastStatus);
-
-    /*
-     * ATT-07: after SW/HW reset quota is exhausted, do not abort immediately.
-     * Keep retrying attach without additional reset until the cumulative
-     * fail-limit (APP_NBIOT_ATTACH_TOTAL_FAIL_LIMIT_MS) is reached.
-     */
-    g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_BOOT_WAIT;
-    return APP_STATUS_OK;
+    return (lastStatus != APP_STATUS_OK) ? lastStatus : APP_STATUS_FATAL;
 }
 
 /* ============================================================

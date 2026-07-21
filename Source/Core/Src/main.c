@@ -152,11 +152,11 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_CRC_Init();
-  MX_I2C2_Init();
-  MX_I2C3_Init();
-  MX_LPUART1_UART_Init();
-  MX_USART1_UART_Init();
-  MX_USART2_UART_Init();
+  MX_I2C2_Init(); //nfc
+  MX_I2C3_Init(); //aux(temp,moisture)
+  MX_LPUART1_UART_Init(); //nbiot
+  MX_USART1_UART_Init(); //debug
+  MX_USART2_UART_Init(); //meter
   MX_ADC_Init();
   //MX_LPTIM1_Init();
   MX_RTC_Init();
