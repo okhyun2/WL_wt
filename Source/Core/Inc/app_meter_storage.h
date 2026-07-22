@@ -10,8 +10,8 @@ extern "C" {
 
 #define APP_METER_STORAGE_MAGIC                 (0x4D535447u)
 #define APP_METER_STORAGE_VERSION               (0x01u)
-#define APP_METER_STORAGE_MAX_RECORDS           (48u)
-#define APP_METER_STORAGE_META_SLOT_COUNT       (64u)
+#define APP_METER_STORAGE_MAX_RECORDS           (72u)
+#define APP_METER_STORAGE_META_SLOT_COUNT       (80u)
 
 #define APP_METER_STORAGE_FLAG_VALID            (1u << 0)
 #define APP_METER_STORAGE_FLAG_SENT             (1u << 1)

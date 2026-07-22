@@ -255,7 +255,7 @@ AppStatus_t App_StorageDataEepromWrite(uint32_t offset, const void *p_data, uint
 
 void App_MeterStorageInfo(void)
 {
-    APP_LOGI("STOR", "EEPROM save map: address:0x%08lx, size:%lubyte",
+    APP_LOGI("STOR", "EEPROM meter map: address:0x%08lx, size:%lubyte",
              DATA_EEPROM_BASE + APP_STORAGE_METER_DATA_EEPROM_OFFSET_BYTES,
              APP_STORAGE_METER_DATA_EEPROM_SIZE_BYTES);
     APP_LOGI("STOR", "  meta: address:0x%08lx, size:%lubyte, slot(count:%d, size:%lubyte)",
@@ -265,7 +265,7 @@ void App_MeterStorageInfo(void)
              (uint32_t)sizeof(AppMeterStorageMetaSlot_t));
 
     APP_LOGI("STOR", "  record: address:0x%08lx, size:%lubyte, slot(count:%d, size:%lubyte)",
-             DATA_EEPROM_BASE + APP_METER_STORAGE_RECORD_REGION_OFFSET,
+             DATA_EEPROM_BASE + APP_STORAGE_METER_DATA_EEPROM_OFFSET_BYTES + APP_METER_STORAGE_RECORD_REGION_OFFSET,
              APP_METER_STORAGE_RECORD_REGION_SIZE,
              APP_METER_STORAGE_MAX_RECORDS,
              APP_METER_STORAGE_RECORD_SLOT_SIZE);
@@ -295,7 +295,7 @@ AppStatus_t App_MeterStoragePush(const AppMeterStorageRecord_t *p_record)
     AppMeterStorageRecord_t temp;
     uint8_t writeIndex;
 
-    APP_LOGI("MSTOR", "current saved count=%u/%u(%s)", App_MeterStorageCount(), APP_METER_STORAGE_MAX_RECORDS,
+    APP_LOGI("MSTOR", "Record current saved count=%u/%u(%s)", App_MeterStorageCount(), APP_METER_STORAGE_MAX_RECORDS,
         (App_MeterStorageCount() == APP_METER_STORAGE_MAX_RECORDS) ? "rolling":"static");
 
     if (App_MeterStorageIsInitialized() != APP_TRUE)
@@ -327,7 +327,7 @@ AppStatus_t App_MeterStoragePush(const AppMeterStorageRecord_t *p_record)
     g_appMeterStorageContext.info.nextSeq++;
     APP_RETURN_IF_FALSE(App_MeterStorageCommitMeta() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
 
-    APP_LOGI("MSTOR", "save count=%u/%u(%s)", App_MeterStorageCount(), APP_METER_STORAGE_MAX_RECORDS,
+    APP_LOGI("MSTOR", "Record save count=%u/%u(%s)", App_MeterStorageCount(), APP_METER_STORAGE_MAX_RECORDS,
         (App_MeterStorageCount() == APP_METER_STORAGE_MAX_RECORDS) ? "rolling":"static");
 
     return APP_STATUS_OK;
@@ -837,7 +837,7 @@ AppStatus_t App_DeviceConfigClear(void)
 
 void App_DeviceConfigInfo(void)
 {
-    APP_LOGI("CFG", "Bank1 device cfg: addr=0x%08lx, size=%lu, slot(cnt=%u, payload=%lu)",
+    APP_LOGI("CFG", "EEPROM device cfg: address:0x%08lx, size:%lubyte, slot(count:%u, size:%lubyte)",
              (uint32_t)(DATA_EEPROM_BASE + APP_STORAGE_CONFIG_EEPROM_OFFSET_BYTES),
              (uint32_t)APP_STORAGE_CONFIG_EEPROM_SIZE_BYTES,
              (unsigned)APP_STORAGE_CONFIG_SLOT_COUNT,
