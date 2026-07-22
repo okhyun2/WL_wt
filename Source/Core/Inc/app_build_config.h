@@ -172,6 +172,12 @@ extern "C" {
 #define APP_RTC_WAKEUP_PERIOD_MS                    (60*1000u) //0:don't stop
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
 
+/* NBIoT 부팅 시 최초 연결 지연용 고정 오프셋 범위(초) */
+#define APP_NBIOT_BOOT_OFFSET_MAX_SEC               (60u)
+/* NBIoT 통신 충돌 방지용 장치별 오프셋/지터 설정 */
+#define APP_NBIOT_XMIT_OFFSET_MAX_SEC               (60u)   /* 장치별 고정 오프셋 범위(0~60초) */
+#define APP_NBIOT_XMIT_JITTER_MAX_SEC               (10u)    /* 매 주기 추가되는 랜덤 지터(0~10초) */
+
 #define APP_WATCHDOG_EXTERNAL_FEED_PULSE_MS         (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_DUTY_PERCENT     (50u)
 #define APP_WATCHDOG_EXTERNAL_FEED_BOOT_PRIME_CNT   (1u)

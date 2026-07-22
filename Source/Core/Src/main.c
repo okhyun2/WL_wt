@@ -166,6 +166,19 @@ int main(void)
     Error_Handler();
   }
 
+  /* NBIoT 다수 장치 동시 접속 방지: 부팅 시 장치별 고정 오프셋 지연.
+   워치독(MX_WWDG_Init)이 아직 시작되지 않았고, FSM/메인루프도
+   아직 진입 전이므로 이 지점에서는 단순 HAL_Delay 사용이 안전함. */
+  {
+    uint32_t deviceHash = App_ClockGetDeviceUidHash();
+    uint32_t offsetMs = (deviceHash % (APP_NBIOT_BOOT_OFFSET_MAX_SEC + 1u)) * 1000u;
+
+    APP_LOGI("MAIN", "Boot NBIoT offset delay=%lu ms (uidHash=0x%08lX)",
+             (unsigned long)offsetMs, (unsigned long)deviceHash);
+
+    HAL_Delay(offsetMs);
+  }
+
   //LPTIM1_Start(); //add periodic wakeup source. max 4min
 
   MX_WWDG_Init();

@@ -238,3 +238,57 @@ uint64_t RTC_GetTimeMs(void)
     return ms;
 }
 
+extern CRC_HandleTypeDef hcrc;
+
+#define APP_CLOCK_UID_BASE_ADDR   (0x1FF80050UL)
+
+/**
+ * @brief 32비트 정수에 대한 비선형 애벌런치 믹서 (Murmur3 finalizer 변형).
+ *        입력값의 구조화된 패턴(웨이퍼 좌표 등)을 무작위에 가깝게 확산시킨다.
+ */
+static uint32_t App_ClockAvalancheMix32(uint32_t x)
+{
+    x ^= x >> 16;
+    x *= 0x85EBCA6Bu;
+    x ^= x >> 13;
+    x *= 0xC2B2AE35u;
+    x ^= x >> 16;
+    return x;
+}
+
+/**
+ * @brief STM32 96비트 UID를 읽어 비선형 믹싱으로 워드 간 상관관계를 제거한
+ *        중간값 3개를 만든 뒤, 하드웨어 CRC로 최종 확산하여 반환한다.
+ *
+ * @note  동일 생산 로트/웨이퍼에서 나온 장치들은 UID 워드가 부분적으로
+ *        동일하거나 유사한 값을 가질 수 있으므로, CRC(선형 연산)만 단독으로
+ *        사용할 경우 해시값이 편향될 위험이 있다. 이를 막기 위해 CRC 이전에
+ *        각 워드를 독립적으로 애벌런치 믹싱하고, 워드 간에도 서로 다른
+ *        상수를 섞어 넣어 입력 구조를 완전히 흐트러뜨린다.
+ */
+uint32_t App_ClockGetDeviceUidHash(void)
+{
+    uint32_t rawWords[3];
+    uint32_t mixedWords[3];
+    uint32_t combined;
+
+    rawWords[0] = *(uint32_t *)(APP_CLOCK_UID_BASE_ADDR + 0x00);
+    rawWords[1] = *(uint32_t *)(APP_CLOCK_UID_BASE_ADDR + 0x04);
+    rawWords[2] = *(uint32_t *)(APP_CLOCK_UID_BASE_ADDR + 0x14);
+
+    /* 1단계: 각 워드를 독립적으로 애벌런치 믹싱 (워드별로 다른 상수 가산) */
+    mixedWords[0] = App_ClockAvalancheMix32(rawWords[0] ^ 0x9E3779B9u);
+    mixedWords[1] = App_ClockAvalancheMix32(rawWords[1] + 0x9E3779B9u);
+    mixedWords[2] = App_ClockAvalancheMix32(rawWords[2] + 0x9E3779B9u * 2u);
+
+    /* 2단계: 세 워드를 서로 결합하여 워드 간 상관관계까지 제거 */
+    combined = mixedWords[0];
+    combined = App_ClockAvalancheMix32(combined ^ mixedWords[1]);
+    combined = App_ClockAvalancheMix32(combined ^ mixedWords[2]);
+    mixedWords[0] = combined;
+    mixedWords[1] = App_ClockAvalancheMix32(combined + rawWords[0]);
+    mixedWords[2] = App_ClockAvalancheMix32(combined + rawWords[1] + rawWords[2]);
+
+    /* 3단계: 이미 초기화되어 있는 하드웨어 CRC로 최종 확산 (기존 구조 재사용) */
+    return HAL_CRC_Calculate(&hcrc, mixedWords, 3u);
+}

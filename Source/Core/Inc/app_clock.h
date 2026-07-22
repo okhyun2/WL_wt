@@ -93,6 +93,7 @@ static inline uint8_t IsUpdatedRTC(void)
 {
     return (RTC->ISR & RTC_ISR_INITS) != 0u;
 }
+uint32_t App_ClockGetDeviceUidHash(void);
 
 #ifdef __cplusplus
 }

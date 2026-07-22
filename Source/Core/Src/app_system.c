@@ -424,9 +424,14 @@ static AppStatus_t App_SystemRtcConfigureWakeupTimerSeconds(uint32_t wakeupSecon
     return APP_STATUS_OK;
 }
 
+static uint8_t s_deviceOffsetApplied = APP_FALSE;
+
 static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
 {
     uint32_t wakeupSeconds;
+    uint32_t deviceHash;
+    uint32_t jitterSeed;
+    uint32_t jitterSeconds;
 
     wakeupSeconds = (APP_RTC_WAKEUP_PERIOD_MS + 999u) / 1000u;
     if (wakeupSeconds == 0u)
@@ -434,8 +439,27 @@ static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
         wakeupSeconds = 1u;
     }
 
+    deviceHash = App_ClockGetDeviceUidHash();
+
+    /* 매 사이클 값이 바뀌도록 RTC subsecond를 섞어 지터 시드 생성 */
+    jitterSeed = deviceHash ^ HAL_GetTick() ^ (RTC->SSR);
+    jitterSeconds = jitterSeed % (APP_NBIOT_XMIT_JITTER_MAX_SEC + 1u);
+
+    if (s_deviceOffsetApplied == APP_FALSE)
+    {
+        uint32_t fixedOffset = deviceHash % (APP_NBIOT_XMIT_OFFSET_MAX_SEC + 1u);
+        wakeupSeconds += fixedOffset;
+        s_deviceOffsetApplied = APP_TRUE;
+
+        APP_LOGI("LP", "RTC WUT initial device offset applied: %lu sec (uidHash=0x%08lX)",
+                 (unsigned long)fixedOffset, (unsigned long)deviceHash);
+    }
+
+    wakeupSeconds += jitterSeconds;
+
     return App_SystemRtcConfigureWakeupTimerSeconds(wakeupSeconds, pWakeupSeconds);
 }
+
 
 static void App_SystemRtcDisableWakeupTimer(void)
 {
@@ -623,6 +647,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
                                  (unsigned long)p_clockContext->pclk2Hz,
                                  (unsigned long)p_clockContext->msiRange,
                                  (unsigned int)p_clockContext->lseReady);
+    APP_LOGI("SYS", "Device UID hash=0x%08lX", (unsigned long)App_ClockGetDeviceUidHash());
     APP_LOGI("GPIO", "LP policy ready: SWD=%lu",
                                  (unsigned long)g_appGpioLpConfig.swdPolicy);
     APP_LOGI("RTC", "STOP wake period=%lu ms (%s)",
