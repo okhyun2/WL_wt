@@ -659,6 +659,15 @@ uint32_t App_SystemConsumeRtcAlarmFlags(void)
     return flags;
 }
 
+AppStatus_t App_SystemRequestShortRtcWakeup(uint32_t wakeupSeconds)
+{
+    APP_RETURN_IF_FALSE((wakeupSeconds > 0u) && (wakeupSeconds <= 0x10000u), APP_STATUS_INVALID_PARAM);
+
+    g_appSystemContext.forcedRtcWakeupSeconds = wakeupSeconds;
+    APP_LOGI("RTC", "[[CollisionPolicy]] request deferred tx short wake=%lus", (unsigned long)wakeupSeconds);
+    return APP_STATUS_OK;
+}
+
 void App_SystemNotifyWakeSource(uint32_t sourceMask)
 {
     if (sourceMask == 0u)
@@ -1086,7 +1095,9 @@ static AppStatus_t App_SystemEnterStopMode(void)
     {
         uint8_t alarmAConfigured = APP_FALSE;
         uint8_t alarmBConfigured = APP_FALSE;
+        uint8_t forcedShortConfigured = APP_FALSE;
         uint32_t wakeupSeconds = 0;
+        uint32_t forcedWakeupSeconds = g_appSystemContext.forcedRtcWakeupSeconds;
 
         g_appSystemContext.oldWakeSourceMask &= ~APP_SYSTEM_WAKE_SRC_RTC;
 
@@ -1104,12 +1115,42 @@ static AppStatus_t App_SystemEnterStopMode(void)
             alarmBConfigured = APP_FALSE;
         }
 
-        if ((alarmAConfigured == APP_TRUE) || (alarmBConfigured == APP_TRUE))
+        if (forcedWakeupSeconds > 0u)
+        {
+            status = App_SystemRtcConfigureWakeupTimerSeconds(forcedWakeupSeconds, &wakeupSeconds);
+            if (status == APP_STATUS_OK)
+            {
+                forcedShortConfigured = APP_TRUE;
+                g_appSystemContext.forcedRtcWakeupSeconds = 0u;
+                APP_LOGI("RTC", "STOP deferred short WUT:%lus kept with alarms A=%u B=%u",
+                         (unsigned long)wakeupSeconds,
+                         (unsigned int)alarmAConfigured,
+                         (unsigned int)alarmBConfigured);
+            }
+            else
+            {
+                APP_LOGW("RTC", "Deferred short WUT configure failed (status=%ld)", (long)status);
+            }
+        }
+
+        if (((alarmAConfigured == APP_TRUE) || (alarmBConfigured == APP_TRUE)) &&
+            (forcedShortConfigured != APP_TRUE))
         {
             App_SystemRtcDisableWakeupTimer();
             APP_LOGI("RTC", "STOP scheduled alarms: A=%u B=%u (WUT fallback disabled)",
                      (unsigned int)alarmAConfigured,
                      (unsigned int)alarmBConfigured);
+        }
+        else if ((alarmAConfigured == APP_TRUE) || (alarmBConfigured == APP_TRUE))
+        {
+            APP_LOGI("RTC", "STOP scheduled alarms: A=%u B=%u with deferred short WUT=%lus",
+                     (unsigned int)alarmAConfigured,
+                     (unsigned int)alarmBConfigured,
+                     (unsigned long)wakeupSeconds);
+        }
+        else if (forcedShortConfigured == APP_TRUE)
+        {
+            APP_LOGI("RTC", "STOP deferred short WUT only:%lus", (unsigned long)wakeupSeconds);
         }
         else
         {

@@ -1539,6 +1539,12 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             {
                 APP_RETURN_IF_FALSE(App_FsmHandleRtcWakeRouting(rtcAlarmFlags) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             }
+            else if (g_appFsmRtcTxWakePending == APP_TRUE)
+            {
+                APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+                App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+                APP_LOGI("FSM", "[[AlarmCollision]] short deferred wake -> queue transmit path only");
+            }
             else if (g_appFsmWakeCollectionPending != APP_TRUE)
             {
                 g_appFsmWakeCollectionPending = APP_TRUE;
@@ -1748,8 +1754,32 @@ void App_FsmInvalidateRtcSchedules(void)
 static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
 {
     AppStatus_t status;
+    uint8_t hasAlarmA;
+    uint8_t hasAlarmB;
 
-    if ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_A) != 0u)
+    hasAlarmA = ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_A) != 0u) ? APP_TRUE : APP_FALSE;
+    hasAlarmB = ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_B) != 0u) ? APP_TRUE : APP_FALSE;
+
+    if ((hasAlarmA == APP_TRUE) && (hasAlarmB == APP_TRUE))
+    {
+        g_appFsmRtcMeterWakePending = APP_TRUE;
+        g_appFsmRtcTxWakePending = APP_TRUE;
+        g_appFsmWakeCollectionPending = APP_FALSE;
+
+        status = App_SystemRequestShortRtcWakeup(APP_RTC_ALARM_COLLISION_TX_DELAY_SEC);
+        if (status != APP_STATUS_OK)
+        {
+            APP_LOGW("FSM", "[[AlarmCollision]] deferred tx short wake request failed (status=%ld)", (long)status);
+        }
+
+        status = App_FsmQueueStateBack(APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, 0u);
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+        App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+        APP_LOGI("FSM", "[[AlarmCollision]] AlarmA+AlarmB -> meter first, defer tx to short next cycle");
+        return APP_STATUS_OK;
+    }
+
+    if (hasAlarmA == APP_TRUE)
     {
         g_appFsmRtcMeterWakePending = APP_TRUE;
         status = App_FsmQueueStateBack(APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, 0u);
@@ -1758,7 +1788,7 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
         APP_LOGI("FSM", "[[AlarmA]] RTC wake -> queue meter read only");
     }
 
-    if ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_B) != 0u)
+    if (hasAlarmB == APP_TRUE)
     {
         g_appFsmRtcTxWakePending = APP_TRUE;
         g_appFsmWakeCollectionPending = APP_FALSE;

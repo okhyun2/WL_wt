@@ -171,6 +171,7 @@ extern "C" {
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (10*60*1000u) //0:don't stop
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (60*1000u) //0:don't stop
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
+#define APP_RTC_ALARM_COLLISION_TX_DELAY_SEC        (60u)
 
 /* NBIoT 부팅 시 최초 연결 지연용 고정 오프셋 범위(초) */
 #define APP_NBIOT_BOOT_OFFSET_MAX_SEC               (60u)
