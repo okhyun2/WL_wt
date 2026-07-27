@@ -63,6 +63,8 @@ static NFC_NTP53321_Handle_t *g_appNfcSeoulTag;
 static uint8_t g_appNfcSeoulAttached;
 static uint8_t g_appNfcSeoulPayloadDirty;
 static uint8_t g_appNfcSeoulSramSyncPending;
+static uint8_t g_appNfcSeoulLiveRecordValid;
+static AppMeterStorageRecord_t g_appNfcSeoulLiveRecord;
 static AppNfcSeoulDebugInfo_t g_appNfcSeoulDebugInfo;
 #if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
 static uint32_t g_appNfcSeoulTestModeLastRefreshTickMs;
@@ -326,6 +328,33 @@ static void App_NfcSeoulPrintSnapshot(const AppNfcSeoulSnapshot_t *p_snapshot)
              (unsigned long)meterId);
 }
 
+static void App_NfcSeoulApplyRecordToSnapshot(AppNfcSeoulSnapshot_t *p_snapshot,
+                                              const AppMeterStorageRecord_t *p_record)
+{
+    if ((p_snapshot == NULL) || (p_record == NULL))
+    {
+        return;
+    }
+
+    App_NfcSeoulEncodeBcdBe(p_record->meterId,
+                            p_snapshot->meterIdBcd,
+                            (uint8_t)sizeof(p_snapshot->meterIdBcd));
+    App_NfcSeoulU32ToBe(p_record->readingScaled, p_snapshot->reading);
+    p_snapshot->caliberDecimal = p_record->caliberDecimal;
+    p_snapshot->alarmStatus = (uint8_t)(p_record->meterStatus &
+                                        (APP_METER_STORAGE_STATUS_OVERFLOW |
+                                         APP_METER_STORAGE_STATUS_REVERSE_FLOW |
+                                         APP_METER_STORAGE_STATUS_LEAK));
+
+    if ((p_record->flags & APP_METER_STORAGE_FLAG_TIME_VALID) != 0u)
+    {
+        (void)memcpy(p_snapshot->reportTime, p_record->ts, sizeof(p_record->ts));
+        (void)memcpy(p_snapshot->readingTime, p_record->ts, sizeof(p_record->ts));
+    }
+
+    p_snapshot->commState = APP_NFC_SEOUL_COMM_ON;
+}
+
 static void App_NfcSeoulBuildSnapshot(AppNfcSeoulSnapshot_t *p_snapshot)
 {
     AppMeterServerFormatOptions_t options;
@@ -375,25 +404,25 @@ static void App_NfcSeoulBuildSnapshot(AppNfcSeoulSnapshot_t *p_snapshot)
 
     hasRecord = APP_FALSE;
     status = App_MeterStorageGetInfo(&info);
-    if ((status == APP_STATUS_OK) && (info.count != 0u))
+    if (status == APP_STATUS_OK)
     {
-        status = App_MeterStorageReadAt((uint8_t)(info.count - 1u), &record);
-        if (status == APP_STATUS_OK)
+        p_snapshot->recordCount = info.count;
+
+        if (info.count != 0u)
         {
-            hasRecord = APP_TRUE;
-            p_snapshot->recordCount = info.count;
-            App_NfcSeoulEncodeBcdBe(record.meterId, p_snapshot->meterIdBcd, (uint8_t)sizeof(p_snapshot->meterIdBcd));
-            App_NfcSeoulU32ToBe(record.readingScaled, p_snapshot->reading);
-            p_snapshot->caliberDecimal = record.caliberDecimal;
-            p_snapshot->alarmStatus = (uint8_t)(record.meterStatus & (APP_METER_STORAGE_STATUS_OVERFLOW |
-                                                                      APP_METER_STORAGE_STATUS_REVERSE_FLOW |
-                                                                      APP_METER_STORAGE_STATUS_LEAK));
-            if ((record.flags & APP_METER_STORAGE_FLAG_TIME_VALID) != 0u)
+            status = App_MeterStorageReadAt((uint8_t)(info.count - 1u), &record);
+            if (status == APP_STATUS_OK)
             {
-                (void)memcpy(p_snapshot->reportTime, record.ts, sizeof(record.ts));
-                (void)memcpy(p_snapshot->readingTime, record.ts, sizeof(record.ts));
+                App_NfcSeoulApplyRecordToSnapshot(p_snapshot, &record);
+                hasRecord = APP_TRUE;
             }
         }
+    }
+
+    if (g_appNfcSeoulLiveRecordValid == APP_TRUE)
+    {
+        App_NfcSeoulApplyRecordToSnapshot(p_snapshot, &g_appNfcSeoulLiveRecord);
+        hasRecord = APP_TRUE;
     }
 
     if (hasRecord != APP_TRUE)
@@ -1112,6 +1141,8 @@ AppStatus_t App_NfcSeoulInit(NFC_NTP53321_Handle_t *p_tag)
     g_appNfcSeoulAttached = APP_TRUE;
     g_appNfcSeoulPayloadDirty = APP_TRUE;
     g_appNfcSeoulSramSyncPending = APP_TRUE;
+    g_appNfcSeoulLiveRecordValid = APP_FALSE;
+    (void)memset(&g_appNfcSeoulLiveRecord, 0, sizeof(g_appNfcSeoulLiveRecord));
 #if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
     g_appNfcSeoulTestModeLastRefreshTickMs = 0u;
     g_appNfcSeoulTestModeCounter = 0u;
@@ -1245,6 +1276,9 @@ AppStatus_t App_NfcSeoulNotifyStorageChanged(void)
     uint8_t payloadLength;
     AppStatus_t status;
 
+    g_appNfcSeoulLiveRecordValid = APP_FALSE;
+    (void)memset(&g_appNfcSeoulLiveRecord, 0, sizeof(g_appNfcSeoulLiveRecord));
+
     status = App_NfcSeoulBuildResponsePayload(APP_NFC_SEOUL_CMD_STOR_RES,
                                               payload,
                                               (uint8_t)sizeof(payload),
@@ -1262,6 +1296,48 @@ AppStatus_t App_NfcSeoulNotifyStorageChanged(void)
         g_appNfcSeoulPayloadDirty = APP_FALSE;
         g_appNfcSeoulDebugInfo.storageRefreshCount++;
         App_NfcSeoulDebugRecordResponse(payload, payloadLength, APP_FALSE, APP_FALSE, status);
+    }
+    else
+    {
+        g_appNfcSeoulPayloadDirty = APP_TRUE;
+        g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
+    }
+
+    return status;
+}
+
+AppStatus_t App_NfcSeoulNotifyLiveMeterRecord(const AppMeterStorageRecord_t *p_record)
+{
+    uint8_t payload[40];
+    uint8_t payloadLength;
+    AppStatus_t status;
+
+    if (p_record == NULL)
+    {
+        return APP_STATUS_INVALID_PARAM;
+    }
+
+    (void)memcpy(&g_appNfcSeoulLiveRecord, p_record, sizeof(g_appNfcSeoulLiveRecord));
+    g_appNfcSeoulLiveRecordValid = APP_TRUE;
+
+    status = App_NfcSeoulBuildResponsePayload(APP_NFC_SEOUL_CMD_STOR_RES,
+                                              payload,
+                                              (uint8_t)sizeof(payload),
+                                              &payloadLength);
+    if (status != APP_STATUS_OK)
+    {
+        g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
+        g_appNfcSeoulPayloadDirty = APP_TRUE;
+        return status;
+    }
+
+    status = App_NfcSeoulWritePayload(payload, payloadLength);
+    if (status == APP_STATUS_OK)
+    {
+        g_appNfcSeoulPayloadDirty = APP_FALSE;
+        g_appNfcSeoulDebugInfo.storageRefreshCount++;
+        App_NfcSeoulDebugRecordResponse(payload, payloadLength, APP_FALSE, APP_FALSE, status);
+        APP_LOGI("NFC", "Live meter snapshot reflected immediately");
     }
     else
     {

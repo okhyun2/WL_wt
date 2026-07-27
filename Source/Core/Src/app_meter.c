@@ -193,7 +193,8 @@ static uint8_t App_MeterNormalizeScStatus(uint8_t rawStatus, uint8_t battery)
     return status;
 }
 
-static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
+static AppStatus_t App_MeterBuildDigitalRecord(const App_MeterUnion_t *pRxFrame,
+                                                 AppMeterStorageRecord_t *p_record)
 {
     AppMeterStorageRecord_t record;
     uint32_t identRaw;
@@ -205,6 +206,7 @@ static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
     uint8_t caliber;
 
     APP_RETURN_IF_FALSE(pRxFrame != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(p_record != NULL, APP_STATUS_INVALID_PARAM);
 
     (void)memset(&record, 0, sizeof(record));
     App_MeterGetTimestamp(record.ts, &timeValid);
@@ -230,10 +232,11 @@ static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
     record.meterType = APP_METER_STORAGE_METER_TYPE_DIGITAL_UART;
 
     App_MeterStoragePrintRecord(&record);
+    *p_record = record;
 
     if(timeValid == APP_TRUE)
     {
-        return(App_MeterStoragePush(&record));
+        return APP_STATUS_OK;
     }
     else
     {
@@ -241,6 +244,16 @@ static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
     }
 
     return APP_STATUS_FATAL;
+}
+
+static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
+{
+    AppMeterStorageRecord_t record;
+    AppStatus_t status;
+
+    status = App_MeterBuildDigitalRecord(pRxFrame, &record);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    return(App_MeterStoragePush(&record));
 }
 
 void App_MeterSetStorageEnabled(uint8_t enabled)
@@ -253,7 +266,8 @@ uint8_t App_MeterIsStorageEnabled(void)
     return g_appMeterStorageEnabled;
 }
 
-static AppStatus_t App_MeterSaveSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxFrame)
+static AppStatus_t App_MeterBuildSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxFrame,
+                                                AppMeterStorageRecord_t *p_record)
 {
     AppMeterStorageRecord_t record;
     uint32_t identRaw;
@@ -261,6 +275,7 @@ static AppStatus_t App_MeterSaveSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxFr
     uint8_t timeValid;
 
     APP_RETURN_IF_FALSE(pRxFrame != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(p_record != NULL, APP_STATUS_INVALID_PARAM);
 
     (void)memset(&record, 0, sizeof(record));
     App_MeterGetTimestamp(record.ts, &timeValid);
@@ -281,10 +296,11 @@ static AppStatus_t App_MeterSaveSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxFr
     record.meterBattery = pRxFrame->frame.UserData.Battery;
     record.meterType = APP_METER_STORAGE_METER_TYPE_SC1XXX;
     record.caliberDecimal = (uint8_t)((APP_METER_STORAGE_CALIBER_UNKNOWN << 4) | 0x03u);
+    *p_record = record;
 
     if(timeValid == APP_FALSE)
     {
-        return(App_MeterStoragePush(&record));
+        return APP_STATUS_OK;
     }
     else
     {
@@ -292,6 +308,16 @@ static AppStatus_t App_MeterSaveSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxFr
     }
 
     return APP_STATUS_FATAL;
+}
+
+static AppStatus_t App_MeterSaveSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxFrame)
+{
+    AppMeterStorageRecord_t record;
+    AppStatus_t status;
+
+    status = App_MeterBuildSc1xxxRecord(pRxFrame, &record);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    return(App_MeterStoragePush(&record));
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -377,6 +403,9 @@ AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t le
     #endif
     
     App_MeterUnion_t rx_frame = {0};
+    AppMeterStorageRecord_t liveRecord = {0};
+    AppStatus_t status;
+    uint8_t storageEnabled;
     
     /* 핵심: Binary → Union Cascading */
     //App_MeterResult_t result = App_MeterParseFrame(&rx_frame, uart_rx_buffer, sizeof(uart_rx_buffer));
@@ -386,15 +415,20 @@ AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t le
         APP_LOGD("METER", "Success Meter parsing.");
         
         App_MeterPrintUnionDetailed(&rx_frame);
+        APP_RETURN_IF_FALSE(App_MeterBuildDigitalRecord(&rx_frame, &liveRecord) == APP_STATUS_OK, APP_STATUS_FATAL);
 
-        if (App_MeterIsStorageEnabled() == APP_TRUE)
+        storageEnabled = App_MeterIsStorageEnabled();
+        if (storageEnabled == APP_TRUE)
         {
-            APP_RETURN_IF_FALSE(App_MeterSaveDigitalRecord(&rx_frame) == APP_STATUS_OK, APP_STATUS_FATAL);
+            APP_RETURN_IF_FALSE(App_MeterStoragePush(&liveRecord) == APP_STATUS_OK, APP_STATUS_FATAL);
         }
 
         //nfc update
         APP_LOGI("NFC", "Update nfc meter info.");
-        (void)App_NfcSeoulNotifyStorageChanged();
+        status = (storageEnabled == APP_TRUE)
+                 ? App_NfcSeoulNotifyStorageChanged()
+                 : App_NfcSeoulNotifyLiveMeterRecord(&liveRecord);
+        (void)status;
 
         return(APP_STATUS_OK);
         
@@ -503,6 +537,9 @@ AppStatus_t App_MeterSC1xxxProcessReceivedData(const uint8_t *pRxBuf, const uint
 #endif
 
     App_MeterSC1xxxUnion_t rx_frame = {0};
+    AppMeterStorageRecord_t liveRecord = {0};
+    AppStatus_t status;
+    uint8_t storageEnabled;
 
     /* 핵심: Binary → Union Cascading */
     App_MeterResult_t result = App_MeterSC1xxxParseFrame(&rx_frame, pRxBuf, length);
@@ -511,10 +548,17 @@ AppStatus_t App_MeterSC1xxxProcessReceivedData(const uint8_t *pRxBuf, const uint
         APP_LOGI("METER", "Success MeterSC1xxx parsing.");
         
         App_MeterSC1xxxPrintData(&rx_frame);
-        if (App_MeterIsStorageEnabled() == APP_TRUE)
+        APP_RETURN_IF_FALSE(App_MeterBuildSc1xxxRecord(&rx_frame, &liveRecord) == APP_STATUS_OK, APP_STATUS_FATAL);
+        storageEnabled = App_MeterIsStorageEnabled();
+        if (storageEnabled == APP_TRUE)
         {
-            APP_RETURN_IF_FALSE(App_MeterSaveSc1xxxRecord(&rx_frame) == APP_STATUS_OK, APP_STATUS_FATAL);
+            APP_RETURN_IF_FALSE(App_MeterStoragePush(&liveRecord) == APP_STATUS_OK, APP_STATUS_FATAL);
         }
+        APP_LOGI("NFC", "Update nfc meter info.");
+        status = (storageEnabled == APP_TRUE)
+                 ? App_NfcSeoulNotifyStorageChanged()
+                 : App_NfcSeoulNotifyLiveMeterRecord(&liveRecord);
+        (void)status;
         return(APP_STATUS_OK);
         
     } else {
