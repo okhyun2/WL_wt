@@ -1096,22 +1096,25 @@ static AppStatus_t App_SystemEnterStopMode(void)
         uint8_t alarmAConfigured = APP_FALSE;
         uint8_t alarmBConfigured = APP_FALSE;
         uint8_t forcedShortConfigured = APP_FALSE;
+        uint8_t allowPeriodicFallback = APP_FALSE;
         uint32_t wakeupSeconds = 0;
         uint32_t forcedWakeupSeconds = g_appSystemContext.forcedRtcWakeupSeconds;
+        AppStatus_t alarmAStatus;
+        AppStatus_t alarmBStatus;
 
         g_appSystemContext.oldWakeSourceMask &= ~APP_SYSTEM_WAKE_SRC_RTC;
 
-        status = App_SystemRtcConfigureAlarmAForMetering(&alarmAConfigured);
-        if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
+        alarmAStatus = App_SystemRtcConfigureAlarmAForMetering(&alarmAConfigured);
+        if ((alarmAStatus != APP_STATUS_OK) && (alarmAStatus != APP_STATUS_NOT_INITIALIZED))
         {
-            APP_LOGW("LP", "AlarmA configure failed -> fallback to WUT (status=%ld)", (long)status);
+            APP_LOGW("LP", "AlarmA configure failed -> recovery fallback candidate (status=%ld)", (long)alarmAStatus);
             alarmAConfigured = APP_FALSE;
         }
 
-        status = App_SystemRtcConfigureAlarmBForReporting(&alarmBConfigured);
-        if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
+        alarmBStatus = App_SystemRtcConfigureAlarmBForReporting(&alarmBConfigured);
+        if ((alarmBStatus != APP_STATUS_OK) && (alarmBStatus != APP_STATUS_NOT_INITIALIZED))
         {
-            APP_LOGW("LP", "AlarmB configure failed -> fallback to WUT (status=%ld)", (long)status);
+            APP_LOGW("LP", "AlarmB configure failed -> recovery fallback candidate (status=%ld)", (long)alarmBStatus);
             alarmBConfigured = APP_FALSE;
         }
 
@@ -1130,14 +1133,27 @@ static AppStatus_t App_SystemEnterStopMode(void)
             else
             {
                 APP_LOGW("RTC", "Deferred short WUT configure failed (status=%ld)", (long)status);
+                allowPeriodicFallback = APP_TRUE;
             }
         }
+
+#if (APP_RTC_WAKEUP_PERIOD_TEST_FALLBACK_ONLY == APP_TRUE)
+        if ((IsUpdatedRTC() != APP_TRUE) ||
+            ((alarmAConfigured != APP_TRUE) && (alarmBConfigured != APP_TRUE)) ||
+            ((alarmAStatus != APP_STATUS_OK) && (alarmAStatus != APP_STATUS_NOT_INITIALIZED)) ||
+            ((alarmBStatus != APP_STATUS_OK) && (alarmBStatus != APP_STATUS_NOT_INITIALIZED)))
+        {
+            allowPeriodicFallback = APP_TRUE;
+        }
+#else
+        allowPeriodicFallback = APP_TRUE;
+#endif
 
         if (((alarmAConfigured == APP_TRUE) || (alarmBConfigured == APP_TRUE)) &&
             (forcedShortConfigured != APP_TRUE))
         {
             App_SystemRtcDisableWakeupTimer();
-            APP_LOGI("RTC", "STOP scheduled alarms: A=%u B=%u (WUT fallback disabled)",
+            APP_LOGI("RTC", "STOP scheduled alarms: A=%u B=%u (WUT disabled in normal operation)",
                      (unsigned int)alarmAConfigured,
                      (unsigned int)alarmBConfigured);
         }
@@ -1152,9 +1168,9 @@ static AppStatus_t App_SystemEnterStopMode(void)
         {
             APP_LOGI("RTC", "STOP deferred short WUT only:%lus", (unsigned long)wakeupSeconds);
         }
-        else
+        else if (allowPeriodicFallback == APP_TRUE)
         {
-            APP_LOGD("LP", "RTCConfigureWakeupTimer fallback");
+            APP_LOGD("LP", "RTCConfigureWakeupTimer fallback (test/debug/recovery only)");
             status = App_SystemRtcConfigureWakeupTimer(&wakeupSeconds);
             if (status != APP_STATUS_OK)
             {
@@ -1163,6 +1179,11 @@ static AppStatus_t App_SystemEnterStopMode(void)
             }
 
             APP_LOGI("RTC", "STOP periodic fallback:%ds", wakeupSeconds);
+        }
+        else
+        {
+            App_SystemRtcDisableWakeupTimer();
+            APP_LOGW("RTC", "No AlarmA/B configured and periodic fallback suppressed");
         }
     }
     else if(g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_LPTIM)

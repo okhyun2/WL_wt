@@ -167,10 +167,11 @@ extern "C" {
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
 #define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
 #define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
-#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //0:don't stop
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (10*60*1000u) //0:don't stop
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (60*1000u) //0:don't stop
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) //0:don't stop
+#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) // test/debug/fallback only
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (10*60*1000u) // test/debug/fallback only
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (60*1000u) // test/debug/fallback only
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) // test/debug/fallback only
+#define APP_RTC_WAKEUP_PERIOD_TEST_FALLBACK_ONLY    (APP_TRUE)
 #define APP_RTC_ALARM_COLLISION_TX_DELAY_SEC        (60u)
 
 /* NBIoT 부팅 시 최초 연결 지연용 고정 오프셋 범위(초) */
