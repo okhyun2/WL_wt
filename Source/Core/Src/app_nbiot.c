@@ -3973,6 +3973,7 @@ AppStatus_t App_NBIoTTransmitUdp(void)
 #endif // NBIOT_SUPPORT_DNS
         if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u))
         {
+#if (APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS == APP_TRUE)
             AppStatus_t clearStatus = App_MeterStorageClearAll();
             if (clearStatus != APP_STATUS_OK)
             {
@@ -3980,6 +3981,11 @@ AppStatus_t App_NBIoTTransmitUdp(void)
                 return clearStatus;
             }
             buildResult.cleared = APP_TRUE;
+#else
+            buildResult.cleared = APP_FALSE;
+            APP_LOGI("NBIOT", "Storage retained after UDP send: wait server ACK before delete (records=%u)",
+                     (unsigned int)buildResult.recordCount);
+#endif
         }
     }
     else
