@@ -3335,7 +3335,11 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_host, uint16_t port,
 #if (APP_POLICY_WAIT_SERVER_ACK_ENABLE == APP_TRUE)
     if (status == APP_STATUS_OK)
     {
+#if (APP_POLICY_TEST_MODE_SKIP_SERVER_ACK_WAIT == APP_TRUE)
+        APP_LOGW("NBIOT", "Test mode: skip server ACK wait/timeout");
+#else
         status = App_Bc95AtWaitUdpAck(socketId, APP_POLICY_SERVER_ACK_TIMEOUT_MS);
+#endif
     }
 #endif
 
