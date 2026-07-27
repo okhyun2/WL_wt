@@ -50,6 +50,9 @@ typedef struct
 } AppMeterServerFormatResult_t;
 
 void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options);
+uint8_t App_MeterServerOptionsIsPeriodSupported(uint8_t hours);
+uint8_t App_MeterServerOptionsNormalizePeriod(uint8_t hours);
+AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_options);
 AppStatus_t App_MeterServerFormatBuildFromStorage(const AppMeterServerFormatOptions_t *p_options,
                                                   uint8_t *p_packet,
                                                   uint16_t packetCapacity,

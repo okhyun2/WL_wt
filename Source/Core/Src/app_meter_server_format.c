@@ -11,6 +11,64 @@
 #define APP_METER_SERVER_FORMAT_FIXED_NBIOT_QUALITY_BYTES  (10u)
 #define APP_METER_SERVER_FORMAT_FIXED_NBIOT_MOBILE_ID_BYTES (16u)
 
+uint8_t App_MeterServerOptionsIsPeriodSupported(uint8_t hours)
+{
+    switch (hours)
+    {
+        case 1u:
+        case 2u:
+        case 3u:
+        case 4u:
+        case 6u:
+        case 8u:
+        case 12u:
+        case 24u:
+            return APP_TRUE;
+        default:
+            return APP_FALSE;
+    }
+}
+
+uint8_t App_MeterServerOptionsNormalizePeriod(uint8_t hours)
+{
+    return (App_MeterServerOptionsIsPeriodSupported(hours) == APP_TRUE)
+           ? hours
+           : (uint8_t)APP_POLICY_DEFAULT_METERING_PERIOD_HOURS;
+}
+
+AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_options)
+{
+    uint8_t originalMetering;
+    uint8_t originalReporting;
+
+    APP_RETURN_IF_FALSE(p_options != NULL, APP_STATUS_INVALID_PARAM);
+
+    originalMetering = p_options->meteringPeriodHours;
+    originalReporting = p_options->reportingPeriodHours;
+
+    p_options->meteringPeriodHours =
+        (App_MeterServerOptionsIsPeriodSupported(originalMetering) == APP_TRUE)
+        ? originalMetering
+        : (uint8_t)APP_POLICY_DEFAULT_METERING_PERIOD_HOURS;
+
+    p_options->reportingPeriodHours =
+        (App_MeterServerOptionsIsPeriodSupported(originalReporting) == APP_TRUE)
+        ? originalReporting
+        : (uint8_t)APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS;
+
+    if ((originalMetering != p_options->meteringPeriodHours) ||
+        (originalReporting != p_options->reportingPeriodHours))
+    {
+        APP_LOGW("OPT", "invalid period corrected meter=%u->%u report=%u->%u",
+                 (unsigned)originalMetering,
+                 (unsigned)p_options->meteringPeriodHours,
+                 (unsigned)originalReporting,
+                 (unsigned)p_options->reportingPeriodHours);
+    }
+
+    return APP_STATUS_OK;
+}
+
 static void App_MeterServerFormatU32ToLe(uint32_t value, uint8_t *p_out)
 {
     p_out[0] = (uint8_t)(value & 0xFFu);
@@ -103,8 +161,9 @@ void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options)
     p_options->terminalBattery.b.alarm = 0;
     p_options->terminalBattery.b.volt = 36; //volt * 10
 
-    p_options->meteringPeriodHours = 1u;
-    p_options->reportingPeriodHours = 1u;
+    p_options->meteringPeriodHours = (uint8_t)APP_POLICY_DEFAULT_METERING_PERIOD_HOURS;
+    p_options->reportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS;
+    (void)App_MeterServerOptionsValidate(p_options);
 }
 
 static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormatOptions_t *p_options,
@@ -393,13 +452,20 @@ AppStatus_t App_MeterServerOptionsLoad(AppMeterServerFormatOptions_t *p_options)
         App_MeterServerOptionsSetDefaults(p_options);
         return APP_STATUS_NOT_INITIALIZED;
     }
+
+    APP_RETURN_IF_FALSE(App_MeterServerOptionsValidate(p_options) == APP_STATUS_OK, APP_STATUS_INVALID_PARAM);
     return APP_STATUS_OK;
 }
 
 AppStatus_t App_MeterServerOptionsSave(const AppMeterServerFormatOptions_t *p_options)
 {
+    AppMeterServerFormatOptions_t temp;
+
     APP_RETURN_IF_FALSE(p_options != NULL, APP_STATUS_INVALID_PARAM);
-    return App_ConfigSlotSave(&g_appMeterServerOptionsRegion, p_options);
+
+    temp = *p_options;
+    APP_RETURN_IF_FALSE(App_MeterServerOptionsValidate(&temp) == APP_STATUS_OK, APP_STATUS_INVALID_PARAM);
+    return App_ConfigSlotSave(&g_appMeterServerOptionsRegion, &temp);
 }
 
 AppStatus_t App_MeterServerOptionsClear(void)
@@ -567,6 +633,7 @@ void App_MeterServerOptionsSetPeriod(AppMeterServerFormatOptions_t *p_options,
     if (p_options == NULL) { return; }
     p_options->meteringPeriodHours  = meteringHours;
     p_options->reportingPeriodHours = reportingHours;
+    (void)App_MeterServerOptionsValidate(p_options);
 }
 
 /* ----------------------------------------------------------------
@@ -576,20 +643,24 @@ void App_MeterServerOptionsSetPeriod(AppMeterServerFormatOptions_t *p_options,
 AppStatus_t App_MeterServerOptionsUpdate(const AppMeterServerFormatOptions_t *p_options)
 {
     AppMeterServerFormatOptions_t current;
+    AppMeterServerFormatOptions_t temp;
     AppStatus_t status;
 
     APP_RETURN_IF_FALSE(p_options != NULL, APP_STATUS_INVALID_PARAM);
 
+    temp = *p_options;
+    APP_RETURN_IF_FALSE(App_MeterServerOptionsValidate(&temp) == APP_STATUS_OK, APP_STATUS_INVALID_PARAM);
+
     status = App_MeterServerOptionsLoad(&current);
     if ((status == APP_STATUS_OK) &&
-        (memcmp(&current, p_options, sizeof(current)) == 0))
+        (memcmp(&current, &temp, sizeof(current)) == 0))
     {
         APP_LOGI("OPT", "update: no change, skip write");
         return APP_STATUS_OK;
     }
 
     APP_LOGI("OPT", "update: write new options");
-    return App_MeterServerOptionsSave(p_options);
+    return App_MeterServerOptionsSave(&temp);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

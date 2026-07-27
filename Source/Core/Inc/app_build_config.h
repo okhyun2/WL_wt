@@ -199,6 +199,10 @@ extern "C" {
 #define APP_NBIOT_SW_RESET_SETTLE_MS               (1500u)
 #define APP_NBIOT_HW_RESET_SETTLE_MS               (2000u)
 
+/* OPS-01/02 period policy defaults (allowed values: 1/2/3/4/6/8/12/24h) */
+#define APP_POLICY_DEFAULT_METERING_PERIOD_HOURS   (1u)
+#define APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS  (1u)
+
 #define APP_MSGQ_DEPTH                              (16u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)
 
