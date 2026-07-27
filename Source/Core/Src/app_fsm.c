@@ -1728,6 +1728,23 @@ AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
                                           p_dueTime);
 }
 
+void App_FsmInvalidateRtcSchedules(void)
+{
+    g_appFsmMeterSchedule.initialized = APP_FALSE;
+    g_appFsmMeterSchedule.enabled = APP_FALSE;
+    g_appFsmMeterSchedule.rtcReadyLogged = APP_FALSE;
+    g_appFsmMeterSchedule.nextDueDateKey = 0u;
+    g_appFsmMeterSchedule.nextDueMsOfDay = 0u;
+
+    g_appFsmTxSchedule.initialized = APP_FALSE;
+    g_appFsmTxSchedule.enabled = APP_FALSE;
+    g_appFsmTxSchedule.rtcReadyLogged = APP_FALSE;
+    g_appFsmTxSchedule.nextDueDateKey = 0u;
+    g_appFsmTxSchedule.nextDueMsOfDay = 0u;
+
+    APP_LOGI("FSM", "[[RtcSync]] invalidate meter/tx due cache -> alarms will be recalculated on next STOP entry");
+}
+
 static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
 {
     AppStatus_t status;

@@ -9,6 +9,7 @@
 #include "app_gpio_lp.h"
 #include "app_log.h"
 #include "app_clock.h"
+#include "app_fsm.h"
 #include "app_meter_storage.h"
 #include "app_meter_server_format.h"
 
@@ -3740,6 +3741,8 @@ AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime)
                  (unsigned)nbTime->dateTime.year,
                  (unsigned)nbTime->dateTime.month, (unsigned)nbTime->dateTime.day,
                  (unsigned)nbTime->dateTime.hour, (unsigned)nbTime->dateTime.minute, (unsigned)nbTime->dateTime.second);
+
+        App_FsmInvalidateRtcSchedules();
     }
 
     return APP_STATUS_OK;

@@ -87,6 +87,7 @@ AppStatus_t App_FsmQueueStateBack(uint8_t nextState, uint32_t eventParam, uint32
 AppStatus_t App_FsmRequestResetBoot(void);
 AppStatus_t App_FsmGetNextMeterDueTime(AppDateTime_t *p_dueTime);
 AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime);
+void App_FsmInvalidateRtcSchedules(void);
 const AppFsmContext_t *App_FsmGetContext(void);
 const AppFsmSummary_t *App_FsmGetSummary(void);
 const AppFsmComponentContext_t *App_FsmGetComponent(AppFsmComponentId_t id);
