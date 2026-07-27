@@ -6,6 +6,8 @@
 #include "app_build_config.h"
 #include "app_debug.h"
 #include "app_hw.h"
+#include "app_gpio_lp.h"
+#include "app_meter.h"
 #include "app_msgq.h"
 #include "app_system.h"
 #include "main.h"
@@ -56,6 +58,9 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
                                  uint8_t eventPending,
                                  AppStatus_t status);
 static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags);
+static AppStatus_t App_FsmMeterProbeAndStore(void);
+static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void);
+static AppStatus_t App_FsmTxScheduleConsumeDueNow(void);
 
 NFC_NTP53321_Handle_t g_nfcTagHandle;
 NFC_AUTH_Handle_t g_nfcAuthHandle;
@@ -76,6 +81,153 @@ static const uint8_t g_nfcAdminKey[NFC_AUTH_KEY_SIZE] = APP_NFC_ADMIN_KEY_BYTES;
 static void App_FsmNfcWakeupCallback(NFC_WakeupEvent_t event)
 {
     g_nfcWakeEvent = event;
+}
+
+static AppStatus_t App_FsmMeterReinitUart(uint32_t settleDelayMs)
+{
+    APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
+
+    App_GpioLpRestoreMeterUartPins();
+
+    (void)HAL_UART_AbortReceive_IT(APP_UART_METER_HANDLE);
+    __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE,
+                          UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
+    HAL_Delay(APP_SELFTEST_UART_METER_REINIT_PREP_DELAY_MS);
+
+    __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE,
+                          UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
+    HAL_Delay(settleDelayMs);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmMeterReceiveBlocking(uint8_t *p_buffer,
+                                               uint16_t length,
+                                               uint32_t timeoutMs)
+{
+    HAL_StatusTypeDef halStatus;
+
+    APP_RETURN_IF_FALSE(p_buffer != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(length > 0u, APP_STATUS_INVALID_PARAM);
+
+    __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE,
+                          UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
+    halStatus = HAL_UART_Receive(APP_UART_METER_HANDLE,
+                                 p_buffer,
+                                 length,
+                                 timeoutMs);
+    if (halStatus == HAL_TIMEOUT)
+    {
+        (void)HAL_UART_AbortReceive(APP_UART_METER_HANDLE);
+        __HAL_UART_CLEAR_FLAG(APP_UART_METER_HANDLE,
+                              UART_CLEAR_OREF | UART_CLEAR_FEF | UART_CLEAR_NEF | UART_CLEAR_PEF);
+        __HAL_UART_SEND_REQ(APP_UART_METER_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+        return APP_STATUS_UART_TIMEOUT;
+    }
+    APP_RETURN_IF_FALSE(halStatus == HAL_OK, APP_STATUS_UART_RX_FAILED);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmMeterProbeAndStore(void)
+{
+#if defined(SUPPORT_METER_NORMAL)
+    static const uint8_t meterWakeFrame[] = { 0x10, 0x5B, 0x01, 0x5C, 0x16 };
+    uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
+    uint8_t storageEnabledPrev;
+    AppStatus_t status;
+
+    APP_LOGI("FSM", "[[MeterWake]] scheduled meter probe start");
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
+    HAL_Delay(50u);
+
+    status = App_FsmMeterReinitUart(APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS);
+    if (status != APP_STATUS_OK)
+    {
+        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+        return status;
+    }
+
+    APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_METER_HANDLE,
+                                              (uint8_t *)meterWakeFrame,
+                                              (uint16_t)sizeof(meterWakeFrame),
+                                              APP_SELFTEST_UART_TIMEOUT_MS),
+                            APP_STATUS_UART_TX_FAILED);
+
+    status = App_FsmMeterReceiveBlocking(meterReply,
+                                         APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
+                                         APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS);
+
+    HAL_Delay(100u);
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    App_LogHexDump(APP_LOG_LEVEL_INFO,
+                   "FSM",
+                   (const uint8_t *)meterReply,
+                   APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+
+    storageEnabledPrev = App_MeterIsStorageEnabled();
+    App_MeterSetStorageEnabled(APP_TRUE);
+    status = App_MeterProcessReceivedData((const uint8_t *)meterReply,
+                                          APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+    App_MeterSetStorageEnabled(storageEnabledPrev);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    APP_LOGI("FSM", "[[MeterWake]] scheduled meter record stored");
+    return APP_STATUS_OK;
+#elif defined(SUPPORT_METER_SC1xxx)
+    uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
+    uint8_t storageEnabledPrev;
+    AppStatus_t status;
+
+    APP_LOGI("FSM", "[[MeterWake]] scheduled SC1xxx meter probe start");
+
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    HAL_Delay(125u);
+    HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
+    HAL_Delay(125u);
+    HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    HAL_Delay(125u);
+    HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
+    HAL_Delay(125u);
+    HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    HAL_Delay(300u);
+
+    status = App_FsmMeterReinitUart(APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS);
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    status = App_FsmMeterReceiveBlocking(meterReply,
+                                         APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN,
+                                         APP_SELFTEST_UART_REPLY_METER_SC1xxx_TIMEOUT_MS);
+    HAL_Delay(100u);
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    App_LogHexDump(APP_LOG_LEVEL_INFO,
+                   "FSM",
+                   (const uint8_t *)meterReply,
+                   APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
+
+    storageEnabledPrev = App_MeterIsStorageEnabled();
+    App_MeterSetStorageEnabled(APP_TRUE);
+    status = App_MeterSC1xxxProcessReceivedData((const uint8_t *)meterReply,
+                                                APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
+    App_MeterSetStorageEnabled(storageEnabledPrev);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    APP_LOGI("FSM", "[[MeterWake]] scheduled SC1xxx meter record stored");
+    return APP_STATUS_OK;
+#else
+    return APP_STATUS_INVALID_PARAM;
+#endif
 }
 
 AppStatus_t App_MeterInit(void)
@@ -1047,6 +1199,56 @@ static AppStatus_t App_FsmCheckMeterScheduledState(uint8_t *p_state)
     return APP_STATUS_OK;
 }
 
+static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void)
+{
+    AppDateTime_t now;
+    AppStatus_t status;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
+    uint32_t dueSlotKey;
+
+    status = App_FsmMeterScheduleEnsureInitialized();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    nowDateKey = App_FsmMeterScheduleDateKey(&now);
+    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+    if ((nowDateKey < g_appFsmMeterSchedule.nextDueDateKey) ||
+        ((nowDateKey == g_appFsmMeterSchedule.nextDueDateKey) &&
+         (nowMsOfDay < g_appFsmMeterSchedule.nextDueMsOfDay)))
+    {
+        return APP_STATUS_MSGQ_EMPTY;
+    }
+
+    dueSlotKey = (g_appFsmMeterSchedule.nextDueDateKey * 100u) +
+                 (g_appFsmMeterSchedule.nextDueMsOfDay / ((uint32_t)g_appFsmMeterSchedule.periodHours * 3600000u));
+    if (dueSlotKey == g_appFsmMeterSchedule.lastDispatchedSlotKey)
+    {
+        return APP_STATUS_OK;
+    }
+
+    g_appFsmMeterSchedule.lastDispatchedSlotKey = dueSlotKey;
+    status = App_FsmMeterSchedulePlanNext(&now,
+                                          g_appFsmMeterSchedule.periodHours,
+                                          &g_appFsmMeterSchedule.nextDueDateKey,
+                                          &g_appFsmMeterSchedule.nextDueMsOfDay);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    APP_LOGI("FSM", "[[MeterSchedule]] alarm consume slot=%lu -> next=%lu %02lu:%02lu:%02lu",
+             (unsigned long)dueSlotKey,
+             (unsigned long)g_appFsmMeterSchedule.nextDueDateKey,
+             (unsigned long)(g_appFsmMeterSchedule.nextDueMsOfDay / 3600000u),
+             (unsigned long)((g_appFsmMeterSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((g_appFsmMeterSchedule.nextDueMsOfDay % 60000u) / 1000u));
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_FsmTxScheduleLoadPeriod(uint8_t *p_periodHours)
 {
     AppMeterServerFormatOptions_t options;
@@ -1188,6 +1390,63 @@ static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
              (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
              (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
              (unsigned)g_appFsmTxSchedule.periodHours,
+             (unsigned long)g_appFsmTxSchedule.fixedOffsetMs,
+             (unsigned long)g_appFsmTxSchedule.currentJitterMs);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmTxScheduleConsumeDueNow(void)
+{
+    AppDateTime_t now;
+    AppStatus_t status;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
+
+    status = App_FsmTxScheduleEnsureInitialized();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    nowDateKey = App_FsmMeterScheduleDateKey(&now);
+    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+    if ((nowDateKey < g_appFsmTxSchedule.nextDueDateKey) ||
+        ((nowDateKey == g_appFsmTxSchedule.nextDueDateKey) &&
+         (nowMsOfDay < g_appFsmTxSchedule.nextDueMsOfDay)))
+    {
+        return APP_STATUS_MSGQ_EMPTY;
+    }
+
+    if ((g_appFsmTxSchedule.lastDispatchedDateKey == g_appFsmTxSchedule.nextDueDateKey) &&
+        (g_appFsmTxSchedule.lastDispatchedMsOfDay == g_appFsmTxSchedule.nextDueMsOfDay))
+    {
+        return APP_STATUS_OK;
+    }
+
+    g_appFsmTxSchedule.lastDispatchedDateKey = g_appFsmTxSchedule.nextDueDateKey;
+    g_appFsmTxSchedule.lastDispatchedMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
+
+    status = App_FsmTxSchedulePlanNext(&now,
+                                       g_appFsmTxSchedule.periodHours,
+                                       g_appFsmTxSchedule.fixedOffsetMs,
+                                       &g_appFsmTxSchedule.nextDueDateKey,
+                                       &g_appFsmTxSchedule.nextDueMsOfDay,
+                                       &g_appFsmTxSchedule.currentJitterMs);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    APP_LOGI("FSM", "[[TxSchedule]] alarm consume %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu offset=%lu jitter=%lu",
+             (unsigned long)g_appFsmTxSchedule.lastDispatchedDateKey,
+             (unsigned long)(g_appFsmTxSchedule.lastDispatchedMsOfDay / 3600000u),
+             (unsigned long)((g_appFsmTxSchedule.lastDispatchedMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((g_appFsmTxSchedule.lastDispatchedMsOfDay % 60000u) / 1000u),
+             (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
+             (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
+             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
              (unsigned long)g_appFsmTxSchedule.fixedOffsetMs,
              (unsigned long)g_appFsmTxSchedule.currentJitterMs);
     return APP_STATUS_OK;
@@ -1392,16 +1651,24 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_METER_PARSE_REPLY:
-            /* pseudo code*/
-            /*
-                do something;
-                APP_RETURN_IF_FALSE(App_MeterParseReplay() == APP_STATUS_OK, APP_STATUS_FATAL);
-            */
+        {
+            AppStatus_t meterStatus;
+
+            meterStatus = App_FsmMeterProbeAndStore();
+            if (meterStatus != APP_STATUS_OK)
+            {
+                APP_LOGW("FSM", "[[MeterWake]] scheduled meter probe failed status=%ld", (long)meterStatus);
+            }
+
             g_appFsmRtcMeterWakePending = APP_FALSE;
-            //Clear eventPending
-            App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+            App_FsmMarkComponent(APP_FSM_COMPONENT_METER,
+                                 APP_FSM_STATE_METER_INIT,
+                                 APP_FALSE,
+                                 APP_FALSE,
+                                 meterStatus);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
+        }
 
         case APP_FSM_STATE_NFC_INIT:
             App_SystemPrepareNfcStandbyForStop();
@@ -1830,6 +2097,24 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
     hasAlarmA = ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_A) != 0u) ? APP_TRUE : APP_FALSE;
     hasAlarmB = ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_B) != 0u) ? APP_TRUE : APP_FALSE;
 
+    if (hasAlarmA == APP_TRUE)
+    {
+        status = App_FsmMeterScheduleConsumeDueNow();
+        APP_RETURN_IF_FALSE((status == APP_STATUS_OK) ||
+                            (status == APP_STATUS_MSGQ_EMPTY) ||
+                            (status == APP_STATUS_NOT_INITIALIZED),
+                            status);
+    }
+
+    if (hasAlarmB == APP_TRUE)
+    {
+        status = App_FsmTxScheduleConsumeDueNow();
+        APP_RETURN_IF_FALSE((status == APP_STATUS_OK) ||
+                            (status == APP_STATUS_MSGQ_EMPTY) ||
+                            (status == APP_STATUS_NOT_INITIALIZED),
+                            status);
+    }
+
     if ((hasAlarmA == APP_TRUE) && (hasAlarmB == APP_TRUE))
     {
         g_appFsmRtcMeterWakePending = APP_TRUE;
@@ -1855,7 +2140,7 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
         status = App_FsmQueueStateBack(APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, 0u);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
         App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-        APP_LOGI("FSM", "[[AlarmA]] RTC wake -> queue meter read only");
+        APP_LOGI("FSM", "[[AlarmA]] RTC wake -> queue meter read only (same-slot duplicate suppressed)");
     }
 
     if (hasAlarmB == APP_TRUE)
@@ -1865,7 +2150,7 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
         status = App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
         App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-        APP_LOGI("FSM", "[[AlarmB]] RTC wake -> queue transmit path only");
+        APP_LOGI("FSM", "[[AlarmB]] RTC wake -> queue transmit path only (next due advanced)");
     }
 
     return APP_STATUS_OK;
