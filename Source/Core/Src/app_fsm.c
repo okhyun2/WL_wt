@@ -54,6 +54,7 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
                                  uint8_t busy,
                                  uint8_t eventPending,
                                  AppStatus_t status);
+static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags);
 
 NFC_NTP53321_Handle_t g_nfcTagHandle;
 NFC_AUTH_Handle_t g_nfcAuthHandle;
@@ -65,6 +66,8 @@ static uint8_t g_nfcReady = APP_FALSE;
 static uint8_t g_appFsmInitialBootRoutineQueued = APP_FALSE;
 static uint8_t g_appFsmWakeCollectionPending = APP_FALSE;
 static uint8_t g_appFsmFirstAttachCycleDone = APP_FALSE;
+static uint8_t g_appFsmRtcMeterWakePending = APP_FALSE;
+static uint8_t g_appFsmRtcTxWakePending = APP_FALSE;
 
 static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTES;
 static const uint8_t g_nfcAdminKey[NFC_AUTH_KEY_SIZE] = APP_NFC_ADMIN_KEY_BYTES;
@@ -1324,6 +1327,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 do something;
                 APP_RETURN_IF_FALSE(App_MeterParseReplay() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
+            g_appFsmRtcMeterWakePending = APP_FALSE;
             //Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
@@ -1401,7 +1405,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         {
             uint8_t txDue = APP_FALSE;
 
-            if (g_appFsmFirstAttachCycleDone == APP_TRUE)
+            if ((g_appFsmRtcTxWakePending != APP_TRUE) && (g_appFsmFirstAttachCycleDone == APP_TRUE))
             {
                 APP_RETURN_IF_FALSE(App_FsmTxScheduleCheckDue(&txDue) == APP_STATUS_OK, APP_STATUS_FATAL);
                 if (txDue != APP_TRUE)
@@ -1470,6 +1474,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierPowerOffMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
             g_appFsmFirstAttachCycleDone = APP_TRUE;
+            g_appFsmRtcTxWakePending = APP_FALSE;
 
             //Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
@@ -1521,22 +1526,31 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_RTC_APPLY_SYNC:
+        {
+            uint32_t rtcAlarmFlags;
+
             /* pseudo code*/
             /*
                 do something;
                 APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
-            if (g_appFsmWakeCollectionPending != APP_TRUE)
+            rtcAlarmFlags = App_SystemConsumeRtcAlarmFlags();
+            if ((rtcAlarmFlags & WAKEUP_MASK_RTC_ALARM) != 0u)
+            {
+                APP_RETURN_IF_FALSE(App_FsmHandleRtcWakeRouting(rtcAlarmFlags) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+            }
+            else if (g_appFsmWakeCollectionPending != APP_TRUE)
             {
                 g_appFsmWakeCollectionPending = APP_TRUE;
                 APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-                APP_LOGI("FSM", "[[WakeRoutine]] RTC wake -> queue collect/attach/send/poweroff");
+                APP_LOGI("FSM", "[[WakeRoutine]] RTC/WUT wake -> queue collect/attach/send/poweroff");
             }
             // Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_READY, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
+        }
 
         case APP_FSM_STATE_RTC_READY:
             App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_READY, APP_FALSE, APP_FALSE, APP_STATUS_OK);
@@ -1678,6 +1692,8 @@ AppStatus_t App_FsmInit(void)
     g_appFsmInitialBootRoutineQueued = APP_FALSE;
     g_appFsmWakeCollectionPending = APP_FALSE;
     g_appFsmFirstAttachCycleDone = APP_FALSE;
+    g_appFsmRtcMeterWakePending = APP_FALSE;
+    g_appFsmRtcTxWakePending = APP_FALSE;
     (void)memset(&g_appFsmMeterSchedule, 0, sizeof(g_appFsmMeterSchedule));
     (void)memset(&g_appFsmTxSchedule, 0, sizeof(g_appFsmTxSchedule));
 
@@ -1710,6 +1726,32 @@ AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
     return App_FsmScheduleComposeDateTime(g_appFsmTxSchedule.nextDueDateKey,
                                           g_appFsmTxSchedule.nextDueMsOfDay,
                                           p_dueTime);
+}
+
+static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
+{
+    AppStatus_t status;
+
+    if ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_A) != 0u)
+    {
+        g_appFsmRtcMeterWakePending = APP_TRUE;
+        status = App_FsmQueueStateBack(APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, 0u);
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+        App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+        APP_LOGI("FSM", "[[AlarmA]] RTC wake -> queue meter read only");
+    }
+
+    if ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_B) != 0u)
+    {
+        g_appFsmRtcTxWakePending = APP_TRUE;
+        g_appFsmWakeCollectionPending = APP_FALSE;
+        status = App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u);
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+        App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+        APP_LOGI("FSM", "[[AlarmB]] RTC wake -> queue transmit path only");
+    }
+
+    return APP_STATUS_OK;
 }
 
 AppStatus_t App_FsmRun(void)
