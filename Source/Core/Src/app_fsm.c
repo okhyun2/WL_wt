@@ -17,8 +17,21 @@
 #include "app_meter_storage.h"
 #include "app_meter_server_format.h"
 #include "app_aux.h"
+#include "app_clock.h"
+
+typedef struct
+{
+    uint8_t initialized;
+    uint8_t enabled;
+    uint8_t periodHours;
+    uint8_t rtcReadyLogged;
+    uint32_t nextDueDateKey;
+    uint32_t nextDueMsOfDay;
+    uint32_t lastDispatchedSlotKey;
+} AppFsmMeterScheduleContext_t;
 
 static AppFsmContext_t g_appFsmContext;
+static AppFsmMeterScheduleContext_t g_appFsmMeterSchedule;
 extern NFC_LP_Handle_t g_nfcLpHandle;
 
 static void App_FsmMarkComponent(AppFsmComponentId_t id,
@@ -695,6 +708,225 @@ static AppStatus_t App_FsmFindDuePeriodicState(uint8_t *p_state)
     return APP_STATUS_MSGQ_EMPTY;
 }
 
+static uint8_t App_FsmMeterScheduleDaysInMonth(uint16_t year, uint8_t month)
+{
+    switch (month)
+    {
+        case 1u:
+        case 3u:
+        case 5u:
+        case 7u:
+        case 8u:
+        case 10u:
+        case 12u:
+            return 31u;
+        case 4u:
+        case 6u:
+        case 9u:
+        case 11u:
+            return 30u;
+        case 2u:
+            return (((year % 4u) == 0u) && (((year % 100u) != 0u) || ((year % 400u) == 0u))) ? 29u : 28u;
+        default:
+            return 31u;
+    }
+}
+
+static uint32_t App_FsmMeterScheduleDateKey(const AppDateTime_t *p_now)
+{
+    APP_RETURN_IF_FALSE(p_now != NULL, 0u);
+    return ((uint32_t)p_now->year * 10000u) + ((uint32_t)p_now->month * 100u) + (uint32_t)p_now->day;
+}
+
+static uint32_t App_FsmMeterScheduleMsOfDay(const AppDateTime_t *p_now)
+{
+    APP_RETURN_IF_FALSE(p_now != NULL, 0u);
+    return ((uint32_t)p_now->hour * 3600000u) +
+           ((uint32_t)p_now->minute * 60000u) +
+           ((uint32_t)p_now->second * 1000u);
+}
+
+static void App_FsmMeterScheduleAddOneDay(AppDateTime_t *p_time)
+{
+    uint8_t daysInMonth;
+
+    if (p_time == NULL)
+    {
+        return;
+    }
+
+    daysInMonth = App_FsmMeterScheduleDaysInMonth(p_time->year, p_time->month);
+    p_time->day++;
+    if (p_time->day <= daysInMonth)
+    {
+        return;
+    }
+
+    p_time->day = 1u;
+    p_time->month++;
+    if (p_time->month <= 12u)
+    {
+        return;
+    }
+
+    p_time->month = 1u;
+    p_time->year++;
+}
+
+static AppStatus_t App_FsmMeterScheduleLoadPeriod(uint8_t *p_periodHours)
+{
+    AppMeterServerFormatOptions_t options;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_periodHours != NULL, APP_STATUS_INVALID_PARAM);
+
+    status = App_MeterServerOptionsLoad(&options);
+    if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
+    {
+        return status;
+    }
+
+    *p_periodHours = App_MeterServerOptionsNormalizePeriod(options.meteringPeriodHours);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmMeterSchedulePlanNext(const AppDateTime_t *p_now,
+                                                uint8_t periodHours,
+                                                uint32_t *p_dueDateKey,
+                                                uint32_t *p_dueMsOfDay)
+{
+    AppDateTime_t dueTime;
+    uint32_t nowMsOfDay;
+    uint32_t periodMs;
+    uint32_t nextMs;
+
+    APP_RETURN_IF_FALSE((p_now != NULL) && (p_dueDateKey != NULL) && (p_dueMsOfDay != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(App_MeterServerOptionsIsPeriodSupported(periodHours) == APP_TRUE, APP_STATUS_INVALID_PARAM);
+
+    dueTime = *p_now;
+    periodMs = (uint32_t)periodHours * 3600000u;
+    nowMsOfDay = App_FsmMeterScheduleMsOfDay(p_now);
+    nextMs = ((nowMsOfDay / periodMs) + 1u) * periodMs;
+
+    if (nextMs >= (24u * 3600000u))
+    {
+        nextMs = 0u;
+        App_FsmMeterScheduleAddOneDay(&dueTime);
+    }
+
+    *p_dueDateKey = App_FsmMeterScheduleDateKey(&dueTime);
+    *p_dueMsOfDay = nextMs;
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmMeterScheduleEnsureInitialized(void)
+{
+    AppDateTime_t now;
+    AppStatus_t status;
+    uint8_t periodHours;
+
+    if (IsUpdatedRTC() != APP_TRUE)
+    {
+        if (g_appFsmMeterSchedule.rtcReadyLogged != APP_FALSE)
+        {
+            APP_LOGW("FSM", "[[MeterSchedule]] RTC invalid -> metering schedule disabled");
+        }
+        g_appFsmMeterSchedule.initialized = APP_FALSE;
+        g_appFsmMeterSchedule.enabled = APP_FALSE;
+        g_appFsmMeterSchedule.rtcReadyLogged = APP_FALSE;
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    status = App_FsmMeterScheduleLoadPeriod(&periodHours);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if ((g_appFsmMeterSchedule.initialized == APP_TRUE) &&
+        (g_appFsmMeterSchedule.enabled == APP_TRUE) &&
+        (g_appFsmMeterSchedule.periodHours == periodHours) &&
+        (g_appFsmMeterSchedule.rtcReadyLogged == APP_TRUE))
+    {
+        return APP_STATUS_OK;
+    }
+
+    g_appFsmMeterSchedule.periodHours = periodHours;
+    status = App_FsmMeterSchedulePlanNext(&now,
+                                          g_appFsmMeterSchedule.periodHours,
+                                          &g_appFsmMeterSchedule.nextDueDateKey,
+                                          &g_appFsmMeterSchedule.nextDueMsOfDay);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    g_appFsmMeterSchedule.initialized = APP_TRUE;
+    g_appFsmMeterSchedule.enabled = APP_TRUE;
+    g_appFsmMeterSchedule.rtcReadyLogged = APP_TRUE;
+
+    APP_LOGI("FSM", "[[MeterSchedule]] enabled period=%uh next=%lu %02lu:%02lu:%02lu",
+             (unsigned)g_appFsmMeterSchedule.periodHours,
+             (unsigned long)g_appFsmMeterSchedule.nextDueDateKey,
+             (unsigned long)(g_appFsmMeterSchedule.nextDueMsOfDay / 3600000u),
+             (unsigned long)((g_appFsmMeterSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((g_appFsmMeterSchedule.nextDueMsOfDay % 60000u) / 1000u));
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmCheckMeterScheduledState(uint8_t *p_state)
+{
+    AppDateTime_t now;
+    AppStatus_t status;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
+    uint32_t dueSlotKey;
+
+    APP_RETURN_IF_FALSE(p_state != NULL, APP_STATUS_INVALID_PARAM);
+
+    status = App_FsmMeterScheduleEnsureInitialized();
+    if (status == APP_STATUS_NOT_INITIALIZED)
+    {
+        return APP_STATUS_MSGQ_EMPTY;
+    }
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    nowDateKey = App_FsmMeterScheduleDateKey(&now);
+    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+    if ((nowDateKey < g_appFsmMeterSchedule.nextDueDateKey) ||
+        ((nowDateKey == g_appFsmMeterSchedule.nextDueDateKey) &&
+         (nowMsOfDay < g_appFsmMeterSchedule.nextDueMsOfDay)))
+    {
+        return APP_STATUS_MSGQ_EMPTY;
+    }
+
+    dueSlotKey = (g_appFsmMeterSchedule.nextDueDateKey * 100u) +
+                 (g_appFsmMeterSchedule.nextDueMsOfDay / ((uint32_t)g_appFsmMeterSchedule.periodHours * 3600000u));
+    if (dueSlotKey == g_appFsmMeterSchedule.lastDispatchedSlotKey)
+    {
+        return APP_STATUS_MSGQ_EMPTY;
+    }
+
+    g_appFsmMeterSchedule.lastDispatchedSlotKey = dueSlotKey;
+    status = App_FsmMeterSchedulePlanNext(&now,
+                                          g_appFsmMeterSchedule.periodHours,
+                                          &g_appFsmMeterSchedule.nextDueDateKey,
+                                          &g_appFsmMeterSchedule.nextDueMsOfDay);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    App_FsmSignalEventForState(APP_FSM_STATE_METER_WAIT_TRIGGER);
+    APP_LOGI("FSM", "[[MeterSchedule]] due slot=%lu -> queue meter read, next=%lu %02lu:%02lu:%02lu",
+             (unsigned long)dueSlotKey,
+             (unsigned long)g_appFsmMeterSchedule.nextDueDateKey,
+             (unsigned long)(g_appFsmMeterSchedule.nextDueMsOfDay / 3600000u),
+             (unsigned long)((g_appFsmMeterSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((g_appFsmMeterSchedule.nextDueMsOfDay % 60000u) / 1000u));
+
+    *p_state = APP_FSM_STATE_METER_WAIT_TRIGGER;
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_FsmServiceDebugConsole(void)
 {
     AppStatus_t status;
@@ -1236,6 +1468,7 @@ AppStatus_t App_FsmInit(void)
     g_appFsmInitialBootRoutineQueued = APP_FALSE;
     g_appFsmWakeCollectionPending = APP_FALSE;
     g_appFsmFirstAttachCycleDone = APP_FALSE;
+    (void)memset(&g_appFsmMeterSchedule, 0, sizeof(g_appFsmMeterSchedule));
 
     return App_FsmQueueStateBack(APP_FSM_STATE_BOOT, 0u, 0u);
 }
@@ -1278,6 +1511,20 @@ AppStatus_t App_FsmRun(void)
         g_appFsmContext.summary.processedMessageCount++;
         g_appFsmContext.summary.transitionCount++;
         return App_FsmExecuteState(nextState, message.param0);
+    }
+    APP_RETURN_IF_FALSE(status == APP_STATUS_MSGQ_EMPTY, status);
+
+    status = App_FsmCheckMeterScheduledState(&nextState);
+    if (status == APP_STATUS_OK)
+    {
+        APP_LOGI("FSM", "Scheduled meter state:%s", App_FsmGetStateName(nextState));
+        g_appFsmContext.summary.lastQueuedState = nextState;
+        g_appFsmContext.summary.lastDequeFromFront = APP_FALSE;
+        g_appFsmContext.summary.lastCommandTickMs = HAL_GetTick();
+        g_appFsmContext.summary.lastCommandEventParam = APP_TRUE;
+        g_appFsmContext.summary.lastCommandParam0 = 0u;
+        g_appFsmContext.summary.transitionCount++;
+        return App_FsmExecuteState(nextState, 0u);
     }
     APP_RETURN_IF_FALSE(status == APP_STATUS_MSGQ_EMPTY, status);
 
