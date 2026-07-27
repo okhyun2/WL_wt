@@ -4097,24 +4097,29 @@ AppStatus_t App_NBIoTTransmitUdp(void)
 #endif // NBIOT_SUPPORT_DNS
         if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u))
         {
+            AppStatus_t clearStatus = App_MeterStorageDeleteOldest(buildResult.recordCount);
+            if (clearStatus != APP_STATUS_OK)
+            {
 #if (APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS == APP_TRUE)
-            AppStatus_t clearStatus = App_MeterStorageClearAll();
-            if (clearStatus != APP_STATUS_OK)
-            {
-                APP_LOGE("NBIOT", "Storage clear failed after send (%ld)", (long)clearStatus);
-                return clearStatus;
-            }
-            buildResult.cleared = APP_TRUE;
+                APP_LOGE("NBIOT", "Storage delete failed after send (%ld, records=%u)",
+                         (long)clearStatus,
+                         (unsigned int)buildResult.recordCount);
 #else
-            AppStatus_t clearStatus = App_MeterStorageClearAll();
-            if (clearStatus != APP_STATUS_OK)
-            {
-                APP_LOGE("NBIOT", "Storage clear failed after ACK (%ld)", (long)clearStatus);
+                APP_LOGE("NBIOT", "Storage delete failed after ACK (%ld, records=%u)",
+                         (long)clearStatus,
+                         (unsigned int)buildResult.recordCount);
+#endif
                 return clearStatus;
             }
             buildResult.cleared = APP_TRUE;
-            APP_LOGI("NBIOT", "Storage cleared after server ACK (records=%u)",
-                     (unsigned int)buildResult.recordCount);
+#if (APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS == APP_TRUE)
+            APP_LOGI("NBIOT", "Storage deleted after send success (records=%u, remain=%u)",
+                     (unsigned int)buildResult.recordCount,
+                     (unsigned int)App_MeterStorageCount());
+#else
+            APP_LOGI("NBIOT", "Storage deleted after server ACK (records=%u, remain=%u)",
+                     (unsigned int)buildResult.recordCount,
+                     (unsigned int)App_MeterStorageCount());
 #endif
         }
     }

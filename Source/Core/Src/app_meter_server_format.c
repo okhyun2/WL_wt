@@ -214,8 +214,10 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
                      : APP_METER_SERVER_FORMAT_MAX_RECORDS_NBIOT;
     usedRecordCount = (info.count < maxRecordCount) ? (uint8_t)info.count : maxRecordCount;
 
-    /* 가장 최신 검침 레코드(기준 검침값 후보) */
-    status = App_MeterStorageReadAt((uint8_t)(info.count - 1u), &latestRecord);
+    /* ACK 성공 후 FIFO 정리를 위해 oldest pending batch부터 전송한다.
+     * latestRecord 는 이번 배치 안에서 가장 최신(=batch tail) 레코드를 사용한다.
+     */
+    status = App_MeterStorageReadAt((uint8_t)(usedRecordCount - 1u), &latestRecord);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     (void)memset(p_result, 0, sizeof(*p_result));
@@ -290,12 +292,12 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
     p_packet[cursor++] = p_options->meteringPeriodHours;
     p_packet[cursor++] = usedRecordCount;
 
-    /* 기준 검침값 위치: 가장 최신부터 첫 valid 레코드 찾기 */
+    /* 기준 검침값 위치: 이번 배치의 가장 최신 레코드부터 첫 valid 레코드 찾기 */
     basePos = 0xFFu;
     baseValue = 0xFFFFFFFFu;
     for (logicalIndex = 0u; logicalIndex < usedRecordCount; logicalIndex++)
     {
-        status = App_MeterStorageReadAt((uint8_t)((info.count - 1u) - logicalIndex), &record);
+        status = App_MeterStorageReadAt((uint8_t)((usedRecordCount - 1u) - logicalIndex), &record);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
         if ((record.flags & APP_METER_STORAGE_FLAG_READING_VALID) != 0u)
@@ -322,7 +324,7 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
     prevValue = baseValue;
     for (logicalIndex = 0u; logicalIndex < usedRecordCount; logicalIndex++)
     {
-        status = App_MeterStorageReadAt((uint8_t)((info.count - 1u) - logicalIndex), &record);
+        status = App_MeterStorageReadAt((uint8_t)((usedRecordCount - 1u) - logicalIndex), &record);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
         if (basePos == 0xFFu)
