@@ -341,13 +341,15 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
     App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
     APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
 
-    APP_LOGI("SELF", "Meter UART reply received (%u bytes minimum)", (unsigned int)APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+    uint8_t storageEnabledPrev;
 
-    //App_MeterSetStorageEnabled(APP_FALSE);
-    //kiki test forcely saving
-    App_MeterSetStorageEnabled(APP_TRUE);
+    APP_LOGI("SELF", "Meter UART reply received (%u bytes minimum)", (unsigned int)APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+    APP_LOGI("SELF", "Meter probe result is for self-test only; storage push suppressed");
+
+    storageEnabledPrev = App_MeterIsStorageEnabled();
+    App_MeterSetStorageEnabled(APP_FALSE);
     status = App_MeterProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
-    App_MeterSetStorageEnabled(APP_TRUE);
+    App_MeterSetStorageEnabled(storageEnabledPrev);
     return (status);
 }
 
@@ -391,9 +393,13 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
         App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
     }
 
-    App_MeterSetStorageEnabled(APP_TRUE);
-    status = App_MeterSC1xxxProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
-    App_MeterSetStorageEnabled(APP_TRUE);
+    {
+        uint8_t storageEnabledPrev = App_MeterIsStorageEnabled();
+        APP_LOGI("SELF", "Meter probe result is for self-test only; storage push suppressed");
+        App_MeterSetStorageEnabled(APP_FALSE);
+        status = App_MeterSC1xxxProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
+        App_MeterSetStorageEnabled(storageEnabledPrev);
+    }
     return (status);
 }
 

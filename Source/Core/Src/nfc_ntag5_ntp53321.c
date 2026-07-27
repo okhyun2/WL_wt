@@ -556,7 +556,7 @@ NFC_Result_t NFC_NTP53321_EnterStandby(NFC_NTP53321_Handle_t *hntag)
     if (ret == NFC_RESULT_OK) {
         hntag->state = NFC_STATE_STOP;
         hntag->sleep_enter_tick = HAL_GetTick();
-        APP_LOGI("NFC", "Enter Standby (<6uA). NFC field wakeup OK.");
+        APP_LOGD("NFC", "Enter Standby (<6uA). NFC field wakeup OK.");
     } else {
         APP_LOGE("NFC", "Enter Standby FAILED (ret=%d)", ret);
     }

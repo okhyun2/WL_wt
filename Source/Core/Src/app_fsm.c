@@ -1637,7 +1637,7 @@ AppStatus_t App_FsmRun(void)
     if (status == APP_STATUS_OK)
     {
         nextState = message.nextState;
-        APP_LOGI("FSM", "GetMsgq state:%s", App_FsmGetStateName(nextState));
+        APP_LOGD("FSM", "GetMsgq state:%s", App_FsmGetStateName(nextState));
 
         if (App_FsmIsValidState(nextState) != APP_TRUE)
         {
