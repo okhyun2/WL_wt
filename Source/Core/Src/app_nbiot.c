@@ -36,9 +36,12 @@
 #define APP_BC95_AT_QDNS_PREFIX_LEN          (6u)
 #define APP_BC95_AT_NSOSTR_PREFIX            "+NSOSTR:"
 #define APP_BC95_AT_NSOSTR_PREFIX_LEN        (8u)
+#define APP_BC95_AT_NSORF_PREFIX             "+NSORF:"
+#define APP_BC95_AT_NSORF_PREFIX_LEN         (7u)
 
 #define APP_BC95_AT_CMD_NSOCR_UDP_FMT        "AT+NSOCR=DGRAM,17,%u,1,AF_INET\r\n"
 #define APP_BC95_AT_CMD_NSOCL_FMT            "AT+NSOCL=%ld\r\n"
+#define APP_BC95_AT_CMD_NSORF_FMT            "AT+NSORF=%ld,%u\r\n"
 
 #define APP_BC95_AT_CMD_CFUN_QUERY           "AT+CFUN?\r\n"
 #define APP_BC95_AT_CMD_CFUN_SET_FULL        "AT+CFUN=1\r\n"
@@ -2786,6 +2789,117 @@ static AppBc95AtStatus_t App_Bc95AtFindNsostrForSocketSeq(const char *p_resp,
     return APP_BC95_AT_ERR_NO_PREFIX;
 }
 
+static AppBc95AtStatus_t App_Bc95AtParseNsorfForSocket(const char *p_resp,
+                                                       int targetSock,
+                                                       uint16_t *p_payloadLen)
+{
+    const char *p_scan;
+    const char *p_pfx;
+    int parsedSock;
+    char parsedIp[APP_BC95_IP_STR_SIZE];
+    unsigned parsedPort;
+    unsigned parsedLen;
+    char parsedHex[2u * APP_BC95_UDP_MAX_PAYLOAD + 1u];
+    unsigned parsedRemain;
+
+    APP_RETURN_IF_FALSE((p_resp != NULL) && (p_payloadLen != NULL), APP_BC95_AT_ERR_PARAM);
+
+    p_scan = p_resp;
+    while ((p_pfx = strstr(p_scan, APP_BC95_AT_NSORF_PREFIX)) != NULL)
+    {
+        parsedSock = -1;
+        parsedIp[0] = '\0';
+        parsedPort = 0u;
+        parsedLen = 0u;
+        parsedHex[0] = '\0';
+        parsedRemain = 0u;
+
+        if (sscanf(p_pfx + APP_BC95_AT_NSORF_PREFIX_LEN,
+                   "%d,%63[^,],%u,%u,%1024[^,],%u",
+                   &parsedSock,
+                   parsedIp,
+                   &parsedPort,
+                   &parsedLen,
+                   parsedHex,
+                   &parsedRemain) >= 5)
+        {
+            if ((parsedSock == targetSock) && (parsedLen > 0u))
+            {
+                *p_payloadLen = (uint16_t)parsedLen;
+                return APP_BC95_AT_OK;
+            }
+        }
+
+        p_scan = p_pfx + APP_BC95_AT_NSORF_PREFIX_LEN;
+    }
+
+    return APP_BC95_AT_ERR_NO_DATA;
+}
+
+static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs)
+{
+#if (APP_POLICY_WAIT_SERVER_ACK_ENABLE != APP_TRUE)
+    (void)socketId;
+    (void)timeoutMs;
+    return APP_STATUS_OK;
+#else
+    AppStatus_t status;
+    AppBc95AtStatus_t atStatus;
+    uint32_t startTick;
+    uint16_t rxLen;
+    uint16_t ackPayloadLen;
+    int printed;
+    int32_t cmeErr;
+    char appBc95AtCmdTxBuf[APP_BC95_AT_CMD_TX_BUF_SIZE];
+
+    APP_RETURN_IF_FALSE(socketId >= 0, APP_STATUS_INVALID_PARAM);
+
+    startTick = HAL_GetTick();
+    while ((HAL_GetTick() - startTick) < timeoutMs)
+    {
+        APP_WWDGFeed();
+
+        printed = snprintf(appBc95AtCmdTxBuf, sizeof(appBc95AtCmdTxBuf),
+                           APP_BC95_AT_CMD_NSORF_FMT,
+                           (long)socketId,
+                           (unsigned)APP_POLICY_SERVER_ACK_READ_BYTES);
+        APP_RETURN_IF_FALSE((printed > 0) && ((uint32_t)printed < sizeof(appBc95AtCmdTxBuf)), APP_STATUS_INVALID_PARAM);
+
+        rxLen = 0u;
+        status = App_Bc95AtSendCommand(appBc95AtCmdTxBuf,
+                                       g_appBc95AtRxBuf,
+                                       (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                       APP_BC95_SOCKET_TIMEOUT_MS,
+                                       &rxLen);
+        if (status == APP_STATUS_OK)
+        {
+            cmeErr = 0;
+            atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
+            if (atStatus == APP_BC95_AT_OK)
+            {
+                ackPayloadLen = 0u;
+                if (App_Bc95AtParseNsorfForSocket((const char *)g_appBc95AtRxBuf,
+                                                  (int)socketId,
+                                                  &ackPayloadLen) == APP_BC95_AT_OK)
+                {
+                    APP_LOGI("NBIOT", "Server ACK received (sock=%ld, bytes=%u)",
+                             (long)socketId,
+                             (unsigned)ackPayloadLen);
+                    return APP_STATUS_OK;
+                }
+            }
+        }
+
+        App_Bc95AtDelayWithFeed(APP_POLICY_SERVER_ACK_POLL_MS);
+    }
+
+    APP_LOGW("NBIOT", "Server ACK timeout (sock=%ld, timeout=%lums)",
+             (long)socketId,
+             (unsigned long)timeoutMs);
+    return APP_STATUS_UART_TIMEOUT;
+#endif
+}
+
 AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
                                         const char    *p_ip,
                                         uint16_t       port,
@@ -3217,6 +3331,13 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_host, uint16_t port,
             App_Bc95AtDelayWithFeed(APP_BC95_UDP_SEND_RETRY_DELAY_MS);
     }
 
+#if (APP_POLICY_WAIT_SERVER_ACK_ENABLE == APP_TRUE)
+    if (status == APP_STATUS_OK)
+    {
+        status = App_Bc95AtWaitUdpAck(socketId, APP_POLICY_SERVER_ACK_TIMEOUT_MS);
+    }
+#endif
+
     /* 4) Close (성공/실패 무관) */
     result.lastStage = APP_BC95_UDP_STAGE_CLOSE;
     (void)App_Bc95AtCloseSocket(socketId);
@@ -3229,7 +3350,7 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_host, uint16_t port,
     }
     else
     {
-        APP_LOGE("NBIOT", "UDP send failed (stage=%d, status=%d)",
+        APP_LOGE("NBIOT", "UDP send/ack failed (stage=%d, status=%d)",
                  (int)result.lastStage, (int)status);
     }
 
@@ -3982,8 +4103,14 @@ AppStatus_t App_NBIoTTransmitUdp(void)
             }
             buildResult.cleared = APP_TRUE;
 #else
-            buildResult.cleared = APP_FALSE;
-            APP_LOGI("NBIOT", "Storage retained after UDP send: wait server ACK before delete (records=%u)",
+            AppStatus_t clearStatus = App_MeterStorageClearAll();
+            if (clearStatus != APP_STATUS_OK)
+            {
+                APP_LOGE("NBIOT", "Storage clear failed after ACK (%ld)", (long)clearStatus);
+                return clearStatus;
+            }
+            buildResult.cleared = APP_TRUE;
+            APP_LOGI("NBIOT", "Storage cleared after server ACK (records=%u)",
                      (unsigned int)buildResult.recordCount);
 #endif
         }
