@@ -20,6 +20,7 @@
 
 wakeup_context_t g_wakeup_ctx = {0};
 extern NFC_NTP53321_Handle_t g_nfcTagHandle;
+extern RTC_HandleTypeDef hrtc;
 BootInfo_t g_boot_info;
 
 static void Print_BootInfo(BootInfo_t *pBootInfo);
@@ -27,6 +28,8 @@ static void App_SystemForceAdcFullOffBeforeStop(void);
 static AppStatus_t App_SystemRestoreAdcAfterWakeFromStop(void);
 static void App_SystemRollbackNfcStandbyIfNeeded(uint8_t standbyPrepareState);
 static void App_SystemRecoverNfcAfterWake(uint8_t standbyPrepareState);
+static AppStatus_t App_SystemRtcConfigureAlarmAForMetering(uint8_t *p_configured);
+static AppStatus_t App_SystemRtcConfigureAlarmBForReporting(uint8_t *p_configured);
 
 static uint8_t App_SystemCanDebugLog(void)
 {
@@ -105,14 +108,35 @@ static void handle_lptim1_wakeup(uint32_t flags)
 
 static void handle_rtc_alarm_wakeup(uint32_t flags)
 {
-    if (flags & WAKEUP_FLAG_RTC_ALARM_A) {
-        /* RTC Alarm A 처리 */
-        // 예: alarm_a_callback();
+    uint8_t handled = APP_FALSE;
+
+    if ((flags & WAKEUP_FLAG_RTC_ALARM_A) != 0u)
+    {
+        g_appSystemContext.rtcAlarmAWakeEventCount++;
+        handled = APP_TRUE;
+        if (App_SystemCanDebugLog() == APP_TRUE)
+        {
+            APP_LOGI("LP",
+                     "RTC Alarm A wake count=%lu",
+                     (unsigned long)g_appSystemContext.rtcAlarmAWakeEventCount);
+        }
     }
-    
-    if (flags & WAKEUP_FLAG_RTC_ALARM_B) {
-        /* RTC Alarm B 처리 */
-        // 예: alarm_b_callback();
+
+    if ((flags & WAKEUP_FLAG_RTC_ALARM_B) != 0u)
+    {
+        g_appSystemContext.rtcAlarmBWakeEventCount++;
+        handled = APP_TRUE;
+        if (App_SystemCanDebugLog() == APP_TRUE)
+        {
+            APP_LOGI("LP",
+                     "RTC Alarm B wake count=%lu",
+                     (unsigned long)g_appSystemContext.rtcAlarmBWakeEventCount);
+        }
+    }
+
+    if (handled == APP_TRUE)
+    {
+        App_SystemHandleRtcCallBack();
     }
 }
 
@@ -458,6 +482,103 @@ static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
     wakeupSeconds += jitterSeconds;
 
     return App_SystemRtcConfigureWakeupTimerSeconds(wakeupSeconds, pWakeupSeconds);
+}
+
+static AppStatus_t App_SystemRtcConfigureAlarmInternal(const AppDateTime_t *p_dueTime,
+                                                       uint32_t alarmId,
+                                                       const char *p_label)
+{
+    RTC_AlarmTypeDef alarm;
+
+    APP_RETURN_IF_FALSE((p_dueTime != NULL) && (p_label != NULL), APP_STATUS_INVALID_PARAM);
+
+    if (App_SystemRtcInitBase() != APP_STATUS_OK)
+    {
+        return APP_STATUS_INIT_FAILED;
+    }
+
+    (void)memset(&alarm, 0, sizeof(alarm));
+    alarm.AlarmTime.Hours = p_dueTime->hour;
+    alarm.AlarmTime.Minutes = p_dueTime->minute;
+    alarm.AlarmTime.Seconds = p_dueTime->second;
+    alarm.AlarmTime.TimeFormat = RTC_HOURFORMAT12_AM;
+    alarm.AlarmTime.SubSeconds = 0u;
+    alarm.AlarmTime.SecondFraction = 0u;
+    alarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+    alarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+    alarm.AlarmMask = RTC_ALARMMASK_NONE;
+    alarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+    alarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
+    alarm.AlarmDateWeekDay = p_dueTime->day;
+    alarm.Alarm = alarmId;
+
+    if (HAL_RTC_DeactivateAlarm(&hrtc, alarmId) != HAL_OK)
+    {
+        return APP_STATUS_INIT_FAILED;
+    }
+
+    __HAL_RTC_ALARM_EXTI_CLEAR_FLAG();
+    if (alarmId == RTC_ALARM_A)
+    {
+        __HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRAF);
+    }
+    else
+    {
+        __HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRBF);
+    }
+
+    APP_RETURN_IF_FALSE(HAL_RTC_SetAlarm_IT(&hrtc, &alarm, RTC_FORMAT_BIN) == HAL_OK,
+                        APP_STATUS_INIT_FAILED);
+
+    APP_LOGI("RTC", "%s set %04u-%02u-%02u %02u:%02u:%02u",
+             p_label,
+             (unsigned int)p_dueTime->year,
+             (unsigned int)p_dueTime->month,
+             (unsigned int)p_dueTime->day,
+             (unsigned int)p_dueTime->hour,
+             (unsigned int)p_dueTime->minute,
+             (unsigned int)p_dueTime->second);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_SystemRtcConfigureAlarmAForMetering(uint8_t *p_configured)
+{
+    AppDateTime_t dueTime;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_configured != NULL, APP_STATUS_INVALID_PARAM);
+    *p_configured = APP_FALSE;
+
+    status = App_FsmGetNextMeterDueTime(&dueTime);
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    status = App_SystemRtcConfigureAlarmInternal(&dueTime, RTC_ALARM_A, "AlarmA(meter)");
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    *p_configured = APP_TRUE;
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_SystemRtcConfigureAlarmBForReporting(uint8_t *p_configured)
+{
+    AppDateTime_t dueTime;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_configured != NULL, APP_STATUS_INVALID_PARAM);
+    *p_configured = APP_FALSE;
+
+    status = App_FsmGetNextTxDueTime(&dueTime);
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    status = App_SystemRtcConfigureAlarmInternal(&dueTime, RTC_ALARM_B, "AlarmB(tx)");
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    *p_configured = APP_TRUE;
+    return APP_STATUS_OK;
 }
 
 
@@ -938,17 +1059,45 @@ static AppStatus_t App_SystemEnterStopMode(void)
     else if( (g_appSystemContext.oldWakeSourceMask == APP_SYSTEM_WAKE_SRC_NONE) ||
              (g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_RTC) )
     {
+        uint8_t alarmAConfigured = APP_FALSE;
+        uint8_t alarmBConfigured = APP_FALSE;
         uint32_t wakeupSeconds = 0;
-        APP_LOGD("LP", "RTCConfigureWakeupTimer");
+
         g_appSystemContext.oldWakeSourceMask &= ~APP_SYSTEM_WAKE_SRC_RTC;
-        status = App_SystemRtcConfigureWakeupTimer(&wakeupSeconds);
-        if (status != APP_STATUS_OK)
+
+        status = App_SystemRtcConfigureAlarmAForMetering(&alarmAConfigured);
+        if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
         {
-            APP_LOGE("LP", "RtcConfigureWakeupTimer");
-            return status;
+            APP_LOGW("LP", "AlarmA configure failed -> fallback to WUT (status=%ld)", (long)status);
+            alarmAConfigured = APP_FALSE;
         }
 
-        APP_LOGI("RTC", "STOP periodic:%ds", wakeupSeconds);
+        status = App_SystemRtcConfigureAlarmBForReporting(&alarmBConfigured);
+        if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
+        {
+            APP_LOGW("LP", "AlarmB configure failed -> fallback to WUT (status=%ld)", (long)status);
+            alarmBConfigured = APP_FALSE;
+        }
+
+        if ((alarmAConfigured == APP_TRUE) || (alarmBConfigured == APP_TRUE))
+        {
+            App_SystemRtcDisableWakeupTimer();
+            APP_LOGI("RTC", "STOP scheduled alarms: A=%u B=%u (WUT fallback disabled)",
+                     (unsigned int)alarmAConfigured,
+                     (unsigned int)alarmBConfigured);
+        }
+        else
+        {
+            APP_LOGD("LP", "RTCConfigureWakeupTimer fallback");
+            status = App_SystemRtcConfigureWakeupTimer(&wakeupSeconds);
+            if (status != APP_STATUS_OK)
+            {
+                APP_LOGE("LP", "RtcConfigureWakeupTimer");
+                return status;
+            }
+
+            APP_LOGI("RTC", "STOP periodic fallback:%ds", wakeupSeconds);
+        }
     }
     else if(g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_LPTIM)
     {

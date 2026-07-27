@@ -147,6 +147,8 @@ typedef struct
     uint32_t stopCandidateCount;
     uint32_t stopDryRunCount;
     uint32_t rtcWakeEventCount;
+    uint32_t rtcAlarmAWakeEventCount;
+    uint32_t rtcAlarmBWakeEventCount;
     uint32_t lptimWakeEventCount;
     uint32_t oldWakeSourceMask;
     uint32_t wakeSourceMask;
