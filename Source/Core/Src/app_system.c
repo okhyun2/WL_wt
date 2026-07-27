@@ -108,9 +108,19 @@ static void handle_lptim1_wakeup(uint32_t flags)
 
 static void handle_rtc_alarm_wakeup(uint32_t flags)
 {
+    uint32_t rtcAlarmFlags;
     uint8_t handled = APP_FALSE;
 
-    if ((flags & WAKEUP_FLAG_RTC_ALARM_A) != 0u)
+    rtcAlarmFlags = flags & WAKEUP_MASK_RTC_ALARM;
+    if (rtcAlarmFlags == 0u)
+    {
+        return;
+    }
+
+    g_appSystemContext.pendingRtcAlarmFlags |= rtcAlarmFlags;
+    g_appSystemContext.lastRtcAlarmFlags = rtcAlarmFlags;
+
+    if ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_A) != 0u)
     {
         g_appSystemContext.rtcAlarmAWakeEventCount++;
         handled = APP_TRUE;
@@ -122,7 +132,7 @@ static void handle_rtc_alarm_wakeup(uint32_t flags)
         }
     }
 
-    if ((flags & WAKEUP_FLAG_RTC_ALARM_B) != 0u)
+    if ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_B) != 0u)
     {
         g_appSystemContext.rtcAlarmBWakeEventCount++;
         handled = APP_TRUE;
@@ -142,7 +152,8 @@ static void handle_rtc_alarm_wakeup(uint32_t flags)
 
 static void handle_rtc_wut_wakeup(void)
 {
-  App_SystemHandleRtcCallBack();
+    g_appSystemContext.lastRtcAlarmFlags = WAKEUP_FLAG_RTC_WUT;
+    App_SystemHandleRtcCallBack();
 }
 
 static void handle_exti_wakeup(uint32_t flags)
@@ -632,6 +643,20 @@ const char *App_SystemGetWakeSourceString(void)
 uint32_t App_SystemGetWakeSourceMask(void)
 {
     return g_appSystemContext.wakeSourceMask;
+}
+
+uint32_t App_SystemGetPendingRtcAlarmFlags(void)
+{
+    return g_appSystemContext.pendingRtcAlarmFlags;
+}
+
+uint32_t App_SystemConsumeRtcAlarmFlags(void)
+{
+    uint32_t flags;
+
+    flags = g_appSystemContext.pendingRtcAlarmFlags;
+    g_appSystemContext.pendingRtcAlarmFlags = 0u;
+    return flags;
 }
 
 void App_SystemNotifyWakeSource(uint32_t sourceMask)
@@ -1397,10 +1422,11 @@ void App_SystemHandleRtcCallBack(void)
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
         APP_LOGI("LP",
-                 "Wake source callback: RTC count=%lu raw_rtc=0x%08lX pending=0x%08lX",
+                 "Wake source callback: RTC count=%lu raw_rtc=0x%08lX pending=0x%08lX alarm_flags=0x%08lX",
                  (unsigned long)g_appSystemContext.rtcWakeEventCount,
                  (unsigned long)g_wakeup_ctx.raw_rtc_isr,
-                 (unsigned long)g_wakeup_ctx.pending_flags);
+                 (unsigned long)g_wakeup_ctx.pending_flags,
+                 (unsigned long)g_appSystemContext.pendingRtcAlarmFlags);
     }
 }
 

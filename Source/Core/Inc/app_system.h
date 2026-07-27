@@ -149,6 +149,8 @@ typedef struct
     uint32_t rtcWakeEventCount;
     uint32_t rtcAlarmAWakeEventCount;
     uint32_t rtcAlarmBWakeEventCount;
+    uint32_t pendingRtcAlarmFlags;
+    uint32_t lastRtcAlarmFlags;
     uint32_t lptimWakeEventCount;
     uint32_t oldWakeSourceMask;
     uint32_t wakeSourceMask;
@@ -191,6 +193,8 @@ void App_SystemHandleLptim1AutoReloadMatchCallback(void);
 void App_SystemHandleRtcCallBack(void);
 void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin);
 uint32_t App_SystemGetWakeSourceMask(void);
+uint32_t App_SystemGetPendingRtcAlarmFlags(void);
+uint32_t App_SystemConsumeRtcAlarmFlags(void);
 const AppSystemContext_t *App_SystemGetContext(void);
 const char *App_SystemGetVersionString(void);
 const char *App_SystemGetWakeSourceString(void);

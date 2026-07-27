@@ -168,6 +168,7 @@ void SysTick_Handler(void)
 void RTC_IRQHandler(void)
 {
   uint32_t rtc_isr = RTC->ISR;
+  uint32_t rtc_pending_flags = WAKEUP_FLAG_NONE;
 
   /* 디버그용 원본 값 저장 */
   g_wakeup_ctx.raw_rtc_isr = rtc_isr;
@@ -186,31 +187,33 @@ void RTC_IRQHandler(void)
   if (rtc_isr & RTC_ISR_ALRAF)
   {
     CLEAR_BIT(RTC->ISR, RTC_ISR_ALRAF);
-    g_wakeup_ctx.pending_flags |= WAKEUP_FLAG_RTC_ALARM_A;
+    rtc_pending_flags |= WAKEUP_FLAG_RTC_ALARM_A;
   }
 
   if (rtc_isr & RTC_ISR_ALRBF)
   {
     CLEAR_BIT(RTC->ISR, RTC_ISR_ALRBF);
-    g_wakeup_ctx.pending_flags |= WAKEUP_FLAG_RTC_ALARM_B;
+    rtc_pending_flags |= WAKEUP_FLAG_RTC_ALARM_B;
   }
 
   if (rtc_isr & RTC_ISR_WUTF)
   {
     CLEAR_BIT(RTC->CR, RTC_CR_WUTIE | RTC_CR_WUTE);
     CLEAR_BIT(RTC->ISR, RTC_ISR_WUTF);
-    g_wakeup_ctx.pending_flags |= WAKEUP_FLAG_RTC_WUT;
+    rtc_pending_flags |= WAKEUP_FLAG_RTC_WUT;
   }
+
+  g_wakeup_ctx.pending_flags |= rtc_pending_flags;
 
   /* RTC 쓰기 보호 재활성화 */
   RTC->WPR = 0xFF;
 
   /* EXTI 클리어: RTC ISR 클리어 완료 후 수행 */
-  if (g_wakeup_ctx.pending_flags & WAKEUP_MASK_RTC_ALARM)
+  if (rtc_pending_flags & WAKEUP_MASK_RTC_ALARM)
   {
     EXTI->PR = (1U << 17); // Alarm용 EXTI Line 17
   }
-  if (g_wakeup_ctx.pending_flags & WAKEUP_FLAG_RTC_WUT)
+  if (rtc_pending_flags & WAKEUP_FLAG_RTC_WUT)
   {
     EXTI->PR = (1U << 20); // WUT용 EXTI Line 20
   }
