@@ -30,8 +30,21 @@ typedef struct
     uint32_t lastDispatchedSlotKey;
 } AppFsmMeterScheduleContext_t;
 
+typedef struct
+{
+    uint8_t initialized;
+    uint8_t enabled;
+    uint8_t periodHours;
+    uint8_t offsetApplied;
+    uint32_t bootBaseTickMs;
+    uint32_t nextDueTickMs;
+    uint32_t lastDispatchTickMs;
+    uint32_t fixedOffsetMs;
+} AppFsmTxScheduleContext_t;
+
 static AppFsmContext_t g_appFsmContext;
 static AppFsmMeterScheduleContext_t g_appFsmMeterSchedule;
+static AppFsmTxScheduleContext_t g_appFsmTxSchedule;
 extern NFC_LP_Handle_t g_nfcLpHandle;
 
 static void App_FsmMarkComponent(AppFsmComponentId_t id,
@@ -927,6 +940,120 @@ static AppStatus_t App_FsmCheckMeterScheduledState(uint8_t *p_state)
     return APP_STATUS_OK;
 }
 
+static AppStatus_t App_FsmTxScheduleLoadPeriod(uint8_t *p_periodHours)
+{
+    AppMeterServerFormatOptions_t options;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_periodHours != NULL, APP_STATUS_INVALID_PARAM);
+
+    status = App_MeterServerOptionsLoad(&options);
+    if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
+    {
+        return status;
+    }
+
+    *p_periodHours = App_MeterServerOptionsNormalizePeriod(options.reportingPeriodHours);
+    return APP_STATUS_OK;
+}
+
+static uint32_t App_FsmTxScheduleCalcNextDueTick(uint32_t baseTickMs,
+                                                 uint8_t periodHours,
+                                                 uint32_t offsetMs,
+                                                 uint32_t nowTickMs)
+{
+    uint32_t periodMs;
+    uint32_t nextTick;
+
+    periodMs = (uint32_t)periodHours * 3600000u;
+    nextTick = baseTickMs + offsetMs + periodMs;
+
+    if (periodMs == 0u)
+    {
+        return nowTickMs;
+    }
+
+    while (nextTick <= nowTickMs)
+    {
+        nextTick += periodMs;
+    }
+
+    return nextTick;
+}
+
+static AppStatus_t App_FsmTxScheduleEnsureInitialized(void)
+{
+    AppStatus_t status;
+    uint8_t periodHours;
+    uint32_t nowTickMs;
+
+    status = App_FsmTxScheduleLoadPeriod(&periodHours);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    APP_RETURN_IF_FALSE(App_MeterServerOptionsIsPeriodSupported(periodHours) == APP_TRUE, APP_STATUS_INVALID_PARAM);
+
+    nowTickMs = GetCorrectedTick();
+
+    if (g_appFsmTxSchedule.offsetApplied != APP_TRUE)
+    {
+        g_appFsmTxSchedule.fixedOffsetMs =
+            (App_ClockGetDeviceUidHash() % (APP_NBIOT_XMIT_OFFSET_MAX_SEC + 1u)) * 1000u;
+        g_appFsmTxSchedule.offsetApplied = APP_TRUE;
+    }
+
+    if ((g_appFsmTxSchedule.initialized == APP_TRUE) &&
+        (g_appFsmTxSchedule.enabled == APP_TRUE) &&
+        (g_appFsmTxSchedule.periodHours == periodHours))
+    {
+        return APP_STATUS_OK;
+    }
+
+    g_appFsmTxSchedule.periodHours = periodHours;
+    g_appFsmTxSchedule.nextDueTickMs = App_FsmTxScheduleCalcNextDueTick(g_appFsmTxSchedule.bootBaseTickMs,
+                                                                        g_appFsmTxSchedule.periodHours,
+                                                                        g_appFsmTxSchedule.fixedOffsetMs,
+                                                                        nowTickMs);
+    g_appFsmTxSchedule.initialized = APP_TRUE;
+    g_appFsmTxSchedule.enabled = APP_TRUE;
+
+    APP_LOGI("FSM", "[[TxSchedule]] enabled period=%uh base=%lu next=%lu offset=%lu",
+             (unsigned)g_appFsmTxSchedule.periodHours,
+             (unsigned long)g_appFsmTxSchedule.bootBaseTickMs,
+             (unsigned long)g_appFsmTxSchedule.nextDueTickMs,
+             (unsigned long)g_appFsmTxSchedule.fixedOffsetMs);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
+{
+    AppStatus_t status;
+    uint32_t nowTickMs;
+
+    APP_RETURN_IF_FALSE(p_due != NULL, APP_STATUS_INVALID_PARAM);
+    *p_due = APP_FALSE;
+
+    status = App_FsmTxScheduleEnsureInitialized();
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    nowTickMs = GetCorrectedTick();
+    if (nowTickMs < g_appFsmTxSchedule.nextDueTickMs)
+    {
+        return APP_STATUS_OK;
+    }
+
+    *p_due = APP_TRUE;
+    g_appFsmTxSchedule.lastDispatchTickMs = nowTickMs;
+    g_appFsmTxSchedule.nextDueTickMs = App_FsmTxScheduleCalcNextDueTick(g_appFsmTxSchedule.bootBaseTickMs,
+                                                                        g_appFsmTxSchedule.periodHours,
+                                                                        g_appFsmTxSchedule.fixedOffsetMs,
+                                                                        nowTickMs);
+
+    APP_LOGI("FSM", "[[TxSchedule]] due now=%lu -> next=%lu period=%uh",
+             (unsigned long)nowTickMs,
+             (unsigned long)g_appFsmTxSchedule.nextDueTickMs,
+             (unsigned)g_appFsmTxSchedule.periodHours);
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_FsmServiceDebugConsole(void)
 {
     AppStatus_t status;
@@ -1205,10 +1332,27 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             break;
 
         case APP_FSM_STATE_NBIOT_DECIDE_WAKE:
+        {
+            uint8_t txDue = APP_FALSE;
+
+            if (g_appFsmFirstAttachCycleDone == APP_TRUE)
+            {
+                APP_RETURN_IF_FALSE(App_FsmTxScheduleCheckDue(&txDue) == APP_STATUS_OK, APP_STATUS_FATAL);
+                if (txDue != APP_TRUE)
+                {
+                    g_appFsmWakeCollectionPending = APP_FALSE;
+                    App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+                    App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+                    APP_LOGI("FSM", "[[TxSchedule]] skip attach/send before due");
+                    break;
+                }
+            }
+
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_POWER_ON, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_POWER_ON, APP_TRUE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
+        }
 
         case APP_FSM_STATE_NBIOT_POWER_ON:
             (void)App_SystemSetNbiotPowered(APP_TRUE);
@@ -1469,6 +1613,8 @@ AppStatus_t App_FsmInit(void)
     g_appFsmWakeCollectionPending = APP_FALSE;
     g_appFsmFirstAttachCycleDone = APP_FALSE;
     (void)memset(&g_appFsmMeterSchedule, 0, sizeof(g_appFsmMeterSchedule));
+    (void)memset(&g_appFsmTxSchedule, 0, sizeof(g_appFsmTxSchedule));
+    g_appFsmTxSchedule.bootBaseTickMs = GetCorrectedTick();
 
     return App_FsmQueueStateBack(APP_FSM_STATE_BOOT, 0u, 0u);
 }
