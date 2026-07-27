@@ -35,10 +35,12 @@ typedef struct
     uint8_t initialized;
     uint8_t enabled;
     uint8_t periodHours;
+    uint8_t rtcReadyLogged;
     uint8_t offsetApplied;
-    uint32_t bootBaseTickMs;
-    uint32_t nextDueTickMs;
-    uint32_t lastDispatchTickMs;
+    uint32_t nextDueDateKey;
+    uint32_t nextDueMsOfDay;
+    uint32_t lastDispatchedDateKey;
+    uint32_t lastDispatchedMsOfDay;
     uint32_t fixedOffsetMs;
 } AppFsmTxScheduleContext_t;
 
@@ -803,10 +805,11 @@ static AppStatus_t App_FsmMeterScheduleLoadPeriod(uint8_t *p_periodHours)
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_FsmMeterSchedulePlanNext(const AppDateTime_t *p_now,
-                                                uint8_t periodHours,
-                                                uint32_t *p_dueDateKey,
-                                                uint32_t *p_dueMsOfDay)
+static AppStatus_t App_FsmSchedulePlanNextAbsolute(const AppDateTime_t *p_now,
+                                                   uint8_t periodHours,
+                                                   uint32_t offsetMs,
+                                                   uint32_t *p_dueDateKey,
+                                                   uint32_t *p_dueMsOfDay)
 {
     AppDateTime_t dueTime;
     uint32_t nowMsOfDay;
@@ -827,9 +830,28 @@ static AppStatus_t App_FsmMeterSchedulePlanNext(const AppDateTime_t *p_now,
         App_FsmMeterScheduleAddOneDay(&dueTime);
     }
 
+    nextMs += offsetMs;
+    while (nextMs >= (24u * 3600000u))
+    {
+        nextMs -= (24u * 3600000u);
+        App_FsmMeterScheduleAddOneDay(&dueTime);
+    }
+
     *p_dueDateKey = App_FsmMeterScheduleDateKey(&dueTime);
     *p_dueMsOfDay = nextMs;
     return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmMeterSchedulePlanNext(const AppDateTime_t *p_now,
+                                                uint8_t periodHours,
+                                                uint32_t *p_dueDateKey,
+                                                uint32_t *p_dueMsOfDay)
+{
+    return App_FsmSchedulePlanNextAbsolute(p_now,
+                                           periodHours,
+                                           0u,
+                                           p_dueDateKey,
+                                           p_dueMsOfDay);
 }
 
 static AppStatus_t App_FsmMeterScheduleEnsureInitialized(void)
@@ -957,41 +979,32 @@ static AppStatus_t App_FsmTxScheduleLoadPeriod(uint8_t *p_periodHours)
     return APP_STATUS_OK;
 }
 
-static uint32_t App_FsmTxScheduleCalcNextDueTick(uint32_t baseTickMs,
-                                                 uint8_t periodHours,
-                                                 uint32_t offsetMs,
-                                                 uint32_t nowTickMs)
-{
-    uint32_t periodMs;
-    uint32_t nextTick;
 
-    periodMs = (uint32_t)periodHours * 3600000u;
-    nextTick = baseTickMs + offsetMs + periodMs;
-
-    if (periodMs == 0u)
-    {
-        return nowTickMs;
-    }
-
-    while (nextTick <= nowTickMs)
-    {
-        nextTick += periodMs;
-    }
-
-    return nextTick;
-}
 
 static AppStatus_t App_FsmTxScheduleEnsureInitialized(void)
 {
+    AppDateTime_t now;
     AppStatus_t status;
     uint8_t periodHours;
-    uint32_t nowTickMs;
+
+    if (IsUpdatedRTC() != APP_TRUE)
+    {
+        if (g_appFsmTxSchedule.rtcReadyLogged != APP_FALSE)
+        {
+            APP_LOGW("FSM", "[[TxSchedule]] RTC invalid -> tx schedule disabled");
+        }
+        g_appFsmTxSchedule.initialized = APP_FALSE;
+        g_appFsmTxSchedule.enabled = APP_FALSE;
+        g_appFsmTxSchedule.rtcReadyLogged = APP_FALSE;
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     status = App_FsmTxScheduleLoadPeriod(&periodHours);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     APP_RETURN_IF_FALSE(App_MeterServerOptionsIsPeriodSupported(periodHours) == APP_TRUE, APP_STATUS_INVALID_PARAM);
-
-    nowTickMs = GetCorrectedTick();
 
     if (g_appFsmTxSchedule.offsetApplied != APP_TRUE)
     {
@@ -1002,54 +1015,90 @@ static AppStatus_t App_FsmTxScheduleEnsureInitialized(void)
 
     if ((g_appFsmTxSchedule.initialized == APP_TRUE) &&
         (g_appFsmTxSchedule.enabled == APP_TRUE) &&
-        (g_appFsmTxSchedule.periodHours == periodHours))
+        (g_appFsmTxSchedule.periodHours == periodHours) &&
+        (g_appFsmTxSchedule.rtcReadyLogged == APP_TRUE))
     {
         return APP_STATUS_OK;
     }
 
     g_appFsmTxSchedule.periodHours = periodHours;
-    g_appFsmTxSchedule.nextDueTickMs = App_FsmTxScheduleCalcNextDueTick(g_appFsmTxSchedule.bootBaseTickMs,
-                                                                        g_appFsmTxSchedule.periodHours,
-                                                                        g_appFsmTxSchedule.fixedOffsetMs,
-                                                                        nowTickMs);
+    status = App_FsmSchedulePlanNextAbsolute(&now,
+                                             g_appFsmTxSchedule.periodHours,
+                                             g_appFsmTxSchedule.fixedOffsetMs,
+                                             &g_appFsmTxSchedule.nextDueDateKey,
+                                             &g_appFsmTxSchedule.nextDueMsOfDay);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
     g_appFsmTxSchedule.initialized = APP_TRUE;
     g_appFsmTxSchedule.enabled = APP_TRUE;
+    g_appFsmTxSchedule.rtcReadyLogged = APP_TRUE;
 
-    APP_LOGI("FSM", "[[TxSchedule]] enabled period=%uh base=%lu next=%lu offset=%lu",
+    APP_LOGI("FSM", "[[TxSchedule]] enabled period=%uh next=%lu %02lu:%02lu:%02lu offset=%lu",
              (unsigned)g_appFsmTxSchedule.periodHours,
-             (unsigned long)g_appFsmTxSchedule.bootBaseTickMs,
-             (unsigned long)g_appFsmTxSchedule.nextDueTickMs,
+             (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
+             (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
+             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
              (unsigned long)g_appFsmTxSchedule.fixedOffsetMs);
     return APP_STATUS_OK;
 }
 
 static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
 {
+    AppDateTime_t now;
     AppStatus_t status;
-    uint32_t nowTickMs;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
 
     APP_RETURN_IF_FALSE(p_due != NULL, APP_STATUS_INVALID_PARAM);
     *p_due = APP_FALSE;
 
     status = App_FsmTxScheduleEnsureInitialized();
+    if (status == APP_STATUS_NOT_INITIALIZED)
+    {
+        return APP_STATUS_OK;
+    }
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    nowTickMs = GetCorrectedTick();
-    if (nowTickMs < g_appFsmTxSchedule.nextDueTickMs)
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    nowDateKey = App_FsmMeterScheduleDateKey(&now);
+    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+    if ((nowDateKey < g_appFsmTxSchedule.nextDueDateKey) ||
+        ((nowDateKey == g_appFsmTxSchedule.nextDueDateKey) &&
+         (nowMsOfDay < g_appFsmTxSchedule.nextDueMsOfDay)))
+    {
+        return APP_STATUS_OK;
+    }
+
+    if ((g_appFsmTxSchedule.lastDispatchedDateKey == g_appFsmTxSchedule.nextDueDateKey) &&
+        (g_appFsmTxSchedule.lastDispatchedMsOfDay == g_appFsmTxSchedule.nextDueMsOfDay))
     {
         return APP_STATUS_OK;
     }
 
     *p_due = APP_TRUE;
-    g_appFsmTxSchedule.lastDispatchTickMs = nowTickMs;
-    g_appFsmTxSchedule.nextDueTickMs = App_FsmTxScheduleCalcNextDueTick(g_appFsmTxSchedule.bootBaseTickMs,
-                                                                        g_appFsmTxSchedule.periodHours,
-                                                                        g_appFsmTxSchedule.fixedOffsetMs,
-                                                                        nowTickMs);
+    g_appFsmTxSchedule.lastDispatchedDateKey = g_appFsmTxSchedule.nextDueDateKey;
+    g_appFsmTxSchedule.lastDispatchedMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
 
-    APP_LOGI("FSM", "[[TxSchedule]] due now=%lu -> next=%lu period=%uh",
-             (unsigned long)nowTickMs,
-             (unsigned long)g_appFsmTxSchedule.nextDueTickMs,
+    status = App_FsmSchedulePlanNextAbsolute(&now,
+                                             g_appFsmTxSchedule.periodHours,
+                                             g_appFsmTxSchedule.fixedOffsetMs,
+                                             &g_appFsmTxSchedule.nextDueDateKey,
+                                             &g_appFsmTxSchedule.nextDueMsOfDay);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    APP_LOGI("FSM", "[[TxSchedule]] due %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh",
+             (unsigned long)g_appFsmTxSchedule.lastDispatchedDateKey,
+             (unsigned long)(g_appFsmTxSchedule.lastDispatchedMsOfDay / 3600000u),
+             (unsigned long)((g_appFsmTxSchedule.lastDispatchedMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((g_appFsmTxSchedule.lastDispatchedMsOfDay % 60000u) / 1000u),
+             (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
+             (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
+             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
              (unsigned)g_appFsmTxSchedule.periodHours);
     return APP_STATUS_OK;
 }
@@ -1614,7 +1663,6 @@ AppStatus_t App_FsmInit(void)
     g_appFsmFirstAttachCycleDone = APP_FALSE;
     (void)memset(&g_appFsmMeterSchedule, 0, sizeof(g_appFsmMeterSchedule));
     (void)memset(&g_appFsmTxSchedule, 0, sizeof(g_appFsmTxSchedule));
-    g_appFsmTxSchedule.bootBaseTickMs = GetCorrectedTick();
 
     return App_FsmQueueStateBack(APP_FSM_STATE_BOOT, 0u, 0u);
 }
