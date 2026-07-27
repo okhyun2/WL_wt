@@ -805,6 +805,23 @@ static AppStatus_t App_FsmMeterScheduleLoadPeriod(uint8_t *p_periodHours)
     return APP_STATUS_OK;
 }
 
+static AppStatus_t App_FsmScheduleComposeDateTime(uint32_t dueDateKey,
+                                                  uint32_t dueMsOfDay,
+                                                  AppDateTime_t *p_dueTime)
+{
+    APP_RETURN_IF_FALSE(p_dueTime != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(dueMsOfDay < (24u * 3600000u), APP_STATUS_INVALID_PARAM);
+
+    (void)memset(p_dueTime, 0, sizeof(*p_dueTime));
+    p_dueTime->year = (uint16_t)(dueDateKey / 10000u);
+    p_dueTime->month = (uint8_t)((dueDateKey / 100u) % 100u);
+    p_dueTime->day = (uint8_t)(dueDateKey % 100u);
+    p_dueTime->hour = (uint8_t)(dueMsOfDay / 3600000u);
+    p_dueTime->minute = (uint8_t)((dueMsOfDay % 3600000u) / 60000u);
+    p_dueTime->second = (uint8_t)((dueMsOfDay % 60000u) / 1000u);
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_FsmSchedulePlanNextAbsolute(const AppDateTime_t *p_now,
                                                    uint8_t periodHours,
                                                    uint32_t offsetMs,
@@ -1665,6 +1682,34 @@ AppStatus_t App_FsmInit(void)
     (void)memset(&g_appFsmTxSchedule, 0, sizeof(g_appFsmTxSchedule));
 
     return App_FsmQueueStateBack(APP_FSM_STATE_BOOT, 0u, 0u);
+}
+
+AppStatus_t App_FsmGetNextMeterDueTime(AppDateTime_t *p_dueTime)
+{
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_dueTime != NULL, APP_STATUS_INVALID_PARAM);
+
+    status = App_FsmMeterScheduleEnsureInitialized();
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    return App_FsmScheduleComposeDateTime(g_appFsmMeterSchedule.nextDueDateKey,
+                                          g_appFsmMeterSchedule.nextDueMsOfDay,
+                                          p_dueTime);
+}
+
+AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
+{
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_dueTime != NULL, APP_STATUS_INVALID_PARAM);
+
+    status = App_FsmTxScheduleEnsureInitialized();
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    return App_FsmScheduleComposeDateTime(g_appFsmTxSchedule.nextDueDateKey,
+                                          g_appFsmTxSchedule.nextDueMsOfDay,
+                                          p_dueTime);
 }
 
 AppStatus_t App_FsmRun(void)

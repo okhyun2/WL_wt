@@ -8,6 +8,7 @@ extern "C" {
 #include "app_error.h"
 #include "app_log.h"
 #include "app_fsm_state_defs.h"
+#include "app_clock.h"
 
 typedef enum
 {
@@ -84,6 +85,8 @@ AppStatus_t App_FsmRun(void);
 AppStatus_t App_FsmQueueStateFront(uint8_t nextState, uint32_t eventParam, uint32_t param0);
 AppStatus_t App_FsmQueueStateBack(uint8_t nextState, uint32_t eventParam, uint32_t param0);
 AppStatus_t App_FsmRequestResetBoot(void);
+AppStatus_t App_FsmGetNextMeterDueTime(AppDateTime_t *p_dueTime);
+AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime);
 const AppFsmContext_t *App_FsmGetContext(void);
 const AppFsmSummary_t *App_FsmGetSummary(void);
 const AppFsmComponentContext_t *App_FsmGetComponent(AppFsmComponentId_t id);
