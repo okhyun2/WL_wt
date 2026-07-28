@@ -580,11 +580,7 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
     p_component->eventPending = eventPending;
     App_FsmCompleteComponentRun(p_component, status);
 
-    if (((id == APP_FSM_COMPONENT_NFC) ||
-         (id == APP_FSM_COMPONENT_NBIOT) ||
-         (id == APP_FSM_COMPONENT_SERVER) ||
-         (id == APP_FSM_COMPONENT_METER)) &&
-        ((oldState != state) || (oldBusy != busy) || (oldEventPending != eventPending)))
+    if ((oldState != state) || (oldBusy != busy) || (oldEventPending != eventPending))
     {
         APP_LOGI("FSM",
                  "trace comp=%s %s->%s busy:%u->%u evt:%u->%u status=%lu",
