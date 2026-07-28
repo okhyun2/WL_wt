@@ -21,6 +21,10 @@
 #include "app_aux.h"
 #include "app_clock.h"
 
+//debug
+#define APP_DEBUG_METER_PERIOD_MS   (1u * 60000u)   /* 3 min */
+#define APP_DEBUG_TX_PERIOD_MS      (2u * 60000u)  /* 10 min */
+
 typedef struct
 {
     uint8_t initialized;
@@ -989,7 +993,11 @@ static AppStatus_t App_FsmSchedulePlanNextAbsolute(const AppDateTime_t *p_now,
     APP_RETURN_IF_FALSE(App_MeterServerOptionsIsPeriodSupported(periodHours) == APP_TRUE, APP_STATUS_INVALID_PARAM);
 
     dueTime = *p_now;
+    #ifdef APP_DEBUG_METER_PERIOD_MS 
+    periodMs = APP_DEBUG_METER_PERIOD_MS;
+    #else
     periodMs = (uint32_t)periodHours * 3600000u;
+    #endif // APP_DEBUG_METER_PERIOD_MS 
     nowMsOfDay = App_FsmMeterScheduleMsOfDay(p_now);
     nextMs = ((nowMsOfDay / periodMs) + 1u) * periodMs;
 
@@ -1075,7 +1083,11 @@ static AppStatus_t App_FsmTxSchedulePlanBootstrap(const AppDateTime_t *p_now,
     APP_RETURN_IF_FALSE((p_now != NULL) && (p_dueDateKey != NULL) && (p_dueMsOfDay != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE(App_MeterServerOptionsIsPeriodSupported(periodHours) == APP_TRUE, APP_STATUS_INVALID_PARAM);
 
+#ifdef APP_DEBUG_TX_PERIOD_MS
+    periodMs = APP_DEBUG_TX_PERIOD_MS;
+#else
     periodMs = (uint32_t)periodHours * 3600000u;
+#endif // APP_DEBUG_TX_PERIOD_MS
     status = App_FsmScheduleAddMs(App_FsmMeterScheduleDateKey(p_now),
                                   App_FsmMeterScheduleMsOfDay(p_now),
                                   periodMs,
@@ -1111,7 +1123,11 @@ static AppStatus_t App_FsmTxScheduleAdvanceFromDue(uint32_t baseDateKey,
     APP_RETURN_IF_FALSE((p_dueDateKey != NULL) && (p_dueMsOfDay != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE(App_MeterServerOptionsIsPeriodSupported(periodHours) == APP_TRUE, APP_STATUS_INVALID_PARAM);
 
+#ifdef APP_DEBUG_TX_PERIOD_MS
+    periodMs = APP_DEBUG_TX_PERIOD_MS;
+#else
     periodMs = (uint32_t)periodHours * 3600000u;
+#endif // APP_DEBUG_TX_PERIOD_MS
     status = App_FsmScheduleAddMs(baseDateKey,
                                   baseMsOfDay,
                                   periodMs,
@@ -1220,8 +1236,14 @@ static AppStatus_t App_FsmCheckMeterScheduledState(uint8_t *p_state)
         return APP_STATUS_MSGQ_EMPTY;
     }
 
+#ifdef APP_DEBUG_METER_PERIOD_MS
+    dueSlotKey = (g_appFsmMeterSchedule.nextDueDateKey * 1000u) +
+                 (g_appFsmMeterSchedule.nextDueMsOfDay / APP_DEBUG_METER_PERIOD_MS);
+
+#else
     dueSlotKey = (g_appFsmMeterSchedule.nextDueDateKey * 100u) +
                  (g_appFsmMeterSchedule.nextDueMsOfDay / ((uint32_t)g_appFsmMeterSchedule.periodHours * 3600000u));
+#endif // APP_DEBUG_METER_PERIOD_MS 
     if (dueSlotKey == g_appFsmMeterSchedule.lastDispatchedSlotKey)
     {
         return APP_STATUS_MSGQ_EMPTY;
@@ -1273,8 +1295,13 @@ static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void)
         return APP_STATUS_MSGQ_EMPTY;
     }
 
+#ifdef APP_DEBUG_METER_PERIOD_MS
+    dueSlotKey = (g_appFsmMeterSchedule.nextDueDateKey * 1000u) +
+                 (g_appFsmMeterSchedule.nextDueMsOfDay / APP_DEBUG_METER_PERIOD_MS);
+#else
     dueSlotKey = (g_appFsmMeterSchedule.nextDueDateKey * 100u) +
                  (g_appFsmMeterSchedule.nextDueMsOfDay / ((uint32_t)g_appFsmMeterSchedule.periodHours * 3600000u));
+#endif // APP_DEBUG_METER_PERIOD_MS 
     if (dueSlotKey == g_appFsmMeterSchedule.lastDispatchedSlotKey)
     {
         return APP_STATUS_OK;

@@ -1018,12 +1018,6 @@ uint8_t App_SystemPrepareNfcStandbyForStop(void)
         return APP_SYSTEM_NFC_STANDBY_PREP_NONE;
     }
 
-    if (g_nfcTagHandle.state == NFC_STATE_STOP)
-    {
-        APP_LOGI("NFC", "NTP53321 already in standby state before MCU STOP");
-        return APP_SYSTEM_NFC_STANDBY_PREP_ALREADY;
-    }
-
     nfcRet = NFC_NTP53321_EnterStandby(&g_nfcTagHandle);
     if (nfcRet == NFC_RESULT_OK)
     {
