@@ -171,7 +171,11 @@ int main(void)
    아직 진입 전이므로 이 지점에서는 단순 HAL_Delay 사용이 안전함. */
   {
     uint32_t deviceHash = App_ClockGetDeviceUidHash();
-    uint32_t offsetMs = (deviceHash % (APP_NBIOT_BOOT_OFFSET_MAX_SEC + 1u)) * 1000u;
+    uint32_t offsetSec = (APP_NBIOT_BOOT_OFFSET_MAX_SEC == 0u)
+                             ? 1u
+                             : ((deviceHash % APP_NBIOT_BOOT_OFFSET_MAX_SEC) + 1u);
+    uint32_t randomMs = (HAL_GetTick() ^ deviceHash) % 1000u;
+    uint32_t offsetMs = (offsetSec * 1000u) + randomMs;
 
     APP_LOGI("MAIN", "Boot NBIoT offset delay=%lu ms (uidHash=0x%08lX)",
              (unsigned long)offsetMs, (unsigned long)deviceHash);

@@ -22,8 +22,10 @@
 #include "app_clock.h"
 
 //debug
+#if 0
 #define APP_DEBUG_METER_PERIOD_MS   (1u * 60000u)   /* 3 min */
 #define APP_DEBUG_TX_PERIOD_MS      (2u * 60000u)  /* 10 min */
+#endif
 
 typedef struct
 {

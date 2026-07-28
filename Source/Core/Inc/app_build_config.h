@@ -175,7 +175,7 @@ extern "C" {
 #define APP_RTC_ALARM_COLLISION_TX_DELAY_SEC        (60u)
 
 /* NBIoT 부팅 시 최초 연결 지연용 고정 오프셋 범위(초) */
-#define APP_NBIOT_BOOT_OFFSET_MAX_SEC               (60u)
+#define APP_NBIOT_BOOT_OFFSET_MAX_SEC               (5u)
 /* NBIoT 통신 충돌 방지용 장치별 오프셋/지터 설정 */
 #define APP_NBIOT_XMIT_OFFSET_MAX_SEC               (60u)   /* 장치별 고정 오프셋 범위(0~60초) */
 #define APP_NBIOT_XMIT_JITTER_MAX_SEC               (10u)    /* 매 주기 추가되는 랜덤 지터(0~10초) */
@@ -203,7 +203,7 @@ extern "C" {
 
 /* OPS-01/02 period policy defaults (allowed values: 1/2/3/4/6/8/12/24h) */
 #define APP_POLICY_DEFAULT_METERING_PERIOD_HOURS   (1u)
-#define APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS  (2u)
+#define APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS  (4u)
 #define APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS   (APP_FALSE)
 #define APP_POLICY_WAIT_SERVER_ACK_ENABLE          (APP_TRUE)
 #define APP_POLICY_TEST_MODE_SKIP_SERVER_ACK_WAIT  (APP_TRUE)
