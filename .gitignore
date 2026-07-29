@@ -63,14 +63,12 @@ dkms.conf
 .mxproject
 #*.ld
 *.ioc
-.settins/
-Debug/
-Source/Debug/
-Release/
-Source/Release/
-bootloader/
-app_slot1/
-app_slot2/
-.settins/
+Debug
+Source/Debug
+Release
+Source/Release
+bootloader
+app_slot1
+app_slot2
+.settins
 
-/Source/Debug
