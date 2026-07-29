@@ -2338,6 +2338,22 @@ static AppStatus_t App_NbiotCarrierRecoverAfterAttachFailure(AppStatus_t lastSta
         return APP_STATUS_FATAL;
     }
 
+    if (g_appNbiotCarrierContext.lastNetStatus.phase == APP_BC95_NET_PHASE_USIM_SUSPEND)
+    {
+        APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                 " suspended USIM detected (rejectCause=%u) -> abort without reset/retry",
+                 (unsigned)g_appNbiotCarrierContext.lastNetStatus.rejectCause);
+        return APP_STATUS_FATAL;
+    }
+
+    if (g_appNbiotCarrierContext.lastNetStatus.phase == APP_BC95_NET_PHASE_USIM_TERMINATED)
+    {
+        APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                 " terminated USIM detected (rejectCause=%u) -> abort without reset/retry",
+                 (unsigned)g_appNbiotCarrierContext.lastNetStatus.rejectCause);
+        return APP_STATUS_FATAL;
+    }
+
     if (elapsedMs >= APP_NBIOT_ATTACH_TOTAL_FAIL_LIMIT_MS)
     {
         APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
