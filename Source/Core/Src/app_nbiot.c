@@ -879,18 +879,26 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
     startTick = HAL_GetTick();
 
     bannerWaitMs = (totalTimeoutMs > APP_BC95_BOOT_WAIT_BANNER_MS)
-                   ? APP_BC95_BOOT_WAIT_BANNER_MS : totalTimeoutMs;
+                       ? APP_BC95_BOOT_WAIT_BANNER_MS
+                       : totalTimeoutMs;
 
-    APP_LOGI("NBIOT", "Wait for boot banner up to %lums...", (unsigned long)bannerWaitMs);
-    status = App_Bc95AtWaitForBoot(bannerWaitMs);
-    if (status == APP_STATUS_OK)
+    if (g_appNbiotCarrierContext.lastResetType == APP_NBIOT_CARRIER_RESET_SW)
     {
-        bannerSeen = APP_TRUE;
-        APP_LOGD("NBIOT", "Boot banner received");
+        APP_LOGI("NBIOT", "Skip boot banner wait after SW reset, probe with AT");
     }
     else
     {
-        APP_LOGI("NBIOT", "Boot banner not received, probe with AT");
+        APP_LOGI("NBIOT", "Wait for boot banner up to %lums...", (unsigned long)bannerWaitMs);
+        status = App_Bc95AtWaitForBoot(bannerWaitMs);
+        if (status == APP_STATUS_OK)
+        {
+            bannerSeen = APP_TRUE;
+            APP_LOGD("NBIOT", "Boot banner received");
+        }
+        else
+        {
+            APP_LOGI("NBIOT", "Boot banner not received, probe with AT");
+        }
     }
 
     retryCount = 0u;
