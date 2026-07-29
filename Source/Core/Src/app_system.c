@@ -196,6 +196,8 @@ void wakeup_process_all_pending(void)
         return;
     }
 
+    g_wakeup_ctx.processed_flags = WAKEUP_FLAG_NONE;
+
     if (App_SystemCanDebugLog() == APP_TRUE)
     {
         APP_LOGI("LP",
