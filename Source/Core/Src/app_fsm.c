@@ -1543,6 +1543,7 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNow(void)
     return APP_STATUS_OK;
 }
 
+<<<<<<< HEAD
 static void App_FsmUsimHoldClear(void)
 {
     (void)memset(&g_appFsmUsimHold, 0, sizeof(g_appFsmUsimHold));
@@ -1551,6 +1552,9 @@ static void App_FsmUsimHoldClear(void)
 static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours,
                                                        uint32_t *p_dueDateKey,
                                                        uint32_t *p_dueMsOfDay)
+=======
+static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours)
+>>>>>>> ea92da5eead825df10f83b21da8b2c3f39a3e06b
 {
     AppDateTime_t now;
     AppStatus_t status;
@@ -1559,9 +1563,18 @@ static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours,
     uint32_t delayMs;
 
     APP_RETURN_IF_FALSE(delayHours > 0u, APP_STATUS_INVALID_PARAM);
+<<<<<<< HEAD
     APP_RETURN_IF_FALSE(delayHours <= (UINT32_MAX / 3600000u), APP_STATUS_INVALID_PARAM);
 
     status = App_FsmTxScheduleEnsureInitialized();
+=======
+
+    status = App_FsmTxScheduleEnsureInitialized();
+    if (status == APP_STATUS_NOT_INITIALIZED)
+    {
+        return APP_STATUS_OK;
+    }
+>>>>>>> ea92da5eead825df10f83b21da8b2c3f39a3e06b
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     status = RTC_GetTime(&now);
@@ -1578,6 +1591,7 @@ static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours,
                                   &g_appFsmTxSchedule.nextDueMsOfDay);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
+<<<<<<< HEAD
     g_appFsmTxSchedule.lastDispatchedDateKey = 0u;
     g_appFsmTxSchedule.lastDispatchedMsOfDay = 0u;
     g_appFsmTxSchedule.currentJitterMs = 0u;
@@ -1592,11 +1606,17 @@ static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours,
     }
 
     APP_LOGI("FSM", "[[TxSchedule]] hold from now +%luh -> next=%lu %02lu:%02lu:%02lu",
+=======
+    g_appFsmTxSchedule.currentJitterMs = 0u;
+
+    APP_LOGW("FSM", "[[TxSchedule]] suspend hold applied -> next tx delayed %luh to %lu %02lu:%02lu:%02lu",
+>>>>>>> ea92da5eead825df10f83b21da8b2c3f39a3e06b
              (unsigned long)delayHours,
              (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
              (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
              (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
              (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u));
+<<<<<<< HEAD
     return APP_STATUS_OK;
 }
 
@@ -1720,6 +1740,9 @@ static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked)
     APP_LOGI("FSM", "[[UsimHold]] RTC invalid phase=%s -> hold expired, allow retry on this wake",
              App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)g_appFsmUsimHold.phase));
     App_FsmUsimHoldClear();
+=======
+
+>>>>>>> ea92da5eead825df10f83b21da8b2c3f39a3e06b
     return APP_STATUS_OK;
 }
 
@@ -1778,7 +1801,10 @@ static AppStatus_t App_FsmHandleWakeupLowPower(const char *p_reason, AppStatus_t
 {
     AppStatus_t powerOffStatus;
     AppStatus_t holdStatus;
+<<<<<<< HEAD
     const AppNbiotCarrierContext_t *pCarrierContext;
+=======
+>>>>>>> ea92da5eead825df10f83b21da8b2c3f39a3e06b
     uint8_t stopNoWake = APP_FALSE;
 
     APP_LOGW("FSM", "[[WakeupLP]] %s status=%d -> power off NB-IoT and request wakeup STOP",
@@ -1793,6 +1819,7 @@ static AppStatus_t App_FsmHandleWakeupLowPower(const char *p_reason, AppStatus_t
         (void)App_SystemSetNbiotPowered(APP_FALSE);
     }
 
+<<<<<<< HEAD
     pCarrierContext = App_NBIoTCarrierGetContext();
     if (pCarrierContext != NULL)
     {
@@ -1802,6 +1829,21 @@ static AppStatus_t App_FsmHandleWakeupLowPower(const char *p_reason, AppStatus_t
             APP_LOGW("FSM", "[[UsimHold]] activate failed phase=%s status=%d",
                      App_Bc95AtGetNetPhaseString(pCarrierContext->lastNetStatus.phase),
                      (int)holdStatus);
+=======
+    if (pCarrierContext != NULL)
+    {
+        if (pCarrierContext->lastNetStatus.phase == APP_BC95_NET_PHASE_USIM_TERMINATED)
+        {
+            stopNoWake = APP_TRUE;
+            APP_LOGW("FSM", "[[WakeupLP]] terminated USIM -> request STOP no-wake");
+        }
+        else if (pCarrierContext->lastNetStatus.phase == APP_BC95_NET_PHASE_USIM_SUSPEND)
+        {
+            holdStatus = App_FsmTxScheduleDelayHoursFromNow(48u);
+            APP_RETURN_IF_FALSE(holdStatus == APP_STATUS_OK, holdStatus);
+            stopNoWake = APP_FALSE;
+            APP_LOGW("FSM", "[[WakeupLP]] suspended USIM -> keep metering, delay tx 48h");
+>>>>>>> ea92da5eead825df10f83b21da8b2c3f39a3e06b
         }
     }
 
