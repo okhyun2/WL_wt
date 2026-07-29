@@ -72,6 +72,7 @@ app_slot1
 app_slot2
 .settins
 
+/Source/Debug
 /Source/Debug/STM32L073RZT6_debug.hex
 /Source/Debug/objects.list
-/Source/Debug
+/Source/Debug/*.list
