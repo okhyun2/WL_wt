@@ -49,6 +49,7 @@
 #define APP_BC95_AT_CMD_CFUN_SET_MIN         "AT+CFUN=0\r\n"
 #define APP_BC95_AT_CMD_CGATT_QUERY          "AT+CGATT?\r\n"
 #define APP_BC95_AT_CMD_CGATT_DETACH         "AT+CGATT=0\r\n"
+#define APP_BC95_AT_CMD_CEREG_SET_3          "AT+CEREG=3\r\n"
 #define APP_BC95_AT_CMD_CEREG_QUERY          "AT+CEREG?\r\n"
 #define APP_BC95_AT_CMD_CGPADDR_QUERY        "AT+CGPADDR\r\n"
 
@@ -71,6 +72,11 @@
 #define APP_NBIOT_REPORT_LOG_RESET          "[[Reset]]"
 #define APP_NBIOT_REPORT_LOG_DETACH         "[[Detach]]"
 #define APP_NBIOT_REPORT_LOG_POWEROFF       "[[PowerOff]]"
+
+#define APP_NBIOT_REJECT_CAUSE_SUSPEND        (19)
+#define APP_NBIOT_REJECT_CAUSE_TERMINATED_1   (8)
+#define APP_NBIOT_REJECT_CAUSE_TERMINATED_2   (2)
+#define APP_NBIOT_REJECT_CAUSE_TERMINATED_3   (26)
 
 /* ============================================================
  *  내부 상태
@@ -1658,15 +1664,18 @@ AppBc95AtStatus_t App_Bc95AtParseCgatt(const char *p_resp, int32_t *p_stateOut)
     return APP_BC95_AT_OK;
 }
 
-AppBc95AtStatus_t App_Bc95AtParseCereg(const char *p_resp, int32_t *p_nOut, int32_t *p_statOut)
+AppBc95AtStatus_t App_Bc95AtParseCereg(const char *p_resp, int32_t *p_nOut, int32_t *p_statOut, int32_t *p_rejectCauseOut)
 {
     AppBc95AtStatus_t status;
     int32_t cmeErr;
     const char *p_payload;
+    const char *p_lineEnd;
+    const char *p_lastComma;
     int parsedN, parsedStat;
 
     if ((p_resp == NULL) || (p_statOut == NULL)) return APP_BC95_AT_ERR_PARAM;
     if (p_nOut != NULL) *p_nOut = 0;
+    if (p_rejectCauseOut != NULL) *p_rejectCauseOut = -1;
     *p_statOut = 0;
     cmeErr = 0;
     status = App_Bc95AtCheckResponse(p_resp, &cmeErr);
@@ -1675,10 +1684,36 @@ AppBc95AtStatus_t App_Bc95AtParseCereg(const char *p_resp, int32_t *p_nOut, int3
     p_payload = strstr(p_resp, APP_BC95_AT_CEREG_PREFIX);
     if (p_payload == NULL) return APP_BC95_AT_ERR_NO_PREFIX;
     p_payload += APP_BC95_AT_CEREG_PREFIX_LEN;
-    while ((*p_payload == ' ') || (*p_payload == '\t')) p_payload++;
+    while ((*p_payload == ' ') || (*p_payload == '	')) p_payload++;
     if (sscanf(p_payload, "%d,%d", &parsedN, &parsedStat) != 2) return APP_BC95_AT_ERR_FORMAT;
     if (p_nOut != NULL) *p_nOut = (int32_t)parsedN;
     *p_statOut = (int32_t)parsedStat;
+
+    if ((p_rejectCauseOut != NULL) && (parsedStat == APP_BC95_CEREG_DENIED))
+    {
+        p_lineEnd = p_payload;
+        while ((*p_lineEnd != '\0') && (*p_lineEnd != ' ') && (*p_lineEnd != ' '))
+        {
+            p_lineEnd++;
+        }
+
+        p_lastComma = p_lineEnd;
+        while ((p_lastComma > p_payload) && (*p_lastComma != ','))
+        {
+            p_lastComma--;
+        }
+
+        if ((*p_lastComma == ',') && ((p_lastComma + 1) < p_lineEnd))
+        {
+            char *p_endptr = NULL;
+            long parsedReject = strtol(p_lastComma + 1, &p_endptr, 10);
+            if ((p_endptr != (p_lastComma + 1)) && (parsedReject >= 0L) && (parsedReject <= 65535L))
+            {
+                *p_rejectCauseOut = (int32_t)parsedReject;
+            }
+        }
+    }
+
     return APP_BC95_AT_OK;
 }
 
@@ -1782,6 +1817,18 @@ AppStatus_t App_Bc95AtSetFullFunction(void)
     return APP_STATUS_OK;
 }
 
+static uint8_t App_Bc95AtIsSuspendRejectCause(int32_t rejectCause)
+{
+    return (rejectCause == APP_NBIOT_REJECT_CAUSE_SUSPEND) ? APP_TRUE : APP_FALSE;
+}
+
+static uint8_t App_Bc95AtIsTerminatedRejectCause(int32_t rejectCause)
+{
+    return ((rejectCause == APP_NBIOT_REJECT_CAUSE_TERMINATED_1) ||
+            (rejectCause == APP_NBIOT_REJECT_CAUSE_TERMINATED_2) ||
+            (rejectCause == APP_NBIOT_REJECT_CAUSE_TERMINATED_3)) ? APP_TRUE : APP_FALSE;
+}
+
 static uint8_t App_Bc95AtIsUsimFatalCme(int32_t cmeErr)
 {
     switch (cmeErr)
@@ -1801,6 +1848,7 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
     uint16_t rxLen;
     int32_t funVal = -1, cgattVal = -1;
     int32_t ceregN = -1, ceregStat = -1;
+    int32_t rejectCause = -1;
     int32_t cmeErr = 0;
 
     APP_RETURN_IF_FALSE((p_status != NULL), APP_STATUS_INVALID_PARAM);
@@ -1809,6 +1857,8 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
     p_status->cfunValue  = 0xFFu;
     p_status->cgattState = 0xFFu;
     p_status->ceregStat  = APP_BC95_CEREG_NOT_REGISTERED;
+    p_status->rejectCause = 0u;
+    p_status->rejectCauseValid = APP_FALSE;
 
     /* CFUN? */
     rxLen = 0u;
@@ -1851,13 +1901,20 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
                                  APP_BC95_NET_CMD_RETRY_MAX);
     if (st == APP_STATUS_OK)
     {
-        atSt = App_Bc95AtParseCereg((const char *)g_appBc95AtRxBuf, &ceregN, &ceregStat);
+        atSt = App_Bc95AtParseCereg((const char *)g_appBc95AtRxBuf, &ceregN, &ceregStat, &rejectCause);
 #ifdef NBIoT_SIMULATION_CODE
         APP_LOGI("NBIOT", "Forcely err timeout CEREG:0 test..."); // NBIoT simulation test
         atSt = APP_BC95_AT_ERR_FORMAT;
 #endif // NBIoT_SIMULATION_CODE
         if (atSt == APP_BC95_AT_OK)
+        {
             p_status->ceregStat = (AppBc95CeregStat_t)ceregStat;
+            if ((rejectCause >= 0) && (rejectCause <= 65535))
+            {
+                p_status->rejectCause = (uint16_t)rejectCause;
+                p_status->rejectCauseValid = APP_TRUE;
+            }
+        }
     }
 
     /* CGATT? */
@@ -1911,7 +1968,22 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
              (p_status->ceregStat == APP_BC95_CEREG_UNKNOWN))
         p_status->phase = APP_BC95_NET_PHASE_REGISTERING;
     else if (p_status->ceregStat == APP_BC95_CEREG_DENIED)
-        p_status->phase = APP_BC95_NET_PHASE_DENIED;
+    {
+        if ((p_status->rejectCauseValid == APP_TRUE) &&
+            (App_Bc95AtIsSuspendRejectCause((int32_t)p_status->rejectCause) == APP_TRUE))
+        {
+            p_status->phase = APP_BC95_NET_PHASE_USIM_SUSPEND;
+        }
+        else if ((p_status->rejectCauseValid == APP_TRUE) &&
+                 (App_Bc95AtIsTerminatedRejectCause((int32_t)p_status->rejectCause) == APP_TRUE))
+        {
+            p_status->phase = APP_BC95_NET_PHASE_USIM_TERMINATED;
+        }
+        else
+        {
+            p_status->phase = APP_BC95_NET_PHASE_DENIED;
+        }
+    }
     else if ((p_status->ceregStat == APP_BC95_CEREG_REGISTERED_HOME) ||
              (p_status->ceregStat == APP_BC95_CEREG_REGISTERED_ROAM))
     {
@@ -1951,7 +2023,8 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
         elapsed = HAL_GetTick() - startTick;
         if (elapsed >= totalTimeoutMs)
         {
-            APP_LOGE("NBIOT", "Network wait timeout (poll=%lu, lastPhase=%s, elapsed=%lums)",
+            APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                " Network wait timeout (poll=%lu, lastPhase=%s, elapsed=%lums)",
                      (unsigned long)pollCount,
                      App_Bc95AtGetNetPhaseString(lastPhase),
                      (unsigned long)elapsed);
@@ -1965,7 +2038,8 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
 
         if (st == APP_STATUS_FATAL)
         {
-            APP_LOGE("NBIOT", "Net query fatal (phase=%s)",
+            APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                " Net query fatal (phase=%s)",
                      App_Bc95AtGetNetPhaseString(snapshot.phase));
             if (p_status != NULL) (void)memcpy(p_status, &snapshot, sizeof(*p_status));
             return APP_STATUS_FATAL;
@@ -1981,19 +2055,21 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
 
         if (snapshot.phase != lastPhase)
         {
-            APP_LOGD("NBIOT", "poll #%lu: phase=%s, CFUN=%u, CEREG=%s, CGATT=%u, IP='%s'",
+            APP_LOGD("NBIOT", "poll #%lu: phase=%s, CFUN=%u, CEREG=%s, CGATT=%u, rejectCause=%u, IP='%s'",
                      (unsigned long)pollCount,
                      App_Bc95AtGetNetPhaseString(snapshot.phase),
                      (unsigned)snapshot.cfunValue,
                      App_Bc95AtGetCeregStatString(snapshot.ceregStat),
                      (unsigned)snapshot.cgattState,
+                     (unsigned)snapshot.rejectCause,
                      snapshot.ipAddr);
             lastPhase = snapshot.phase;
         }
 
         if (snapshot.phase == APP_BC95_NET_PHASE_READY)
         {
-            APP_LOGI("NBIOT", "Network ready (elapsed=%lums, ip=%s, poll=%lu)",
+            APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                " Network ready (elapsed=%lums, ip=%s, poll=%lu)",
                      (unsigned long)elapsed, snapshot.ipAddr, (unsigned long)pollCount);
             if (p_status != NULL) (void)memcpy(p_status, &snapshot, sizeof(*p_status));
             return APP_STATUS_OK;
@@ -2001,7 +2077,26 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
 
         if (snapshot.phase == APP_BC95_NET_PHASE_USIM_ERROR)
         {
-            APP_LOGE("NBIOT", "USIM permanent error, give up");
+            APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                " USIM permanent error, give up");
+            if (p_status != NULL) (void)memcpy(p_status, &snapshot, sizeof(*p_status));
+            return APP_STATUS_FATAL;
+        }
+
+        if (snapshot.phase == APP_BC95_NET_PHASE_USIM_SUSPEND)
+        {
+            APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                " USIM suspended by network (rejectCause=%u)",
+                     (unsigned)snapshot.rejectCause);
+            if (p_status != NULL) (void)memcpy(p_status, &snapshot, sizeof(*p_status));
+            return APP_STATUS_FATAL;
+        }
+
+        if (snapshot.phase == APP_BC95_NET_PHASE_USIM_TERMINATED)
+        {
+            APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                " USIM terminated by network (rejectCause=%u)",
+                     (unsigned)snapshot.rejectCause);
             if (p_status != NULL) (void)memcpy(p_status, &snapshot, sizeof(*p_status));
             return APP_STATUS_FATAL;
         }
@@ -2020,7 +2115,8 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
             deniedCount++;
             if (deniedCount >= APP_BC95_NET_DENIED_RETRY_MAX)
             {
-                APP_LOGE("NBIOT", "Registration denied %lu times, give up",
+                APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                    " Registration denied %lu times, give up",
                          (unsigned long)deniedCount);
                 if (p_status != NULL) (void)memcpy(p_status, &snapshot, sizeof(*p_status));
                 return APP_STATUS_FATAL;
@@ -2058,9 +2154,11 @@ const char *App_Bc95AtGetNetPhaseString(AppBc95NetPhase_t phase)
         case APP_BC95_NET_PHASE_REGISTERING:  return "registering";
         case APP_BC95_NET_PHASE_ATTACHING:    return "attaching";
         case APP_BC95_NET_PHASE_WAITING_IP:   return "waiting_ip";
-        case APP_BC95_NET_PHASE_READY:        return "ready";
-        case APP_BC95_NET_PHASE_DENIED:       return "denied";
-        default:                              return "invalid";
+        case APP_BC95_NET_PHASE_READY:           return "ready";
+        case APP_BC95_NET_PHASE_DENIED:          return "denied";
+        case APP_BC95_NET_PHASE_USIM_SUSPEND:    return "usim_suspend";
+        case APP_BC95_NET_PHASE_USIM_TERMINATED: return "usim_terminated";
+        default:                                 return "invalid";
     }
 }
 
@@ -2237,6 +2335,22 @@ static AppStatus_t App_NbiotCarrierRecoverAfterAttachFailure(AppStatus_t lastSta
         APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
                  " no-USIM fatal -> abort without reset (elapsed=%lums)",
                  (unsigned long)elapsedMs);
+        return APP_STATUS_FATAL;
+    }
+
+    if (g_appNbiotCarrierContext.lastNetStatus.phase == APP_BC95_NET_PHASE_USIM_SUSPEND)
+    {
+        APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                 " suspended USIM detected (rejectCause=%u) -> abort without reset/retry",
+                 (unsigned)g_appNbiotCarrierContext.lastNetStatus.rejectCause);
+        return APP_STATUS_FATAL;
+    }
+
+    if (g_appNbiotCarrierContext.lastNetStatus.phase == APP_BC95_NET_PHASE_USIM_TERMINATED)
+    {
+        APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                 " terminated USIM detected (rejectCause=%u) -> abort without reset/retry",
+                 (unsigned)g_appNbiotCarrierContext.lastNetStatus.rejectCause);
         return APP_STATUS_FATAL;
     }
 
@@ -3847,6 +3961,17 @@ AppStatus_t App_NBIoTBringUp(void)
         {
             APP_LOGE("NBIOT", "Module usim timeout");
         }
+        return status;
+    }
+
+    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CEREG_SET_3,
+                                           APP_BC95_AT_RX_TIMEOUT_MS,
+                                           "AT+CEREG=3",
+                                           APP_NBIOT_REPORT_LOG_ATTACH);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                 " failed to set CEREG=3 (status=%d)", (int)status);
         return status;
     }
 

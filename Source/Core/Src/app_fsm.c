@@ -22,7 +22,7 @@
 #include "app_clock.h"
 
 //debug
-#if 0
+#if 1
 #define APP_DEBUG_METER_PERIOD_MS   (1u * 60000u)   /* 3 min */
 #define APP_DEBUG_TX_PERIOD_MS      (2u * 60000u)  /* 10 min */
 #endif
@@ -1579,6 +1579,8 @@ static AppStatus_t App_FsmHandleFatalLowPower(const char *p_reason, AppStatus_t 
 static AppStatus_t App_FsmHandleWakeupLowPower(const char *p_reason, AppStatus_t fatalStatus)
 {
     AppStatus_t powerOffStatus;
+    uint8_t stopNoWake = APP_FALSE;
+    const AppNbiotCarrierContext_t *pCarrierContext = App_NBIoTCarrierGetContext();
 
     APP_LOGW("FSM", "[[WakeupLP]] %s status=%d -> power off NB-IoT and request wakeup STOP",
              (p_reason != NULL) ? p_reason : "fatal",
@@ -1592,6 +1594,13 @@ static AppStatus_t App_FsmHandleWakeupLowPower(const char *p_reason, AppStatus_t
         (void)App_SystemSetNbiotPowered(APP_FALSE);
     }
 
+    if ((pCarrierContext != NULL) &&
+        (pCarrierContext->lastNetStatus.phase == APP_BC95_NET_PHASE_USIM_TERMINATED))
+    {
+        stopNoWake = APP_TRUE;
+        APP_LOGW("FSM", "[[WakeupLP]] terminated USIM -> request STOP no-wake");
+    }
+
     g_appFsmWakeCollectionPending = APP_FALSE;
     App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT,
                          APP_FSM_STATE_NBIOT_INIT,
@@ -1601,7 +1610,7 @@ static AppStatus_t App_FsmHandleWakeupLowPower(const char *p_reason, AppStatus_t
     g_appFsmContext.summary.lowPowerRequested = APP_TRUE;
     App_FsmSetDecision(APP_FSM_DECISION_ALLOW_IDLE);
 
-    APP_RETURN_IF_FALSE(App_SystemRequestLowPowerNoWake(APP_FALSE) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+    APP_RETURN_IF_FALSE(App_SystemRequestLowPowerNoWake(stopNoWake) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
     return APP_STATUS_OK;
 }
 

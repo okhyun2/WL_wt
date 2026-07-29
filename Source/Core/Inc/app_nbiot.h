@@ -141,14 +141,16 @@ typedef enum
 
 typedef enum
 {
-    APP_BC95_NET_PHASE_INIT          = 0,
-    APP_BC95_NET_PHASE_CFUN_OFF      = 1,
-    APP_BC95_NET_PHASE_USIM_ERROR    = 2,
-    APP_BC95_NET_PHASE_REGISTERING   = 3,
-    APP_BC95_NET_PHASE_ATTACHING     = 4,
-    APP_BC95_NET_PHASE_WAITING_IP    = 5,
-    APP_BC95_NET_PHASE_READY         = 6,
-    APP_BC95_NET_PHASE_DENIED        = 7
+    APP_BC95_NET_PHASE_INIT            = 0,
+    APP_BC95_NET_PHASE_CFUN_OFF        = 1,
+    APP_BC95_NET_PHASE_USIM_ERROR      = 2,
+    APP_BC95_NET_PHASE_REGISTERING     = 3,
+    APP_BC95_NET_PHASE_ATTACHING       = 4,
+    APP_BC95_NET_PHASE_WAITING_IP      = 5,
+    APP_BC95_NET_PHASE_READY           = 6,
+    APP_BC95_NET_PHASE_DENIED          = 7,
+    APP_BC95_NET_PHASE_USIM_SUSPEND    = 8,
+    APP_BC95_NET_PHASE_USIM_TERMINATED = 9
 } AppBc95NetPhase_t;
 
 typedef struct
@@ -157,6 +159,8 @@ typedef struct
     uint8_t             cfunValue;
     uint8_t             cgattState;
     AppBc95CeregStat_t  ceregStat;
+    uint16_t            rejectCause;
+    uint8_t             rejectCauseValid;
     uint8_t             hasIp;
     char                ipAddr[APP_BC95_IP_BUF_SIZE];
     uint8_t             ready;
@@ -167,7 +171,7 @@ typedef struct
 
 AppBc95AtStatus_t  App_Bc95AtParseCfun   (const char *p_resp, int32_t *p_funOut);
 AppBc95AtStatus_t  App_Bc95AtParseCgatt  (const char *p_resp, int32_t *p_stateOut);
-AppBc95AtStatus_t  App_Bc95AtParseCereg  (const char *p_resp, int32_t *p_nOut, int32_t *p_statOut);
+AppBc95AtStatus_t  App_Bc95AtParseCereg  (const char *p_resp, int32_t *p_nOut, int32_t *p_statOut, int32_t *p_rejectCauseOut);
 AppBc95AtStatus_t  App_Bc95AtParseCgpaddr(const char *p_resp, char *p_ipOut, uint32_t ipBufSize);
 
 AppStatus_t        App_Bc95AtSetFullFunction(void);
