@@ -53,9 +53,24 @@ typedef struct
     uint32_t currentJitterMs;
 } AppFsmTxScheduleContext_t;
 
+typedef struct
+{
+    uint8_t active;
+    uint8_t phase;
+    uint8_t rtcValidMode;
+    uint32_t holdHours;
+    uint32_t holdUntilDateKey;
+    uint32_t holdUntilMsOfDay;
+    uint32_t remainingFallbackCycles;
+} AppFsmUsimHoldContext_t;
+
+#define APP_FSM_USIM_SUSPEND_HOLD_HOURS    (48u)
+#define APP_FSM_USIM_TERMINATED_HOLD_HOURS (168u)
+
 static AppFsmContext_t g_appFsmContext;
 static AppFsmMeterScheduleContext_t g_appFsmMeterSchedule;
 static AppFsmTxScheduleContext_t g_appFsmTxSchedule;
+static AppFsmUsimHoldContext_t g_appFsmUsimHold;
 extern NFC_LP_Handle_t g_nfcLpHandle;
 
 static void App_FsmMarkComponent(AppFsmComponentId_t id,
@@ -67,6 +82,9 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags);
 static AppStatus_t App_FsmMeterProbeAndStore(void);
 static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void);
 static AppStatus_t App_FsmTxScheduleConsumeDueNow(void);
+static void App_FsmUsimHoldClear(void);
+static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase);
+static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked);
 
 NFC_NTP53321_Handle_t g_nfcTagHandle;
 NFC_AUTH_Handle_t g_nfcAuthHandle;
@@ -1525,6 +1543,186 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNow(void)
     return APP_STATUS_OK;
 }
 
+static void App_FsmUsimHoldClear(void)
+{
+    (void)memset(&g_appFsmUsimHold, 0, sizeof(g_appFsmUsimHold));
+}
+
+static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours,
+                                                       uint32_t *p_dueDateKey,
+                                                       uint32_t *p_dueMsOfDay)
+{
+    AppDateTime_t now;
+    AppStatus_t status;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
+    uint32_t delayMs;
+
+    APP_RETURN_IF_FALSE(delayHours > 0u, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(delayHours <= (UINT32_MAX / 3600000u), APP_STATUS_INVALID_PARAM);
+
+    status = App_FsmTxScheduleEnsureInitialized();
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    nowDateKey = App_FsmMeterScheduleDateKey(&now);
+    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+    delayMs = delayHours * 3600000u;
+
+    status = App_FsmScheduleAddMs(nowDateKey,
+                                  nowMsOfDay,
+                                  delayMs,
+                                  &g_appFsmTxSchedule.nextDueDateKey,
+                                  &g_appFsmTxSchedule.nextDueMsOfDay);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    g_appFsmTxSchedule.lastDispatchedDateKey = 0u;
+    g_appFsmTxSchedule.lastDispatchedMsOfDay = 0u;
+    g_appFsmTxSchedule.currentJitterMs = 0u;
+
+    if (p_dueDateKey != NULL)
+    {
+        *p_dueDateKey = g_appFsmTxSchedule.nextDueDateKey;
+    }
+    if (p_dueMsOfDay != NULL)
+    {
+        *p_dueMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
+    }
+
+    APP_LOGI("FSM", "[[TxSchedule]] hold from now +%luh -> next=%lu %02lu:%02lu:%02lu",
+             (unsigned long)delayHours,
+             (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
+             (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
+             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u));
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase)
+{
+    AppStatus_t status;
+    uint32_t holdHours;
+
+    if (phase == (uint8_t)APP_BC95_NET_PHASE_USIM_SUSPEND)
+    {
+        holdHours = APP_FSM_USIM_SUSPEND_HOLD_HOURS;
+    }
+    else if (phase == (uint8_t)APP_BC95_NET_PHASE_USIM_TERMINATED)
+    {
+        holdHours = APP_FSM_USIM_TERMINATED_HOLD_HOURS;
+    }
+    else
+    {
+        App_FsmUsimHoldClear();
+        return APP_STATUS_OK;
+    }
+
+    App_FsmUsimHoldClear();
+    g_appFsmUsimHold.active = APP_TRUE;
+    g_appFsmUsimHold.phase = phase;
+    g_appFsmUsimHold.holdHours = holdHours;
+
+    if (IsUpdatedRTC() == APP_TRUE)
+    {
+        status = App_FsmTxScheduleDelayHoursFromNow(holdHours,
+                                                    &g_appFsmUsimHold.holdUntilDateKey,
+                                                    &g_appFsmUsimHold.holdUntilMsOfDay);
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+        g_appFsmUsimHold.rtcValidMode = APP_TRUE;
+        g_appFsmUsimHold.remainingFallbackCycles = 0u;
+
+        APP_LOGW("FSM", "[[UsimHold]] phase=%s RTC valid -> keep AlarmA, hold AlarmB %luh until %lu %02lu:%02lu:%02lu",
+                 App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)phase),
+                 (unsigned long)holdHours,
+                 (unsigned long)g_appFsmUsimHold.holdUntilDateKey,
+                 (unsigned long)(g_appFsmUsimHold.holdUntilMsOfDay / 3600000u),
+                 (unsigned long)((g_appFsmUsimHold.holdUntilMsOfDay % 3600000u) / 60000u),
+                 (unsigned long)((g_appFsmUsimHold.holdUntilMsOfDay % 60000u) / 1000u));
+    }
+    else
+    {
+        g_appFsmUsimHold.rtcValidMode = APP_FALSE;
+        g_appFsmUsimHold.remainingFallbackCycles = holdHours;
+        g_appFsmUsimHold.holdUntilDateKey = 0u;
+        g_appFsmUsimHold.holdUntilMsOfDay = 0u;
+
+        APP_LOGW("FSM", "[[UsimHold]] phase=%s RTC invalid -> block meter/tx for %lu fallback wake cycles (~%luh)",
+                 App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)phase),
+                 (unsigned long)g_appFsmUsimHold.remainingFallbackCycles,
+                 (unsigned long)holdHours);
+    }
+
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked)
+{
+    AppDateTime_t now;
+    AppStatus_t status;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
+
+    APP_RETURN_IF_FALSE(p_blocked != NULL, APP_STATUS_INVALID_PARAM);
+    *p_blocked = APP_FALSE;
+
+    if (g_appFsmUsimHold.active != APP_TRUE)
+    {
+        return APP_STATUS_OK;
+    }
+
+    if (g_appFsmUsimHold.rtcValidMode == APP_TRUE)
+    {
+        if (IsUpdatedRTC() != APP_TRUE)
+        {
+            *p_blocked = APP_TRUE;
+            APP_LOGW("FSM", "[[UsimHold]] RTC lost while absolute hold active -> keep attach blocked phase=%s",
+                     App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)g_appFsmUsimHold.phase));
+            return APP_STATUS_OK;
+        }
+
+        status = RTC_GetTime(&now);
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+        nowDateKey = App_FsmMeterScheduleDateKey(&now);
+        nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+        if ((nowDateKey < g_appFsmUsimHold.holdUntilDateKey) ||
+            ((nowDateKey == g_appFsmUsimHold.holdUntilDateKey) &&
+             (nowMsOfDay < g_appFsmUsimHold.holdUntilMsOfDay)))
+        {
+            *p_blocked = APP_TRUE;
+            APP_LOGI("FSM", "[[UsimHold]] phase=%s hold active -> skip attach/send until %lu %02lu:%02lu:%02lu",
+                     App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)g_appFsmUsimHold.phase),
+                     (unsigned long)g_appFsmUsimHold.holdUntilDateKey,
+                     (unsigned long)(g_appFsmUsimHold.holdUntilMsOfDay / 3600000u),
+                     (unsigned long)((g_appFsmUsimHold.holdUntilMsOfDay % 3600000u) / 60000u),
+                     (unsigned long)((g_appFsmUsimHold.holdUntilMsOfDay % 60000u) / 1000u));
+            return APP_STATUS_OK;
+        }
+
+        APP_LOGI("FSM", "[[UsimHold]] phase=%s hold expired -> allow attach/send retry",
+                 App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)g_appFsmUsimHold.phase));
+        App_FsmUsimHoldClear();
+        return APP_STATUS_OK;
+    }
+
+    if (g_appFsmUsimHold.remainingFallbackCycles > 1u)
+    {
+        g_appFsmUsimHold.remainingFallbackCycles--;
+        *p_blocked = APP_TRUE;
+        APP_LOGI("FSM", "[[UsimHold]] RTC invalid phase=%s -> skip meter/tx retry, remaining fallback cycles=%lu",
+                 App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)g_appFsmUsimHold.phase),
+                 (unsigned long)g_appFsmUsimHold.remainingFallbackCycles);
+        return APP_STATUS_OK;
+    }
+
+    APP_LOGI("FSM", "[[UsimHold]] RTC invalid phase=%s -> hold expired, allow retry on this wake",
+             App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)g_appFsmUsimHold.phase));
+    App_FsmUsimHoldClear();
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_FsmServiceDebugConsole(void)
 {
     AppStatus_t status;
@@ -1579,8 +1777,9 @@ static AppStatus_t App_FsmHandleFatalLowPower(const char *p_reason, AppStatus_t 
 static AppStatus_t App_FsmHandleWakeupLowPower(const char *p_reason, AppStatus_t fatalStatus)
 {
     AppStatus_t powerOffStatus;
+    AppStatus_t holdStatus;
+    const AppNbiotCarrierContext_t *pCarrierContext;
     uint8_t stopNoWake = APP_FALSE;
-    const AppNbiotCarrierContext_t *pCarrierContext = App_NBIoTCarrierGetContext();
 
     APP_LOGW("FSM", "[[WakeupLP]] %s status=%d -> power off NB-IoT and request wakeup STOP",
              (p_reason != NULL) ? p_reason : "fatal",
@@ -1594,11 +1793,16 @@ static AppStatus_t App_FsmHandleWakeupLowPower(const char *p_reason, AppStatus_t
         (void)App_SystemSetNbiotPowered(APP_FALSE);
     }
 
-    if ((pCarrierContext != NULL) &&
-        (pCarrierContext->lastNetStatus.phase == APP_BC95_NET_PHASE_USIM_TERMINATED))
+    pCarrierContext = App_NBIoTCarrierGetContext();
+    if (pCarrierContext != NULL)
     {
-        stopNoWake = APP_TRUE;
-        APP_LOGW("FSM", "[[WakeupLP]] terminated USIM -> request STOP no-wake");
+        holdStatus = App_FsmUsimHoldActivate((uint8_t)pCarrierContext->lastNetStatus.phase);
+        if (holdStatus != APP_STATUS_OK)
+        {
+            APP_LOGW("FSM", "[[UsimHold]] activate failed phase=%s status=%d",
+                     App_Bc95AtGetNetPhaseString(pCarrierContext->lastNetStatus.phase),
+                     (int)holdStatus);
+        }
     }
 
     g_appFsmWakeCollectionPending = APP_FALSE;
@@ -1823,6 +2027,17 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_NBIOT_DECIDE_WAKE:
         {
             uint8_t txDue = APP_FALSE;
+            uint8_t holdBlocked = APP_FALSE;
+
+            APP_RETURN_IF_FALSE(App_FsmUsimHoldGateNbiotWake(&holdBlocked) == APP_STATUS_OK, APP_STATUS_FATAL);
+            if (holdBlocked == APP_TRUE)
+            {
+                g_appFsmWakeCollectionPending = APP_FALSE;
+                g_appFsmRtcTxWakePending = APP_FALSE;
+                App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+                App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+                break;
+            }
 
             if ((g_appFsmRtcTxWakePending != APP_TRUE) && (g_appFsmFirstAttachCycleDone == APP_TRUE))
             {
@@ -1892,6 +2107,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_NBIoTTransmitUdp();
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierPowerOffMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
+            App_FsmUsimHoldClear();
             g_appFsmFirstAttachCycleDone = APP_TRUE;
             g_appFsmRtcTxWakePending = APP_FALSE;
 
@@ -2121,6 +2337,7 @@ AppStatus_t App_FsmInit(void)
     g_appFsmRtcTxWakePending = APP_FALSE;
     (void)memset(&g_appFsmMeterSchedule, 0, sizeof(g_appFsmMeterSchedule));
     (void)memset(&g_appFsmTxSchedule, 0, sizeof(g_appFsmTxSchedule));
+    App_FsmUsimHoldClear();
 
     return App_FsmQueueStateBack(APP_FSM_STATE_BOOT, 0u, 0u);
 }
