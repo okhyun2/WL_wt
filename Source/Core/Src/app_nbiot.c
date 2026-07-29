@@ -4168,25 +4168,32 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
 
     if (g_appBc95AtInitialized == APP_TRUE)
     {
-        status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CGATT_DETACH,
-                                               APP_BC95_AT_RX_TIMEOUT_MS,
-                                               "AT+CGATT=0",
-                                               APP_NBIOT_REPORT_LOG_DETACH);
-        if (status == APP_STATUS_OK)
+        if (g_appNbiotCarrierContext.attachState == APP_NBIOT_ATTACH_STATE_READY)
         {
-            g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_WAIT_CEREG0;
-            detachWaitStatus = App_NbiotCarrierWaitForCereg0(APP_NBIOT_DETACH_WAIT_CEREG0_MS);
-            if (detachWaitStatus != APP_STATUS_OK)
+            status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CGATT_DETACH,
+                                                   APP_BC95_AT_RX_TIMEOUT_MS,
+                                                   "AT+CGATT=0",
+                                                   APP_NBIOT_REPORT_LOG_DETACH);
+            if (status == APP_STATUS_OK)
             {
-                APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_DETACH
-                         " incomplete -> force power off (status=%d)", (int)detachWaitStatus);
+                g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_WAIT_CEREG0;
+                detachWaitStatus = App_NbiotCarrierWaitForCereg0(APP_NBIOT_DETACH_WAIT_CEREG0_MS);
+                if (detachWaitStatus != APP_STATUS_OK)
+                {
+                    APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " incomplete -> force power off (status=%d)", (int)detachWaitStatus);
+                }
+            }
+            else
+            {
+                detachWaitStatus = status;
+                APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " command failed -> force power off (status=%d)", (int)status);
             }
         }
         else
         {
-            detachWaitStatus = status;
-            APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_DETACH
-                     " command failed -> force power off (status=%d)", (int)status);
+            detachWaitStatus = APP_STATUS_OK;
+            APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " skipped (attach not ready, state=%s)",
+                     App_NbiotCarrierAttachStateString(g_appNbiotCarrierContext.attachState));
         }
 
         cfunMinStatus = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CFUN_SET_MIN,
