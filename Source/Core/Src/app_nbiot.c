@@ -4374,6 +4374,7 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
     AppStatus_t detachWaitStatus = APP_STATUS_OK;
     AppStatus_t cfunMinStatus = APP_STATUS_OK;
 
+    g_appNbiotCarrierContext.lastPowerOffCfun0Status = APP_STATUS_OK;
     g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_DETACH_REQ;
     g_appNbiotCarrierContext.lastDetachTick = HAL_GetTick();
 
@@ -4439,6 +4440,7 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
 
     g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_DONE;
     g_appNbiotCarrierContext.lastPowerOffDoneTick = HAL_GetTick();
+    g_appNbiotCarrierContext.lastPowerOffCfun0Status = cfunMinStatus;
     g_appNbiotCarrierContext.lastStatus = APP_STATUS_OK;
     APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
              " done state=%s detachStatus=%d cfun0Status=%d",

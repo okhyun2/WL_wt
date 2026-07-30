@@ -22,7 +22,7 @@
 #include "app_clock.h"
 
 //debug
-#if 0
+#if 1
 #define APP_DEBUG_METER_PERIOD_MS      (1u * 60000u)   /* 1 min */
 #define APP_DEBUG_TX_PERIOD_MS         (2u * 60000u)   /* 2 min : service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (5u * 60000u)   /* 5 min : management TX */
@@ -83,6 +83,7 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
 static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags);
 static AppStatus_t App_FsmMeterProbeAndStore(void);
 static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord);
+static uint32_t App_FsmMeterApplyPostNbiotPowerOffGuard(const char *p_logTag);
 static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void);
 static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed);
 static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed);
@@ -166,6 +167,40 @@ static AppStatus_t App_FsmMeterReceiveBlocking(uint8_t *p_buffer,
     return APP_STATUS_OK;
 }
 
+static uint32_t App_FsmMeterApplyPostNbiotPowerOffGuard(const char *p_logTag)
+{
+    uint32_t elapsedSincePowerOffDoneMs = 0u;
+    uint32_t minGuardMs = APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS;
+    const AppNbiotCarrierContext_t *pCarrierContext = App_NBIoTCarrierGetContext();
+
+    if (pCarrierContext != NULL)
+    {
+        if (pCarrierContext->lastPowerOffCfun0Status != APP_STATUS_OK)
+        {
+            minGuardMs = APP_SELFTEST_UART_METER_POST_CFUN_FAIL_SETTLE_DELAY_MS;
+        }
+
+        if (pCarrierContext->lastPowerOffDoneTick != 0u)
+        {
+            elapsedSincePowerOffDoneMs = HAL_GetTick() - pCarrierContext->lastPowerOffDoneTick;
+            if (elapsedSincePowerOffDoneMs < minGuardMs)
+            {
+                uint32_t waitMs = minGuardMs - elapsedSincePowerOffDoneMs;
+                APP_LOGI("FSM", "%s apply post-NBIOT power-off guard wait=%lu ms (elapsed=%lu ms, min=%lu ms, cfun0Status=%ld)",
+                         (p_logTag != NULL) ? p_logTag : "[[MeterWake]]",
+                         (unsigned long)waitMs,
+                         (unsigned long)elapsedSincePowerOffDoneMs,
+                         (unsigned long)minGuardMs,
+                         (long)pCarrierContext->lastPowerOffCfun0Status);
+                HAL_Delay(waitMs);
+                elapsedSincePowerOffDoneMs = HAL_GetTick() - pCarrierContext->lastPowerOffDoneTick;
+            }
+        }
+    }
+
+    return elapsedSincePowerOffDoneMs;
+}
+
 static AppStatus_t App_FsmMeterProbeAndStore(void)
 {
 #if defined(SUPPORT_METER_NORMAL)
@@ -173,13 +208,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
     uint8_t storageEnabledPrev;
     AppStatus_t status;
-    uint32_t elapsedSincePowerOffDoneMs = 0u;
-    const AppNbiotCarrierContext_t *pCarrierContext = App_NBIoTCarrierGetContext();
-
-    if ((pCarrierContext != NULL) && (pCarrierContext->lastPowerOffDoneTick != 0u))
-    {
-        elapsedSincePowerOffDoneMs = HAL_GetTick() - pCarrierContext->lastPowerOffDoneTick;
-    }
+    uint32_t elapsedSincePowerOffDoneMs = App_FsmMeterApplyPostNbiotPowerOffGuard("[[MeterWake]]");
     APP_LOGI("FSM", "[[MeterWake]] scheduled meter probe start (since NBIOT power-off done=%lu ms)",
              (unsigned long)elapsedSincePowerOffDoneMs);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
@@ -224,8 +253,10 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
     uint8_t storageEnabledPrev;
     AppStatus_t status;
+    uint32_t elapsedSincePowerOffDoneMs = App_FsmMeterApplyPostNbiotPowerOffGuard("[[MeterWake]]");
 
-    APP_LOGI("FSM", "[[MeterWake]] scheduled SC1xxx meter probe start");
+    APP_LOGI("FSM", "[[MeterWake]] scheduled SC1xxx meter probe start (since NBIOT power-off done=%lu ms)",
+             (unsigned long)elapsedSincePowerOffDoneMs);
 
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
     HAL_Delay(125u);
@@ -276,15 +307,11 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
     static const uint8_t meterWakeFrame[] = { 0x10, 0x5B, 0x01, 0x5C, 0x16 };
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
     AppStatus_t status;
-    uint32_t elapsedSincePowerOffDoneMs = 0u;
-    const AppNbiotCarrierContext_t *pCarrierContext = App_NBIoTCarrierGetContext();
+    uint32_t elapsedSincePowerOffDoneMs;
 
     APP_RETURN_IF_FALSE(p_liveRecord != NULL, APP_STATUS_INVALID_PARAM);
 
-    if ((pCarrierContext != NULL) && (pCarrierContext->lastPowerOffDoneTick != 0u))
-    {
-        elapsedSincePowerOffDoneMs = HAL_GetTick() - pCarrierContext->lastPowerOffDoneTick;
-    }
+    elapsedSincePowerOffDoneMs = App_FsmMeterApplyPostNbiotPowerOffGuard("[[BootLiveTx]]");
     APP_LOGI("FSM", "[[BootLiveTx]] first meter probe start (no storage, since NBIOT power-off done=%lu ms)",
              (unsigned long)elapsedSincePowerOffDoneMs);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
@@ -325,9 +352,12 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
 #elif defined(SUPPORT_METER_SC1xxx)
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
     AppStatus_t status;
+    uint32_t elapsedSincePowerOffDoneMs;
 
     APP_RETURN_IF_FALSE(p_liveRecord != NULL, APP_STATUS_INVALID_PARAM);
-    APP_LOGI("FSM", "[[BootLiveTx]] first SC1xxx meter probe start (no storage)");
+    elapsedSincePowerOffDoneMs = App_FsmMeterApplyPostNbiotPowerOffGuard("[[BootLiveTx]]");
+    APP_LOGI("FSM", "[[BootLiveTx]] first SC1xxx meter probe start (no storage, since NBIOT power-off done=%lu ms)",
+             (unsigned long)elapsedSincePowerOffDoneMs);
 
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
     HAL_Delay(125u);

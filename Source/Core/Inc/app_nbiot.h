@@ -322,6 +322,7 @@ typedef struct
     AppNbiotCarrierPowerOffState_t powerOffState;
     AppNbiotCarrierResetType_t lastResetType;
     AppStatus_t lastStatus;
+    AppStatus_t lastPowerOffCfun0Status;
     uint32_t attachStartTick;
     uint32_t lastAttemptTick;
     uint32_t lastDetachTick;
