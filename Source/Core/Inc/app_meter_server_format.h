@@ -38,6 +38,7 @@ typedef struct
     _unBattery terminalBattery; /*                  + 배터리(1(bit)) */
     uint8_t meteringPeriodHours;
     uint8_t reportingPeriodHours;
+    uint8_t managementReportingPeriodHours; /* 0: disabled, otherwise same enum as reportingPeriodHours */
 } AppMeterServerFormatOptions_t;
 
 typedef struct
@@ -99,6 +100,10 @@ void App_MeterServerOptionsSetBattery  (AppMeterServerFormatOptions_t *p_options
 void App_MeterServerOptionsSetPeriod   (AppMeterServerFormatOptions_t *p_options,
                                         uint8_t meteringHours,
                                         uint8_t reportingHours);
+void App_MeterServerOptionsSetTxPeriods(AppMeterServerFormatOptions_t *p_options,
+                                        uint8_t meteringHours,
+                                        uint8_t reportingHours,
+                                        uint8_t managementReportingHours);
 
 /* 채워진 options를 EEPROM에 저장 (변경된 경우에만 실제 write) */
 AppStatus_t App_MeterServerOptionsUpdate(const AppMeterServerFormatOptions_t *p_options);

@@ -323,6 +323,7 @@ typedef struct
     uint32_t attachStartTick;
     uint32_t lastAttemptTick;
     uint32_t lastDetachTick;
+    uint32_t lastPowerOffDoneTick;
     uint8_t swResetCount;
     uint8_t hwResetCount;
     uint8_t attachAttemptCount;
@@ -338,6 +339,8 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void);
 const AppNbiotCarrierContext_t *App_NBIoTCarrierGetContext(void);
 AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo);
+AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage);
+AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage);
 AppStatus_t App_NBIoTTransmitUdp(void);
 
 AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime);

@@ -36,15 +36,24 @@ uint8_t App_MeterServerOptionsNormalizePeriod(uint8_t hours)
            : (uint8_t)APP_POLICY_DEFAULT_METERING_PERIOD_HOURS;
 }
 
+static uint8_t App_MeterServerOptionsIsTxPeriodSupportedOrDisabled(uint8_t hours)
+{
+    return ((hours == 0u) || (App_MeterServerOptionsIsPeriodSupported(hours) == APP_TRUE))
+           ? APP_TRUE
+           : APP_FALSE;
+}
+
 AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_options)
 {
     uint8_t originalMetering;
     uint8_t originalReporting;
+    uint8_t originalManagementReporting;
 
     APP_RETURN_IF_FALSE(p_options != NULL, APP_STATUS_INVALID_PARAM);
 
     originalMetering = p_options->meteringPeriodHours;
     originalReporting = p_options->reportingPeriodHours;
+    originalManagementReporting = p_options->managementReportingPeriodHours;
 
     p_options->meteringPeriodHours =
         (App_MeterServerOptionsIsPeriodSupported(originalMetering) == APP_TRUE)
@@ -56,14 +65,22 @@ AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_opti
         ? originalReporting
         : (uint8_t)APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS;
 
+    p_options->managementReportingPeriodHours =
+        (App_MeterServerOptionsIsTxPeriodSupportedOrDisabled(originalManagementReporting) == APP_TRUE)
+        ? originalManagementReporting
+        : (uint8_t)APP_POLICY_DEFAULT_MANAGEMENT_REPORTING_PERIOD_HOURS;
+
     if ((originalMetering != p_options->meteringPeriodHours) ||
-        (originalReporting != p_options->reportingPeriodHours))
+        (originalReporting != p_options->reportingPeriodHours) ||
+        (originalManagementReporting != p_options->managementReportingPeriodHours))
     {
-        APP_LOGW("OPT", "invalid period corrected meter=%u->%u report=%u->%u",
+        APP_LOGW("OPT", "invalid period corrected meter=%u->%u report=%u->%u mgmt=%u->%u",
                  (unsigned)originalMetering,
                  (unsigned)p_options->meteringPeriodHours,
                  (unsigned)originalReporting,
-                 (unsigned)p_options->reportingPeriodHours);
+                 (unsigned)p_options->reportingPeriodHours,
+                 (unsigned)originalManagementReporting,
+                 (unsigned)p_options->managementReportingPeriodHours);
     }
 
     return APP_STATUS_OK;
@@ -163,6 +180,7 @@ void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options)
 
     p_options->meteringPeriodHours = (uint8_t)APP_POLICY_DEFAULT_METERING_PERIOD_HOURS;
     p_options->reportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS;
+    p_options->managementReportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_MANAGEMENT_REPORTING_PERIOD_HOURS;
     (void)App_MeterServerOptionsValidate(p_options);
 }
 
@@ -546,6 +564,9 @@ void App_MeterServerOptionsDump(const AppMeterServerFormatOptions_t *p_options)
 
     APP_LOGI("OPT", "  meteringPeriod : %u hour(s)", (unsigned)p_options->meteringPeriodHours);
     APP_LOGI("OPT", "  reportingPeriod: %u hour(s)", (unsigned)p_options->reportingPeriodHours);
+    APP_LOGI("OPT", "  mgmtReportPeriod: %u hour(s) (%s)",
+             (unsigned)p_options->managementReportingPeriodHours,
+             (p_options->managementReportingPeriodHours == 0u) ? "disabled" : "enabled");
 
     APP_LOGI("OPT", "  slot(idx=%u, seq=%u)",
              (unsigned)g_appMeterServerOptionsRegion.latestSlotIndex,
@@ -635,6 +656,18 @@ void App_MeterServerOptionsSetPeriod(AppMeterServerFormatOptions_t *p_options,
     if (p_options == NULL) { return; }
     p_options->meteringPeriodHours  = meteringHours;
     p_options->reportingPeriodHours = reportingHours;
+    (void)App_MeterServerOptionsValidate(p_options);
+}
+
+void App_MeterServerOptionsSetTxPeriods(AppMeterServerFormatOptions_t *p_options,
+                                        uint8_t meteringHours,
+                                        uint8_t reportingHours,
+                                        uint8_t managementReportingHours)
+{
+    if (p_options == NULL) { return; }
+    p_options->meteringPeriodHours = meteringHours;
+    p_options->reportingPeriodHours = reportingHours;
+    p_options->managementReportingPeriodHours = managementReportingHours;
     (void)App_MeterServerOptionsValidate(p_options);
 }
 

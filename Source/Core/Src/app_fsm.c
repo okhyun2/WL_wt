@@ -23,8 +23,9 @@
 
 //debug
 #if 1
-#define APP_DEBUG_METER_PERIOD_MS   (1u * 60000u)   /* 3 min */
-#define APP_DEBUG_TX_PERIOD_MS      (2u * 60000u)  /* 10 min */
+#define APP_DEBUG_METER_PERIOD_MS      (1u * 60000u)   /* 1 min */
+#define APP_DEBUG_TX_PERIOD_MS         (2u * 60000u)   /* 2 min : service TX */
+#define APP_DEBUG_MGMT_TX_PERIOD_MS    (5u * 60000u)   /* 5 min : management TX */
 #endif
 
 typedef struct
@@ -69,7 +70,8 @@ typedef struct
 
 static AppFsmContext_t g_appFsmContext;
 static AppFsmMeterScheduleContext_t g_appFsmMeterSchedule;
-static AppFsmTxScheduleContext_t g_appFsmTxSchedule;
+static AppFsmTxScheduleContext_t g_appFsmTxSchedule;      /* service server */
+static AppFsmTxScheduleContext_t g_appFsmMgmtTxSchedule;  /* management server */
 static AppFsmUsimHoldContext_t g_appFsmUsimHold;
 extern NFC_LP_Handle_t g_nfcLpHandle;
 
@@ -81,7 +83,11 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
 static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags);
 static AppStatus_t App_FsmMeterProbeAndStore(void);
 static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void);
-static AppStatus_t App_FsmTxScheduleConsumeDueNow(void);
+static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed);
+static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed);
+static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due);
+static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due);
+static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void);
 static void App_FsmUsimHoldClear(void);
 static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase);
 static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked);
@@ -98,6 +104,8 @@ static uint8_t g_appFsmWakeCollectionPending = APP_FALSE;
 static uint8_t g_appFsmFirstAttachCycleDone = APP_FALSE;
 static uint8_t g_appFsmRtcMeterWakePending = APP_FALSE;
 static uint8_t g_appFsmRtcTxWakePending = APP_FALSE;
+static uint8_t g_appFsmRtcServiceTxWakePending = APP_FALSE;
+static uint8_t g_appFsmRtcMgmtTxWakePending = APP_FALSE;
 
 static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTES;
 static const uint8_t g_nfcAdminKey[NFC_AUTH_KEY_SIZE] = APP_NFC_ADMIN_KEY_BYTES;
@@ -164,8 +172,15 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
     uint8_t storageEnabledPrev;
     AppStatus_t status;
+    uint32_t elapsedSincePowerOffDoneMs = 0u;
+    const AppNbiotCarrierContext_t *pCarrierContext = App_NBIoTCarrierGetContext();
 
-    APP_LOGI("FSM", "[[MeterWake]] scheduled meter probe start");
+    if ((pCarrierContext != NULL) && (pCarrierContext->lastPowerOffDoneTick != 0u))
+    {
+        elapsedSincePowerOffDoneMs = HAL_GetTick() - pCarrierContext->lastPowerOffDoneTick;
+    }
+    APP_LOGI("FSM", "[[MeterWake]] scheduled meter probe start (since NBIOT power-off done=%lu ms)",
+             (unsigned long)elapsedSincePowerOffDoneMs);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
     HAL_Delay(50u);
 
@@ -1090,6 +1105,7 @@ static uint32_t App_FsmTxScheduleCalcJitterMs(uint32_t dueDateKey,
 static AppStatus_t App_FsmTxSchedulePlanBootstrap(const AppDateTime_t *p_now,
                                                    uint8_t periodHours,
                                                    uint32_t fixedOffsetMs,
+                                                   uint32_t debugPeriodMs,
                                                    uint32_t *p_dueDateKey,
                                                    uint32_t *p_dueMsOfDay,
                                                    uint32_t *p_jitterMs)
@@ -1103,11 +1119,14 @@ static AppStatus_t App_FsmTxSchedulePlanBootstrap(const AppDateTime_t *p_now,
     APP_RETURN_IF_FALSE((p_now != NULL) && (p_dueDateKey != NULL) && (p_dueMsOfDay != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE(App_MeterServerOptionsIsPeriodSupported(periodHours) == APP_TRUE, APP_STATUS_INVALID_PARAM);
 
-#ifdef APP_DEBUG_TX_PERIOD_MS
-    periodMs = APP_DEBUG_TX_PERIOD_MS;
-#else
-    periodMs = (uint32_t)periodHours * 3600000u;
-#endif // APP_DEBUG_TX_PERIOD_MS
+    if (debugPeriodMs != 0u)
+    {
+        periodMs = debugPeriodMs;
+    }
+    else
+    {
+        periodMs = (uint32_t)periodHours * 3600000u;
+    }
     status = App_FsmScheduleAddMs(App_FsmMeterScheduleDateKey(p_now),
                                   App_FsmMeterScheduleMsOfDay(p_now),
                                   periodMs,
@@ -1133,6 +1152,7 @@ static AppStatus_t App_FsmTxSchedulePlanBootstrap(const AppDateTime_t *p_now,
 static AppStatus_t App_FsmTxScheduleAdvanceFromDue(uint32_t baseDateKey,
                                                    uint32_t baseMsOfDay,
                                                    uint8_t periodHours,
+                                                   uint32_t debugPeriodMs,
                                                    uint32_t *p_dueDateKey,
                                                    uint32_t *p_dueMsOfDay,
                                                    uint32_t *p_jitterMs)
@@ -1143,11 +1163,15 @@ static AppStatus_t App_FsmTxScheduleAdvanceFromDue(uint32_t baseDateKey,
     APP_RETURN_IF_FALSE((p_dueDateKey != NULL) && (p_dueMsOfDay != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE(App_MeterServerOptionsIsPeriodSupported(periodHours) == APP_TRUE, APP_STATUS_INVALID_PARAM);
 
-#ifdef APP_DEBUG_TX_PERIOD_MS
-    periodMs = APP_DEBUG_TX_PERIOD_MS;
-#else
-    periodMs = (uint32_t)periodHours * 3600000u;
-#endif // APP_DEBUG_TX_PERIOD_MS
+    if (debugPeriodMs != 0u)
+    {
+        periodMs = debugPeriodMs;
+    }
+    else
+    {
+        periodMs = (uint32_t)periodHours * 3600000u;
+    }
+
     status = App_FsmScheduleAddMs(baseDateKey,
                                   baseMsOfDay,
                                   periodMs,
@@ -1360,78 +1384,258 @@ static AppStatus_t App_FsmTxScheduleLoadPeriod(uint8_t *p_periodHours)
     return APP_STATUS_OK;
 }
 
+static AppStatus_t App_FsmMgmtTxScheduleLoadPeriod(uint8_t *p_periodHours)
+{
+    AppMeterServerFormatOptions_t options;
+    AppStatus_t status;
 
+    APP_RETURN_IF_FALSE(p_periodHours != NULL, APP_STATUS_INVALID_PARAM);
 
-static AppStatus_t App_FsmTxScheduleEnsureInitialized(void)
+    status = App_MeterServerOptionsLoad(&options);
+    if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
+    {
+        return status;
+    }
+
+    if (options.managementReportingPeriodHours == 0u)
+    {
+        *p_periodHours = 0u;
+        return APP_STATUS_OK;
+    }
+
+    *p_periodHours = App_MeterServerOptionsNormalizePeriod(options.managementReportingPeriodHours);
+    return APP_STATUS_OK;
+}
+
+static uint8_t App_FsmScheduleIsEarlierOrEqual(uint32_t lhsDateKey,
+                                               uint32_t lhsMsOfDay,
+                                               uint32_t rhsDateKey,
+                                               uint32_t rhsMsOfDay)
+{
+    if (lhsDateKey < rhsDateKey)
+    {
+        return APP_TRUE;
+    }
+    if (lhsDateKey > rhsDateKey)
+    {
+        return APP_FALSE;
+    }
+    return (lhsMsOfDay <= rhsMsOfDay) ? APP_TRUE : APP_FALSE;
+}
+
+static uint8_t App_FsmScheduleIsDueOrPast(uint32_t dueDateKey,
+                                          uint32_t dueMsOfDay,
+                                          uint32_t nowDateKey,
+                                          uint32_t nowMsOfDay)
+{
+    if (dueDateKey < nowDateKey)
+    {
+        return APP_TRUE;
+    }
+    if (dueDateKey > nowDateKey)
+    {
+        return APP_FALSE;
+    }
+    return (dueMsOfDay <= nowMsOfDay) ? APP_TRUE : APP_FALSE;
+}
+
+static void App_FsmTxScheduleDisableContext(AppFsmTxScheduleContext_t *p_schedule)
+{
+    if (p_schedule == NULL)
+    {
+        return;
+    }
+
+    p_schedule->initialized = APP_FALSE;
+    p_schedule->enabled = APP_FALSE;
+    p_schedule->rtcReadyLogged = APP_FALSE;
+    p_schedule->nextDueDateKey = 0u;
+    p_schedule->nextDueMsOfDay = 0u;
+    p_schedule->lastDispatchedDateKey = 0u;
+    p_schedule->lastDispatchedMsOfDay = 0u;
+    p_schedule->currentJitterMs = 0u;
+}
+
+static AppStatus_t App_FsmTxScheduleEnsureInitializedCommon(AppFsmTxScheduleContext_t *p_schedule,
+                                                            uint8_t periodHours,
+                                                            uint32_t hashSalt,
+                                                            const char *p_tag,
+                                                            const char *p_disableReason,
+                                                            uint32_t debugPeriodMs)
 {
     AppDateTime_t now;
     AppStatus_t status;
-    uint8_t periodHours;
+
+    APP_RETURN_IF_FALSE((p_schedule != NULL) && (p_tag != NULL), APP_STATUS_INVALID_PARAM);
 
     if (IsUpdatedRTC() != APP_TRUE)
     {
-        if (g_appFsmTxSchedule.rtcReadyLogged != APP_FALSE)
+        if (p_schedule->rtcReadyLogged != APP_FALSE)
         {
-            APP_LOGW("FSM", "[[TxSchedule]] RTC invalid -> tx schedule disabled");
+            APP_LOGW("FSM", "%s RTC invalid -> %s", p_tag, (p_disableReason != NULL) ? p_disableReason : "tx schedule disabled");
         }
-        g_appFsmTxSchedule.initialized = APP_FALSE;
-        g_appFsmTxSchedule.enabled = APP_FALSE;
-        g_appFsmTxSchedule.rtcReadyLogged = APP_FALSE;
+        App_FsmTxScheduleDisableContext(p_schedule);
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    if (periodHours == 0u)
+    {
+        if (p_schedule->enabled == APP_TRUE)
+        {
+            APP_LOGI("FSM", "%s disabled (period=0)", p_tag);
+        }
+        App_FsmTxScheduleDisableContext(p_schedule);
         return APP_STATUS_NOT_INITIALIZED;
     }
 
     status = RTC_GetTime(&now);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    status = App_FsmTxScheduleLoadPeriod(&periodHours);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     APP_RETURN_IF_FALSE(App_MeterServerOptionsIsPeriodSupported(periodHours) == APP_TRUE, APP_STATUS_INVALID_PARAM);
 
-    if (g_appFsmTxSchedule.offsetApplied != APP_TRUE)
+    if (p_schedule->offsetApplied != APP_TRUE)
     {
-        g_appFsmTxSchedule.fixedOffsetMs =
-            (App_ClockGetDeviceUidHash() % (APP_NBIOT_XMIT_OFFSET_MAX_SEC + 1u)) * 1000u;
-        g_appFsmTxSchedule.offsetApplied = APP_TRUE;
+        p_schedule->fixedOffsetMs =
+            ((App_ClockGetDeviceUidHash() ^ hashSalt) % (APP_NBIOT_XMIT_OFFSET_MAX_SEC + 1u)) * 1000u;
+        p_schedule->offsetApplied = APP_TRUE;
     }
 
-    if ((g_appFsmTxSchedule.initialized == APP_TRUE) &&
-        (g_appFsmTxSchedule.enabled == APP_TRUE) &&
-        (g_appFsmTxSchedule.periodHours == periodHours) &&
-        (g_appFsmTxSchedule.rtcReadyLogged == APP_TRUE))
+    if ((p_schedule->initialized == APP_TRUE) &&
+        (p_schedule->enabled == APP_TRUE) &&
+        (p_schedule->periodHours == periodHours) &&
+        (p_schedule->rtcReadyLogged == APP_TRUE))
     {
         return APP_STATUS_OK;
     }
 
-    g_appFsmTxSchedule.periodHours = periodHours;
+    p_schedule->periodHours = periodHours;
     status = App_FsmTxSchedulePlanBootstrap(&now,
-                                            g_appFsmTxSchedule.periodHours,
-                                            g_appFsmTxSchedule.fixedOffsetMs,
-                                            &g_appFsmTxSchedule.nextDueDateKey,
-                                            &g_appFsmTxSchedule.nextDueMsOfDay,
-                                            &g_appFsmTxSchedule.currentJitterMs);
+                                            p_schedule->periodHours,
+                                            p_schedule->fixedOffsetMs,
+                                            debugPeriodMs,
+                                            &p_schedule->nextDueDateKey,
+                                            &p_schedule->nextDueMsOfDay,
+                                            &p_schedule->currentJitterMs);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    g_appFsmTxSchedule.initialized = APP_TRUE;
-    g_appFsmTxSchedule.enabled = APP_TRUE;
-    g_appFsmTxSchedule.rtcReadyLogged = APP_TRUE;
+    p_schedule->initialized = APP_TRUE;
+    p_schedule->enabled = APP_TRUE;
+    p_schedule->rtcReadyLogged = APP_TRUE;
 
-    APP_LOGI("FSM", "[[TxSchedule]] enabled period=%uh mode=boot-relative next=%lu %02lu:%02lu:%02lu offset=%lu jitter=%lu",
-             (unsigned)g_appFsmTxSchedule.periodHours,
-             (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
-             (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
-             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
-             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
-             (unsigned long)g_appFsmTxSchedule.fixedOffsetMs,
-             (unsigned long)g_appFsmTxSchedule.currentJitterMs);
+    APP_LOGI("FSM", "%s enabled period=%uh mode=boot-relative next=%lu %02lu:%02lu:%02lu offset=%lu jitter=%lu",
+             p_tag,
+             (unsigned)p_schedule->periodHours,
+             (unsigned long)p_schedule->nextDueDateKey,
+             (unsigned long)(p_schedule->nextDueMsOfDay / 3600000u),
+             (unsigned long)((p_schedule->nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((p_schedule->nextDueMsOfDay % 60000u) / 1000u),
+             (unsigned long)p_schedule->fixedOffsetMs,
+             (unsigned long)p_schedule->currentJitterMs);
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
+static AppStatus_t App_FsmTxScheduleEnsureInitialized(void)
+{
+    AppStatus_t status;
+    uint8_t periodHours;
+
+    status = App_FsmTxScheduleLoadPeriod(&periodHours);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    return App_FsmTxScheduleEnsureInitializedCommon(&g_appFsmTxSchedule,
+                                                    periodHours,
+                                                    0x53525643u,
+                                                    "[[ServiceTxSchedule]]",
+                                                    "service tx schedule disabled",
+#ifdef APP_DEBUG_TX_PERIOD_MS
+                                                    APP_DEBUG_TX_PERIOD_MS
+#else
+                                                    0u
+#endif
+                                                    );
+}
+
+static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void)
+{
+    AppStatus_t status;
+    uint8_t periodHours;
+
+    status = App_FsmMgmtTxScheduleLoadPeriod(&periodHours);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    return App_FsmTxScheduleEnsureInitializedCommon(&g_appFsmMgmtTxSchedule,
+                                                    periodHours,
+                                                    0x4D474D54u,
+                                                    "[[MgmtTxSchedule]]",
+                                                    "management tx schedule disabled",
+#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
+                                                    APP_DEBUG_MGMT_TX_PERIOD_MS
+#else
+                                                    0u
+#endif
+                                                    );
+}
+
+static AppStatus_t App_FsmTxScheduleCheckDueCommon(AppFsmTxScheduleContext_t *p_schedule,
+                                                   uint8_t *p_due,
+                                                   const char *p_tag,
+                                                   uint32_t debugPeriodMs)
 {
     AppDateTime_t now;
     AppStatus_t status;
     uint32_t nowDateKey;
     uint32_t nowMsOfDay;
+
+    APP_RETURN_IF_FALSE((p_schedule != NULL) && (p_due != NULL), APP_STATUS_INVALID_PARAM);
+    *p_due = APP_FALSE;
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    nowDateKey = App_FsmMeterScheduleDateKey(&now);
+    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+    if ((nowDateKey < p_schedule->nextDueDateKey) ||
+        ((nowDateKey == p_schedule->nextDueDateKey) &&
+         (nowMsOfDay < p_schedule->nextDueMsOfDay)))
+    {
+        return APP_STATUS_OK;
+    }
+
+    if ((p_schedule->lastDispatchedDateKey == p_schedule->nextDueDateKey) &&
+        (p_schedule->lastDispatchedMsOfDay == p_schedule->nextDueMsOfDay))
+    {
+        return APP_STATUS_OK;
+    }
+
+    *p_due = APP_TRUE;
+    p_schedule->lastDispatchedDateKey = p_schedule->nextDueDateKey;
+    p_schedule->lastDispatchedMsOfDay = p_schedule->nextDueMsOfDay;
+
+    status = App_FsmTxScheduleAdvanceFromDue(p_schedule->lastDispatchedDateKey,
+                                             p_schedule->lastDispatchedMsOfDay,
+                                             p_schedule->periodHours,
+                                             debugPeriodMs,
+                                             &p_schedule->nextDueDateKey,
+                                             &p_schedule->nextDueMsOfDay,
+                                             &p_schedule->currentJitterMs);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    APP_LOGI("FSM", "%s due %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=boot-relative",
+             p_tag,
+             (unsigned long)p_schedule->lastDispatchedDateKey,
+             (unsigned long)(p_schedule->lastDispatchedMsOfDay / 3600000u),
+             (unsigned long)((p_schedule->lastDispatchedMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((p_schedule->lastDispatchedMsOfDay % 60000u) / 1000u),
+             (unsigned long)p_schedule->nextDueDateKey,
+             (unsigned long)(p_schedule->nextDueMsOfDay / 3600000u),
+             (unsigned long)((p_schedule->nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((p_schedule->nextDueMsOfDay % 60000u) / 1000u),
+             (unsigned)p_schedule->periodHours);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
+{
+    AppStatus_t status;
 
     APP_RETURN_IF_FALSE(p_due != NULL, APP_STATUS_INVALID_PARAM);
     *p_due = APP_FALSE;
@@ -1443,56 +1647,107 @@ static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
     }
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
+    return App_FsmTxScheduleCheckDueCommon(&g_appFsmTxSchedule,
+                                         p_due,
+                                         "[[ServiceTxSchedule]]",
+#ifdef APP_DEBUG_TX_PERIOD_MS
+                                         APP_DEBUG_TX_PERIOD_MS
+#else
+                                         0u
+#endif
+                                         );
+}
+
+static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due)
+{
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_due != NULL, APP_STATUS_INVALID_PARAM);
+    *p_due = APP_FALSE;
+
+    status = App_FsmMgmtTxScheduleEnsureInitialized();
+    if (status == APP_STATUS_NOT_INITIALIZED)
+    {
+        return APP_STATUS_OK;
+    }
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    return App_FsmTxScheduleCheckDueCommon(&g_appFsmMgmtTxSchedule,
+                                         p_due,
+                                         "[[MgmtTxSchedule]]",
+#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
+                                         APP_DEBUG_MGMT_TX_PERIOD_MS
+#else
+                                         0u
+#endif
+                                         );
+}
+
+static AppStatus_t App_FsmTxScheduleConsumeDueNowCommon(AppFsmTxScheduleContext_t *p_schedule,
+                                                        uint8_t *p_consumed,
+                                                        const char *p_tag,
+                                                        uint32_t debugPeriodMs)
+{
+    AppDateTime_t now;
+    AppStatus_t status;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
+
+    APP_RETURN_IF_FALSE((p_schedule != NULL) && (p_consumed != NULL), APP_STATUS_INVALID_PARAM);
+    *p_consumed = APP_FALSE;
+
     status = RTC_GetTime(&now);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     nowDateKey = App_FsmMeterScheduleDateKey(&now);
     nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
 
-    if ((nowDateKey < g_appFsmTxSchedule.nextDueDateKey) ||
-        ((nowDateKey == g_appFsmTxSchedule.nextDueDateKey) &&
-         (nowMsOfDay < g_appFsmTxSchedule.nextDueMsOfDay)))
+    if ((nowDateKey < p_schedule->nextDueDateKey) ||
+        ((nowDateKey == p_schedule->nextDueDateKey) &&
+         (nowMsOfDay < p_schedule->nextDueMsOfDay)))
+    {
+        return APP_STATUS_MSGQ_EMPTY;
+    }
+
+    if ((p_schedule->lastDispatchedDateKey == p_schedule->nextDueDateKey) &&
+        (p_schedule->lastDispatchedMsOfDay == p_schedule->nextDueMsOfDay))
     {
         return APP_STATUS_OK;
     }
 
-    if ((g_appFsmTxSchedule.lastDispatchedDateKey == g_appFsmTxSchedule.nextDueDateKey) &&
-        (g_appFsmTxSchedule.lastDispatchedMsOfDay == g_appFsmTxSchedule.nextDueMsOfDay))
-    {
-        return APP_STATUS_OK;
-    }
+    *p_consumed = APP_TRUE;
+    p_schedule->lastDispatchedDateKey = p_schedule->nextDueDateKey;
+    p_schedule->lastDispatchedMsOfDay = p_schedule->nextDueMsOfDay;
 
-    *p_due = APP_TRUE;
-    g_appFsmTxSchedule.lastDispatchedDateKey = g_appFsmTxSchedule.nextDueDateKey;
-    g_appFsmTxSchedule.lastDispatchedMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
-
-    status = App_FsmTxScheduleAdvanceFromDue(g_appFsmTxSchedule.lastDispatchedDateKey,
-                                              g_appFsmTxSchedule.lastDispatchedMsOfDay,
-                                              g_appFsmTxSchedule.periodHours,
-                                              &g_appFsmTxSchedule.nextDueDateKey,
-                                              &g_appFsmTxSchedule.nextDueMsOfDay,
-                                              &g_appFsmTxSchedule.currentJitterMs);
+    status = App_FsmTxScheduleAdvanceFromDue(p_schedule->lastDispatchedDateKey,
+                                             p_schedule->lastDispatchedMsOfDay,
+                                             p_schedule->periodHours,
+                                             debugPeriodMs,
+                                             &p_schedule->nextDueDateKey,
+                                             &p_schedule->nextDueMsOfDay,
+                                             &p_schedule->currentJitterMs);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    APP_LOGI("FSM", "[[TxSchedule]] due %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=boot-relative",
-             (unsigned long)g_appFsmTxSchedule.lastDispatchedDateKey,
-             (unsigned long)(g_appFsmTxSchedule.lastDispatchedMsOfDay / 3600000u),
-             (unsigned long)((g_appFsmTxSchedule.lastDispatchedMsOfDay % 3600000u) / 60000u),
-             (unsigned long)((g_appFsmTxSchedule.lastDispatchedMsOfDay % 60000u) / 1000u),
-             (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
-             (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
-             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
-             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
-             (unsigned)g_appFsmTxSchedule.periodHours);
+    APP_LOGI("FSM", "%s alarm consume %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=boot-relative",
+             p_tag,
+             (unsigned long)p_schedule->lastDispatchedDateKey,
+             (unsigned long)(p_schedule->lastDispatchedMsOfDay / 3600000u),
+             (unsigned long)((p_schedule->lastDispatchedMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((p_schedule->lastDispatchedMsOfDay % 60000u) / 1000u),
+             (unsigned long)p_schedule->nextDueDateKey,
+             (unsigned long)(p_schedule->nextDueMsOfDay / 3600000u),
+             (unsigned long)((p_schedule->nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((p_schedule->nextDueMsOfDay % 60000u) / 1000u),
+             (unsigned)p_schedule->periodHours);
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_FsmTxScheduleConsumeDueNow(void)
+static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed)
 {
-    AppDateTime_t now;
     AppStatus_t status;
-    uint32_t nowDateKey;
-    uint32_t nowMsOfDay;
+
+    APP_RETURN_IF_FALSE(p_consumed != NULL, APP_STATUS_INVALID_PARAM);
+    *p_consumed = APP_FALSE;
 
     status = App_FsmTxScheduleEnsureInitialized();
     if (status != APP_STATUS_OK)
@@ -1500,50 +1755,44 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNow(void)
         return status;
     }
 
-    status = RTC_GetTime(&now);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    nowDateKey = App_FsmMeterScheduleDateKey(&now);
-    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
-
-    if ((nowDateKey < g_appFsmTxSchedule.nextDueDateKey) ||
-        ((nowDateKey == g_appFsmTxSchedule.nextDueDateKey) &&
-         (nowMsOfDay < g_appFsmTxSchedule.nextDueMsOfDay)))
-    {
-        return APP_STATUS_MSGQ_EMPTY;
-    }
-
-    if ((g_appFsmTxSchedule.lastDispatchedDateKey == g_appFsmTxSchedule.nextDueDateKey) &&
-        (g_appFsmTxSchedule.lastDispatchedMsOfDay == g_appFsmTxSchedule.nextDueMsOfDay))
-    {
-        return APP_STATUS_OK;
-    }
-
-    g_appFsmTxSchedule.lastDispatchedDateKey = g_appFsmTxSchedule.nextDueDateKey;
-    g_appFsmTxSchedule.lastDispatchedMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
-
-    status = App_FsmTxScheduleAdvanceFromDue(g_appFsmTxSchedule.lastDispatchedDateKey,
-                                              g_appFsmTxSchedule.lastDispatchedMsOfDay,
-                                              g_appFsmTxSchedule.periodHours,
-                                              &g_appFsmTxSchedule.nextDueDateKey,
-                                              &g_appFsmTxSchedule.nextDueMsOfDay,
-                                              &g_appFsmTxSchedule.currentJitterMs);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    APP_LOGI("FSM", "[[TxSchedule]] alarm consume %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=boot-relative",
-             (unsigned long)g_appFsmTxSchedule.lastDispatchedDateKey,
-             (unsigned long)(g_appFsmTxSchedule.lastDispatchedMsOfDay / 3600000u),
-             (unsigned long)((g_appFsmTxSchedule.lastDispatchedMsOfDay % 3600000u) / 60000u),
-             (unsigned long)((g_appFsmTxSchedule.lastDispatchedMsOfDay % 60000u) / 1000u),
-             (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
-             (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
-             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
-             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
-             (unsigned)g_appFsmTxSchedule.periodHours);
-    return APP_STATUS_OK;
+    return App_FsmTxScheduleConsumeDueNowCommon(&g_appFsmTxSchedule,
+                                              p_consumed,
+                                              "[[ServiceTxSchedule]]",
+#ifdef APP_DEBUG_TX_PERIOD_MS
+                                              APP_DEBUG_TX_PERIOD_MS
+#else
+                                              0u
+#endif
+                                              );
 }
 
-static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours)
+static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed)
+{
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_consumed != NULL, APP_STATUS_INVALID_PARAM);
+    *p_consumed = APP_FALSE;
+
+    status = App_FsmMgmtTxScheduleEnsureInitialized();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    return App_FsmTxScheduleConsumeDueNowCommon(&g_appFsmMgmtTxSchedule,
+                                              p_consumed,
+                                              "[[MgmtTxSchedule]]",
+#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
+                                              APP_DEBUG_MGMT_TX_PERIOD_MS
+#else
+                                              0u
+#endif
+                                              );
+}
+
+static AppStatus_t App_FsmTxScheduleDelayHoursFromNowCommon(AppFsmTxScheduleContext_t *p_schedule,
+                                                            uint32_t delayHours,
+                                                            const char *p_tag)
 {
     AppDateTime_t now;
     AppStatus_t status;
@@ -1551,14 +1800,7 @@ static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours)
     uint32_t nowMsOfDay;
     uint32_t delayMs;
 
-    APP_RETURN_IF_FALSE(delayHours > 0u, APP_STATUS_INVALID_PARAM);
-
-    status = App_FsmTxScheduleEnsureInitialized();
-    if (status == APP_STATUS_NOT_INITIALIZED)
-    {
-        return APP_STATUS_OK;
-    }
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    APP_RETURN_IF_FALSE((p_schedule != NULL) && (delayHours > 0u), APP_STATUS_INVALID_PARAM);
 
     status = RTC_GetTime(&now);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
@@ -1570,20 +1812,57 @@ static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours)
     status = App_FsmScheduleAddMs(nowDateKey,
                                   nowMsOfDay,
                                   delayMs,
-                                  &g_appFsmTxSchedule.nextDueDateKey,
-                                  &g_appFsmTxSchedule.nextDueMsOfDay);
+                                  &p_schedule->nextDueDateKey,
+                                  &p_schedule->nextDueMsOfDay);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    g_appFsmTxSchedule.currentJitterMs = 0u;
+    p_schedule->currentJitterMs = 0u;
+    p_schedule->lastDispatchedDateKey = 0u;
+    p_schedule->lastDispatchedMsOfDay = 0u;
 
-    APP_LOGW("FSM", "[[TxSchedule]] suspend hold applied -> next tx delayed %luh to %lu %02lu:%02lu:%02lu",
+    APP_LOGW("FSM", "%s hold applied -> next tx delayed %luh to %lu %02lu:%02lu:%02lu",
+             p_tag,
              (unsigned long)delayHours,
-             (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
-             (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
-             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
-             (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u));
+             (unsigned long)p_schedule->nextDueDateKey,
+             (unsigned long)(p_schedule->nextDueMsOfDay / 3600000u),
+             (unsigned long)((p_schedule->nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((p_schedule->nextDueMsOfDay % 60000u) / 1000u));
 
     return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours)
+{
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(delayHours > 0u, APP_STATUS_INVALID_PARAM);
+    status = App_FsmTxScheduleEnsureInitialized();
+    if (status == APP_STATUS_NOT_INITIALIZED)
+    {
+        return APP_STATUS_OK;
+    }
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    return App_FsmTxScheduleDelayHoursFromNowCommon(&g_appFsmTxSchedule,
+                                                    delayHours,
+                                                    "[[ServiceTxSchedule]]");
+}
+
+static AppStatus_t App_FsmMgmtTxScheduleDelayHoursFromNow(uint32_t delayHours)
+{
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(delayHours > 0u, APP_STATUS_INVALID_PARAM);
+    status = App_FsmMgmtTxScheduleEnsureInitialized();
+    if (status == APP_STATUS_NOT_INITIALIZED)
+    {
+        return APP_STATUS_OK;
+    }
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    return App_FsmTxScheduleDelayHoursFromNowCommon(&g_appFsmMgmtTxSchedule,
+                                                    delayHours,
+                                                    "[[MgmtTxSchedule]]");
 }
 
 static void App_FsmUsimHoldClear(void)
@@ -1597,6 +1876,7 @@ static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase)
     uint32_t holdHours;
     uint32_t holdSeconds;
     uint32_t wakeupChunk;
+    uint8_t hasHoldDeadline = APP_FALSE;
 
     if (phase == (uint8_t)APP_BC95_NET_PHASE_USIM_SUSPEND)
     {
@@ -1621,11 +1901,37 @@ static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase)
         status = App_FsmTxScheduleDelayHoursFromNow(holdHours);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-        g_appFsmUsimHold.rtcValidMode = APP_TRUE;
-        g_appFsmUsimHold.holdUntilDateKey = g_appFsmTxSchedule.nextDueDateKey;
-        g_appFsmUsimHold.holdUntilMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
+        status = App_FsmMgmtTxScheduleDelayHoursFromNow(holdHours);
+        APP_RETURN_IF_FALSE((status == APP_STATUS_OK) || (status == APP_STATUS_NOT_INITIALIZED), status);
 
-        APP_LOGW("FSM", "[[UsimHold]] phase=%s RTC valid -> keep AlarmA, hold AlarmB %luh until %lu %02lu:%02lu:%02lu",
+        g_appFsmUsimHold.rtcValidMode = APP_TRUE;
+
+        if (g_appFsmTxSchedule.enabled == APP_TRUE)
+        {
+            g_appFsmUsimHold.holdUntilDateKey = g_appFsmTxSchedule.nextDueDateKey;
+            g_appFsmUsimHold.holdUntilMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
+            hasHoldDeadline = APP_TRUE;
+        }
+
+        if ((g_appFsmMgmtTxSchedule.enabled == APP_TRUE) &&
+            ((hasHoldDeadline != APP_TRUE) ||
+             (App_FsmScheduleIsEarlierOrEqual(g_appFsmMgmtTxSchedule.nextDueDateKey,
+                                              g_appFsmMgmtTxSchedule.nextDueMsOfDay,
+                                              g_appFsmUsimHold.holdUntilDateKey,
+                                              g_appFsmUsimHold.holdUntilMsOfDay) == APP_TRUE)))
+        {
+            g_appFsmUsimHold.holdUntilDateKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
+            g_appFsmUsimHold.holdUntilMsOfDay = g_appFsmMgmtTxSchedule.nextDueMsOfDay;
+            hasHoldDeadline = APP_TRUE;
+        }
+
+        if (hasHoldDeadline != APP_TRUE)
+        {
+            App_FsmUsimHoldClear();
+            return APP_STATUS_OK;
+        }
+
+        APP_LOGW("FSM", "[[UsimHold]] phase=%s RTC valid -> keep AlarmA, hold AlarmB(service/mgmt) %luh until %lu %02lu:%02lu:%02lu",
                  App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)phase),
                  (unsigned long)holdHours,
                  (unsigned long)g_appFsmUsimHold.holdUntilDateKey,
@@ -1645,7 +1951,7 @@ static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase)
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     g_appFsmUsimHold.remainingWakeupSeconds -= wakeupChunk;
 
-    APP_LOGW("FSM", "[[UsimHold]] phase=%s RTC invalid -> block meter/tx %luh, first retry wake in %lus remaining=%lus",
+    APP_LOGW("FSM", "[[UsimHold]] phase=%s RTC invalid -> block meter/service/mgmt tx %luh, first retry wake in %lus remaining=%lus",
              App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)phase),
              (unsigned long)holdHours,
              (unsigned long)wakeupChunk,
@@ -2023,7 +2329,8 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_NBIOT_DECIDE_WAKE:
         {
-            uint8_t txDue = APP_FALSE;
+            uint8_t serviceDue = APP_FALSE;
+            uint8_t mgmtDue = APP_FALSE;
             uint8_t holdBlocked = APP_FALSE;
 
             APP_RETURN_IF_FALSE(App_FsmUsimHoldGateNbiotWake(&holdBlocked) == APP_STATUS_OK, APP_STATUS_FATAL);
@@ -2031,6 +2338,8 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             {
                 g_appFsmWakeCollectionPending = APP_FALSE;
                 g_appFsmRtcTxWakePending = APP_FALSE;
+                g_appFsmRtcServiceTxWakePending = APP_FALSE;
+                g_appFsmRtcMgmtTxWakePending = APP_FALSE;
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
                 App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
                 break;
@@ -2038,15 +2347,20 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
             if ((g_appFsmRtcTxWakePending != APP_TRUE) && (g_appFsmFirstAttachCycleDone == APP_TRUE))
             {
-                APP_RETURN_IF_FALSE(App_FsmTxScheduleCheckDue(&txDue) == APP_STATUS_OK, APP_STATUS_FATAL);
-                if (txDue != APP_TRUE)
+                APP_RETURN_IF_FALSE(App_FsmTxScheduleCheckDue(&serviceDue) == APP_STATUS_OK, APP_STATUS_FATAL);
+                APP_RETURN_IF_FALSE(App_FsmMgmtTxScheduleCheckDue(&mgmtDue) == APP_STATUS_OK, APP_STATUS_FATAL);
+                if ((serviceDue != APP_TRUE) && (mgmtDue != APP_TRUE))
                 {
                     g_appFsmWakeCollectionPending = APP_FALSE;
                     App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
                     App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
-                    APP_LOGI("FSM", "[[TxSchedule]] skip attach/send before due");
+                    APP_LOGI("FSM", "[[TxSchedule]] skip attach/send before service/mgmt due");
                     break;
                 }
+
+                g_appFsmRtcServiceTxWakePending = serviceDue;
+                g_appFsmRtcMgmtTxWakePending = mgmtDue;
+                g_appFsmRtcTxWakePending = ((serviceDue == APP_TRUE) || (mgmtDue == APP_TRUE)) ? APP_TRUE : APP_FALSE;
             }
 
             APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_POWER_ON, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
@@ -2065,7 +2379,12 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
         {
             uint8_t isFirstBootRoutine = (g_appFsmFirstAttachCycleDone != APP_TRUE) ? APP_TRUE : APP_FALSE;
+            uint8_t mgmtTxConfiguredPeriod = 0u;
+            uint8_t deleteOnServiceTx = APP_TRUE;
             AppStatus_t attachStatus;
+
+            APP_RETURN_IF_FALSE(App_FsmMgmtTxScheduleLoadPeriod(&mgmtTxConfiguredPeriod) == APP_STATUS_OK, APP_STATUS_FATAL);
+            deleteOnServiceTx = (mgmtTxConfiguredPeriod == 0u) ? APP_TRUE : APP_FALSE;
 
 #if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
             if ((isFirstBootRoutine != APP_TRUE) && (g_appFsmWakeCollectionPending == APP_TRUE))
@@ -2079,7 +2398,6 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             attachStatus = App_NBIoTCarrierAttachMandatory();
             if (attachStatus != APP_STATUS_OK)
             {
-                //return App_FsmHandleFatalLowPower("attach fatal", attachStatus);
                 return App_FsmHandleWakeupLowPower("attach fail", attachStatus);
             }
             App_NBIoTReadIdentity(APP_TRUE);
@@ -2101,14 +2419,26 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 #endif /* APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 #endif // SUPPORT_SELFTEST
 
-            App_NBIoTTransmitUdp();
+            if (g_appFsmRtcServiceTxWakePending == APP_TRUE)
+            {
+                (void)App_NBIoTTransmitServiceUdp(deleteOnServiceTx);
+            }
+            if (g_appFsmRtcMgmtTxWakePending == APP_TRUE)
+            {
+                (void)App_NBIoTTransmitMgmtUdp(APP_TRUE);
+            }
+            if ((g_appFsmRtcServiceTxWakePending != APP_TRUE) && (g_appFsmRtcMgmtTxWakePending != APP_TRUE))
+            {
+                (void)App_NBIoTTransmitServiceUdp(deleteOnServiceTx);
+            }
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierPowerOffMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
             App_FsmUsimHoldClear();
             g_appFsmFirstAttachCycleDone = APP_TRUE;
             g_appFsmRtcTxWakePending = APP_FALSE;
+            g_appFsmRtcServiceTxWakePending = APP_FALSE;
+            g_appFsmRtcMgmtTxWakePending = APP_FALSE;
 
-            //Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
@@ -2175,7 +2505,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             {
                 APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-                APP_LOGI("FSM", "[[AlarmCollision]] short deferred wake -> queue transmit path only");
+                APP_LOGI("FSM", "[[AlarmCollision]] short deferred wake -> queue service/mgmt transmit path");
             }
             else if (g_appFsmWakeCollectionPending != APP_TRUE)
             {
@@ -2332,8 +2662,11 @@ AppStatus_t App_FsmInit(void)
     g_appFsmFirstAttachCycleDone = APP_FALSE;
     g_appFsmRtcMeterWakePending = APP_FALSE;
     g_appFsmRtcTxWakePending = APP_FALSE;
+    g_appFsmRtcServiceTxWakePending = APP_FALSE;
+    g_appFsmRtcMgmtTxWakePending = APP_FALSE;
     (void)memset(&g_appFsmMeterSchedule, 0, sizeof(g_appFsmMeterSchedule));
     (void)memset(&g_appFsmTxSchedule, 0, sizeof(g_appFsmTxSchedule));
+    (void)memset(&g_appFsmMgmtTxSchedule, 0, sizeof(g_appFsmMgmtTxSchedule));
     App_FsmUsimHoldClear();
 
     return App_FsmQueueStateBack(APP_FSM_STATE_BOOT, 0u, 0u);
@@ -2355,15 +2688,134 @@ AppStatus_t App_FsmGetNextMeterDueTime(AppDateTime_t *p_dueTime)
 
 AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
 {
+    AppStatus_t serviceStatus;
+    AppStatus_t mgmtStatus;
     AppStatus_t status;
+    AppDateTime_t now;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
+    uint32_t staleDateKey;
+    uint32_t staleMsOfDay;
+    uint32_t staleJitterMs;
+    uint32_t normalizeCount;
+    uint8_t useService = APP_FALSE;
 
     APP_RETURN_IF_FALSE(p_dueTime != NULL, APP_STATUS_INVALID_PARAM);
 
-    status = App_FsmTxScheduleEnsureInitialized();
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    serviceStatus = App_FsmTxScheduleEnsureInitialized();
+    APP_RETURN_IF_FALSE((serviceStatus == APP_STATUS_OK) || (serviceStatus == APP_STATUS_NOT_INITIALIZED), serviceStatus);
 
-    return App_FsmScheduleComposeDateTime(g_appFsmTxSchedule.nextDueDateKey,
+    mgmtStatus = App_FsmMgmtTxScheduleEnsureInitialized();
+    APP_RETURN_IF_FALSE((mgmtStatus == APP_STATUS_OK) || (mgmtStatus == APP_STATUS_NOT_INITIALIZED), mgmtStatus);
+
+    if ((serviceStatus != APP_STATUS_OK) && (mgmtStatus != APP_STATUS_OK))
+    {
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    nowDateKey = App_FsmMeterScheduleDateKey(&now);
+    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+    if (serviceStatus == APP_STATUS_OK)
+    {
+        normalizeCount = 0u;
+        while (App_FsmScheduleIsDueOrPast(g_appFsmTxSchedule.nextDueDateKey,
                                           g_appFsmTxSchedule.nextDueMsOfDay,
+                                          nowDateKey,
+                                          nowMsOfDay) == APP_TRUE)
+        {
+            staleDateKey = g_appFsmTxSchedule.nextDueDateKey;
+            staleMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
+            staleJitterMs = g_appFsmTxSchedule.currentJitterMs;
+            status = App_FsmTxScheduleAdvanceFromDue(staleDateKey,
+                                                     staleMsOfDay,
+                                                     g_appFsmTxSchedule.periodHours,
+#ifdef APP_DEBUG_TX_PERIOD_MS
+                                                     APP_DEBUG_TX_PERIOD_MS,
+#else
+                                                     0u,
+#endif
+                                                     &g_appFsmTxSchedule.nextDueDateKey,
+                                                     &g_appFsmTxSchedule.nextDueMsOfDay,
+                                                     &g_appFsmTxSchedule.currentJitterMs);
+            APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+            normalizeCount++;
+            APP_LOGW("FSM", "[[ServiceTxSchedule]] stale next due %lu %02lu:%02lu:%02lu skipped while busy -> normalize to %lu %02lu:%02lu:%02lu (jitter=%lu, count=%lu)",
+                     (unsigned long)staleDateKey,
+                     (unsigned long)(staleMsOfDay / 3600000u),
+                     (unsigned long)((staleMsOfDay % 3600000u) / 60000u),
+                     (unsigned long)((staleMsOfDay % 60000u) / 1000u),
+                     (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
+                     (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
+                     (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+                     (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
+                     (unsigned long)staleJitterMs,
+                     (unsigned long)normalizeCount);
+            APP_RETURN_IF_FALSE(normalizeCount < 1024u, APP_STATUS_FATAL);
+        }
+        useService = APP_TRUE;
+    }
+
+    if (mgmtStatus == APP_STATUS_OK)
+    {
+        normalizeCount = 0u;
+        while (App_FsmScheduleIsDueOrPast(g_appFsmMgmtTxSchedule.nextDueDateKey,
+                                          g_appFsmMgmtTxSchedule.nextDueMsOfDay,
+                                          nowDateKey,
+                                          nowMsOfDay) == APP_TRUE)
+        {
+            staleDateKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
+            staleMsOfDay = g_appFsmMgmtTxSchedule.nextDueMsOfDay;
+            staleJitterMs = g_appFsmMgmtTxSchedule.currentJitterMs;
+            status = App_FsmTxScheduleAdvanceFromDue(staleDateKey,
+                                                     staleMsOfDay,
+                                                     g_appFsmMgmtTxSchedule.periodHours,
+#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
+                                                     APP_DEBUG_MGMT_TX_PERIOD_MS,
+#else
+                                                     0u,
+#endif
+                                                     &g_appFsmMgmtTxSchedule.nextDueDateKey,
+                                                     &g_appFsmMgmtTxSchedule.nextDueMsOfDay,
+                                                     &g_appFsmMgmtTxSchedule.currentJitterMs);
+            APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+            normalizeCount++;
+            APP_LOGW("FSM", "[[MgmtTxSchedule]] stale next due %lu %02lu:%02lu:%02lu skipped while busy -> normalize to %lu %02lu:%02lu:%02lu (jitter=%lu, count=%lu)",
+                     (unsigned long)staleDateKey,
+                     (unsigned long)(staleMsOfDay / 3600000u),
+                     (unsigned long)((staleMsOfDay % 3600000u) / 60000u),
+                     (unsigned long)((staleMsOfDay % 60000u) / 1000u),
+                     (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
+                     (unsigned long)(g_appFsmMgmtTxSchedule.nextDueMsOfDay / 3600000u),
+                     (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+                     (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
+                     (unsigned long)staleJitterMs,
+                     (unsigned long)normalizeCount);
+            APP_RETURN_IF_FALSE(normalizeCount < 1024u, APP_STATUS_FATAL);
+        }
+    }
+
+    if ((mgmtStatus == APP_STATUS_OK) &&
+        ((useService != APP_TRUE) ||
+         (App_FsmScheduleIsEarlierOrEqual(g_appFsmMgmtTxSchedule.nextDueDateKey,
+                                          g_appFsmMgmtTxSchedule.nextDueMsOfDay,
+                                          g_appFsmTxSchedule.nextDueDateKey,
+                                          g_appFsmTxSchedule.nextDueMsOfDay) == APP_TRUE)))
+    {
+        useService = APP_FALSE;
+    }
+
+    if (useService == APP_TRUE)
+    {
+        return App_FsmScheduleComposeDateTime(g_appFsmTxSchedule.nextDueDateKey,
+                                              g_appFsmTxSchedule.nextDueMsOfDay,
+                                              p_dueTime);
+    }
+
+    return App_FsmScheduleComposeDateTime(g_appFsmMgmtTxSchedule.nextDueDateKey,
+                                          g_appFsmMgmtTxSchedule.nextDueMsOfDay,
                                           p_dueTime);
 }
 
@@ -2381,7 +2833,13 @@ void App_FsmInvalidateRtcSchedules(void)
     g_appFsmTxSchedule.nextDueDateKey = 0u;
     g_appFsmTxSchedule.nextDueMsOfDay = 0u;
 
-    APP_LOGI("FSM", "[[RtcSync]] invalidate meter/tx due cache -> alarms will be recalculated on next STOP entry");
+    g_appFsmMgmtTxSchedule.initialized = APP_FALSE;
+    g_appFsmMgmtTxSchedule.enabled = APP_FALSE;
+    g_appFsmMgmtTxSchedule.rtcReadyLogged = APP_FALSE;
+    g_appFsmMgmtTxSchedule.nextDueDateKey = 0u;
+    g_appFsmMgmtTxSchedule.nextDueMsOfDay = 0u;
+
+    APP_LOGI("FSM", "[[RtcSync]] invalidate meter/service/mgmt due cache -> alarms will be recalculated on next STOP entry");
 }
 
 static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
@@ -2389,6 +2847,8 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
     AppStatus_t status;
     uint8_t hasAlarmA;
     uint8_t hasAlarmB;
+    uint8_t serviceConsumed = APP_FALSE;
+    uint8_t mgmtConsumed = APP_FALSE;
 
     hasAlarmA = ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_A) != 0u) ? APP_TRUE : APP_FALSE;
     hasAlarmB = ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_B) != 0u) ? APP_TRUE : APP_FALSE;
@@ -2404,29 +2864,38 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
 
     if (hasAlarmB == APP_TRUE)
     {
-        status = App_FsmTxScheduleConsumeDueNow();
+        status = App_FsmTxScheduleConsumeDueNow(&serviceConsumed);
         APP_RETURN_IF_FALSE((status == APP_STATUS_OK) ||
                             (status == APP_STATUS_MSGQ_EMPTY) ||
                             (status == APP_STATUS_NOT_INITIALIZED),
                             status);
+
+        status = App_FsmMgmtTxScheduleConsumeDueNow(&mgmtConsumed);
+        APP_RETURN_IF_FALSE((status == APP_STATUS_OK) ||
+                            (status == APP_STATUS_MSGQ_EMPTY) ||
+                            (status == APP_STATUS_NOT_INITIALIZED),
+                            status);
+
+        g_appFsmRtcServiceTxWakePending = serviceConsumed;
+        g_appFsmRtcMgmtTxWakePending = mgmtConsumed;
+        g_appFsmRtcTxWakePending = ((serviceConsumed == APP_TRUE) || (mgmtConsumed == APP_TRUE)) ? APP_TRUE : APP_FALSE;
     }
 
     if ((hasAlarmA == APP_TRUE) && (hasAlarmB == APP_TRUE))
     {
         g_appFsmRtcMeterWakePending = APP_TRUE;
-        g_appFsmRtcTxWakePending = APP_TRUE;
         g_appFsmWakeCollectionPending = APP_FALSE;
 
         status = App_SystemRequestShortRtcWakeup(APP_RTC_ALARM_COLLISION_TX_DELAY_SEC);
         if (status != APP_STATUS_OK)
         {
-            APP_LOGW("FSM", "[[AlarmCollision]] deferred tx short wake request failed (status=%ld)", (long)status);
+            APP_LOGW("FSM", "[[AlarmCollision]] deferred service/mgmt tx short wake request failed (status=%ld)", (long)status);
         }
 
         status = App_FsmQueueStateBack(APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, 0u);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
         App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-        APP_LOGI("FSM", "[[AlarmCollision]] AlarmA+AlarmB -> meter first, defer tx to short next cycle");
+        APP_LOGI("FSM", "[[AlarmCollision]] AlarmA+AlarmB -> meter first, defer service/mgmt tx to short next cycle");
         return APP_STATUS_OK;
     }
 
@@ -2439,14 +2908,13 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
         APP_LOGI("FSM", "[[AlarmA]] RTC wake -> queue meter read only (same-slot duplicate suppressed)");
     }
 
-    if (hasAlarmB == APP_TRUE)
+    if ((hasAlarmB == APP_TRUE) && (g_appFsmRtcTxWakePending == APP_TRUE))
     {
-        g_appFsmRtcTxWakePending = APP_TRUE;
         g_appFsmWakeCollectionPending = APP_FALSE;
         status = App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
         App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-        APP_LOGI("FSM", "[[AlarmB]] RTC wake -> queue transmit path only (next due advanced)");
+        APP_LOGI("FSM", "[[AlarmB]] RTC wake -> queue service/mgmt transmit path (next due advanced)");
     }
 
     return APP_STATUS_OK;

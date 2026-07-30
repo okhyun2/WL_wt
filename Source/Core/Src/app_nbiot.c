@@ -4194,92 +4194,93 @@ AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo)
     return APP_STATUS_OK;
 }
 
-AppStatus_t App_NBIoTTransmitUdp(void)
+static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
+                                                const char *p_host,
+                                                uint16_t port,
+                                                uint8_t deleteStorage)
 {
     AppStatus_t status;
     AppBc95UdpResult_t sendResult;
-
-    uint16_t port = 6001u;
-
     AppMeterServerFormatOptions_t opt;
     AppMeterServerFormatResult_t buildResult;
-    uint8_t  packet[APP_METER_SERVER_FORMAT_MAX_PACKET_SIZE];
+    uint8_t packet[APP_METER_SERVER_FORMAT_MAX_PACKET_SIZE];
 
-    #if 0 //debug
-    const uint8_t payload[] = {
-        0x01, 0x02, 0x03, 0x04, 0x05,
-        0x86, 0x19, 0x21, 0x03, 0x12, 0x29, 0x50, 0x8F
-    };
-    status = App_Bc95AtUdpSendOnce(MY_SERVER_DOMAIN, port, payload, (uint16_t)sizeof(payload), &sendResult);
+    APP_RETURN_IF_FALSE((p_logTag != NULL) && (p_host != NULL), APP_STATUS_INVALID_PARAM);
 
-    if (status == APP_STATUS_OK)
-    {
-        APP_LOGI("NBIOT", "SendResult: stage=%d, ip=%s, port=%u, sent=%u, seq=%u, confirmed=%u",
-                 (int)sendResult.lastStage, sendResult.resolvedIp, port,
-                 (unsigned)sendResult.sentBytes, (unsigned)sendResult.seqNumber,
-                 (unsigned)sendResult.sendConfirmed);
-    }
-    #endif
-
-    /* --- 전송 시 최신 옵션 로드 후 패킷 빌드 --- */
     App_MeterServerOptionsLoad(&opt);
     App_MeterServerOptionsDump(&opt);
     status = App_MeterServerFormatBuildFromStorage(&opt, packet, sizeof(packet), &buildResult);
     if (status == APP_STATUS_OK)
     {
-#ifdef NBIOT_SUPPORT_DNS
-        status = App_Bc95AtUdpSendOnce(MY_SERVER_DOMAIN, port, packet, buildResult.packetLength, &sendResult);
-#else
-        status = App_Bc95AtUdpSendOnce(MY_SERVER_IP, port, packet, buildResult.packetLength, &sendResult);
-#endif // NBIOT_SUPPORT_DNS
-        if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u))
+        status = App_Bc95AtUdpSendOnce(p_host, port, packet, buildResult.packetLength, &sendResult);
+        if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u) && (deleteStorage == APP_TRUE))
         {
             AppStatus_t clearStatus = App_MeterStorageDeleteOldest(buildResult.recordCount);
             if (clearStatus != APP_STATUS_OK)
             {
-#if (APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS == APP_TRUE)
-                APP_LOGE("NBIOT", "Storage delete failed after send (%ld, records=%u)",
+                APP_LOGE("NBIOT", "%s storage delete failed (status=%ld, records=%u)",
+                         p_logTag,
                          (long)clearStatus,
                          (unsigned int)buildResult.recordCount);
-#else
-                APP_LOGE("NBIOT", "Storage delete failed after ACK (%ld, records=%u)",
-                         (long)clearStatus,
-                         (unsigned int)buildResult.recordCount);
-#endif
                 return clearStatus;
             }
             buildResult.cleared = APP_TRUE;
-#if (APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS == APP_TRUE)
-            APP_LOGI("NBIOT", "Storage deleted after send success (records=%u, remain=%u)",
+            APP_LOGI("NBIOT", "%s storage deleted (records=%u, remain=%u)",
+                     p_logTag,
                      (unsigned int)buildResult.recordCount,
                      (unsigned int)App_MeterStorageCount());
-#else
-            APP_LOGI("NBIOT", "Storage deleted after server ACK (records=%u, remain=%u)",
-                     (unsigned int)buildResult.recordCount,
-                     (unsigned int)App_MeterStorageCount());
-#endif
         }
     }
     else
     {
-        APP_LOGI("NBIOT", "Skip Send.");
+        APP_LOGI("NBIOT", "%s skip send", p_logTag);
     }
 
-    APP_LOGD("NBIOT", "build len=%u payload=%u rec=%u checksum=0x%02X cleared=%u",
+    APP_LOGD("NBIOT", "%s build len=%u payload=%u rec=%u checksum=0x%02X cleared=%u delete=%u",
+             p_logTag,
              (unsigned int)buildResult.packetLength,
              (unsigned int)buildResult.payloadLength,
              (unsigned int)buildResult.recordCount,
              (unsigned int)buildResult.checksum,
-             (unsigned int)buildResult.cleared);
+             (unsigned int)buildResult.cleared,
+             (unsigned int)deleteStorage);
 
     if (status == APP_STATUS_OK)
     {
-        APP_LOGI("NBIOT", "SendResult: stage=%d, ip=%s, port=%u, sent=%u, seq=%u, confirmed=%u",
-                 (int)sendResult.lastStage, sendResult.resolvedIp, port,
-                 (unsigned)sendResult.sentBytes, (unsigned)sendResult.seqNumber,
+        APP_LOGI("NBIOT", "%s SendResult: stage=%d, ip=%s, port=%u, sent=%u, seq=%u, confirmed=%u",
+                 p_logTag,
+                 (int)sendResult.lastStage,
+                 sendResult.resolvedIp,
+                 port,
+                 (unsigned)sendResult.sentBytes,
+                 (unsigned)sendResult.seqNumber,
                  (unsigned)sendResult.sendConfirmed);
     }
+
     return status;
+}
+
+AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage)
+{
+#ifdef NBIOT_SUPPORT_DNS
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage);
+#else
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage);
+#endif
+}
+
+AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage)
+{
+#ifdef NBIOT_SUPPORT_DNS
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, deleteStorage);
+#else
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, deleteStorage);
+#endif
+}
+
+AppStatus_t App_NBIoTTransmitUdp(void)
+{
+    return App_NBIoTTransmitServiceUdp(APP_TRUE);
 }
 
 AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
@@ -4355,6 +4356,7 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
     }
 
     g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_DONE;
+    g_appNbiotCarrierContext.lastPowerOffDoneTick = HAL_GetTick();
     g_appNbiotCarrierContext.lastStatus = APP_STATUS_OK;
     APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
              " done state=%s detachStatus=%d cfun0Status=%d",

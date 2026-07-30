@@ -46,9 +46,13 @@ extern "C" {
 #ifdef NBIOT_SUPPORT_DNS
 #define MY_SERVER_DOMAIN              "acorp2.iptime.org"
 #define WARMUPDNS_SERVER_DOMAIN       "www.google.com"
+#define APP_MGMT_SERVER_DOMAIN        MY_SERVER_DOMAIN
 #else
 #define MY_SERVER_IP                    "125.138.79.82"
+#define APP_MGMT_SERVER_IP             MY_SERVER_IP
 #endif // NBIOT_SUPPORT_DNS
+#define APP_SERVICE_SERVER_PORT                 (6001u)
+#define APP_MGMT_SERVER_PORT                    (6001u)
 
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
 
@@ -204,6 +208,7 @@ extern "C" {
 /* OPS-01/02 period policy defaults (allowed values: 1/2/3/4/6/8/12/24h. default:meter-1h, report-4h) */
 #define APP_POLICY_DEFAULT_METERING_PERIOD_HOURS   (1u)
 #define APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS  (4u)
+#define APP_POLICY_DEFAULT_MANAGEMENT_REPORTING_PERIOD_HOURS  (24u)
 #define APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS   (APP_FALSE)
 #define APP_POLICY_WAIT_SERVER_ACK_ENABLE          (APP_TRUE)
 #define APP_POLICY_TEST_MODE_SKIP_SERVER_ACK_WAIT  (APP_TRUE)
