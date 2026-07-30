@@ -49,6 +49,7 @@
 #define APP_BC95_AT_CMD_CFUN_SET_MIN         "AT+CFUN=0\r\n"
 #define APP_BC95_AT_CMD_CGATT_QUERY          "AT+CGATT?\r\n"
 #define APP_BC95_AT_CMD_CGATT_DETACH         "AT+CGATT=0\r\n"
+#define APP_BC95_AT_CMD_CMEE_ON              "AT+CMEE=1\r\n"
 #define APP_BC95_AT_CMD_CEREG_SET_3          "AT+CEREG=3\r\n"
 #define APP_BC95_AT_CMD_CEREG_QUERY          "AT+CEREG?\r\n"
 #define APP_BC95_AT_CMD_CGPADDR_QUERY        "AT+CGPADDR\r\n"
@@ -67,6 +68,7 @@
 #define APP_BC95_AT_DRAIN_GUARD_MS           (5u)
 #define APP_BC95_AT_LINE_QUEUE_DEPTH         (12u)
 #define APP_BC95_AT_LINE_MAX_LEN             (96u)
+#define APP_BC95_SERVICE_READY_SETTLE_MS     (500u)
 
 #define APP_NBIOT_REPORT_LOG_ATTACH         "[[Attach]]"
 #define APP_NBIOT_REPORT_LOG_RESET          "[[Reset]]"
@@ -127,6 +129,12 @@ typedef struct
 } AppBc95AtRxErrorInfo_t;
 static AppBc95AtRxErrorInfo_t g_appBc95AtRxErrorInfo;
 #endif
+
+static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
+                                                 uint32_t rxTimeoutMs,
+                                                 const char *p_cmdLabel,
+                                                 const char *p_logPrefix);
+static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs);
 
 static void App_HwNbiotPowerCycle(void)
 {
@@ -1016,6 +1024,156 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
         }
 
         App_Bc95AtDelayWithFeed(APP_BC95_USIM_READY_POLL_MS);
+    }
+}
+
+AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
+{
+    AppStatus_t status;
+    AppBc95AtStatus_t atStatus;
+    uint16_t rxLen = 0u;
+    int32_t cmeErr = 0;
+    char imsiStr[APP_BC95_IMSI_DIGITS + 1u];
+
+    APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_probe != NULL), APP_STATUS_INVALID_PARAM);
+
+    (void)memset(p_probe, 0, sizeof(*p_probe));
+    p_probe->lastStatus = APP_STATUS_INVALID_PARAM;
+
+    status = App_Bc95AtPing(APP_BC95_BOOT_PING_TIMEOUT_MS);
+    p_probe->lastStatus = status;
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGI("NBIOT", "[[ReadyProbe]] AT ping fail (status=%d)", (int)status);
+        return status;
+    }
+    p_probe->atReady = APP_TRUE;
+
+    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CMEE_ON,
+                                           APP_BC95_AT_RX_TIMEOUT_MS,
+                                           "AT+CMEE=1",
+                                           "[[ReadyProbe]]");
+    p_probe->lastStatus = status;
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGI("NBIOT", "[[ReadyProbe]] CMEE enable fail (status=%d)", (int)status);
+        return status;
+    }
+    p_probe->cmeeReady = APP_TRUE;
+
+    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_IMSI,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   APP_BC95_AT_RX_TIMEOUT_MS,
+                                   &rxLen);
+    p_probe->lastStatus = status;
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGI("NBIOT", "[[ReadyProbe]] IMSI probe UART issue (status=%d)", (int)status);
+        return status;
+    }
+
+    atStatus = App_Bc95AtExtractImsiString((const char *)g_appBc95AtRxBuf,
+                                           imsiStr,
+                                           sizeof(imsiStr));
+    if (atStatus == APP_BC95_AT_OK)
+    {
+        p_probe->usimReady = APP_TRUE;
+        p_probe->lastStatus = APP_STATUS_OK;
+        APP_LOGI("NBIOT", "[[ReadyProbe]] service ready (AT=1, CMEE=1, USIM=1)");
+        return APP_STATUS_OK;
+    }
+
+    if (atStatus == APP_BC95_AT_ERR_CME_ERROR)
+    {
+        (void)App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
+        p_probe->lastCmeError = cmeErr;
+        p_probe->lastStatus = APP_STATUS_UART_TIMEOUT;
+        APP_LOGI("NBIOT", "[[ReadyProbe]] service not ready yet (AT=1, CMEE=1, USIM=0, CME=%ld)",
+                 (long)cmeErr);
+        return APP_STATUS_UART_TIMEOUT;
+    }
+
+    p_probe->lastStatus = APP_STATUS_FATAL;
+    APP_LOGI("NBIOT", "[[ReadyProbe]] IMSI parse fail (status=%s)",
+             App_Bc95AtGetStatusString(atStatus));
+    return APP_STATUS_FATAL;
+}
+
+static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
+{
+    AppStatus_t status;
+    uint32_t startTick;
+    uint32_t elapsedMs;
+    uint32_t remainingMs;
+    AppBc95ServiceReadyProbe_t probe;
+
+    APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
+
+    startTick = HAL_GetTick();
+    APP_LOGI("NBIOT", "Wait for service ready after boot banner (timeout=%lums, settle=%lums)...",
+             (unsigned long)totalTimeoutMs,
+             (unsigned long)APP_BC95_SERVICE_READY_SETTLE_MS);
+
+    if (APP_BC95_SERVICE_READY_SETTLE_MS != 0u)
+    {
+        App_Bc95AtDelayWithFeed(APP_BC95_SERVICE_READY_SETTLE_MS);
+    }
+
+    elapsedMs = HAL_GetTick() - startTick;
+    if (elapsedMs >= totalTimeoutMs)
+    {
+        APP_LOGE("NBIOT", "Service ready timeout before USIM probe (elapsed=%lums)",
+                 (unsigned long)elapsedMs);
+        g_appBc95UsimFatal = APP_TRUE;
+        return APP_STATUS_FATAL;
+    }
+
+    while (1)
+    {
+        status = App_Bc95AtProbeServiceReady(&probe);
+        if (status == APP_STATUS_OK)
+        {
+            APP_LOGI("NBIOT", "Service ready confirmed (elapsed=%lums)",
+                     (unsigned long)(HAL_GetTick() - startTick));
+            return APP_STATUS_OK;
+        }
+
+        if ((probe.lastStatus == APP_STATUS_FATAL) ||
+            ((probe.lastCmeError == 10) || (probe.lastCmeError == 13) ||
+             (probe.lastCmeError == 15) || (probe.lastCmeError == 16) ||
+             (probe.lastCmeError == 311) || (probe.lastCmeError == 313) ||
+             (probe.lastCmeError == 315) || (probe.lastCmeError == 317) ||
+             (probe.lastCmeError == 318)))
+        {
+            g_appBc95UsimFatal = APP_TRUE;
+            APP_LOGE("NBIOT", "Service ready fatal (status=%d, cme=%ld)",
+                     (int)probe.lastStatus,
+                     (long)probe.lastCmeError);
+            return APP_STATUS_FATAL;
+        }
+
+        elapsedMs = HAL_GetTick() - startTick;
+        if (elapsedMs >= totalTimeoutMs)
+        {
+            g_appBc95UsimFatal = APP_TRUE;
+            APP_LOGE("NBIOT", "Service ready timeout (elapsed=%lums, lastStatus=%d, cme=%ld)",
+                     (unsigned long)elapsedMs,
+                     (int)probe.lastStatus,
+                     (long)probe.lastCmeError);
+            return APP_STATUS_FATAL;
+        }
+
+        remainingMs = totalTimeoutMs - elapsedMs;
+        if (remainingMs > APP_BC95_USIM_READY_POLL_MS)
+        {
+            App_Bc95AtDelayWithFeed(APP_BC95_USIM_READY_POLL_MS);
+        }
+        else
+        {
+            App_Bc95AtDelayWithFeed(remainingMs);
+        }
     }
 }
 
@@ -3952,16 +4110,18 @@ AppStatus_t App_NBIoTBringUp(void)
         return status;
     }
 
-    status = App_Bc95AtWaitForUsim(APP_BC95_USIM_READY_TIMEOUT_MS);
+    status = App_Bc95AtWaitForServiceReady(APP_BC95_USIM_READY_TIMEOUT_MS +
+                                           APP_BC95_SERVICE_READY_SETTLE_MS +
+                                           APP_BC95_AT_RX_TIMEOUT_MS);
     if (status != APP_STATUS_OK)
     {
         if (g_appBc95UsimFatal == APP_TRUE)
         {
-            APP_LOGE("NBIOT", "Module usim fatal");
+            APP_LOGE("NBIOT", "Module service ready fatal");
         }
         else
         {
-            APP_LOGE("NBIOT", "Module usim timeout");
+            APP_LOGE("NBIOT", "Module service ready fail (status=%d)", (int)status);
         }
         return status;
     }

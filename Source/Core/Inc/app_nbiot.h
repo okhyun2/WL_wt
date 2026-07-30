@@ -75,6 +75,15 @@ typedef struct
     uint8_t  valid;
 } AppBc95Quality_t;
 
+typedef struct
+{
+    uint8_t atReady;
+    uint8_t cmeeReady;
+    uint8_t usimReady;
+    AppStatus_t lastStatus;
+    int32_t lastCmeError;
+} AppBc95ServiceReadyProbe_t;
+
 /* ============================================================
  *  Boot / Probe
  * ============================================================ */
@@ -82,6 +91,7 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs);
 AppStatus_t App_Bc95AtPing(uint32_t timeoutMs);
 AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs);
 AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs);
+AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe);
 
 /* ============================================================
  *  AT 일반
