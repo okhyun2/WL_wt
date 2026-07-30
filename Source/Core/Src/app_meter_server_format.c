@@ -464,6 +464,114 @@ AppStatus_t App_MeterServerFormatBuildFromUnsentStorage(const AppMeterServerForm
     return App_MeterServerFormatBuildInternal(p_options, p_packet, packetCapacity, p_result, APP_FALSE, APP_TRUE);
 }
 
+AppStatus_t App_MeterServerFormatBuildFromRecord(const AppMeterServerFormatOptions_t *p_options,
+                                                 const AppMeterStorageRecord_t *p_record,
+                                                 uint8_t *p_packet,
+                                                 uint16_t packetCapacity,
+                                                 AppMeterServerFormatResult_t *p_result)
+{
+    uint16_t cursor;
+    uint16_t lengthIndex;
+    uint8_t qualityLength;
+    uint8_t mobileIdLength;
+    uint8_t packetMeterIdBcd[4];
+    uint8_t valueBytes[4];
+    uint8_t deltaBytes[2];
+    uint8_t basePos;
+    uint32_t baseValue;
+    uint16_t deltaValue;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE((p_options != NULL) && (p_record != NULL) && (p_packet != NULL) && (p_result != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_LORA) ||
+                        (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_NBIOT),
+                        APP_STATUS_INVALID_PARAM);
+
+    qualityLength = (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_LORA)
+                    ? APP_METER_SERVER_FORMAT_FIXED_LORA_QUALITY_BYTES
+                    : APP_METER_SERVER_FORMAT_FIXED_NBIOT_QUALITY_BYTES;
+    mobileIdLength = (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_NBIOT)
+                     ? APP_METER_SERVER_FORMAT_FIXED_NBIOT_MOBILE_ID_BYTES
+                     : 0u;
+
+    (void)memset(p_result, 0, sizeof(*p_result));
+    (void)memset(p_packet, 0, packetCapacity);
+    cursor = 0u;
+
+    p_packet[cursor++] = p_options->linkHeader;
+    lengthIndex = cursor;
+    p_packet[cursor++] = 0u;
+    p_packet[cursor++] = p_options->command;
+
+    status = App_MeterServerFormatAppendBytes(p_packet, packetCapacity, &cursor,
+                                              p_options->mobileIdBcd, mobileIdLength);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    status = App_MeterServerFormatAppendBytes(p_packet, packetCapacity, &cursor,
+                                              p_options->wirelessQuality, qualityLength);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    status = App_MeterServerFormatAppendBytes(p_packet, packetCapacity, &cursor,
+                                              p_options->deviceSerialBcd, sizeof(p_options->deviceSerialBcd));
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    status = App_MeterServerFormatAppendBytes(p_packet, packetCapacity, &cursor,
+                                              p_options->firmwareVersion, sizeof(p_options->firmwareVersion));
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    p_packet[cursor++] = p_options->terminalBattery.value;
+
+    App_MeterServerFormatEncodeBcdBe(p_record->meterId, packetMeterIdBcd, (uint8_t)sizeof(packetMeterIdBcd));
+    status = App_MeterServerFormatAppendBytes(p_packet, packetCapacity, &cursor,
+                                              packetMeterIdBcd, sizeof(packetMeterIdBcd));
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    p_packet[cursor++] = p_record->meterType;
+    p_packet[cursor++] = p_record->caliberDecimal;
+    p_packet[cursor++] = p_record->meterStatus;
+
+    p_packet[cursor++] = p_options->meteringPeriodHours;
+    p_packet[cursor++] = p_options->reportingPeriodHours;
+
+    status = App_MeterServerFormatAppendBytes(p_packet, packetCapacity, &cursor,
+                                              p_record->ts, sizeof(p_record->ts));
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    p_packet[cursor++] = p_options->meteringPeriodHours;
+    p_packet[cursor++] = 1u;
+
+    if ((p_record->flags & APP_METER_STORAGE_FLAG_READING_VALID) != 0u)
+    {
+        basePos = 0u;
+        baseValue = p_record->readingScaled;
+        deltaValue = 0u;
+    }
+    else
+    {
+        basePos = 0xFFu;
+        baseValue = 0xFFFFFFFFu;
+        deltaValue = 0xFFFFu;
+    }
+
+    p_packet[cursor++] = basePos;
+    App_MeterServerFormatU32ToLe(baseValue, valueBytes);
+    status = App_MeterServerFormatAppendBytes(p_packet, packetCapacity, &cursor,
+                                              valueBytes, sizeof(valueBytes));
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    App_MeterServerFormatU16ToLe(deltaValue, deltaBytes);
+    status = App_MeterServerFormatAppendBytes(p_packet, packetCapacity, &cursor,
+                                              deltaBytes, sizeof(deltaBytes));
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    p_packet[lengthIndex] = (uint8_t)(cursor - (lengthIndex + 1u));
+    p_result->checksum = App_MeterServerFormatCalcChecksum(p_packet,
+                                                           (uint16_t)(lengthIndex + 1u),
+                                                           cursor);
+    APP_RETURN_IF_FALSE((uint32_t)cursor < packetCapacity, APP_STATUS_BUFFER_OVERFLOW);
+    p_packet[cursor++] = p_result->checksum;
+
+    p_result->payloadLength = p_packet[lengthIndex];
+    p_result->packetLength = cursor;
+    p_result->recordCount = 1u;
+    p_result->cleared = APP_FALSE;
+    return APP_STATUS_OK;
+}
+
 AppStatus_t App_MeterServerFormatBuildFromStorageAndClear(const AppMeterServerFormatOptions_t *p_options,
                                                           uint8_t *p_packet,
                                                           uint16_t packetCapacity,

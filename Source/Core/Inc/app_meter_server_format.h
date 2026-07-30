@@ -8,6 +8,7 @@ extern "C" {
 #include <stdint.h>
 
 #include "app_error.h"
+#include "app_meter_storage.h"
 
 #define APP_METER_SERVER_FORMAT_HEADER_LORA              (0xA1u)
 #define APP_METER_SERVER_FORMAT_HEADER_NBIOT             (0xA3u)
@@ -62,6 +63,11 @@ AppStatus_t App_MeterServerFormatBuildFromUnsentStorage(const AppMeterServerForm
                                                         uint8_t *p_packet,
                                                         uint16_t packetCapacity,
                                                         AppMeterServerFormatResult_t *p_result);
+AppStatus_t App_MeterServerFormatBuildFromRecord(const AppMeterServerFormatOptions_t *p_options,
+                                                 const AppMeterStorageRecord_t *p_record,
+                                                 uint8_t *p_packet,
+                                                 uint16_t packetCapacity,
+                                                 AppMeterServerFormatResult_t *p_result);
 AppStatus_t App_MeterServerFormatBuildFromStorageAndClear(const AppMeterServerFormatOptions_t *p_options,
                                                           uint8_t *p_packet,
                                                           uint16_t packetCapacity,

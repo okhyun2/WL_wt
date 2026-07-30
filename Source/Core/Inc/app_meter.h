@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include "app_error.h"
+#include "app_meter_storage.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -63,6 +64,9 @@ App_MeterResult_t App_MeterParseFrame(App_MeterUnion_t *meterPacket, const uint8
 void App_MeterSetStorageEnabled(uint8_t enabled);
 uint8_t App_MeterIsStorageEnabled(void);
 AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t length);
+AppStatus_t App_MeterBuildLiveRecordFromReceivedData(const uint8_t *pRxBuf,
+                                                     const uint8_t length,
+                                                     AppMeterStorageRecord_t *p_record);
 void App_MeterPrintUnionDetailed(const App_MeterUnion_t *pRxFrame);
 
 ///////////////////////////////////////////////////////////////////////////////////////
@@ -96,6 +100,9 @@ uint32_t App_MeterSC1xxxGetMeasurementData(const App_MeterSC1xxxUnion_t *meterPa
 App_MeterResult_t App_MeterSC1xxxParseFrame(App_MeterSC1xxxUnion_t *meterPacket, const uint8_t *binary_data, uint16_t length);
 void App_MeterSC1xxxPrintData(App_MeterSC1xxxUnion_t *pRxFrame);
 AppStatus_t App_MeterSC1xxxProcessReceivedData(const uint8_t *pRxBuf, const uint8_t length);
+AppStatus_t App_MeterSC1xxxBuildLiveRecordFromReceivedData(const uint8_t *pRxBuf,
+                                                           const uint8_t length,
+                                                           AppMeterStorageRecord_t *p_record);
 
 ///////////////////////////////////////////////////////////////////////////////////////
 

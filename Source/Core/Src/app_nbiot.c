@@ -4200,7 +4200,8 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                                                 const char *p_host,
                                                 uint16_t port,
                                                 uint8_t deleteStorage,
-                                                uint8_t unsentOnly)
+                                                uint8_t unsentOnly,
+                                                const AppMeterStorageRecord_t *p_liveRecord)
 {
     AppStatus_t status;
     AppBc95UdpResult_t sendResult;
@@ -4212,15 +4213,28 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
 
     App_MeterServerOptionsLoad(&opt);
     App_MeterServerOptionsDump(&opt);
-    status = (unsentOnly == APP_TRUE)
-             ? App_MeterServerFormatBuildFromUnsentStorage(&opt, packet, sizeof(packet), &buildResult)
-             : App_MeterServerFormatBuildFromStorage(&opt, packet, sizeof(packet), &buildResult);
+    if (p_liveRecord != NULL)
+    {
+        status = App_MeterServerFormatBuildFromRecord(&opt, p_liveRecord, packet, sizeof(packet), &buildResult);
+    }
+    else
+    {
+        status = (unsentOnly == APP_TRUE)
+                 ? App_MeterServerFormatBuildFromUnsentStorage(&opt, packet, sizeof(packet), &buildResult)
+                 : App_MeterServerFormatBuildFromStorage(&opt, packet, sizeof(packet), &buildResult);
+    }
     if (status == APP_STATUS_OK)
     {
         status = App_Bc95AtUdpSendOnce(p_logTag, p_host, port, packet, buildResult.packetLength, &sendResult);
         if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u))
         {
-            if (unsentOnly == APP_TRUE)
+            if (p_liveRecord != NULL)
+            {
+                APP_LOGI("NBIOT", "%s live meter record sent without storage (records=%u)",
+                         p_logTag,
+                         (unsigned int)buildResult.recordCount);
+            }
+            else if (unsentOnly == APP_TRUE)
             {
                 AppStatus_t markStatus = App_MeterStorageMarkOldestUnsentSent(buildResult.recordCount);
                 if (markStatus != APP_STATUS_OK)
@@ -4285,14 +4299,15 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
         APP_LOGI("NBIOT", "%s skip send", p_logTag);
     }
 
-    APP_LOGD("NBIOT", "%s build len=%u payload=%u rec=%u checksum=0x%02X cleared=%u delete=%u",
+    APP_LOGD("NBIOT", "%s build len=%u payload=%u rec=%u checksum=0x%02X cleared=%u delete=%u live=%u",
              p_logTag,
              (unsigned int)buildResult.packetLength,
              (unsigned int)buildResult.payloadLength,
              (unsigned int)buildResult.recordCount,
              (unsigned int)buildResult.checksum,
              (unsigned int)buildResult.cleared,
-             (unsigned int)deleteStorage);
+             (unsigned int)deleteStorage,
+             (unsigned int)((p_liveRecord != NULL) ? APP_TRUE : APP_FALSE));
 
     if (status == APP_STATUS_OK)
     {
@@ -4312,18 +4327,36 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
 AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL);
 #else
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL);
 #endif
 }
 
 AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL);
 #else
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL);
+#endif
+}
+
+AppStatus_t App_NBIoTTransmitServiceLiveRecord(const AppMeterStorageRecord_t *p_record)
+{
+#ifdef NBIOT_SUPPORT_DNS
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record);
+#else
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record);
+#endif
+}
+
+AppStatus_t App_NBIoTTransmitMgmtLiveRecord(const AppMeterStorageRecord_t *p_record)
+{
+#ifdef NBIOT_SUPPORT_DNS
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record);
+#else
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record);
 #endif
 }
 

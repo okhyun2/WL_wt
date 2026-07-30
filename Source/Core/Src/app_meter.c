@@ -438,6 +438,33 @@ AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t le
     }
 }
 
+AppStatus_t App_MeterBuildLiveRecordFromReceivedData(const uint8_t *pRxBuf,
+                                                     const uint8_t length,
+                                                     AppMeterStorageRecord_t *p_record)
+{
+    App_MeterUnion_t rx_frame = {0};
+    AppStatus_t status;
+    App_MeterResult_t result;
+
+    APP_RETURN_IF_FALSE(p_record != NULL, APP_STATUS_INVALID_PARAM);
+
+    result = App_MeterParseFrame(&rx_frame, pRxBuf, length);
+    if (result != APP_METER_OK)
+    {
+        APP_LOGE("METER", "Fail Meter parsing(%d)", result);
+        return APP_STATUS_FATAL;
+    }
+
+    APP_LOGD("METER", "Success Meter parsing (live/no-store).");
+    App_MeterPrintUnionDetailed(&rx_frame);
+    APP_RETURN_IF_FALSE(App_MeterBuildDigitalRecord(&rx_frame, p_record) == APP_STATUS_OK, APP_STATUS_FATAL);
+
+    APP_LOGI("NFC", "Update nfc live meter info (no storage).");
+    status = App_NfcSeoulNotifyLiveMeterRecord(p_record);
+    (void)status;
+    return APP_STATUS_OK;
+}
+
 //SC1xxx
 /////////////////////////////////////////////////////////////////////////////
 
@@ -565,6 +592,33 @@ AppStatus_t App_MeterSC1xxxProcessReceivedData(const uint8_t *pRxBuf, const uint
         APP_LOGE("METER", "Fail MeterSC1xxx parsing(%d)", result);
         return(APP_STATUS_FATAL);
     }
+}
+
+AppStatus_t App_MeterSC1xxxBuildLiveRecordFromReceivedData(const uint8_t *pRxBuf,
+                                                           const uint8_t length,
+                                                           AppMeterStorageRecord_t *p_record)
+{
+    App_MeterSC1xxxUnion_t rx_frame = {0};
+    AppStatus_t status;
+    App_MeterResult_t result;
+
+    APP_RETURN_IF_FALSE(p_record != NULL, APP_STATUS_INVALID_PARAM);
+
+    result = App_MeterSC1xxxParseFrame(&rx_frame, pRxBuf, length);
+    if (result != APP_METER_OK)
+    {
+        APP_LOGE("METER", "Fail MeterSC1xxx parsing(%d)", result);
+        return APP_STATUS_FATAL;
+    }
+
+    APP_LOGI("METER", "Success MeterSC1xxx parsing (live/no-store).");
+    App_MeterSC1xxxPrintData(&rx_frame);
+    APP_RETURN_IF_FALSE(App_MeterBuildSc1xxxRecord(&rx_frame, p_record) == APP_STATUS_OK, APP_STATUS_FATAL);
+
+    APP_LOGI("NFC", "Update nfc live meter info (no storage).");
+    status = App_NfcSeoulNotifyLiveMeterRecord(p_record);
+    (void)status;
+    return APP_STATUS_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////////

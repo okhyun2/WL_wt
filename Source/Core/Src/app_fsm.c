@@ -82,6 +82,7 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
                                  AppStatus_t status);
 static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags);
 static AppStatus_t App_FsmMeterProbeAndStore(void);
+static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord);
 static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void);
 static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed);
 static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed);
@@ -265,6 +266,106 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     APP_LOGI("FSM", "[[MeterWake]] scheduled SC1xxx meter record stored");
     return APP_STATUS_OK;
 #else
+    return APP_STATUS_INVALID_PARAM;
+#endif
+}
+
+static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord)
+{
+#if defined(SUPPORT_METER_NORMAL)
+    static const uint8_t meterWakeFrame[] = { 0x10, 0x5B, 0x01, 0x5C, 0x16 };
+    uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
+    AppStatus_t status;
+    uint32_t elapsedSincePowerOffDoneMs = 0u;
+    const AppNbiotCarrierContext_t *pCarrierContext = App_NBIoTCarrierGetContext();
+
+    APP_RETURN_IF_FALSE(p_liveRecord != NULL, APP_STATUS_INVALID_PARAM);
+
+    if ((pCarrierContext != NULL) && (pCarrierContext->lastPowerOffDoneTick != 0u))
+    {
+        elapsedSincePowerOffDoneMs = HAL_GetTick() - pCarrierContext->lastPowerOffDoneTick;
+    }
+    APP_LOGI("FSM", "[[BootLiveTx]] first meter probe start (no storage, since NBIOT power-off done=%lu ms)",
+             (unsigned long)elapsedSincePowerOffDoneMs);
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
+    HAL_Delay(50u);
+
+    status = App_FsmMeterReinitUart(APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS);
+    if (status != APP_STATUS_OK)
+    {
+        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+        return status;
+    }
+
+    APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_METER_HANDLE,
+                                              (uint8_t *)meterWakeFrame,
+                                              (uint16_t)sizeof(meterWakeFrame),
+                                              APP_SELFTEST_UART_TIMEOUT_MS),
+                            APP_STATUS_UART_TX_FAILED);
+
+    status = App_FsmMeterReceiveBlocking(meterReply,
+                                         APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
+                                         APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS);
+
+    HAL_Delay(100u);
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    App_LogHexDump(APP_LOG_LEVEL_INFO,
+                   "FSM",
+                   (const uint8_t *)meterReply,
+                   APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+
+    status = App_MeterBuildLiveRecordFromReceivedData((const uint8_t *)meterReply,
+                                                      APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
+                                                      p_liveRecord);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    APP_LOGI("FSM", "[[BootLiveTx]] first meter record prepared for service+mgmt send (not stored)");
+    return APP_STATUS_OK;
+#elif defined(SUPPORT_METER_SC1xxx)
+    uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_liveRecord != NULL, APP_STATUS_INVALID_PARAM);
+    APP_LOGI("FSM", "[[BootLiveTx]] first SC1xxx meter probe start (no storage)");
+
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    HAL_Delay(125u);
+    HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
+    HAL_Delay(125u);
+    HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    HAL_Delay(125u);
+    HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
+    HAL_Delay(125u);
+    HAL_GPIO_WritePin(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    HAL_Delay(300u);
+
+    status = App_FsmMeterReinitUart(APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS);
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    status = App_FsmMeterReceiveBlocking(meterReply,
+                                         APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN,
+                                         APP_SELFTEST_UART_REPLY_METER_SC1xxx_TIMEOUT_MS);
+    HAL_Delay(100u);
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    App_LogHexDump(APP_LOG_LEVEL_INFO,
+                   "FSM",
+                   (const uint8_t *)meterReply,
+                   APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
+
+    status = App_MeterSC1xxxBuildLiveRecordFromReceivedData((const uint8_t *)meterReply,
+                                                            APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN,
+                                                            p_liveRecord);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    APP_LOGI("FSM", "[[BootLiveTx]] first SC1xxx meter record prepared for service+mgmt send (not stored)");
+    return APP_STATUS_OK;
+#else
+    APP_RETURN_IF_FALSE(p_liveRecord != NULL, APP_STATUS_INVALID_PARAM);
     return APP_STATUS_INVALID_PARAM;
 #endif
 }
@@ -2419,17 +2520,28 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 #endif /* APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 #endif // SUPPORT_SELFTEST
 
-            if (g_appFsmRtcServiceTxWakePending == APP_TRUE)
+            if (isFirstBootRoutine == APP_TRUE)
             {
-                (void)App_NBIoTTransmitServiceUdp(deleteOnServiceTx);
+                AppMeterStorageRecord_t bootLiveRecord;
+                APP_LOGI("FSM", "[[BootRoutine]] first meter data -> send live record to service+mgmt without storage");
+                APP_RETURN_IF_FALSE(App_FsmMeterProbeNoStore(&bootLiveRecord) == APP_STATUS_OK, APP_STATUS_FATAL);
+                (void)App_NBIoTTransmitServiceLiveRecord(&bootLiveRecord);
+                (void)App_NBIoTTransmitMgmtLiveRecord(&bootLiveRecord);
             }
-            if (g_appFsmRtcMgmtTxWakePending == APP_TRUE)
+            else
             {
-                (void)App_NBIoTTransmitMgmtUdp(APP_TRUE);
-            }
-            if ((g_appFsmRtcServiceTxWakePending != APP_TRUE) && (g_appFsmRtcMgmtTxWakePending != APP_TRUE))
-            {
-                (void)App_NBIoTTransmitServiceUdp(deleteOnServiceTx);
+                if (g_appFsmRtcServiceTxWakePending == APP_TRUE)
+                {
+                    (void)App_NBIoTTransmitServiceUdp(deleteOnServiceTx);
+                }
+                if (g_appFsmRtcMgmtTxWakePending == APP_TRUE)
+                {
+                    (void)App_NBIoTTransmitMgmtUdp(APP_TRUE);
+                }
+                if ((g_appFsmRtcServiceTxWakePending != APP_TRUE) && (g_appFsmRtcMgmtTxWakePending != APP_TRUE))
+                {
+                    (void)App_NBIoTTransmitServiceUdp(deleteOnServiceTx);
+                }
             }
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierPowerOffMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);

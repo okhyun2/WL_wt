@@ -12,6 +12,7 @@ extern "C" {
 #include "app_build_config.h"
 #include "app_clock.h"
 #include "app_error.h"
+#include "app_meter_storage.h"
 
 /* ============================================================
  *  Buffer / Timeout 기본값
@@ -342,6 +343,8 @@ AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage);
 AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage);
+AppStatus_t App_NBIoTTransmitServiceLiveRecord(const AppMeterStorageRecord_t *p_record);
+AppStatus_t App_NBIoTTransmitMgmtLiveRecord(const AppMeterStorageRecord_t *p_record);
 AppStatus_t App_NBIoTTransmitUdp(void);
 
 AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime);
