@@ -28,6 +28,8 @@
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (5u * 60000u)   /* 5 min : management TX */
 #endif
 
+#define APP_FSM_MGMT_TX_BUSY_DEFER_MS  (30u * 1000u)
+
 typedef struct
 {
     uint8_t initialized;
@@ -212,7 +214,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     APP_LOGI("FSM", "[[MeterWake]] scheduled meter probe start (since NBIOT power-off done=%lu ms)",
              (unsigned long)elapsedSincePowerOffDoneMs);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
-    HAL_Delay(50u);
+    HAL_Delay(100u);
 
     status = App_FsmMeterReinitUart(APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS);
     if (status != APP_STATUS_OK)
@@ -315,7 +317,7 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
     APP_LOGI("FSM", "[[BootLiveTx]] first meter probe start (no storage, since NBIOT power-off done=%lu ms)",
              (unsigned long)elapsedSincePowerOffDoneMs);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
-    HAL_Delay(50u);
+    HAL_Delay(100u);
 
     status = App_FsmMeterReinitUart(APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS);
     if (status != APP_STATUS_OK)
@@ -2911,20 +2913,15 @@ AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
             staleDateKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
             staleMsOfDay = g_appFsmMgmtTxSchedule.nextDueMsOfDay;
             staleJitterMs = g_appFsmMgmtTxSchedule.currentJitterMs;
-            status = App_FsmTxScheduleAdvanceFromDue(staleDateKey,
-                                                     staleMsOfDay,
-                                                     g_appFsmMgmtTxSchedule.periodHours,
-#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
-                                                     APP_DEBUG_MGMT_TX_PERIOD_MS,
-#else
-                                                     0u,
-#endif
-                                                     &g_appFsmMgmtTxSchedule.nextDueDateKey,
-                                                     &g_appFsmMgmtTxSchedule.nextDueMsOfDay,
-                                                     &g_appFsmMgmtTxSchedule.currentJitterMs);
+            status = App_FsmScheduleAddMs(nowDateKey,
+                                          nowMsOfDay,
+                                          APP_FSM_MGMT_TX_BUSY_DEFER_MS,
+                                          &g_appFsmMgmtTxSchedule.nextDueDateKey,
+                                          &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
             APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+            g_appFsmMgmtTxSchedule.currentJitterMs = 0u;
             normalizeCount++;
-            APP_LOGW("FSM", "[[MgmtTxSchedule]] stale next due %lu %02lu:%02lu:%02lu skipped while busy -> normalize to %lu %02lu:%02lu:%02lu (jitter=%lu, count=%lu)",
+            APP_LOGW("FSM", "[[MgmtTxSchedule]] stale next due %lu %02lu:%02lu:%02lu skipped while busy -> defer to %lu %02lu:%02lu:%02lu (prev_jitter=%lu, defer=%lu, count=%lu)",
                      (unsigned long)staleDateKey,
                      (unsigned long)(staleMsOfDay / 3600000u),
                      (unsigned long)((staleMsOfDay % 3600000u) / 60000u),
@@ -2934,6 +2931,7 @@ AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
                      (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
                      (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
                      (unsigned long)staleJitterMs,
+                     (unsigned long)APP_FSM_MGMT_TX_BUSY_DEFER_MS,
                      (unsigned long)normalizeCount);
             APP_RETURN_IF_FALSE(normalizeCount < 1024u, APP_STATUS_FATAL);
         }
