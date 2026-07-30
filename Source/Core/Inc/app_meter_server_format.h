@@ -58,6 +58,10 @@ AppStatus_t App_MeterServerFormatBuildFromStorage(const AppMeterServerFormatOpti
                                                   uint8_t *p_packet,
                                                   uint16_t packetCapacity,
                                                   AppMeterServerFormatResult_t *p_result);
+AppStatus_t App_MeterServerFormatBuildFromUnsentStorage(const AppMeterServerFormatOptions_t *p_options,
+                                                        uint8_t *p_packet,
+                                                        uint16_t packetCapacity,
+                                                        AppMeterServerFormatResult_t *p_result);
 AppStatus_t App_MeterServerFormatBuildFromStorageAndClear(const AppMeterServerFormatOptions_t *p_options,
                                                           uint8_t *p_packet,
                                                           uint16_t packetCapacity,

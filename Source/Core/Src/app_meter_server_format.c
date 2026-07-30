@@ -188,7 +188,8 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
                                                       uint8_t *p_packet,
                                                       uint16_t packetCapacity,
                                                       AppMeterServerFormatResult_t *p_result,
-                                                      uint8_t clearOnSuccess)
+                                                      uint8_t clearOnSuccess,
+                                                      uint8_t unsentOnly)
 {
     AppMeterStorageInfo_t info;
     AppMeterStorageRecord_t latestRecord;
@@ -200,6 +201,8 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
     uint8_t mobileIdLength;
     uint8_t maxRecordCount;
     uint8_t usedRecordCount;
+    uint8_t availableRecordCount;
+    uint8_t startLogicalIndex;
     uint8_t logicalIndex;
     uint8_t basePos;
     uint8_t packetMeterIdBcd[4];
@@ -221,6 +224,29 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
     APP_LOGI("MSTOR", "Saved meter record count:%d(%s)", info.count, (info.count > 0)? "build send data":"skip build send data");
     APP_RETURN_IF_FALSE(info.count > 0u, APP_STATUS_INVALID_PARAM);
 
+    startLogicalIndex = 0u;
+    availableRecordCount = info.count;
+    if (unsentOnly == APP_TRUE)
+    {
+        uint8_t foundUnsent = APP_FALSE;
+        for (logicalIndex = 0u; logicalIndex < info.count; logicalIndex++)
+        {
+            status = App_MeterStorageReadAt(logicalIndex, &record);
+            APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+            if ((record.flags & APP_METER_STORAGE_FLAG_SENT) == 0u)
+            {
+                startLogicalIndex = logicalIndex;
+                availableRecordCount = (uint8_t)(info.count - logicalIndex);
+                foundUnsent = APP_TRUE;
+                break;
+            }
+        }
+        APP_LOGI("MSTOR", "Unsent meter record count:%u(%s)",
+                 (unsigned int)availableRecordCount,
+                 (foundUnsent == APP_TRUE) ? "build service send data" : "skip service send data");
+        APP_RETURN_IF_FALSE(foundUnsent == APP_TRUE, APP_STATUS_INVALID_PARAM);
+    }
+
     qualityLength = (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_LORA)
                     ? APP_METER_SERVER_FORMAT_FIXED_LORA_QUALITY_BYTES
                     : APP_METER_SERVER_FORMAT_FIXED_NBIOT_QUALITY_BYTES;
@@ -230,12 +256,12 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
     maxRecordCount = (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_LORA)
                      ? APP_METER_SERVER_FORMAT_MAX_RECORDS_LORA
                      : APP_METER_SERVER_FORMAT_MAX_RECORDS_NBIOT;
-    usedRecordCount = (info.count < maxRecordCount) ? (uint8_t)info.count : maxRecordCount;
+    usedRecordCount = (availableRecordCount < maxRecordCount) ? availableRecordCount : maxRecordCount;
 
     /* ACK 성공 후 FIFO 정리를 위해 oldest pending batch부터 전송한다.
      * latestRecord 는 이번 배치 안에서 가장 최신(=batch tail) 레코드를 사용한다.
      */
-    status = App_MeterStorageReadAt((uint8_t)(usedRecordCount - 1u), &latestRecord);
+    status = App_MeterStorageReadAt((uint8_t)(startLogicalIndex + usedRecordCount - 1u), &latestRecord);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     (void)memset(p_result, 0, sizeof(*p_result));
@@ -315,7 +341,7 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
     baseValue = 0xFFFFFFFFu;
     for (logicalIndex = 0u; logicalIndex < usedRecordCount; logicalIndex++)
     {
-        status = App_MeterStorageReadAt((uint8_t)((usedRecordCount - 1u) - logicalIndex), &record);
+        status = App_MeterStorageReadAt((uint8_t)(startLogicalIndex + (usedRecordCount - 1u) - logicalIndex), &record);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
         if ((record.flags & APP_METER_STORAGE_FLAG_READING_VALID) != 0u)
@@ -342,7 +368,7 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
     prevValue = baseValue;
     for (logicalIndex = 0u; logicalIndex < usedRecordCount; logicalIndex++)
     {
-        status = App_MeterStorageReadAt((uint8_t)((usedRecordCount - 1u) - logicalIndex), &record);
+        status = App_MeterStorageReadAt((uint8_t)(startLogicalIndex + (usedRecordCount - 1u) - logicalIndex), &record);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
         if (basePos == 0xFFu)
@@ -427,7 +453,15 @@ AppStatus_t App_MeterServerFormatBuildFromStorage(const AppMeterServerFormatOpti
                                                   uint16_t packetCapacity,
                                                   AppMeterServerFormatResult_t *p_result)
 {
-    return App_MeterServerFormatBuildInternal(p_options, p_packet, packetCapacity, p_result, APP_FALSE);
+    return App_MeterServerFormatBuildInternal(p_options, p_packet, packetCapacity, p_result, APP_FALSE, APP_FALSE);
+}
+
+AppStatus_t App_MeterServerFormatBuildFromUnsentStorage(const AppMeterServerFormatOptions_t *p_options,
+                                                        uint8_t *p_packet,
+                                                        uint16_t packetCapacity,
+                                                        AppMeterServerFormatResult_t *p_result)
+{
+    return App_MeterServerFormatBuildInternal(p_options, p_packet, packetCapacity, p_result, APP_FALSE, APP_TRUE);
 }
 
 AppStatus_t App_MeterServerFormatBuildFromStorageAndClear(const AppMeterServerFormatOptions_t *p_options,
@@ -435,7 +469,7 @@ AppStatus_t App_MeterServerFormatBuildFromStorageAndClear(const AppMeterServerFo
                                                           uint16_t packetCapacity,
                                                           AppMeterServerFormatResult_t *p_result)
 {
-    return App_MeterServerFormatBuildInternal(p_options, p_packet, packetCapacity, p_result, APP_TRUE);
+    return App_MeterServerFormatBuildInternal(p_options, p_packet, packetCapacity, p_result, APP_TRUE, APP_FALSE);
 }
 
 /* ================================================================

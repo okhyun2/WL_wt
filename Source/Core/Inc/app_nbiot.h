@@ -235,7 +235,8 @@ AppStatus_t  App_Bc95AtUdpSendAndConfirm(int32_t socketId, const char *p_ip, uin
 AppStatus_t  App_Bc95AtCloseSocket(int32_t socketId);
 void         App_Bc95AtCloseAllSockets(void);
 
-AppStatus_t  App_Bc95AtUdpSendOnce(const char *p_host, uint16_t port,
+AppStatus_t  App_Bc95AtUdpSendOnce(const char *p_logTag,
+                                   const char *p_host, uint16_t port,
                                    const uint8_t *p_data, uint16_t length,
                                    AppBc95UdpResult_t *p_result);
 

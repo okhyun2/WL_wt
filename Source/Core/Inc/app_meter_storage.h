@@ -73,6 +73,8 @@ AppStatus_t App_MeterStoragePeekOldest(AppMeterStorageRecord_t *p_record);
 AppStatus_t App_MeterStorageReadAt(uint8_t logicalIndex, AppMeterStorageRecord_t *p_record);
 AppStatus_t App_MeterStorageDeleteOldest(uint8_t deleteCount);
 AppStatus_t App_MeterStorageMarkOldestSent(uint8_t sentCount);
+AppStatus_t App_MeterStorageMarkOldestUnsentSent(uint8_t sentCount);
+AppStatus_t App_MeterStorageDeleteOldestSent(uint8_t *p_deletedCount);
 uint8_t App_MeterStorageCount(void);
 AppStatus_t App_MeterStorageClearAll(void);
 AppStatus_t App_MeterStorageGetInfo(AppMeterStorageInfo_t *p_info);

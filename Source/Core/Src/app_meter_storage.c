@@ -412,6 +412,86 @@ AppStatus_t App_MeterStorageMarkOldestSent(uint8_t sentCount)
     return APP_STATUS_OK;
 }
 
+AppStatus_t App_MeterStorageMarkOldestUnsentSent(uint8_t sentCount)
+{
+    AppMeterStorageRecord_t record;
+    uint8_t logicalIndex;
+    uint8_t firstUnsentIndex = 0xFFu;
+    uint8_t unsentCount = 0u;
+    uint8_t markCount;
+    uint8_t physicalIndex;
+
+    if (App_MeterStorageIsInitialized() != APP_TRUE)
+    {
+        APP_RETURN_IF_FALSE(App_MeterStorageInit() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+    }
+
+    APP_RETURN_IF_FALSE(sentCount != 0u, APP_STATUS_INVALID_PARAM);
+
+    for (logicalIndex = 0u; logicalIndex < g_appMeterStorageContext.info.count; logicalIndex++)
+    {
+        physicalIndex = App_MeterStorageGetPhysicalIndex(logicalIndex);
+        APP_RETURN_IF_FALSE(App_MeterStorageReadPhysical(physicalIndex, &record) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+        if ((record.flags & APP_METER_STORAGE_FLAG_SENT) == 0u)
+        {
+            firstUnsentIndex = logicalIndex;
+            unsentCount = (uint8_t)(g_appMeterStorageContext.info.count - logicalIndex);
+            break;
+        }
+    }
+
+    APP_RETURN_IF_FALSE((firstUnsentIndex != 0xFFu) && (sentCount <= unsentCount), APP_STATUS_INVALID_PARAM);
+
+    for (markCount = 0u; markCount < sentCount; markCount++)
+    {
+        logicalIndex = (uint8_t)(firstUnsentIndex + markCount);
+        physicalIndex = App_MeterStorageGetPhysicalIndex(logicalIndex);
+        APP_RETURN_IF_FALSE(App_MeterStorageReadPhysical(physicalIndex, &record) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+        record.flags |= APP_METER_STORAGE_FLAG_SENT;
+        record.crc8 = 0u;
+        record.crc8 = App_MeterStorageCalcRecordCrc8(&record);
+        APP_RETURN_IF_FALSE(App_MeterStorageWritePhysical(physicalIndex, &record) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+    }
+
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_MeterStorageDeleteOldestSent(uint8_t *p_deletedCount)
+{
+    AppMeterStorageRecord_t record;
+    uint8_t deleteCount = 0u;
+    uint8_t logicalIndex;
+    uint8_t physicalIndex;
+
+    if (App_MeterStorageIsInitialized() != APP_TRUE)
+    {
+        APP_RETURN_IF_FALSE(App_MeterStorageInit() == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+    }
+
+    APP_RETURN_IF_FALSE(p_deletedCount != NULL, APP_STATUS_INVALID_PARAM);
+    *p_deletedCount = 0u;
+
+    for (logicalIndex = 0u; logicalIndex < g_appMeterStorageContext.info.count; logicalIndex++)
+    {
+        physicalIndex = App_MeterStorageGetPhysicalIndex(logicalIndex);
+        APP_RETURN_IF_FALSE(App_MeterStorageReadPhysical(physicalIndex, &record) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+        if ((record.flags & APP_METER_STORAGE_FLAG_SENT) == 0u)
+        {
+            break;
+        }
+        deleteCount++;
+    }
+
+    if (deleteCount == 0u)
+    {
+        return APP_STATUS_OK;
+    }
+
+    APP_RETURN_IF_FALSE(App_MeterStorageDeleteOldest(deleteCount) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
+    *p_deletedCount = deleteCount;
+    return APP_STATUS_OK;
+}
+
 uint8_t App_MeterStorageCount(void)
 {
     return g_appMeterStorageContext.info.count;
