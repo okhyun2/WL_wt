@@ -22,7 +22,7 @@
 #include "app_clock.h"
 
 //debug
-#if 1
+#if 0
 #define APP_DEBUG_METER_PERIOD_MS      (1u * 60000u)   /* 1 min */
 #define APP_DEBUG_TX_PERIOD_MS         (2u * 60000u)   /* 2 min : service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (5u * 60000u)   /* 5 min : management TX */
