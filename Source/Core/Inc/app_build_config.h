@@ -40,7 +40,7 @@ extern "C" {
 #endif
 
 #define APP_FW_VERSION_MAJOR                        (0u)
-#define APP_FW_VERSION_MINOR                        (7u)
+#define APP_FW_VERSION_MINOR                        (8u)
 
 #define NBIOT_SUPPORT_DNS
 #ifdef NBIOT_SUPPORT_DNS
