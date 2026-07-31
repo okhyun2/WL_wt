@@ -787,10 +787,6 @@ static AppStatus_t App_SystemPrintBootLogs(void)
 
     p_clockContext = App_ClockGetContext();
 
-#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
-    APP_RETURN_IF_FALSE(App_DebugConsoleWriteString(APP_DEBUG_CONSOLE_BANNER APP_DEBUG_CONSOLE_EOL) == APP_STATUS_OK,
-                        APP_STATUS_UART_TX_FAILED);
-#endif
     APP_RETURN_IF_FALSE(App_LogInit() == APP_STATUS_OK, APP_STATUS_LOG_INIT_FAILED);
 
     g_appSystemContext.logReady = APP_TRUE;
@@ -818,9 +814,6 @@ static AppStatus_t App_SystemPrintBootLogs(void)
                                  (unsigned long)APP_UART_NBIOT_HANDLE->Init.BaudRate);
     APP_LOGI("NFC", "I2C2 NFC ready at %sKhz",
                                  (((unsigned long)APP_I2C_NFC_HANDLE->Init.Timing == 0x00000708)?"100":"unknown"));
-#if (APP_BUILD_CLI_ENABLED == APP_TRUE)
-    APP_RETURN_IF_FALSE(App_DebugConsolePrintPrompt() == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-#endif
     APP_LOGI("SYS", "Boot path complete: clock/log/debug ready");
 
     return APP_STATUS_OK;

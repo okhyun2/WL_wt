@@ -101,13 +101,6 @@ extern "C" {
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #endif
 
-#if (APP_BUILD_IS_PRODUCTION == APP_TRUE)
-#define APP_BUILD_CLI_ENABLED                       (APP_FALSE)
-#else
-//#define APP_BUILD_CLI_ENABLED                       (APP_BUILD_DEBUG_ENABLED)
-#define APP_BUILD_CLI_ENABLED                       (APP_FALSE)
-#endif
-
 #define SUPPORT_EEPROM
 #undef SUPPORT_FALASH
 
