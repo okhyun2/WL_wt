@@ -986,7 +986,6 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
 
     if (skipBootWaitOnce == APP_TRUE)
     {
-        g_appBc95SkipNextAttachBootWait = APP_FALSE;
         APP_LOGI("NBIOT", "Skip boot banner wait after recent NRB ready, probe with AT");
     }
     else if (g_appNbiotCarrierContext.lastResetType == APP_NBIOT_CARRIER_RESET_SW)
@@ -1022,6 +1021,7 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
         status = App_Bc95AtPing(APP_BC95_BOOT_PING_TIMEOUT_MS);
         if (status == APP_STATUS_OK)
         {
+            g_appBc95SkipNextAttachBootWait = APP_TRUE;
             APP_LOGI("NBIOT", "Module ready (banner=%u, retry=%lu, elapsed=%lums)",
                      (unsigned)bannerSeen, (unsigned long)retryCount,
                      (unsigned long)(HAL_GetTick() - startTick));
@@ -2734,7 +2734,6 @@ static AppStatus_t App_Bc95AtSendRebootBestEffort(void)
     }
 
     APP_LOGI("NBIOT", "[[BootTrack]] AT+NRB ready");
-    g_appBc95SkipNextAttachBootWait = APP_TRUE;
     return APP_STATUS_OK;
 }
 
@@ -2753,10 +2752,12 @@ static AppStatus_t App_NbiotRunBootConfigurationSequence(void)
                                            APP_BC95_AT_RX_TIMEOUT_MS,
                                            "AT+QLWFOTAIND=0",
                                            "[[BootTrack]]");
+/* If you want this response, increase rx buf size.
     (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NCONFIG_QUERY,
                                         APP_BC95_AT_RX_TIMEOUT_MS,
                                         "AT+NCONFIG?",
                                         "[[BootTrack]]");
+*/
     status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QREGSWT_SET_2,
                                            APP_BC95_AT_RX_TIMEOUT_MS,
                                            "AT+QREGSWT=2",
@@ -2940,7 +2941,6 @@ static AppStatus_t App_NbiotRunPostProvisionFinalizeSequence(void)
     AppBc95NetStatus_t netStatus;
 
     APP_LOGI("NBIOT", "[[BootTrack]] start post-provision settle/reattach sequence");
-    g_appBc95SkipNextAttachBootWait = APP_FALSE;
     App_Bc95AtDelayWithFeed(APP_BC95_POST_PROVISION_SETTLE_MS);
 
     status = App_Bc95AtWaitForServiceReady(APP_BC95_POST_PROVISION_SERVICE_READY_TIMEOUT_MS);
