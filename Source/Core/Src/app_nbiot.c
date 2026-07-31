@@ -68,6 +68,16 @@
 #define APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_QUERY "AT+QBOOTSTRAPHOLDOFF?\r\n"
 #define APP_BC95_AT_CMD_NBAND_QUERY          "AT+NBAND?\r\n"
 
+#define APP_BC95_AT_CMD_QLWSREGIND_REGISTER  "AT+QLWSREGIND=0\r\n"
+#define APP_BC95_AT_CMD_QLWULDATASTATUS_QUERY "AT+QLWULDATASTATUS?\r\n"
+#define APP_BC95_AT_QLWEVTIND_PREFIX         "+QLWEVTIND:"
+#define APP_BC95_AT_QLWEVTIND_PREFIX_LEN     (11u)
+#define APP_BC95_AT_QLWULDATASTATUS_PREFIX   "+QLWULDATASTATUS:"
+#define APP_BC95_AT_QLWULDATASTATUS_PREFIX_LEN (17u)
+#define APP_BC95_PLATFORM_EVENT_TIMEOUT_MS   (30000u)
+#define APP_BC95_PLATFORM_STATUS_TIMEOUT_MS  (30000u)
+#define APP_BC95_PLATFORM_STATUS_POLL_MS     (1000u)
+
 #define APP_BC95_AT_CFUN_PREFIX              "+CFUN:"
 #define APP_BC95_AT_CFUN_PREFIX_LEN          (6u)
 #define APP_BC95_AT_CGATT_PREFIX             "+CGATT:"
@@ -161,6 +171,21 @@ static AppStatus_t App_Bc95AtSendBestEffortSimpleOk(const char *p_cmd,
 static AppStatus_t App_Bc95AtSendRebootBestEffort(void);
 static AppStatus_t App_NbiotRunBootConfigurationSequence(void);
 static AppStatus_t App_NbiotRunPlatformPreflight(void);
+static AppStatus_t App_Bc95AtWaitForLinePrefix(const char *p_prefix,
+                                                uint32_t timeoutMs,
+                                                char *p_rxSnapshot,
+                                                uint16_t snapshotSize);
+static AppBc95AtStatus_t App_Bc95AtParseQlwevtind(const char *p_resp, int *p_eventType);
+static AppStatus_t App_Bc95AtWaitForPlatformReady(uint32_t timeoutMs);
+static AppBc95AtStatus_t App_Bc95AtParseQlwuldataStatus(const char *p_resp, int *p_statusOut, int *p_seqOut);
+static AppStatus_t App_Bc95AtPlatformRegister(void);
+static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint16_t length, uint8_t seqNum);
+static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
+                                                     uint8_t deleteStorage,
+                                                     uint8_t unsentOnly,
+                                                     const AppMeterStorageRecord_t *p_liveRecord);
+static void App_Bc95AtBytesToHex(const uint8_t *p_in, uint32_t inLen, char *p_out);
+static uint8_t App_Bc95AtNextUdpSeq(void);
 
 static void App_HwNbiotPowerCycle(void)
 {
@@ -2595,13 +2620,16 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
 
 AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
 {
+    AppStatus_t status;
+
     APP_LOGI("NBIOT", "[[ServicePlatformWake]] start");
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
     (void)App_NBIoTSyncTime();
     (void)App_NbiotRunPlatformPreflight();
-    APP_LOGI("NBIOT", "[[ServicePlatformWake]] current payload path uses existing service transport after platform preflight");
-    return App_NBIoTTransmitServiceUdp(deleteStorage);
+    status = App_NBIoTTransmitPlatformInternal("[[ServiceTx]]", deleteStorage, APP_TRUE, NULL);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    return APP_STATUS_OK;
 }
 
 AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage)
@@ -2610,6 +2638,358 @@ AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage)
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
     return App_NBIoTTransmitMgmtUdp(deleteStorage);
+}
+
+static AppStatus_t App_Bc95AtWaitForLinePrefix(const char *p_prefix,
+                                                uint32_t timeoutMs,
+                                                char *p_rxSnapshot,
+                                                uint16_t snapshotSize)
+{
+    HAL_StatusTypeDef halStatus;
+    uint32_t startTick;
+    uint16_t curLen;
+    uint16_t safeLen;
+    AppBc95AtLineQueue_t lineQueue;
+
+    APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((APP_UART_NBIOT_HANDLE != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_prefix != NULL) && (p_prefix[0] != '\0'), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((snapshotSize > 0u), APP_STATUS_INVALID_PARAM);
+
+    App_Bc95AtDrainRxLine(APP_UART_NBIOT_HANDLE, 30u);
+    (void)memset(g_appBc95AtRxBuf, 0, sizeof(g_appBc95AtRxBuf));
+    if (p_rxSnapshot != NULL)
+    {
+        p_rxSnapshot[0] = '\0';
+    }
+
+    g_appBc95AtRxContext.p_huart        = APP_UART_NBIOT_HANDLE;
+    g_appBc95AtRxContext.p_buffer       = g_appBc95AtRxBuf;
+    g_appBc95AtRxContext.bufferSize     = (uint16_t)(sizeof(g_appBc95AtRxBuf) - 1u);
+    g_appBc95AtRxContext.receivedLength = 0u;
+    g_appBc95AtRxContext.completed      = APP_FALSE;
+    g_appBc95AtRxContext.error          = APP_FALSE;
+    g_appBc95AtRxContext.active         = APP_TRUE;
+
+    __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE,
+                          UART_CLEAR_OREF | UART_CLEAR_FEF |
+                          UART_CLEAR_NEF  | UART_CLEAR_PEF);
+    __HAL_UART_SEND_REQ(APP_UART_NBIOT_HANDLE, UART_RXDATA_FLUSH_REQUEST);
+
+    halStatus = HAL_UART_Receive_IT(APP_UART_NBIOT_HANDLE, &g_appBc95AtRxBuf[0], 1u);
+    if (halStatus != HAL_OK)
+    {
+        App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
+        return APP_STATUS_UART_RX_FAILED;
+    }
+
+    App_Bc95AtLineQueueReset(&lineQueue);
+    startTick = HAL_GetTick();
+    while ((HAL_GetTick() - startTick) < timeoutMs)
+    {
+        APP_WWDGFeed();
+
+        if (g_appBc95AtRxContext.error == APP_TRUE)
+        {
+            App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
+            return APP_STATUS_UART_RX_FAILED;
+        }
+
+        curLen = g_appBc95AtRxContext.receivedLength;
+        if (curLen >= g_appBc95AtRxContext.bufferSize)
+        {
+            curLen = g_appBc95AtRxContext.bufferSize;
+        }
+        safeLen = App_Bc95AtCopySnapshot(g_appBc95AtRxBuf, curLen,
+                                         (p_rxSnapshot != NULL) ? p_rxSnapshot : (char *)g_appBc95AtRxBuf,
+                                         snapshotSize);
+        App_Bc95AtLineQueueFeed(&lineQueue,
+                                (p_rxSnapshot != NULL) ? p_rxSnapshot : (char *)g_appBc95AtRxBuf,
+                                safeLen);
+        if (App_Bc95AtLineQueueContainsPrefix(&lineQueue, p_prefix) == APP_TRUE)
+        {
+            App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
+            return APP_STATUS_OK;
+        }
+        HAL_Delay(5u);
+    }
+
+    App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
+    return APP_STATUS_UART_TIMEOUT;
+}
+
+static AppBc95AtStatus_t App_Bc95AtParseQlwevtind(const char *p_resp, int *p_eventType)
+{
+    const char *p_pfx;
+
+    if ((p_resp == NULL) || (p_eventType == NULL))
+    {
+        return APP_BC95_AT_ERR_PARAM;
+    }
+
+    p_pfx = strstr(p_resp, APP_BC95_AT_QLWEVTIND_PREFIX);
+    if (p_pfx == NULL)
+    {
+        return APP_BC95_AT_ERR_NO_PREFIX;
+    }
+    p_pfx += APP_BC95_AT_QLWEVTIND_PREFIX_LEN;
+    while ((*p_pfx == ' ') || (*p_pfx == '	')) p_pfx++;
+    if (sscanf(p_pfx, "%d", p_eventType) != 1)
+    {
+        return APP_BC95_AT_ERR_FORMAT;
+    }
+    return APP_BC95_AT_OK;
+}
+
+static AppStatus_t App_Bc95AtWaitForPlatformReady(uint32_t timeoutMs)
+{
+    uint32_t startTick;
+    char rxSnapshot[APP_BC95_AT_RX_BUF_SIZE];
+
+    startTick = HAL_GetTick();
+    while ((HAL_GetTick() - startTick) < timeoutMs)
+    {
+        AppStatus_t status;
+        int eventType = -1;
+        uint32_t remain = timeoutMs - (HAL_GetTick() - startTick);
+        uint32_t chunk = (remain > 5000u) ? 5000u : remain;
+
+        status = App_Bc95AtWaitForLinePrefix(APP_BC95_AT_QLWEVTIND_PREFIX,
+                                             chunk,
+                                             rxSnapshot,
+                                             (uint16_t)sizeof(rxSnapshot));
+        if (status == APP_STATUS_UART_TIMEOUT)
+        {
+            continue;
+        }
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+        if (App_Bc95AtParseQlwevtind(rxSnapshot, &eventType) != APP_BC95_AT_OK)
+        {
+            continue;
+        }
+
+        APP_LOGI("NBIOT", "[[ServicePlatformWake]] QLWEVTIND=%d", eventType);
+        if ((eventType == 0) || (eventType == 3) || (eventType == 4))
+        {
+            return APP_STATUS_OK;
+        }
+    }
+
+    APP_LOGW("NBIOT", "[[ServicePlatformWake]] platform-ready wait timeout");
+    return APP_STATUS_UART_TIMEOUT;
+}
+
+static AppBc95AtStatus_t App_Bc95AtParseQlwuldataStatus(const char *p_resp, int *p_statusOut, int *p_seqOut)
+{
+    const char *p_pfx;
+    int status;
+    int seq = -1;
+
+    if ((p_resp == NULL) || (p_statusOut == NULL))
+    {
+        return APP_BC95_AT_ERR_PARAM;
+    }
+
+    p_pfx = strstr(p_resp, APP_BC95_AT_QLWULDATASTATUS_PREFIX);
+    if (p_pfx == NULL)
+    {
+        return APP_BC95_AT_ERR_NO_PREFIX;
+    }
+    p_pfx += APP_BC95_AT_QLWULDATASTATUS_PREFIX_LEN;
+    while ((*p_pfx == ' ') || (*p_pfx == '	')) p_pfx++;
+    if (sscanf(p_pfx, "%d,%d", &status, &seq) < 1)
+    {
+        return APP_BC95_AT_ERR_FORMAT;
+    }
+    *p_statusOut = status;
+    if (p_seqOut != NULL)
+    {
+        *p_seqOut = seq;
+    }
+    return APP_BC95_AT_OK;
+}
+
+static AppStatus_t App_Bc95AtPlatformRegister(void)
+{
+    AppStatus_t status;
+
+    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QLWSREGIND_REGISTER,
+                                           APP_BC95_AT_RX_TIMEOUT_MS,
+                                           "AT+QLWSREGIND=0",
+                                           "[[ServicePlatformWake]]");
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    return App_Bc95AtWaitForPlatformReady(APP_BC95_PLATFORM_EVENT_TIMEOUT_MS);
+}
+
+static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint16_t length, uint8_t seqNum)
+{
+    AppStatus_t status;
+    AppBc95AtStatus_t atStatus;
+    uint16_t rxLen = 0u;
+    uint32_t startTick;
+    int qlwStatus = -1;
+    int qlwSeq = -1;
+    int printed;
+    char appBc95AtCmdTxBuf[APP_BC95_AT_CMD_TX_BUF_SIZE];
+
+    APP_RETURN_IF_FALSE((p_data != NULL) && (length > 0u), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(seqNum > 0u, APP_STATUS_INVALID_PARAM);
+
+    printed = snprintf(appBc95AtCmdTxBuf, sizeof(appBc95AtCmdTxBuf),
+                       "AT+QLWULDATAEX=%u,",
+                       (unsigned)length);
+    APP_RETURN_IF_FALSE((printed > 0) && ((uint32_t)printed < sizeof(appBc95AtCmdTxBuf)), APP_STATUS_INVALID_PARAM);
+    App_Bc95AtBytesToHex(p_data, length, &appBc95AtCmdTxBuf[(uint32_t)printed]);
+    printed += (int)(2u * length);
+    printed += snprintf(&appBc95AtCmdTxBuf[(uint32_t)printed],
+                        sizeof(appBc95AtCmdTxBuf) - (uint32_t)printed,
+                        ",0x0100,%u\r\n",
+                        (unsigned)seqNum);
+    APP_RETURN_IF_FALSE((printed > 0) && ((uint32_t)printed < sizeof(appBc95AtCmdTxBuf)), APP_STATUS_INVALID_PARAM);
+
+    APP_LOGI("NBIOT", "[[ServicePlatformWake]] QLWULDATAEX send len=%u seq=%u mode=0x0100",
+             (unsigned)length,
+             (unsigned)seqNum);
+    status = App_Bc95AtSendCommand(appBc95AtCmdTxBuf,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   APP_BC95_AT_RX_TIMEOUT_MS,
+                                   &rxLen);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
+    APP_RETURN_IF_FALSE(atStatus == APP_BC95_AT_OK, APP_STATUS_FATAL);
+
+    startTick = HAL_GetTick();
+    while ((HAL_GetTick() - startTick) < APP_BC95_PLATFORM_STATUS_TIMEOUT_MS)
+    {
+        APP_WWDGFeed();
+        status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_QLWULDATASTATUS_QUERY,
+                                       g_appBc95AtRxBuf,
+                                       (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                       APP_BC95_AT_RX_TIMEOUT_MS,
+                                       &rxLen);
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+        atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
+        APP_RETURN_IF_FALSE(atStatus == APP_BC95_AT_OK, APP_STATUS_FATAL);
+        if (App_Bc95AtParseQlwuldataStatus((const char *)g_appBc95AtRxBuf, &qlwStatus, &qlwSeq) == APP_BC95_AT_OK)
+        {
+            APP_LOGI("NBIOT", "[[ServicePlatformWake]] QLWULDATASTATUS=%d seq=%d", qlwStatus, qlwSeq);
+            if ((qlwStatus == 4) && ((qlwSeq < 0) || (qlwSeq == (int)seqNum)))
+            {
+                return APP_STATUS_OK;
+            }
+            if ((qlwStatus == 2) || (qlwStatus == 3) || (qlwStatus == 5))
+            {
+                return APP_STATUS_UART_TIMEOUT;
+            }
+        }
+        App_Bc95AtDelayWithFeed(APP_BC95_PLATFORM_STATUS_POLL_MS);
+    }
+
+    APP_LOGW("NBIOT", "[[ServicePlatformWake]] QLWULDATASTATUS timeout seq=%u", (unsigned)seqNum);
+    return APP_STATUS_UART_TIMEOUT;
+}
+
+static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
+                                                     uint8_t deleteStorage,
+                                                     uint8_t unsentOnly,
+                                                     const AppMeterStorageRecord_t *p_liveRecord)
+{
+    AppStatus_t status;
+    AppMeterServerFormatOptions_t opt;
+    AppMeterServerFormatResult_t buildResult;
+    uint8_t packet[APP_METER_SERVER_FORMAT_MAX_PACKET_SIZE];
+    uint8_t seqNum;
+
+    APP_RETURN_IF_FALSE((p_logTag != NULL), APP_STATUS_INVALID_PARAM);
+
+    App_MeterServerOptionsLoad(&opt);
+    App_MeterServerOptionsDump(&opt);
+    if (p_liveRecord != NULL)
+    {
+        status = App_MeterServerFormatBuildFromRecord(&opt, p_liveRecord, packet, sizeof(packet), &buildResult);
+    }
+    else
+    {
+        status = (unsentOnly == APP_TRUE)
+                 ? App_MeterServerFormatBuildFromUnsentStorage(&opt, packet, sizeof(packet), &buildResult)
+                 : App_MeterServerFormatBuildFromStorage(&opt, packet, sizeof(packet), &buildResult);
+    }
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGI("NBIOT", "%s skip send", p_logTag);
+        return status;
+    }
+
+    seqNum = App_Bc95AtNextUdpSeq();
+    status = App_Bc95AtPlatformRegister();
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    status = App_Bc95AtPlatformSendAndConfirm(packet, buildResult.packetLength, seqNum);
+    if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u))
+    {
+        if (p_liveRecord != NULL)
+        {
+            APP_LOGI("NBIOT", "%s live meter record sent without storage (records=%u)",
+                     p_logTag,
+                     (unsigned int)buildResult.recordCount);
+        }
+        else if (unsentOnly == APP_TRUE)
+        {
+            AppStatus_t markStatus = App_MeterStorageMarkOldestUnsentSent(buildResult.recordCount);
+            if (markStatus != APP_STATUS_OK)
+            {
+                APP_LOGE("NBIOT", "%s storage sent-mark failed (status=%ld, records=%u)",
+                         p_logTag,
+                         (long)markStatus,
+                         (unsigned int)buildResult.recordCount);
+                return markStatus;
+            }
+            if (deleteStorage == APP_TRUE)
+            {
+                uint8_t deletedCount = 0u;
+                AppStatus_t clearStatus = App_MeterStorageDeleteOldestSent(&deletedCount);
+                if (clearStatus != APP_STATUS_OK)
+                {
+                    APP_LOGE("NBIOT", "%s storage delete failed (status=%ld, records=%u)",
+                             p_logTag,
+                             (long)clearStatus,
+                             (unsigned int)buildResult.recordCount);
+                    return clearStatus;
+                }
+                buildResult.cleared = (deletedCount != 0u) ? APP_TRUE : APP_FALSE;
+            }
+            else
+            {
+                APP_LOGI("NBIOT", "%s storage marked sent (records=%u, remain=%u)",
+                         p_logTag,
+                         (unsigned int)buildResult.recordCount,
+                         (unsigned int)App_MeterStorageCount());
+            }
+        }
+        else if (deleteStorage == APP_TRUE)
+        {
+            AppStatus_t clearStatus = App_MeterStorageDeleteOldest(buildResult.recordCount);
+            if (clearStatus != APP_STATUS_OK)
+            {
+                APP_LOGE("NBIOT", "%s storage delete failed (status=%ld, records=%u)",
+                         p_logTag,
+                         (long)clearStatus,
+                         (unsigned int)buildResult.recordCount);
+                return clearStatus;
+            }
+            buildResult.cleared = APP_TRUE;
+        }
+    }
+
+    if (status == APP_STATUS_OK)
+    {
+        APP_LOGI("NBIOT", "%s PlatformSendResult: sent=%u seq=%u confirmed=1",
+                 p_logTag,
+                 (unsigned)buildResult.packetLength,
+                 (unsigned)seqNum);
+    }
+    return status;
 }
 
 static AppStatus_t App_NbiotCarrierPerformSwReset(void)
