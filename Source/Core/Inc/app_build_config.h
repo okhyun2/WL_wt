@@ -54,6 +54,15 @@ extern "C" {
 #define APP_SERVICE_SERVER_PORT                 (6001u)
 #define APP_MGMT_SERVER_PORT                    (6001u)
 
+/* BC95-GV board-aligned platform provisioning defaults */
+#define APP_BC95_PLATFORM_SERVER_IP_STRING      "106.103.233.155"
+#define APP_BC95_PLATFORM_SERVER_PORT_STRING    "5783"
+#define APP_BC95_PLATFORM_BOOTSTRAP_MODE        "BS"
+#define APP_BC95_PLATFORM_LWM2M_MODE            "LWM2M"
+#define APP_BC95_PLATFORM_EPNS_STRING           "ASN_CSE-D-9abbf178c4-JHC1"
+#define APP_BC95_PLATFORM_MBSPS_STRING          "JHC1,4323800010,01226680136,919592,KSJ_WT-NB23"
+#define APP_BC95_PLATFORM_NBAND_STRING          "5"
+
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
 
 #define APP_DEFAULT_RTC_YEAR                        (2026)
@@ -95,7 +104,8 @@ extern "C" {
 #if (APP_BUILD_IS_PRODUCTION == APP_TRUE)
 #define APP_BUILD_CLI_ENABLED                       (APP_FALSE)
 #else
-#define APP_BUILD_CLI_ENABLED                       (APP_BUILD_DEBUG_ENABLED)
+//#define APP_BUILD_CLI_ENABLED                       (APP_BUILD_DEBUG_ENABLED)
+#define APP_BUILD_CLI_ENABLED                       (APP_FALSE)
 #endif
 
 #define SUPPORT_EEPROM
