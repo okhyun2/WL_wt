@@ -38,9 +38,8 @@ uint8_t App_MeterServerOptionsNormalizePeriod(uint8_t hours)
 
 static uint8_t App_MeterServerOptionsIsTxPeriodSupportedOrDisabled(uint8_t hours)
 {
-    return ((hours == 0u) || (App_MeterServerOptionsIsPeriodSupported(hours) == APP_TRUE))
-           ? APP_TRUE
-           : APP_FALSE;
+    (void)hours;
+    return APP_TRUE;
 }
 
 AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_options)
