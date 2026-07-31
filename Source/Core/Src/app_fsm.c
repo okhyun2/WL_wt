@@ -2648,16 +2648,16 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
         {
-            uint8_t isFirstBootRoutine = (g_appFsmFirstAttachCycleDone != APP_TRUE) ? APP_TRUE : APP_FALSE;
+            uint8_t isBootResetTrack = (g_appFsmFirstAttachCycleDone != APP_TRUE) ? APP_TRUE : APP_FALSE;
             uint8_t mgmtTxConfiguredPeriod = 0u;
             uint8_t deleteOnServiceTx = APP_TRUE;
-            AppStatus_t attachStatus;
+            AppStatus_t trackStatus;
 
             APP_RETURN_IF_FALSE(App_FsmMgmtTxScheduleLoadPeriod(&mgmtTxConfiguredPeriod) == APP_STATUS_OK, APP_STATUS_FATAL);
             deleteOnServiceTx = (mgmtTxConfiguredPeriod == 0u) ? APP_TRUE : APP_FALSE;
 
 #if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
-            if ((isFirstBootRoutine != APP_TRUE) && (g_appFsmWakeCollectionPending == APP_TRUE))
+            if ((isBootResetTrack != APP_TRUE) && (g_appFsmWakeCollectionPending == APP_TRUE))
             {
                 APP_LOGI("FSM", "[[WakeRoutine]] collect device data before attach");
                 APP_RETURN_IF_FALSE(App_SystemRunWakeDataCollection() == APP_STATUS_OK, APP_STATUS_FATAL);
@@ -2665,51 +2665,60 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             }
 #endif /* APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 
-            attachStatus = App_NBIoTCarrierAttachMandatory();
-            if (attachStatus != APP_STATUS_OK)
-            {
-                return App_FsmHandleWakeupLowPower("attach fail", attachStatus);
-            }
-            App_NBIoTReadIdentity(APP_TRUE);
-            App_NBIoTReadQuality(APP_TRUE);
-
 #ifdef SUPPORT_SELFTEST
-            if (isFirstBootRoutine == APP_TRUE)
+            if (isBootResetTrack == APP_TRUE)
             {
-                APP_LOGI("FSM", "[[BootRoutine]] attach success -> run full selftest");
-                APP_RETURN_IF_FALSE(App_SystemRunBootSelfTest() == APP_STATUS_OK, APP_STATUS_FATAL);
+                APP_LOGI("FSM", "[[BootTrack]] board boot -> run cold-boot reset/provision track before selftest");
             }
 #else
-#if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
-            if (isFirstBootRoutine == APP_TRUE)
+            if (isBootResetTrack == APP_TRUE)
             {
-                APP_LOGI("FSM", "[[BootRoutine]] attach success -> collect device data before first send");
-                APP_RETURN_IF_FALSE(App_SystemRunWakeDataCollection() == APP_STATUS_OK, APP_STATUS_FATAL);
+                APP_LOGI("FSM", "[[BootTrack]] board boot -> run cold-boot reset/provision track");
             }
-#endif /* APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
-#endif // SUPPORT_SELFTEST
+#endif
 
-            if (isFirstBootRoutine == APP_TRUE)
+            if (isBootResetTrack == APP_TRUE)
             {
-                AppMeterStorageRecord_t bootLiveRecord;
-                APP_LOGI("FSM", "[[BootRoutine]] first meter data -> send live record to service+mgmt without storage");
-                APP_RETURN_IF_FALSE(App_FsmMeterProbeNoStore(&bootLiveRecord) == APP_STATUS_OK, APP_STATUS_FATAL);
-                (void)App_NBIoTTransmitServiceLiveRecord(&bootLiveRecord);
-                (void)App_NBIoTTransmitMgmtLiveRecord(&bootLiveRecord);
+                trackStatus = App_NBIoTColdBootResetTrack();
+                if (trackStatus != APP_STATUS_OK)
+                {
+                    return App_FsmHandleWakeupLowPower("boot reset track fail", trackStatus);
+                }
+
+#ifdef SUPPORT_SELFTEST
+                APP_LOGI("FSM", "[[BootTrack]] reset/provision success -> run full selftest");
+                APP_RETURN_IF_FALSE(App_SystemRunBootSelfTest() == APP_STATUS_OK, APP_STATUS_FATAL);
+#else
+#if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
+                APP_LOGI("FSM", "[[BootTrack]] reset/provision success -> collect device data");
+                APP_RETURN_IF_FALSE(App_SystemRunWakeDataCollection() == APP_STATUS_OK, APP_STATUS_FATAL);
+#endif /* APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
+#endif /* SUPPORT_SELFTEST */
             }
             else
             {
+                trackStatus = App_NBIoTCarrierAttachMandatory();
+                if (trackStatus != APP_STATUS_OK)
+                {
+                    return App_FsmHandleWakeupLowPower("attach fail", trackStatus);
+                }
+
+                if ((g_appFsmRtcServiceTxWakePending == APP_TRUE) && (g_appFsmRtcMgmtTxWakePending == APP_TRUE))
+                {
+                    APP_LOGW("FSM", "[[WakeTrack]] service+mgmt due together -> process sequentially in one attach session");
+                }
+
                 if (g_appFsmRtcServiceTxWakePending == APP_TRUE)
                 {
-                    (void)App_NBIoTTransmitServiceUdp(deleteOnServiceTx);
+                    (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx);
                 }
                 if (g_appFsmRtcMgmtTxWakePending == APP_TRUE)
                 {
-                    (void)App_NBIoTTransmitMgmtUdp(APP_TRUE);
+                    (void)App_NBIoTMgmtSocketWakeTrack(APP_TRUE);
                 }
                 if ((g_appFsmRtcServiceTxWakePending != APP_TRUE) && (g_appFsmRtcMgmtTxWakePending != APP_TRUE))
                 {
-                    (void)App_NBIoTTransmitServiceUdp(deleteOnServiceTx);
+                    (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx);
                 }
             }
 

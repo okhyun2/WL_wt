@@ -54,6 +54,20 @@
 #define APP_BC95_AT_CMD_CEREG_QUERY          "AT+CEREG?\r\n"
 #define APP_BC95_AT_CMD_CGPADDR_QUERY        "AT+CGPADDR\r\n"
 
+#define APP_BC95_AT_CMD_QGMR_QUERY           "AT+QGMR\r\n"
+#define APP_BC95_AT_CMD_CPIN_QUERY           "AT+CPIN?\r\n"
+#define APP_BC95_AT_CMD_NCONFIG_QUERY        "AT+NCONFIG?\r\n"
+#define APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_OFF "AT+NCONFIG=AUTOCONNECT,FALSE\r\n"
+#define APP_BC95_AT_CMD_NCONFIG_CELL_RESELECTION_ON "AT+NCONFIG=CELL_RESELECTION,TRUE\r\n"
+#define APP_BC95_AT_CMD_QREGSWT_SET_2        "AT+QREGSWT=2\r\n"
+#define APP_BC95_AT_CMD_QLWFOTAIND_OFF       "AT+QLWFOTAIND=0\r\n"
+#define APP_BC95_AT_CMD_NRB                  "AT+NRB\r\n"
+#define APP_BC95_AT_CMD_QLWSERVERIP_QUERY    "AT+QLWSERVERIP?\r\n"
+#define APP_BC95_AT_CMD_QLWEPNS_QUERY        "AT+QLWEPNS?\r\n"
+#define APP_BC95_AT_CMD_QLWMBSPS_QUERY       "AT+QLWMBSPS?\r\n"
+#define APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_QUERY "AT+QBOOTSTRAPHOLDOFF?\r\n"
+#define APP_BC95_AT_CMD_NBAND_QUERY          "AT+NBAND?\r\n"
+
 #define APP_BC95_AT_CFUN_PREFIX              "+CFUN:"
 #define APP_BC95_AT_CFUN_PREFIX_LEN          (6u)
 #define APP_BC95_AT_CGATT_PREFIX             "+CGATT:"
@@ -135,6 +149,18 @@ static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
                                                  const char *p_cmdLabel,
                                                  const char *p_logPrefix);
 static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs);
+
+static AppStatus_t App_Bc95AtSendBestEffortQuery(const char *p_cmd,
+                                                 uint32_t rxTimeoutMs,
+                                                 const char *p_cmdLabel,
+                                                 const char *p_logPrefix);
+static AppStatus_t App_Bc95AtSendBestEffortSimpleOk(const char *p_cmd,
+                                                    uint32_t rxTimeoutMs,
+                                                    const char *p_cmdLabel,
+                                                    const char *p_logPrefix);
+static AppStatus_t App_Bc95AtSendRebootBestEffort(void);
+static AppStatus_t App_NbiotRunBootConfigurationSequence(void);
+static AppStatus_t App_NbiotRunPlatformPreflight(void);
 
 static void App_HwNbiotPowerCycle(void)
 {
@@ -2397,6 +2423,193 @@ static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
 
     APP_LOGI("NBIOT", "%s %s OK", p_logPrefix, p_cmdLabel);
     return APP_STATUS_OK;
+}
+
+static AppStatus_t App_Bc95AtSendBestEffortQuery(const char *p_cmd,
+                                                 uint32_t rxTimeoutMs,
+                                                 const char *p_cmdLabel,
+                                                 const char *p_logPrefix)
+{
+    AppStatus_t status;
+    AppBc95AtStatus_t atStatus;
+    uint16_t rxLen = 0u;
+
+    APP_RETURN_IF_FALSE((p_cmd != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_cmdLabel != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((p_logPrefix != NULL), APP_STATUS_INVALID_PARAM);
+
+    APP_LOGI("NBIOT", "%s TX %s", p_logPrefix, p_cmdLabel);
+    status = App_Bc95AtSendCommand(p_cmd,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   rxTimeoutMs,
+                                   &rxLen);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("NBIOT", "%s %s skipped (status=%d)", p_logPrefix, p_cmdLabel, (int)status);
+        return status;
+    }
+
+    atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
+    if (atStatus != APP_BC95_AT_OK)
+    {
+        APP_LOGW("NBIOT", "%s %s not OK (parse=%s)",
+                 p_logPrefix, p_cmdLabel, App_Bc95AtGetStatusString(atStatus));
+        return APP_STATUS_FATAL;
+    }
+
+    APP_LOGI("NBIOT", "%s %s OK", p_logPrefix, p_cmdLabel);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_Bc95AtSendBestEffortSimpleOk(const char *p_cmd,
+                                                    uint32_t rxTimeoutMs,
+                                                    const char *p_cmdLabel,
+                                                    const char *p_logPrefix)
+{
+    AppStatus_t status;
+
+    status = App_Bc95AtSendSimpleOkCommand(p_cmd, rxTimeoutMs, p_cmdLabel, p_logPrefix);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("NBIOT", "%s %s skipped (status=%d)", p_logPrefix, p_cmdLabel, (int)status);
+    }
+    return status;
+}
+
+static AppStatus_t App_Bc95AtSendRebootBestEffort(void)
+{
+    HAL_StatusTypeDef halStatus;
+    uint16_t cmdLen;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE((APP_UART_NBIOT_HANDLE != NULL), APP_STATUS_INVALID_PARAM);
+
+    cmdLen = (uint16_t)strlen(APP_BC95_AT_CMD_NRB);
+    App_Bc95AtDrainRxLine(APP_UART_NBIOT_HANDLE, 30u);
+    APP_LOGI("NBIOT", "[[BootTrack]] TX AT+NRB");
+    halStatus = HAL_UART_Transmit(APP_UART_NBIOT_HANDLE,
+                                  (uint8_t *)APP_BC95_AT_CMD_NRB,
+                                  cmdLen,
+                                  APP_BC95_AT_TX_TIMEOUT_MS);
+    if (halStatus != HAL_OK)
+    {
+        APP_LOGW("NBIOT", "[[BootTrack]] AT+NRB TX failed");
+        return APP_STATUS_UART_TX_FAILED;
+    }
+
+    App_Bc95AtDelayWithFeed(300u);
+    status = App_Bc95AtWaitUntilReady(APP_BC95_BOOT_WAIT_BANNER_MS + APP_BC95_USIM_READY_TIMEOUT_MS);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("NBIOT", "[[BootTrack]] AT+NRB wait-ready failed (status=%d)", (int)status);
+        return status;
+    }
+
+    APP_LOGI("NBIOT", "[[BootTrack]] AT+NRB ready");
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_NbiotRunBootConfigurationSequence(void)
+{
+    AppStatus_t status;
+
+    status = App_Bc95AtWaitUntilReady(APP_BC95_BOOT_WAIT_BANNER_MS + APP_BC95_USIM_READY_TIMEOUT_MS);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QGMR_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+QGMR",
+                                        "[[BootTrack]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_CPIN_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+CPIN?",
+                                        "[[BootTrack]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NCONFIG_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+NCONFIG?",
+                                        "[[BootTrack]]");
+    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_QLWFOTAIND_OFF,
+                                           APP_BC95_AT_RX_TIMEOUT_MS,
+                                           "AT+QLWFOTAIND=0",
+                                           "[[BootTrack]]");
+    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_QREGSWT_SET_2,
+                                           APP_BC95_AT_RX_TIMEOUT_MS,
+                                           "AT+QREGSWT=2",
+                                           "[[BootTrack]]");
+    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_OFF,
+                                           APP_BC95_AT_RX_TIMEOUT_MS,
+                                           "AT+NCONFIG=AUTOCONNECT,FALSE",
+                                           "[[BootTrack]]");
+    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_NCONFIG_CELL_RESELECTION_ON,
+                                           APP_BC95_AT_RX_TIMEOUT_MS,
+                                           "AT+NCONFIG=CELL_RESELECTION,TRUE",
+                                           "[[BootTrack]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NBAND_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+NBAND?",
+                                        "[[BootTrack]]");
+    (void)App_Bc95AtSendRebootBestEffort();
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_NbiotRunPlatformPreflight(void)
+{
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QLWSERVERIP_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+QLWSERVERIP?",
+                                        "[[ServicePlatformWake]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QLWEPNS_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+QLWEPNS?",
+                                        "[[ServicePlatformWake]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QLWMBSPS_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+QLWMBSPS?",
+                                        "[[ServicePlatformWake]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+QBOOTSTRAPHOLDOFF?",
+                                        "[[ServicePlatformWake]]");
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_NBIoTColdBootResetTrack(void)
+{
+    AppStatus_t status;
+
+    APP_LOGI("NBIOT", "[[BootTrack]] start cold-boot reset/provision flow");
+    status = App_NbiotRunBootConfigurationSequence();
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    status = App_NBIoTCarrierAttachMandatory();
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    (void)App_NBIoTReadIdentity(APP_TRUE);
+    (void)App_NBIoTReadQuality(APP_TRUE);
+    (void)App_NBIoTSyncTime();
+    APP_LOGI("NBIOT", "[[BootTrack]] done");
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
+{
+    APP_LOGI("NBIOT", "[[ServicePlatformWake]] start");
+    (void)App_NBIoTReadIdentity(APP_TRUE);
+    (void)App_NBIoTReadQuality(APP_TRUE);
+    (void)App_NBIoTSyncTime();
+    (void)App_NbiotRunPlatformPreflight();
+    APP_LOGI("NBIOT", "[[ServicePlatformWake]] current payload path uses existing service transport after platform preflight");
+    return App_NBIoTTransmitServiceUdp(deleteStorage);
+}
+
+AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage)
+{
+    APP_LOGI("NBIOT", "[[MgmtSocketWake]] start");
+    (void)App_NBIoTReadIdentity(APP_TRUE);
+    (void)App_NBIoTReadQuality(APP_TRUE);
+    return App_NBIoTTransmitMgmtUdp(deleteStorage);
 }
 
 static AppStatus_t App_NbiotCarrierPerformSwReset(void)
