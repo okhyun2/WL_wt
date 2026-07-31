@@ -246,16 +246,6 @@ static AppStatus_t App_MeterBuildDigitalRecord(const App_MeterUnion_t *pRxFrame,
     return APP_STATUS_FATAL;
 }
 
-static AppStatus_t App_MeterSaveDigitalRecord(const App_MeterUnion_t *pRxFrame)
-{
-    AppMeterStorageRecord_t record;
-    AppStatus_t status;
-
-    status = App_MeterBuildDigitalRecord(pRxFrame, &record);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    return(App_MeterStoragePush(&record));
-}
-
 void App_MeterSetStorageEnabled(uint8_t enabled)
 {
     g_appMeterStorageEnabled = (enabled != APP_FALSE) ? APP_TRUE : APP_FALSE;

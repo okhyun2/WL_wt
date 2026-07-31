@@ -162,10 +162,7 @@ typedef struct
     AppSystemLowPowerMode_t lastLowPowerMode;
 } AppSystemContext_t;
 
-static AppSystemContext_t g_appSystemContext;
 static const char g_appVersionString[] = "71.5.1";
-static AppGpioLpConfig_t g_appGpioLpConfig;
-static char g_appSystemWakeString[64];
 
 #define APP_SYSTEM_RTC_TIMEOUT_LOOPS              (200000u)
 #define APP_SYSTEM_RTC_WPR_KEY1                   (0xCAu)

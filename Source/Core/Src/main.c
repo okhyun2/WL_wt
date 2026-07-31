@@ -86,7 +86,9 @@ UART_HandleTypeDef hlpuart1;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
+#if 0 //no use
 LPTIM_HandleTypeDef hlptim1;
+#endif
 
 WWDG_HandleTypeDef hwwdg;
 
@@ -105,11 +107,12 @@ static void MX_LPUART1_UART_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC_Init(void);
+#if 0 //no use
 static void LPTIM1_Start(void);
 static void LPTIM1_Stop(void);
 static void MX_LPTIM1_Init(void);
+#endif
 static void MX_WWDG_Init(void);
-static void Print_BootInfo(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -158,7 +161,9 @@ int main(void)
   MX_USART1_UART_Init(); //debug
   MX_USART2_UART_Init(); //meter
   MX_ADC_Init();
-  //MX_LPTIM1_Init();
+#if 0 //no use
+  MX_LPTIM1_Init();
+#endif
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
   if (App_SystemInit() != APP_STATUS_OK)
@@ -183,7 +188,9 @@ int main(void)
     HAL_Delay(offsetMs);
   }
 
-  //LPTIM1_Start(); //add periodic wakeup source. max 4min
+#if 0 //no use
+  LPTIM1_Start(); //add periodic wakeup source. max 4min
+#endif
 
   MX_WWDG_Init();
 
@@ -271,13 +278,19 @@ void SystemClock_Config(void)
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1
+    |RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC;
+#if 0 //no use
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1
     |RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
+#endif
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_LSE;
   PeriphClkInit.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
   PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
+#if 0 //no use
   PeriphClkInit.LptimClockSelection = RCC_LPTIM1CLKSOURCE_LSE;
+#endif
   
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
@@ -468,6 +481,7 @@ static void MX_I2C3_Init(void)
 
 }
 
+#if 0 //no use
 static void disable_lptim_wakeup(void)
 {
     __HAL_LPTIM_WAKEUPTIMER_EXTI_DISABLE_IT();
@@ -538,6 +552,7 @@ static void MX_LPTIM1_Init(void)
   /* USER CODE END LPTIM1_Init 2 */
 
 }
+#endif
 
 /**
   * @brief LPUART1 Initialization Function

@@ -86,7 +86,7 @@ static AppStatus_t App_SelfTestUartReceiveIt(UART_HandleTypeDef *p_huart,
 
 static AppStatus_t App_SelfTestReinitMeterUart(uint32_t settleDelayMs)
 {
-    HAL_StatusTypeDef halStatus;
+    //HAL_StatusTypeDef halStatus;
 
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
 
@@ -312,9 +312,8 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {
         0,
     };
-    const uint8_t SYNC_START = 0x68;
-    const uint8_t SYNC_STOP = 0x16;
-    int i = 0; 
+    //const uint8_t SYNC_START = 0x68;
+    //const uint8_t SYNC_STOP = 0x16;
 
     APP_LOGI("SELF", "Meter(Normal) UART real probe start");
 
@@ -361,9 +360,9 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {
         0,
     };
-    const uint8_t SYNC_START = 0x02;
-    const uint8_t SYNC_STOP = 0x03;
-    int i = 0; 
+    //const uint8_t SYNC_START = 0x02;
+    //const uint8_t SYNC_STOP = 0x03;
+    //int i = 0; 
 
     APP_LOGI("SELF", "Meter(SC1xxx) UART real probe start");
 

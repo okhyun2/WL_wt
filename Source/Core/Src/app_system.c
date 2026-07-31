@@ -23,6 +23,10 @@ extern NFC_NTP53321_Handle_t g_nfcTagHandle;
 extern RTC_HandleTypeDef hrtc;
 BootInfo_t g_boot_info;
 
+static AppSystemContext_t g_appSystemContext;
+static AppGpioLpConfig_t g_appGpioLpConfig;
+static char g_appSystemWakeString[64];
+
 static void Print_BootInfo(BootInfo_t *pBootInfo);
 static void App_SystemForceAdcFullOffBeforeStop(void);
 static AppStatus_t App_SystemRestoreAdcAfterWakeFromStop(void);
@@ -1745,14 +1749,16 @@ AppStatus_t App_SystemSetNbiotPowered(uint8_t powered)
 
 AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
 {
-    uint8_t previousRequest;
 #ifdef DEBUG
+    uint8_t previousRequest;
     const AppFsmSummary_t *p_fsmSummary;
 #endif
 
     APP_RETURN_IF_FALSE((allowStop == APP_FALSE) || (allowStop == APP_TRUE), APP_STATUS_INVALID_PARAM);
 
+#ifdef DEBUG
     previousRequest = g_appSystemContext.stopRequested;
+#endif
     g_appSystemContext.stopRequested = allowStop;
 
 #ifdef DEBUG

@@ -212,7 +212,6 @@ static AppBc95AtStatus_t App_Bc95AtParseQlwevtind(const char *p_resp, int *p_eve
 static uint8_t App_Bc95AtPlatformEventIsReady(int eventType);
 static uint8_t App_Bc95AtPlatformEventNeedsRegisterRetry(int eventType);
 static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, uint8_t *p_needRegisterRetry);
-static AppStatus_t App_Bc95AtWaitForPlatformReady(uint32_t timeoutMs);
 static AppBc95AtStatus_t App_Bc95AtParseQlwuldataStatus(const char *p_resp, int *p_statusOut, int *p_seqOut);
 static AppStatus_t App_Bc95AtPlatformRegister(void);
 static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint16_t length, uint8_t seqNum);
@@ -3229,11 +3228,6 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
     return APP_STATUS_UART_TIMEOUT;
 }
 
-static AppStatus_t App_Bc95AtWaitForPlatformReady(uint32_t timeoutMs)
-{
-    return App_Bc95AtWaitForPlatformReadyWithPolicy(timeoutMs, NULL);
-}
-
 static AppBc95AtStatus_t App_Bc95AtParseQlwuldataStatus(const char *p_resp, int *p_statusOut, int *p_seqOut)
 {
     const char *p_pfx;
@@ -4399,8 +4393,8 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
     atStatus = App_Bc95AtCheckResponse(rxSnapshot, &cmeErr);
     if (atStatus != APP_BC95_AT_OK)
     {
-        APP_LOGE("NBIOT", "NSOST no OK (parse=%s, cme=%ld, raw=[%s])",
-                 App_Bc95AtGetStatusString(atStatus), (long)cmeErr, rxSnapshot);
+        APP_LOGE("NBIOT", "NSOST no OK (parse=%s, cme=%ld, rxLen=%lu, raw=[%s])",
+                 App_Bc95AtGetStatusString(atStatus), (long)cmeErr, (unsigned long)snapLen, rxSnapshot);
         return APP_STATUS_UART_TIMEOUT;
     }
 
