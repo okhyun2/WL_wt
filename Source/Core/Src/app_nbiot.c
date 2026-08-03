@@ -2583,7 +2583,7 @@ static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
         return APP_STATUS_FATAL;
     }
 
-    APP_LOGI("NBIOT", "%s %s OK", p_logPrefix, p_cmdLabel);
+    APP_LOGD("NBIOT", "%s %s OK", p_logPrefix, p_cmdLabel);
     return APP_STATUS_OK;
 }
 
@@ -2620,7 +2620,7 @@ static AppStatus_t App_Bc95AtSendBestEffortQuery(const char *p_cmd,
         return APP_STATUS_FATAL;
     }
 
-    APP_LOGI("NBIOT", "%s %s OK", p_logPrefix, p_cmdLabel);
+    APP_LOGD("NBIOT", "%s %s OK", p_logPrefix, p_cmdLabel);
     return APP_STATUS_OK;
 }
 

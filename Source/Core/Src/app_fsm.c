@@ -1591,6 +1591,12 @@ static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void)
 static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void)
 {
     AppStatus_t status;
+    uint8_t needShift = APP_FALSE;
+    uint8_t haveServiceAnchor = APP_FALSE;
+    uint32_t prevDateKey;
+    uint32_t prevMsOfDay;
+    uint32_t serviceAnchorDateKey = 0u;
+    uint32_t serviceAnchorMsOfDay = 0u;
 
     if ((g_appFsmTxSchedule.enabled != APP_TRUE) ||
         (g_appFsmMgmtTxSchedule.enabled != APP_TRUE))
@@ -1598,13 +1604,35 @@ static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void)
         return APP_STATUS_OK;
     }
 
-    if (App_FsmScheduleIsEarlierOrEqual(g_appFsmMgmtTxSchedule.nextDueDateKey,
-                                        g_appFsmMgmtTxSchedule.nextDueMsOfDay,
-                                        g_appFsmTxSchedule.nextDueDateKey,
-                                        g_appFsmTxSchedule.nextDueMsOfDay) == APP_TRUE)
+    if ((g_appFsmTxSchedule.lastDispatchedDateKey != 0u) ||
+        (g_appFsmTxSchedule.lastDispatchedMsOfDay != 0u))
     {
-        status = App_FsmScheduleAddMs(g_appFsmTxSchedule.nextDueDateKey,
-                                      g_appFsmTxSchedule.nextDueMsOfDay,
+        haveServiceAnchor = APP_TRUE;
+        serviceAnchorDateKey = g_appFsmTxSchedule.lastDispatchedDateKey;
+        serviceAnchorMsOfDay = g_appFsmTxSchedule.lastDispatchedMsOfDay;
+    }
+    else
+    {
+        haveServiceAnchor = APP_TRUE;
+        serviceAnchorDateKey = g_appFsmTxSchedule.nextDueDateKey;
+        serviceAnchorMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
+    }
+
+    if ((haveServiceAnchor == APP_TRUE) &&
+        (g_appFsmMgmtTxSchedule.nextDueDateKey == serviceAnchorDateKey) &&
+        (g_appFsmMgmtTxSchedule.nextDueMsOfDay > serviceAnchorMsOfDay) &&
+        ((g_appFsmMgmtTxSchedule.nextDueMsOfDay - serviceAnchorMsOfDay) < APP_FSM_TX_SERVICE_MGMT_GAP_MS))
+    {
+        needShift = APP_TRUE;
+    }
+
+    if (needShift == APP_TRUE)
+    {
+        prevDateKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
+        prevMsOfDay = g_appFsmMgmtTxSchedule.nextDueMsOfDay;
+
+        status = App_FsmScheduleAddMs(serviceAnchorDateKey,
+                                      serviceAnchorMsOfDay,
                                       APP_FSM_TX_SERVICE_MGMT_GAP_MS,
                                       &g_appFsmMgmtTxSchedule.nextDueDateKey,
                                       &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
@@ -1613,6 +1641,21 @@ static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void)
         status = App_FsmTxScheduleApplyMeterProximityGuard(&g_appFsmMgmtTxSchedule.nextDueDateKey,
                                                            &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+        APP_LOGI("FSM", "[[MgmtTxSchedule]] service-gap guard shift %lu %02lu:%02lu:%02lu -> %lu %02lu:%02lu:%02lu (service_anchor=%lu %02lu:%02lu:%02lu, gap=%lu)",
+                 (unsigned long)prevDateKey,
+                 (unsigned long)(prevMsOfDay / 3600000u),
+                 (unsigned long)((prevMsOfDay % 3600000u) / 60000u),
+                 (unsigned long)((prevMsOfDay % 60000u) / 1000u),
+                 (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
+                 (unsigned long)(g_appFsmMgmtTxSchedule.nextDueMsOfDay / 3600000u),
+                 (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+                 (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
+                 (unsigned long)serviceAnchorDateKey,
+                 (unsigned long)(serviceAnchorMsOfDay / 3600000u),
+                 (unsigned long)((serviceAnchorMsOfDay % 3600000u) / 60000u),
+                 (unsigned long)((serviceAnchorMsOfDay % 60000u) / 1000u),
+                 (unsigned long)APP_FSM_TX_SERVICE_MGMT_GAP_MS);
     }
 
     return APP_STATUS_OK;
