@@ -87,6 +87,18 @@ typedef struct {
     void (*OnAuthLocked_Callback)(void);
 } NFC_AUTH_Handle_t;
 
+typedef struct {
+    uint8_t  state;
+    uint8_t  last_cmd;
+    uint8_t  last_result;
+    uint8_t  session_valid;
+    uint8_t  fail_count;
+    uint8_t  reserved[3];
+    uint32_t session_elapsed_ms;
+    uint32_t session_timeout_ms;
+    uint32_t last_event_tick_ms;
+} NFC_AUTH_DebugInfo_t;
+
 NFC_AUTH_Result_t NFC_AUTH_Init(NFC_AUTH_Handle_t *hauth,
                                  NFC_NTP53321_Handle_t *hntag,
                                  const uint8_t *master_key,
@@ -110,6 +122,8 @@ void              NFC_AUTH_GetStats(NFC_AUTH_Handle_t *hauth,
                                      NFC_AUTH_Stats_t *stats);
 void              NFC_AUTH_PrintStats(NFC_AUTH_Handle_t *hauth);
 void              NFC_AUTH_Reset(NFC_AUTH_Handle_t *hauth);
+void              NFC_AUTH_GetDebugInfo(NFC_AUTH_Handle_t *hauth,
+                                        NFC_AUTH_DebugInfo_t *info);
 
 #ifdef __cplusplus
 }
