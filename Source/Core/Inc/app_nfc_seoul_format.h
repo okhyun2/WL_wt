@@ -42,6 +42,14 @@ typedef struct
     uint8_t lastResponse[64];
 } AppNfcSeoulDebugInfo_t;
 
+typedef struct
+{
+    uint8_t snapshotFormatVersion;
+    uint8_t readOnlyLayer1;
+    uint8_t patentLayer2Supported;
+    uint8_t reserved;
+} AppNfcSeoulLayer1Info_t;
+
 AppStatus_t App_NfcSeoulInit(NFC_NTP53321_Handle_t *p_tag);
 AppStatus_t App_NfcSeoulProcessTag(AppNfcSeoulProcessResult_t *p_result);
 AppStatus_t App_NfcSeoulNotifyStorageChanged(void);
@@ -49,6 +57,7 @@ AppStatus_t App_NfcSeoulNotifyLiveMeterRecord(const AppMeterStorageRecord_t *p_r
 AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void);
 AppStatus_t App_NfcSeoulServiceTestMode(void);
 const AppNfcSeoulDebugInfo_t *App_NfcSeoulGetDebugInfo(void);
+const AppNfcSeoulLayer1Info_t *App_NfcSeoulGetLayer1Info(void);
 
 #ifdef __cplusplus
 }

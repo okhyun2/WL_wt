@@ -14,6 +14,8 @@
 #define APP_NFC_SEOUL_NDEF_MAX_BYTES              (96u)
 #define APP_NFC_SEOUL_NDEF_MAX_BLOCKS             ((APP_NFC_SEOUL_NDEF_MAX_BYTES + 3u) / 4u)
 #define APP_NFC_SEOUL_FORMAT_VERSION              (0x10u)
+#define APP_NFC_SEOUL_LAYER1_READ_ONLY            (0x01u)
+#define APP_NFC_SEOUL_LAYER2_PATENT_SUPPORTED     (0x01u)
 #define APP_NFC_SEOUL_METER_CODE_UNKNOWN          (0xFFu)
 #define APP_NFC_SEOUL_CARRIER_UNKNOWN             (0xFFu)
 #define APP_NFC_SEOUL_ACK_UNKNOWN                 (0xFFu)
@@ -66,6 +68,12 @@ static uint8_t g_appNfcSeoulSramSyncPending;
 static uint8_t g_appNfcSeoulLiveRecordValid;
 static AppMeterStorageRecord_t g_appNfcSeoulLiveRecord;
 static AppNfcSeoulDebugInfo_t g_appNfcSeoulDebugInfo;
+static const AppNfcSeoulLayer1Info_t g_appNfcSeoulLayer1Info = {
+    APP_NFC_SEOUL_FORMAT_VERSION,
+    APP_NFC_SEOUL_LAYER1_READ_ONLY,
+    APP_NFC_SEOUL_LAYER2_PATENT_SUPPORTED,
+    0u
+};
 #if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
 static uint32_t g_appNfcSeoulTestModeLastRefreshTickMs;
 static uint8_t g_appNfcSeoulTestModeCounter;
@@ -234,6 +242,25 @@ static uint16_t App_NfcSeoulReadBe16(const uint8_t src[2])
     }
 
     return (uint16_t)(((uint16_t)src[0] << 8) | (uint16_t)src[1]);
+}
+
+static void App_NfcSeoulLogLayer1Profile(const AppNfcSeoulSnapshot_t *p_snapshot,
+                                         uint8_t responseCmd)
+{
+    if (p_snapshot == NULL)
+    {
+        return;
+    }
+
+    APP_LOGI("NFC",
+             "[[NFC-L1]] cmd=0x%02X fmt=0x%02X readonly=%u patent_l2=%u recordCount=%u comm=%u battery=0x%02X",
+             (unsigned int)responseCmd,
+             (unsigned int)g_appNfcSeoulLayer1Info.snapshotFormatVersion,
+             (unsigned int)g_appNfcSeoulLayer1Info.readOnlyLayer1,
+             (unsigned int)g_appNfcSeoulLayer1Info.patentLayer2Supported,
+             (unsigned int)p_snapshot->recordCount,
+             (unsigned int)p_snapshot->commState,
+             (unsigned int)p_snapshot->battery);
 }
 
 static void App_NfcSeoulPrintSnapshot(const AppNfcSeoulSnapshot_t *p_snapshot)
@@ -483,6 +510,7 @@ static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_pay
     }
 
     App_NfcSeoulBuildSnapshot(&snapshot);
+    App_NfcSeoulLogLayer1Profile(&snapshot, cmd2);
     App_NfcSeoulPrintSnapshot(&snapshot);
     App_LogHexDump(APP_LOG_LEVEL_INFO, "NFC", (const uint8_t *)&snapshot, sizeof(AppNfcSeoulSnapshot_t));
 
@@ -1149,6 +1177,12 @@ AppStatus_t App_NfcSeoulInit(NFC_NTP53321_Handle_t *p_tag)
 #endif
     (void)memset(&g_appNfcSeoulDebugInfo, 0, sizeof(g_appNfcSeoulDebugInfo));
 
+    APP_LOGI("NFC",
+             "[[NFC-L1]] Seoul format init fmt=0x%02X readonly=%u patent_l2=%u",
+             (unsigned int)g_appNfcSeoulLayer1Info.snapshotFormatVersion,
+             (unsigned int)g_appNfcSeoulLayer1Info.readOnlyLayer1,
+             (unsigned int)g_appNfcSeoulLayer1Info.patentLayer2Supported);
+
     return APP_STATUS_OK;
 }
 
@@ -1447,4 +1481,9 @@ AppStatus_t App_NfcSeoulProcessTag(AppNfcSeoulProcessResult_t *p_result)
 const AppNfcSeoulDebugInfo_t *App_NfcSeoulGetDebugInfo(void)
 {
     return &g_appNfcSeoulDebugInfo;
+}
+
+const AppNfcSeoulLayer1Info_t *App_NfcSeoulGetLayer1Info(void)
+{
+    return &g_appNfcSeoulLayer1Info;
 }
