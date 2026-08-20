@@ -346,10 +346,6 @@ static NFC_AUTH_Result_t auth_read_cmd(NFC_AUTH_Handle_t *hauth,
 {
     uint8_t buf[4] = {0};
     NFC_Result_t ret;
-    ret = NFC_NTP53321_ReadBlock(hauth->hntag,
-                                               0x203F,
-                                               buf);
-    APP_LOGI("NFC", "[[NFC-AUTH]] %02x/%02x/%02x/%02x notify cmd", buf[0], buf[1], buf[2], buf[3]);
 
     ret = NFC_NTP53321_ReadBlock(hauth->hntag,
                                                NFC_SRAM_CMD_BLOCK,

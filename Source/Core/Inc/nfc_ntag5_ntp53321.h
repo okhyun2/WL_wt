@@ -137,7 +137,6 @@ extern "C" {
 /* Block 0x10A1: CONFIG_REG  (NFC: A1h)
  * Byte0 = CONFIG_0_REG, Byte1 = CONFIG_1_REG, Byte2 = CONFIG_2_REG */
 #define NFC_SESSION_CONFIG_REG_ADDR     0x10A1U
-#define NFC_SESSION_ED_CONFIG_REG_ADDR     0x10A8U /* Byte0: ED_CONF */
 
 /* CONFIG_0_REG (Byte 0 of 0x10A1) bit definitions */
 #define NFC_CONFIG0_SRAM_COPY_EN        (1U << 7)  /* R/W (I2C): SRAM copy on POR */

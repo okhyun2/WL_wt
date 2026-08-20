@@ -552,21 +552,6 @@ NFC_Result_t NFC_NTP53321_EnterStandby(NFC_NTP53321_Handle_t *hntag)
     if (hntag->state == NFC_STATE_UNINITIALIZED)
         return NFC_RESULT_ERROR_NOT_INIT;
 
-    /* ED 모드 설정 (구성 메모리 0x10A8의 ED_CONF 바이트 사용) */
-    ret = NFC_NTP53321_WriteSessionReg(hntag,
-                                       NFC_SESSION_ED_CONFIG_REG_ADDR, /* 0x10A8 */
-                                       0U,    /* Byte0 = CONFIG_0_REG */
-                                       0x0FU, /* MASK: bit3210만 변경 */
-                                       0x01U);/* VALUE: bit3210 = 0001:Field, 0100:NFC->I2C PT */
- 
-    if (ret != NFC_RESULT_OK)
-    {
-        APP_LOGE("NFC", "SetEDRegMode FAILED (ret=%d)", ret);
-        hntag->state = NFC_STATE_ERROR;
-        return ret;
-    }
-    APP_LOGI("NFC", "Set ED Mode: Field");
-
     /* CONFIG_0_REG (0x10A1 Byte0) bit0 = 1 */
     ret = NFC_NTP53321_WriteSessionReg(hntag,
                                        NFC_SESSION_CONFIG_REG_ADDR, /* 0x10A1 */
@@ -689,20 +674,6 @@ NFC_Result_t NFC_NTP53321_ExitStandby(NFC_NTP53321_Handle_t *hntag)
                                  0U,    /* Byte0 */
                                  0x01U, /* MASK */
                                  0x00U);/* bit0 = 0 */
-
-    /* ED 모드 설정 (구성 메모리 0x10A8의 ED_CONF 바이트 사용) */
-    ret = NFC_NTP53321_WriteSessionReg(hntag,
-                                       NFC_SESSION_ED_CONFIG_REG_ADDR, /* 0x10A8 */
-                                       0U,    /* Byte0 = CONFIG_0_REG */
-                                       0x0FU, /* MASK: bit3210만 변경 */
-                                       0x04U);/* VALUE: bit3210 = 0001:Field, 0100:NFC->I2C PT */
-    if (ret != NFC_RESULT_OK)
-    {
-        APP_LOGE("NFC", "SetEDRegMode FAILED (ret=%d)", ret);
-        hntag->state = NFC_STATE_ERROR;
-        return ret;
-    }
-    APP_LOGI("NFC", "Set ED Mode: NFC->I2C PT");
 
     hntag->state = NFC_STATE_IDLE;
     hntag->stats.total_sleep_ticks +=
