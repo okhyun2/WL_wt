@@ -11,7 +11,7 @@
 #define APP_NFC_SEOUL_TLV_NDEF_MESSAGE            (0x03u)
 #define APP_NFC_SEOUL_TLV_TERMINATOR              (0xFEu)
 #define APP_NFC_SEOUL_NDEF_HEADER_SHORT_UNKNOWN   (0xD5u)
-#define APP_NFC_SEOUL_NDEF_MAX_BYTES              (96u)
+#define APP_NFC_SEOUL_NDEF_MAX_BYTES              (64u)
 #define APP_NFC_SEOUL_NDEF_MAX_BLOCKS             ((APP_NFC_SEOUL_NDEF_MAX_BYTES + 3u) / 4u)
 #define APP_NFC_SEOUL_FORMAT_VERSION              (0x10u)
 #define APP_NFC_SEOUL_LAYER1_READ_ONLY            (0x01u)
@@ -598,7 +598,7 @@ static AppStatus_t App_NfcSeoulBuildNdefMessage(const uint8_t *p_payload,
         return APP_STATUS_INVALID_PARAM;
     }
 
-    if ((uint16_t)payloadLength + 6u > ndefCapacity)
+    if ((uint16_t)payloadLength > ndefCapacity)
     {
         return APP_STATUS_BUFFER_OVERFLOW;
     }
@@ -610,6 +610,9 @@ static AppStatus_t App_NfcSeoulBuildNdefMessage(const uint8_t *p_payload,
     p_ndef[idx++] = APP_NFC_SEOUL_NDEF_HEADER_SHORT_UNKNOWN;
     p_ndef[idx++] = 0u;
     p_ndef[idx++] = payloadLength;
+    p_ndef[idx++] = 0u; //align block 4byte
+    p_ndef[idx++] = 0u; //align block 4byte
+    p_ndef[idx++] = 0u; //align block 4byte
     (void)memcpy(&p_ndef[idx], p_payload, payloadLength);
     idx = (uint16_t)(idx + payloadLength);
     p_ndef[idx++] = APP_NFC_SEOUL_TLV_TERMINATOR;
@@ -1114,41 +1117,45 @@ static uint8_t App_NfcSeoulTryExtractPayload(uint16_t startBlock, uint8_t *p_pay
         return APP_FALSE;
     }
 
-    if (raw[0] != APP_NFC_SEOUL_TLV_NDEF_MESSAGE)
+    //debug
+    #if 1 //kiki TODO delete
+    APP_LOGI("NFC", "read startBlock:%04x", startBlock);
+    App_LogHexDump(APP_LOG_LEVEL_INFO, "NFC-Debug", (const uint8_t *)raw, APP_NFC_SEOUL_NDEF_MAX_BYTES);
+    #endif
+
+    if((raw[8] != APP_NFC_SEOUL_CMD_REQ_GROUP) && (raw[8] != APP_NFC_SEOUL_CMD_RES_GROUP) )
     {
         return APP_FALSE;
     }
 
-    idx = 2u;
-    recordHeader = raw[idx++];
-    typeLength = raw[idx++];
-
-    if ((recordHeader & 0x10u) != 0u)
+    if(raw[8] == APP_NFC_SEOUL_CMD_REQ_GROUP)
     {
-        payloadLength = raw[idx++];
+        payloadLength = 0;
     }
-    else
+    else if(raw[8] == APP_NFC_SEOUL_CMD_RES_GROUP)
     {
-        payloadLength = (uint16_t)(((uint32_t)raw[idx] << 24) |
-                                   ((uint32_t)raw[idx + 1u] << 16) |
-                                   ((uint32_t)raw[idx + 2u] << 8) |
-                                   ((uint32_t)raw[idx + 3u]));
-        idx = (uint16_t)(idx + 4u);
+        switch(raw[9])
+        {
+            case APP_NFC_SEOUL_CMD_MTR_RES:
+                payloadLength = 2+32;
+            break;
+            case APP_NFC_SEOUL_CMD_AMI_RES:
+                payloadLength = 2+30;
+            break;
+            case APP_NFC_SEOUL_CMD_RSET_RES:
+                payloadLength = 2+24;
+            break;
+            case APP_NFC_SEOUL_CMD_STOR_RES:
+                payloadLength = 2+30;
+            break;
+            default:
+                payloadLength = 0;
+            break;
+        }
     }
 
-    idLength = 0u;
-    if ((recordHeader & 0x08u) != 0u)
-    {
-        idLength = raw[idx++];
-    }
-
-    idx = (uint16_t)(idx + typeLength + idLength);
+    idx = 8;
     if ((payloadLength == 0u) || ((uint32_t)idx + (uint32_t)payloadLength > (uint32_t)sizeof(raw)))
-    {
-        return APP_FALSE;
-    }
-
-    if (payloadLength > 64u)
     {
         return APP_FALSE;
     }
@@ -1183,12 +1190,26 @@ AppStatus_t App_NfcSeoulInit(NFC_NTP53321_Handle_t *p_tag)
              (unsigned int)g_appNfcSeoulLayer1Info.readOnlyLayer1,
              (unsigned int)g_appNfcSeoulLayer1Info.patentLayer2Supported);
 
+    {
+        uint8_t cc[4] = {
+            NFC_CC_MAGIC_BYTE, /* 0xE1 */
+            NFC_CC_VERSION,    /* 0x40 (NDEF Mapping v1.0) */
+            NFC_CC_SIZE,       /* 0x80 (0x40×8 = 512 bytes) */
+            NFC_CC_ACCESS      /* 0x09 (Read/Write) */
+        };
+
+        if ((NFC_NTP53321_WriteBlock(g_appNfcSeoulTag, NFC_SRAM_BASE_ADDR, cc)))
+        {
+            APP_LOGE("NFC", "SRAM Tag write fail");
+        }
+    }
+
     return APP_STATUS_OK;
 }
 
 AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void)
 {
-    uint8_t payload[40];
+    uint8_t payload[APP_NFC_SEOUL_NDEF_MAX_BYTES];
     uint8_t payloadLength;
     AppStatus_t status;
 
@@ -1203,7 +1224,6 @@ AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void)
         return APP_STATUS_OK;
     }
 
-#if 0 //kiki sram debug
     status = App_NfcSeoulBuildResponsePayload(APP_NFC_SEOUL_CMD_STOR_RES,
                                               payload,
                                               (uint8_t)sizeof(payload),
@@ -1213,7 +1233,7 @@ AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void)
         g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
         return status;
     }
-#else
+
     /* storage 재조회 대신 EEPROM에 이미 검증된 payload를 그대로 재사용 */
     if (App_NfcSeoulTryExtractPayload(APP_NFC_SEOUL_NDEF_EEPROM_BLOCK,
                                       payload, &payloadLength) != APP_TRUE)
@@ -1221,7 +1241,6 @@ AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void)
         APP_LOGE("NFC", "Read eeprom fail");
         return APP_STATUS_NOT_INITIALIZED;
     }
-#endif
 
 #if (APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE == 1u)
     App_NfcSeoulApplyTestModeLiveFields(payload, payloadLength);
@@ -1385,7 +1404,7 @@ AppStatus_t App_NfcSeoulNotifyLiveMeterRecord(const AppMeterStorageRecord_t *p_r
 AppStatus_t App_NfcSeoulProcessTag(AppNfcSeoulProcessResult_t *p_result)
 {
     uint8_t payload[64];
-    uint8_t response[40];
+    uint8_t response[APP_NFC_SEOUL_NDEF_MAX_BYTES];
     uint8_t payloadLength;
     uint8_t responseLength;
     AppStatus_t status;
@@ -1417,6 +1436,12 @@ AppStatus_t App_NfcSeoulProcessTag(AppNfcSeoulProcessResult_t *p_result)
         return APP_STATUS_OK;
     }
 
+    APP_LOGI("NFC", "Seoul request cmd=%02X%02X len=%u src=%s",
+             (unsigned int)payload[0],
+             (unsigned int)payload[1],
+             (unsigned int)payloadLength,
+             (readSource == 1u) ? "SRAM" : "EEPROM");
+
     if ((payloadLength < 2u) || (payload[0] != APP_NFC_SEOUL_CMD_REQ_GROUP))
     {
         return APP_STATUS_OK;
@@ -1425,12 +1450,6 @@ AppStatus_t App_NfcSeoulProcessTag(AppNfcSeoulProcessResult_t *p_result)
     p_result->requestCmd1 = payload[0];
     p_result->requestCmd2 = payload[1];
     App_NfcSeoulDebugRecordRequest(payload, payloadLength, readSource);
-    APP_LOGI("NFC", "Seoul request cmd=%02X%02X len=%u src=%s",
-             (unsigned int)payload[0],
-             (unsigned int)payload[1],
-             (unsigned int)payloadLength,
-             (readSource == 1u) ? "SRAM" : "EEPROM");
-
     switch (payload[1])
     {
         case APP_NFC_SEOUL_CMD_MTR_REQ:

@@ -49,8 +49,8 @@ extern "C" {
 #define NFC_CC_BLOCK_ADDR               0x0000U
 #define NFC_CC_MAGIC_BYTE               0xE1U
 #define NFC_CC_VERSION                  0x40U   /* T5T v1.0, R/W OK */
-#define NFC_CC_SIZE                     0xFFU   /* MLEN: 0xFF×8=2040 bytes */
-#define NFC_CC_ACCESS                   0x00U   /* Read/Write */
+#define NFC_CC_SIZE                     0x80U   /* MLEN: 0xFF×8=2040 bytes */
+#define NFC_CC_ACCESS                   0x09U   /* Read/Write */
 
 /* NDEF */
 #define NFC_NDEF_START_BLOCK            0x0001U
@@ -176,21 +176,23 @@ extern "C" {
 #define NFC_SRAM_BLOCK_SIZE             4U
 #define NFC_SRAM_TOTAL_BLOCKS           64U    /* 256 bytes / 4 */
 
-/* Auth SRAM layout */
-#define NFC_SRAM_CMD_BLOCK              0x2000U
-#define NFC_SRAM_CHALLENGE_BLOCK_START  0x2001U
-#define NFC_SRAM_CHALLENGE_BLOCK_END    0x2004U
-#define NFC_SRAM_RESPONSE_BLOCK_START   0x2005U
-#define NFC_SRAM_RESPONSE_BLOCK_END     0x2008U
-#define NFC_SRAM_STATUS_BLOCK           0x2009U
+/* Layer1 (Seoul/legacy) uses 0x2000 ~ 0x201F */
 
-/* User CMD SRAM layout */
-#define NFC_SRAM_UCMD_HEADER_BLOCK      0x2010U
-#define NFC_SRAM_UCMD_DATA_BLOCK_START  0x2011U
-#define NFC_SRAM_UCMD_DATA_BLOCK_END    0x2014U
-#define NFC_SRAM_UCMD_RESULT_BLOCK_START 0x2015U
-#define NFC_SRAM_UCMD_RESULT_BLOCK_END  0x2018U
-#define NFC_SRAM_UCMD_STATUS_BLOCK      0x2019U
+/* Auth SRAM layout (Layer2) */
+#define NFC_SRAM_CMD_BLOCK              0x2020U
+#define NFC_SRAM_CHALLENGE_BLOCK_START  0x2021U
+#define NFC_SRAM_CHALLENGE_BLOCK_END    0x2024U
+#define NFC_SRAM_RESPONSE_BLOCK_START   0x2025U
+#define NFC_SRAM_RESPONSE_BLOCK_END     0x2028U
+#define NFC_SRAM_STATUS_BLOCK           0x2029U
+
+/* User CMD SRAM layout (Layer2) */
+#define NFC_SRAM_UCMD_HEADER_BLOCK      0x2030U
+#define NFC_SRAM_UCMD_DATA_BLOCK_START  0x2031U
+#define NFC_SRAM_UCMD_DATA_BLOCK_END    0x2034U
+#define NFC_SRAM_UCMD_RESULT_BLOCK_START 0x2035U
+#define NFC_SRAM_UCMD_RESULT_BLOCK_END  0x2038U
+#define NFC_SRAM_UCMD_STATUS_BLOCK      0x2039U
 
 /* ============================================================
  * Hardware Pins

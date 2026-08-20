@@ -392,9 +392,7 @@ static NFC_CMD_Result_t NFC_CMD_Handler_SetConfig(
     if ((hcmd->config.report_interval_sec < APP_NFC_REPORT_INTERVAL_MIN_SEC) ||
         (hcmd->config.report_interval_sec > APP_NFC_REPORT_INTERVAL_MAX_SEC) ||
         ((int32_t)hcmd->config.temp_threshold_x10 < APP_NFC_TEMP_THRESHOLD_MIN_X10) ||
-        ((int32_t)hcmd->config.temp_threshold_x10 > APP_NFC_TEMP_THRESHOLD_MAX_X10) ||
-        (hcmd->config.auth_max_fail == 0U) ||
-        (hcmd->config.auth_max_fail > 10U)) {
+        ((int32_t)hcmd->config.temp_threshold_x10 > APP_NFC_TEMP_THRESHOLD_MAX_X10)) {
         res->result_code = NFC_CMD_RESULT_INVALID_PARAM;
         return NFC_CMD_RESULT_INVALID_PARAM;
     }
@@ -504,7 +502,6 @@ static NFC_CMD_Result_t NFC_CMD_Handler_FactoryReset(
     memset(&hcmd->config, 0, sizeof(NFC_CMD_Config_t));
     hcmd->config.temp_threshold_x10  = 300;
     hcmd->config.report_interval_sec = 60;
-    hcmd->config.auth_max_fail       = NFC_AUTH_MAX_FAIL_COUNT;
 
     NFC_NTP53321_WriteMultiBlock(hcmd->hntag, NFC_CMD_CONFIG_STORAGE_BLOCK,
                                   (uint8_t *)&hcmd->config,
@@ -517,70 +514,6 @@ static NFC_CMD_Result_t NFC_CMD_Handler_FactoryReset(
     return NFC_CMD_RESULT_OK;
 }
 
-static NFC_CMD_Result_t NFC_CMD_Handler_UpdateKey(
-        void *hv, const NFC_CMD_Packet_t *pkt, NFC_CMD_ResultPacket_t *res)
-{
-    NFC_CMD_Handle_t *hcmd = (NFC_CMD_Handle_t *)hv;
-    NFC_AUTH_Result_t ar;
-
-    nfc_cmd_prepare_result(res, NFC_CMD_RESULT_OK);
-    if (pkt->header.payload_len != NFC_AUTH_KEY_SIZE) {
-        res->result_code = NFC_CMD_RESULT_INVALID_LEN;
-        return NFC_CMD_RESULT_INVALID_LEN;
-    }
-    ar = NFC_AUTH_UpdateMasterKey(hcmd->hauth, pkt->payload,
-                                   hcmd->hauth->admin_key);
-    res->result_code = (ar == NFC_AUTH_RESULT_OK) ? NFC_CMD_RESULT_OK
-                                                   : NFC_CMD_RESULT_FAIL;
-    res->data_len = 0;
-    APP_LOGI("NFC", "UpdateKey: %s",
-           (res->result_code == NFC_CMD_RESULT_OK) ? "OK" : "FAIL");
-    return (NFC_CMD_Result_t)res->result_code;
-}
-
-static NFC_CMD_Result_t NFC_CMD_Handler_UnlockDevice(
-        void *hv, const NFC_CMD_Packet_t *pkt, NFC_CMD_ResultPacket_t *res)
-{
-    NFC_CMD_Handle_t *hcmd = (NFC_CMD_Handle_t *)hv;
-    NFC_AUTH_Result_t ar;
-
-    nfc_cmd_prepare_result(res, NFC_CMD_RESULT_OK);
-    if (pkt->header.payload_len != NFC_AUTH_KEY_SIZE) {
-        res->result_code = NFC_CMD_RESULT_INVALID_LEN;
-        return NFC_CMD_RESULT_INVALID_LEN;
-    }
-    ar = NFC_AUTH_UnlockDevice(hcmd->hauth, pkt->payload);
-    res->result_code = (ar == NFC_AUTH_RESULT_OK) ? NFC_CMD_RESULT_OK
-                                                   : NFC_CMD_RESULT_FAIL;
-    res->data_len = 0;
-    APP_LOGI("NFC", "UnlockDevice: %s",
-           (res->result_code == NFC_CMD_RESULT_OK) ? "OK" : "FAIL");
-    return (NFC_CMD_Result_t)res->result_code;
-}
-
-static NFC_CMD_Result_t NFC_CMD_Handler_SetAuthLimit(
-        void *hv, const NFC_CMD_Packet_t *pkt, NFC_CMD_ResultPacket_t *res)
-{
-    NFC_CMD_Handle_t *hcmd = (NFC_CMD_Handle_t *)hv;
-    uint8_t           lim;
-
-    nfc_cmd_prepare_result(res, NFC_CMD_RESULT_OK);
-    if (pkt->header.payload_len != 1U) {
-        res->result_code = NFC_CMD_RESULT_INVALID_LEN;
-        return NFC_CMD_RESULT_INVALID_LEN;
-    }
-    lim = pkt->payload[0];
-    if (lim == 0U || lim > 10U) {
-        res->result_code = NFC_CMD_RESULT_INVALID_PARAM;
-        APP_LOGI("NFC", "SetAuthLimit: bad value %u", lim);
-        return NFC_CMD_RESULT_INVALID_PARAM;
-    }
-    hcmd->config.auth_max_fail = lim;
-    res->result_code = NFC_CMD_RESULT_OK;
-    res->data_len    = 0;
-    APP_LOGI("NFC", "SetAuthLimit: %u", lim);
-    return NFC_CMD_RESULT_OK;
-}
 
 /* ============================================================
  * Command Table
@@ -599,9 +532,6 @@ static const NFC_CMD_TableEntry_t nfc_cmd_table[] = {
     {NFC_CMD_ID_SET_INTERVAL,  NFC_CMD_PERM_CONFIG, NFC_CMD_Handler_SetInterval,  "SetInterval" },
     {NFC_CMD_ID_RESET_DEVICE,  NFC_CMD_PERM_ADMIN,  NFC_CMD_Handler_ResetDevice,  "ResetDevice" },
     {NFC_CMD_ID_FACTORY_RESET, NFC_CMD_PERM_ADMIN,  NFC_CMD_Handler_FactoryReset, "FactoryReset"},
-    {NFC_CMD_ID_UPDATE_KEY,    NFC_CMD_PERM_ADMIN,  NFC_CMD_Handler_UpdateKey,    "UpdateKey"   },
-    {NFC_CMD_ID_UNLOCK_DEVICE, NFC_CMD_PERM_ADMIN,  NFC_CMD_Handler_UnlockDevice, "UnlockDevice"},
-    {NFC_CMD_ID_SET_AUTH_LIMIT,NFC_CMD_PERM_ADMIN,  NFC_CMD_Handler_SetAuthLimit, "SetAuthLimit"},
 };
 #define NFC_CMD_TABLE_SIZE  (sizeof(nfc_cmd_table)/sizeof(nfc_cmd_table[0]))
 
@@ -631,7 +561,6 @@ NFC_CMD_Result_t NFC_CMD_Init(NFC_CMD_Handle_t *hcmd,
 
     hcmd->config.temp_threshold_x10  = 300;
     hcmd->config.report_interval_sec = 60;
-    hcmd->config.auth_max_fail       = NFC_AUTH_MAX_FAIL_COUNT;
 
     APP_LOGI("NFC", "Initialized Cmd(%u commands)",
            (unsigned)NFC_CMD_TABLE_SIZE);

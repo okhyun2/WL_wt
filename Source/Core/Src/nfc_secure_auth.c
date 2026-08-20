@@ -27,7 +27,6 @@ static const char *auth_state_name(NFC_AUTH_State_t state)
         case NFC_AUTH_STATE_VERIFYING:     return "VERIFYING";
         case NFC_AUTH_STATE_AUTHENTICATED: return "AUTHENTICATED";
         case NFC_AUTH_STATE_FAILED:        return "FAILED";
-        case NFC_AUTH_STATE_LOCKED:        return "LOCKED";
         default:                           return "UNKNOWN";
     }
 }
@@ -322,7 +321,7 @@ static void auth_gen_challenge(uint8_t *challenge,
                                  ^ (uint8_t)(i * 0x6BU));
     }
 
-    APP_LOGI("NFC", "Challenge[0..2]: %02X %02X %02X (nonce=%lu)",
+    APP_LOGI("NFC", "Challenge(16)[0..2]: %02X %02X %02X (nonce=%lu)",
            challenge[0], challenge[1], challenge[2],
            (unsigned long)nonce_val);
 }
@@ -337,6 +336,7 @@ static NFC_AUTH_Result_t auth_write_status(NFC_AUTH_Handle_t *hauth,
     NFC_Result_t ret = NFC_NTP53321_WriteBlock(hauth->hntag,
                                                 NFC_SRAM_STATUS_BLOCK,
                                                 buf);
+    APP_LOGI("NFC", "[[NFC-AUTH]] status=0x%02x written", status);
     return (ret == NFC_RESULT_OK) ? NFC_AUTH_RESULT_OK
                                   : NFC_AUTH_RESULT_I2C_ERROR;
 }
@@ -353,6 +353,17 @@ static NFC_AUTH_Result_t auth_read_cmd(NFC_AUTH_Handle_t *hauth,
     return NFC_AUTH_RESULT_OK;
 }
 
+static NFC_AUTH_Result_t auth_write_cmd(NFC_AUTH_Handle_t *hauth, uint8_t cmd)
+{
+    uint8_t buf[4] = { cmd, 0x00U, 0x00U, 0x00U };
+    NFC_Result_t ret = NFC_NTP53321_WriteBlock(hauth->hntag,
+                                               NFC_SRAM_CMD_BLOCK,
+                                               buf);
+    APP_LOGI("NFC", "[[NFC-AUTH]] cmd=0x%02x written", cmd);
+    return (ret == NFC_RESULT_OK) ? NFC_AUTH_RESULT_OK
+                                  : NFC_AUTH_RESULT_I2C_ERROR;
+}
+
 /* ============================================================
  * CONNECT handler (Step 1-3)
  * ============================================================ */
@@ -362,12 +373,6 @@ static NFC_AUTH_Result_t auth_handle_connect(NFC_AUTH_Handle_t *hauth)
 
     APP_LOGI("NFC", "[[NFC-AUTH]] auth start cmd=CONNECT state=%s",
            auth_state_name(hauth->state));
-
-    if (hauth->state == NFC_AUTH_STATE_LOCKED) {
-        APP_LOGI("NFC", "[[NFC-AUTH]] device locked before challenge issue");
-        auth_write_status(hauth, NFC_AUTH_STATUS_LOCKED);
-        return NFC_AUTH_RESULT_LOCKED;
-    }
 
     hauth->state = NFC_AUTH_STATE_CONNECTING;
     hauth->stats.total_attempts++;
@@ -390,6 +395,7 @@ static NFC_AUTH_Result_t auth_handle_connect(NFC_AUTH_Handle_t *hauth)
 
     hauth->state = NFC_AUTH_STATE_CHALLENGING;
     auth_write_status(hauth, NFC_AUTH_STATUS_CHALLENGE_SENT);
+    auth_write_cmd(hauth, NFC_AUTH_CMD_CHALLENGE_READY);
     APP_LOGI("NFC", "[[NFC-AUTH]] challenge issued");
     auth_log_session_valid(hauth, "post-challenge");
     return NFC_AUTH_RESULT_OK;
@@ -438,6 +444,7 @@ static NFC_AUTH_Result_t auth_handle_response(NFC_AUTH_Handle_t *hauth)
         aes128_encrypt(hauth->master_key, response, hauth->session.token);
 
         auth_write_status(hauth, NFC_AUTH_STATUS_SUCCESS);
+        auth_write_cmd(hauth, NFC_AUTH_CMD_CONFIRM);
         APP_LOGI("NFC", "[[NFC-AUTH]] response verify ok total=%lu",
                (unsigned long)hauth->stats.success_count);
         auth_log_session_valid(hauth, "auth-success");
@@ -454,22 +461,11 @@ static NFC_AUTH_Result_t auth_handle_response(NFC_AUTH_Handle_t *hauth)
         hauth->stats.last_fail_tick = HAL_GetTick();
         hauth->state                = NFC_AUTH_STATE_FAILED;
 
-        APP_LOGE("NFC", "[[NFC-AUTH]] response verify fail (%d/%d)",
-               hauth->fail_count, NFC_AUTH_MAX_FAIL_COUNT);
-
-        if (hauth->fail_count >= NFC_AUTH_MAX_FAIL_COUNT) {
-            hauth->state = NFC_AUTH_STATE_LOCKED;
-            hauth->stats.lock_count++;
-            auth_write_status(hauth, NFC_AUTH_STATUS_LOCKED);
-            APP_LOGE("NFC", "[[NFC-AUTH]] locked after %d failures",
-                   NFC_AUTH_MAX_FAIL_COUNT);
-            auth_log_session_valid(hauth, "auth-locked");
-            if (hauth->OnAuthLocked_Callback != NULL)
-                hauth->OnAuthLocked_Callback();
-            return NFC_AUTH_RESULT_LOCKED;
-        }
+        APP_LOGE("NFC", "[[NFC-AUTH]] response verify fail count=%u retry=allowed",
+               (unsigned int)hauth->fail_count);
 
         auth_write_status(hauth, NFC_AUTH_STATUS_FAIL);
+        auth_write_cmd(hauth, NFC_AUTH_CMD_CONFIRM);
         if (hauth->OnAuthFail_Callback != NULL)
             hauth->OnAuthFail_Callback(hauth->fail_count);
 
@@ -484,11 +480,9 @@ static NFC_AUTH_Result_t auth_handle_response(NFC_AUTH_Handle_t *hauth)
  * ============================================================ */
 NFC_AUTH_Result_t NFC_AUTH_Init(NFC_AUTH_Handle_t *hauth,
                                  NFC_NTP53321_Handle_t *hntag,
-                                 const uint8_t *master_key,
-                                 const uint8_t *admin_key)
+                                 const uint8_t *master_key)
 {
-    if (hauth == NULL || hntag == NULL ||
-        master_key == NULL || admin_key == NULL)
+    if (hauth == NULL || hntag == NULL || master_key == NULL)
         return NFC_AUTH_RESULT_INVALID_PARAM;
 
     memset(hauth, 0, sizeof(NFC_AUTH_Handle_t));
@@ -498,13 +492,11 @@ NFC_AUTH_Result_t NFC_AUTH_Init(NFC_AUTH_Handle_t *hauth,
     hauth->session.timeout_ms = NFC_AUTH_SESSION_TIMEOUT_MS;
 
     memcpy(hauth->master_key, master_key, NFC_AUTH_KEY_SIZE);
-    memcpy(hauth->admin_key,  admin_key,  NFC_AUTH_KEY_SIZE);
 
     APP_LOGI("NFC", "Initialized Auth(timeout=%lu ms)",
            (unsigned long)NFC_AUTH_SESSION_TIMEOUT_MS);
-    APP_LOGI("NFC", "[[NFC-AUTH]] auth module ready timeout=%lu fail_max=%u",
-           (unsigned long)NFC_AUTH_SESSION_TIMEOUT_MS,
-           (unsigned int)NFC_AUTH_MAX_FAIL_COUNT);
+    APP_LOGI("NFC", "[[NFC-AUTH]] auth module ready timeout=%lu retry=unlimited",
+           (unsigned long)NFC_AUTH_SESSION_TIMEOUT_MS);
     auth_log_session_valid(hauth, "init");
     return NFC_AUTH_RESULT_OK;
 }
@@ -535,6 +527,12 @@ NFC_AUTH_Result_t NFC_AUTH_ProcessNFCEvent(NFC_AUTH_Handle_t *hauth,
     switch (cmd) {
         case NFC_AUTH_CMD_CONNECT:  return auth_handle_connect(hauth);
         case NFC_AUTH_CMD_RESPONSE: return auth_handle_response(hauth);
+        case NFC_AUTH_CMD_CHALLENGE_READY:
+            APP_LOGI("NFC", "[[NFC-AUTH]] challenge-ready marker observed");
+            return NFC_AUTH_RESULT_OK;
+        case NFC_AUTH_CMD_CONFIRM:
+            APP_LOGI("NFC", "[[NFC-AUTH]] confirm marker observed");
+            return NFC_AUTH_RESULT_OK;
         default:
             APP_LOGW("NFC", "Unknown CMD 0x%02X", cmd);
             return NFC_AUTH_RESULT_INVALID_STATE;
@@ -561,54 +559,14 @@ NFC_AUTH_Result_t NFC_AUTH_InvalidateSession(NFC_AUTH_Handle_t *hauth)
     return NFC_AUTH_RESULT_OK;
 }
 
-NFC_AUTH_Result_t NFC_AUTH_UnlockDevice(NFC_AUTH_Handle_t *hauth,
-                                         const uint8_t *admin_key)
-{
-    if (hauth == NULL || admin_key == NULL)
-        return NFC_AUTH_RESULT_INVALID_PARAM;
-
-    if (!auth_secure_compare(admin_key, hauth->admin_key,
-                              NFC_AUTH_KEY_SIZE)) {
-        APP_LOGE("NFC", "Unlock FAIL: key mismatch");
-        return NFC_AUTH_RESULT_FAIL;
-    }
-
-    hauth->state      = NFC_AUTH_STATE_IDLE;
-    hauth->fail_count = 0;
-    auth_write_status(hauth, NFC_AUTH_STATUS_IDLE);
-    APP_LOGI("NFC", "[[NFC-AUTH]] device unlocked");
-    auth_log_session_valid(hauth, "unlock");
-    return NFC_AUTH_RESULT_OK;
-}
-
-NFC_AUTH_Result_t NFC_AUTH_UpdateMasterKey(NFC_AUTH_Handle_t *hauth,
-                                            const uint8_t *new_key,
-                                            const uint8_t *admin_key)
-{
-    if (hauth == NULL || new_key == NULL || admin_key == NULL)
-        return NFC_AUTH_RESULT_INVALID_PARAM;
-
-    if (!auth_secure_compare(admin_key, hauth->admin_key,
-                              NFC_AUTH_KEY_SIZE)) {
-        APP_LOGE("NFC", "Key update FAIL: admin mismatch");
-        return NFC_AUTH_RESULT_FAIL;
-    }
-
-    memcpy(hauth->master_key, new_key, NFC_AUTH_KEY_SIZE);
-    NFC_AUTH_InvalidateSession(hauth);
-    APP_LOGI("NFC", "Master key updated");
-    return NFC_AUTH_RESULT_OK;
-}
 
 void NFC_AUTH_RegisterCallbacks(NFC_AUTH_Handle_t *hauth,
                                   void (*OnSuccess)(uint8_t *),
-                                  void (*OnFail)(uint8_t),
-                                  void (*OnLocked)(void))
+                                  void (*OnFail)(uint8_t))
 {
     if (hauth == NULL) return;
     hauth->OnAuthSuccess_Callback = OnSuccess;
     hauth->OnAuthFail_Callback    = OnFail;
-    hauth->OnAuthLocked_Callback  = OnLocked;
     APP_LOGI("NFC", "Callbacks registered");
 }
 
@@ -628,8 +586,6 @@ void NFC_AUTH_PrintStats(NFC_AUTH_Handle_t *hauth)
            (unsigned long)hauth->stats.success_count);
     APP_LOGI("NFC", "Fail     : %lu",
            (unsigned long)hauth->stats.fail_count);
-    APP_LOGI("NFC", "Locked   : %lu",
-           (unsigned long)hauth->stats.lock_count);
     APP_LOGI("NFC", "Session  : %s",
            NFC_AUTH_IsSessionValid(hauth) ? "VALID" : "INVALID");
     APP_LOGI("NFC", "State    : %d", hauth->state);

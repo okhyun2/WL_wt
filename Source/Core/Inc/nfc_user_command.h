@@ -42,9 +42,6 @@ typedef enum {
     NFC_CMD_ID_SET_INTERVAL     = 0x0B,
     NFC_CMD_ID_RESET_DEVICE     = 0x10,
     NFC_CMD_ID_FACTORY_RESET    = 0x11,
-    NFC_CMD_ID_UPDATE_KEY       = 0x20,
-    NFC_CMD_ID_UNLOCK_DEVICE    = 0x21,
-    NFC_CMD_ID_SET_AUTH_LIMIT   = 0x22,
     NFC_CMD_ID_MAX              = 0xFF,
 } NFC_CMD_ID_t;
 
@@ -110,8 +107,7 @@ typedef struct {
 typedef struct {
     uint16_t temp_threshold_x10;
     uint16_t report_interval_sec;
-    uint8_t  auth_max_fail;
-    uint8_t  reserved[11];
+    uint8_t  reserved[12];
 } NFC_CMD_Config_t;                 /* 16 bytes total */
 #pragma pack(pop)
 

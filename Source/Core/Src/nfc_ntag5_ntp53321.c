@@ -54,10 +54,14 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
     hntag->state = NFC_STATE_UNINITIALIZED;
 
     /* CC Block 읽기로 I2C 링크 확인 */
+#if 1 // debug TODO delete
+    NFC_NTP53321_ConfigureCC(hntag);
+#endif
     ret = nfc_i2c_mem_read(hntag,
                            NFC_BLOCK_TO_I2C_ADDR(NFC_CC_BLOCK_ADDR),
                            reg_block, 4U);
-    if (ret != NFC_RESULT_OK) {
+    if (ret != NFC_RESULT_OK)
+    {
         APP_LOGE("NFC", "Init: I2C read FAILED (ret=%d)", ret);
         hntag->state = NFC_STATE_ERROR;
         return ret;
@@ -199,9 +203,9 @@ NFC_Result_t NFC_NTP53321_ConfigureCC(NFC_NTP53321_Handle_t *hntag)
 {
     uint8_t cc[4] = {
         NFC_CC_MAGIC_BYTE,   /* 0xE1 */
-        NFC_CC_VERSION,      /* 0x10 (NDEF Mapping v1.0) */
-        NFC_CC_SIZE,         /* 0x40 (0x40×8 = 512 bytes) */
-        NFC_CC_ACCESS        /* 0x00 (Read/Write) */
+        NFC_CC_VERSION,      /* 0x40 (NDEF Mapping v1.0) */
+        NFC_CC_SIZE,         /* 0x80 (0x40×8 = 512 bytes) */
+        NFC_CC_ACCESS        /* 0x09 (Read/Write) */
     };
     NFC_Result_t ret;
 
@@ -524,7 +528,7 @@ NFC_Result_t NFC_NTP53321_GetUID(NFC_NTP53321_Handle_t *hntag, uint8_t *uid)
         memcpy(hntag->uid, uid, 7U);
         hntag->uid_valid = true;
     }
-    APP_LOGI("NFC", "UID: %02X %02X %02X %02X %02X %02X %02X",
+    APP_LOGD("NFC", "Pseudo UID: %02X %02X %02X %02X %02X %02X %02X",
              uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
     return NFC_RESULT_OK;
 }

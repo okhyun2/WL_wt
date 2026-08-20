@@ -116,6 +116,7 @@ static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void);
 static void App_FsmUsimHoldClear(void);
 static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase);
 static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked);
+static const char *App_FsmNfcGetWakeEventName(NFC_WakeupEvent_t event);
 
 NFC_NTP53321_Handle_t g_nfcTagHandle;
 NFC_AUTH_Handle_t g_nfcAuthHandle;
@@ -133,11 +134,11 @@ static uint8_t g_appFsmRtcServiceTxWakePending = APP_FALSE;
 static uint8_t g_appFsmRtcMgmtTxWakePending = APP_FALSE;
 
 static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTES;
-static const uint8_t g_nfcAdminKey[NFC_AUTH_KEY_SIZE] = APP_NFC_ADMIN_KEY_BYTES;
 
 static void App_FsmNfcWakeupCallback(NFC_WakeupEvent_t event)
 {
     g_nfcWakeEvent = event;
+    APP_LOGI("FSM", "trace nfc wake cb event=%s", App_FsmNfcGetWakeEventName(event));
 }
 
 static AppStatus_t App_FsmMeterReinitUart(uint32_t settleDelayMs)
@@ -445,8 +446,7 @@ AppStatus_t App_NfcInit(void)
 
     if (NFC_AUTH_Init(&g_nfcAuthHandle,
                       &g_nfcTagHandle,
-                      g_nfcMasterKey,
-                      g_nfcAdminKey) != NFC_AUTH_RESULT_OK)
+                      g_nfcMasterKey) != NFC_AUTH_RESULT_OK)
     {
         return APP_STATUS_INIT_FAILED;
     }
@@ -483,9 +483,30 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     NFC_CMD_Result_t cmdStatus;
     AppNfcSeoulProcessResult_t seoulResult;
 
+    APP_LOGI("FSM",
+             "trace nfc process enter irq=%u wake=%s",
+             (unsigned int)g_nfcIrqPending,
+             App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
+
     if (g_nfcReady != APP_TRUE)
     {
         return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    if ((g_nfcIrqPending != APP_TRUE) &&
+        (g_nfcWakeEvent == NFC_WAKEUP_EVENT_ED_PIN))
+    {
+        APP_LOGW("FSM",
+                 "trace nfc process deferred: wake=ED_PIN but irq pending=0");
+        return APP_STATUS_OK;
+    }
+
+    if ((g_nfcIrqPending == APP_TRUE) &&
+        (g_nfcWakeEvent == NFC_WAKEUP_EVENT_UNKNOWN))
+    {
+        APP_LOGW("FSM",
+                 "trace nfc wake fallback: irq pending with unknown wake -> ED_PIN");
+        g_nfcWakeEvent = NFC_WAKEUP_EVENT_ED_PIN;
     }
 
     if (g_nfcIrqPending == APP_TRUE)
@@ -500,6 +521,10 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 
     if (g_nfcWakeEvent != NFC_WAKEUP_EVENT_ED_PIN)
     {
+        APP_LOGW("FSM",
+                 "trace nfc process skip irq=%u wake=%s",
+                 (unsigned int)g_nfcIrqPending,
+                 App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
         return APP_STATUS_OK;
     }
 
@@ -556,7 +581,6 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
         authStatus = NFC_AUTH_ProcessNFCEvent(&g_nfcAuthHandle, NFC_WAKEUP_EVENT_ED_PIN);
         if ((authStatus != NFC_AUTH_RESULT_OK) &&
             (authStatus != NFC_AUTH_RESULT_FAIL) &&
-            (authStatus != NFC_AUTH_RESULT_LOCKED) &&
             (authStatus != NFC_AUTH_RESULT_INVALID_STATE))
         {
             return APP_STATUS_FATAL;
@@ -569,7 +593,9 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 void App_FsmNfcEdIrqHandler(void)
 {
     g_nfcIrqPending = APP_TRUE;
-    APP_LOGI("FSM", "trace nfc ed irq pending=1");
+    g_nfcWakeEvent = NFC_WAKEUP_EVENT_ED_PIN;   /* backup latch */
+    APP_LOGI("FSM", "trace nfc ed irq pending=1 wake=%s",
+             App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
 }
 
 static const char *App_FsmGetDecisionNameInternal(AppFsmDecision_t decision)
@@ -618,7 +644,6 @@ static const char *App_FsmNfcGetAuthStateName(NFC_AUTH_State_t state)
         case NFC_AUTH_STATE_VERIFYING:     return "VERIFYING";
         case NFC_AUTH_STATE_AUTHENTICATED: return "AUTHENTICATED";
         case NFC_AUTH_STATE_FAILED:        return "FAILED";
-        case NFC_AUTH_STATE_LOCKED:        return "LOCKED";
         default:                           return "UNKNOWN";
     }
 }
@@ -2581,18 +2606,46 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
         case APP_FSM_STATE_NFC_WAIT_EVENT:
             p_component = App_FsmGetComponentMutable(APP_FSM_COMPONENT_NFC);
-            if ((p_component != NULL) && ((p_component->eventPending == APP_TRUE) || (g_nfcIrqPending == APP_TRUE)))
+
+            APP_LOGI("FSM",
+                     "trace nfc wait irq=%u wake=%s comp_evt=%u",
+                     (unsigned int)g_nfcIrqPending,
+                     App_FsmNfcGetWakeEventName(g_nfcWakeEvent),
+                     (unsigned int)((p_component != NULL) ? p_component->eventPending : 0u));
+
+            if (g_nfcIrqPending == APP_TRUE)
             {
-                APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NFC_EXCHANGE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
-                App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_EXCHANGE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+                APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NFC_EXCHANGE, APP_TRUE, 0u) == APP_STATUS_OK,
+                                    APP_STATUS_MSGQ_FULL);
+                App_FsmMarkComponent(APP_FSM_COMPONENT_NFC,
+                                     APP_FSM_STATE_NFC_EXCHANGE,
+                                     APP_TRUE,
+                                     APP_FALSE,
+                                     APP_STATUS_OK);
+
+                APP_LOGI("FSM",
+                         "trace nfc exchange queued irq=%u wake=%s",
+                         (unsigned int)g_nfcIrqPending,
+                         App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
             }
             else
             {
-                (void)App_NfcSeoulServiceTestMode();
-                //Clear eventPending
-                App_FsmMarkComponent(APP_FSM_COMPONENT_NFC, APP_FSM_STATE_NFC_WAIT_EVENT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+                if ((p_component != NULL) && (p_component->eventPending == APP_TRUE))
+                {
+                    APP_LOGW("FSM",
+                             "trace nfc defer exchange: component evt only irq=%u wake=%s",
+                             (unsigned int)g_nfcIrqPending,
+                             App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
+                }
 
+                (void)App_NfcSeoulServiceTestMode();
+                App_FsmMarkComponent(APP_FSM_COMPONENT_NFC,
+                                     APP_FSM_STATE_NFC_WAIT_EVENT,
+                                     APP_FALSE,
+                                     APP_FALSE,
+                                     APP_STATUS_OK);
             }
+
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
 
