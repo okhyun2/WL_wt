@@ -711,6 +711,27 @@ void NFC_NTP53321_ED_EXTI_IRQHandler(NFC_NTP53321_Handle_t *hntag)
 }
 
 /* ============================================================
+ * RF 필드 감지 확인
+ * STATUS_REG(0x10A0) Byte0 bit1 = NFC_FIELD_OK
+ * 트랜잭션 진행 중 태그가 리더에서 떨어졌는지 판단하는 용도.
+ * ============================================================ */
+bool NFC_NTP53321_IsFieldPresent(NFC_NTP53321_Handle_t *hntag)
+{
+    NFC_Result_t ret;
+    uint8_t      status0 = 0U;
+
+    if (hntag == NULL) return false;
+
+    ret = NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 0U, &status0);
+    if (ret != NFC_RESULT_OK) {
+        /* I2C 자체가 응답 없으면 필드도 없다고 간주(안전 측) */
+        return false;
+    }
+    return ((status0 & NFC_STATUS0_NFC_FIELD_OK) != 0U);
+}
+
+
+/* ============================================================
  * Statistics
  * ============================================================ */
 void NFC_NTP53321_GetStats(NFC_NTP53321_Handle_t *hntag, NFC_NTP53321_Stats_t *stats)

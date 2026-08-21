@@ -328,6 +328,9 @@ void         NFC_NTP53321_ClearEDFlag(NFC_NTP53321_Handle_t *hntag);
 void         NFC_NTP53321_ED_EXTI_IRQHandler(NFC_NTP53321_Handle_t *hntag);
 void         NFC_NTP53321_NotifyDeferredEdEvent(NFC_NTP53321_Handle_t *hntag);
 
+/* RF 필드 유지 여부 확인 (STATUS0_REG Byte0 bit1 = NFC_FIELD_OK) */
+bool         NFC_NTP53321_IsFieldPresent(NFC_NTP53321_Handle_t *hntag);
+
 /* Stats */
 void         NFC_NTP53321_GetStats(NFC_NTP53321_Handle_t *hntag,
                                     NFC_NTP53321_Stats_t *stats);

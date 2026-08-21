@@ -575,8 +575,24 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
         {
             return APP_STATUS_FATAL;
         }
+        return APP_STATUS_OK;
     }
-    else
+
+    /* Field Detect 단일 모드로 CONNECT~CONFIRM 전체를 확인하기 위한
+     * 능동 폴링 구간.
+     *
+     * ED가 Field Detect 모드로 고정되어 있으므로(NFC_NTP53321_Init에서
+     * 설정된 후 Standby 진입/복귀와 무관하게 유지됨), 필드가 유지된 상태에서
+     * 리더가 challenge/response를 SRAM에 쓰는 이벤트는 별도의 ED 인터럽트를
+     * 발생시키지 않는다. 따라서 CONNECT가 접수된 순간부터는 곧바로 STOP으로
+     * 돌아가지 말고, 아래 조건 중 하나가 성립할 때까지 SRAM CMD 블록을
+     * 짧은 주기로 다시 읽어(폴링) RESPONSE 단계까지 이 함수 안에서 처리한다.
+     *
+     *   1) 인증 SUCCESS 또는 FAIL 로 확정되어 트랜잭션이 종료된 경우
+     *   2) 트랜잭션 타임아웃(NFC_AUTH_TXN_TIMEOUT_MS = 5s)이 지난 경우
+     *   3) RF 필드가 사라진 경우 (태그가 리더에서 떨어짐)
+     */
+    for (;;)
     {
         authStatus = NFC_AUTH_ProcessNFCEvent(&g_nfcAuthHandle, NFC_WAKEUP_EVENT_ED_PIN);
         if ((authStatus != NFC_AUTH_RESULT_OK) &&
@@ -585,6 +601,31 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
         {
             return APP_STATUS_FATAL;
         }
+
+        if (NFC_AUTH_IsTransactionActive(&g_nfcAuthHandle) != true)
+        {
+            /* CONNECT 이전(진짜 idle)이거나, RESPONSE 처리로
+             * SUCCESS/FAIL 이 확정되어 트랜잭션이 정상 종료된 경우 */
+            break;
+        }
+
+        if (NFC_AUTH_IsTransactionTimedOut(&g_nfcAuthHandle) == true)
+        {
+            APP_LOGW("FSM", "trace nfc txn timeout -> invalidate & release");
+            NFC_AUTH_InvalidateSession(&g_nfcAuthHandle);
+            break;
+        }
+
+        if (NFC_NTP53321_IsFieldPresent(&g_nfcTagHandle) != true)
+        {
+            APP_LOGW("FSM", "trace nfc field lost during txn -> invalidate & release");
+            NFC_AUTH_InvalidateSession(&g_nfcAuthHandle);
+            break;
+        }
+
+        /* Field Detect 모드에서는 데이터 갱신 이벤트를 못 받으므로,
+         * 짧은 주기로 SRAM CMD를 다시 읽어야 RESPONSE 도착을 알 수 있다. */
+        HAL_Delay(NFC_AUTH_POLL_INTERVAL_MS);
     }
 
     return APP_STATUS_OK;

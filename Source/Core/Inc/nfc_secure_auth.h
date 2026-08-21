@@ -13,11 +13,15 @@ extern "C" {
 #include "nfc_ntag5_ntp53321.h"
 #include <stdint.h>
 #include <stdbool.h>
+#include "app_log.h"
+#include "app_clock.h"   /* GetCorrectedTick() 사용을 위해 추가 */
 
 #define NFC_AUTH_KEY_SIZE               16U
 #define NFC_AUTH_CHALLENGE_SIZE         16U
 #define NFC_AUTH_RESPONSE_SIZE          16U
 #define NFC_AUTH_SESSION_TIMEOUT_MS     300000U   /* 5 min */
+#define NFC_AUTH_TXN_TIMEOUT_MS         5000U     /* CONNECT~CONFIRM 완료 제한 (한 번의 태깅) */
+#define NFC_AUTH_POLL_INTERVAL_MS       30U       /* 트랜잭션 진행 중 SRAM CMD 재확인 주기 */
 #define NFC_AUTH_TOKEN_SIZE             16U
 
 /* CMD values */
@@ -77,6 +81,9 @@ typedef struct {
     uint8_t                fail_count;
     bool                   initialized;
 
+    bool                   txn_active;      /* CONNECT~CONFIRM 트랜잭션 진행 여부 */
+    uint32_t               txn_start_tick;  /* 트랜잭션 시작 tick */
+
     void (*OnAuthSuccess_Callback)(uint8_t *token);
     void (*OnAuthFail_Callback)(uint8_t fail_count);
 } NFC_AUTH_Handle_t;
@@ -102,6 +109,11 @@ NFC_AUTH_Result_t NFC_AUTH_ProcessNFCEvent(NFC_AUTH_Handle_t *hauth,
 
 bool              NFC_AUTH_IsSessionValid(NFC_AUTH_Handle_t *hauth);
 NFC_AUTH_Result_t NFC_AUTH_InvalidateSession(NFC_AUTH_Handle_t *hauth);
+
+/* Field-Detect 단일 모드용 트랜잭션 상태 조회 */
+bool              NFC_AUTH_IsTransactionActive(NFC_AUTH_Handle_t *hauth);
+bool              NFC_AUTH_IsTransactionTimedOut(NFC_AUTH_Handle_t *hauth);
+
 void              NFC_AUTH_RegisterCallbacks(NFC_AUTH_Handle_t *hauth,
                                               void (*OnSuccess)(uint8_t *),
                                               void (*OnFail)(uint8_t));

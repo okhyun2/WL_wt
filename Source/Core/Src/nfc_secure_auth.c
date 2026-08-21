@@ -37,7 +37,9 @@ static void auth_log_session_valid(NFC_AUTH_Handle_t *hauth, const char *reason)
     uint8_t valid = 0U;
 
     if (hauth != NULL && hauth->session.active) {
-        elapsed = HAL_GetTick() - hauth->session.start_tick;
+        /* STOP 모드 체류 시간을 포함한 실경과시간 계산을 위해
+         *         HAL_GetTick() 대신 GetCorrectedTick() 사용 */
+        elapsed = GetCorrectedTick() - hauth->session.start_tick;
     }
     if (hauth != NULL && NFC_AUTH_IsSessionValid(hauth)) {
         valid = 1U;
@@ -383,6 +385,9 @@ static NFC_AUTH_Result_t auth_handle_connect(NFC_AUTH_Handle_t *hauth)
     APP_LOGI("NFC", "[[NFC-AUTH]] connect accepted attempts=%lu",
            (unsigned long)hauth->stats.total_attempts);
 
+    hauth->txn_active     = true;
+    hauth->txn_start_tick = HAL_GetTick();
+
     /* Generate and store challenge */
     auth_gen_challenge(hauth->session.challenge, hauth->hntag);
 
@@ -393,6 +398,7 @@ static NFC_AUTH_Result_t auth_handle_connect(NFC_AUTH_Handle_t *hauth)
     if (ret != NFC_RESULT_OK) {
         APP_LOGE("NFC", "Challenge write FAILED");
         hauth->state = NFC_AUTH_STATE_IDLE;
+        hauth->txn_active = false;
         return NFC_AUTH_RESULT_I2C_ERROR;
     }
 
@@ -428,26 +434,30 @@ static NFC_AUTH_Result_t auth_handle_response(NFC_AUTH_Handle_t *hauth)
     if (ret != NFC_RESULT_OK) {
         APP_LOGE("NFC", "Response read FAILED");
         hauth->state = NFC_AUTH_STATE_IDLE;
+        hauth->txn_active = false;
         return NFC_AUTH_RESULT_I2C_ERROR;
     }
 
     /* Expected = AES128(MasterKey, stored Challenge) */
     aes128_encrypt(hauth->master_key, hauth->session.challenge, expected);
 
-    if (auth_secure_compare(response, expected, 16U)) {
+    if (auth_secure_compare(response, expected, NFC_AUTH_TOKEN_SIZE)) {
         /* ---- SUCCESS ---- */
         hauth->state                = NFC_AUTH_STATE_AUTHENTICATED;
         hauth->fail_count           = 0;
         hauth->stats.success_count++;
         hauth->stats.last_success_tick = HAL_GetTick();
 
-        hauth->session.start_tick  = HAL_GetTick();
+        /* 세션 타임아웃 기준시각은 STOP 보정 틱으로 기록해야
+         *         이후 IsSessionValid()에서 STOP 체류 시간이 정확히 반영됨 */
+        hauth->session.start_tick  = GetCorrectedTick();
         hauth->session.timeout_ms  = NFC_AUTH_SESSION_TIMEOUT_MS;
         hauth->session.active      = true;
         aes128_encrypt(hauth->master_key, response, hauth->session.token);
 
         auth_write_status(hauth, NFC_AUTH_STATUS_SUCCESS);
         auth_write_cmd(hauth, NFC_AUTH_CMD_CONFIRM);
+        hauth->txn_active = false;
         APP_LOGI("NFC", "[[NFC-AUTH]] response verify ok total=%lu",
                (unsigned long)hauth->stats.success_count);
         auth_log_session_valid(hauth, "auth-success");
@@ -473,6 +483,7 @@ static NFC_AUTH_Result_t auth_handle_response(NFC_AUTH_Handle_t *hauth)
             hauth->OnAuthFail_Callback(hauth->fail_count);
 
         hauth->state = NFC_AUTH_STATE_IDLE;
+        hauth->txn_active = false;
         auth_log_session_valid(hauth, "auth-fail");
         return NFC_AUTH_RESULT_FAIL;
     }
@@ -548,7 +559,12 @@ bool NFC_AUTH_IsSessionValid(NFC_AUTH_Handle_t *hauth)
     uint32_t elapsed;
     if (hauth == NULL || !hauth->session.active) return false;
     if (hauth->state != NFC_AUTH_STATE_AUTHENTICATED) return false;
-    elapsed = HAL_GetTick() - hauth->session.start_tick; /* overflow-safe */
+    /* HAL_GetTick()은 App_SystemEnterStopMode()에서
+     *         HAL_SuspendTick()으로 정지되어 STOP 체류 시간이 누락된다.
+     *         GetCorrectedTick()은 g_tick_offset(App_SystemEnterStopMode()가
+     *         RTC 델타로 계산해 누적한 보정값)을 더해 반환하므로
+     *         STOP 모드 체류 시간까지 포함한 실제 경과시간을 얻는다. */
+    elapsed = GetCorrectedTick() - hauth->session.start_tick; /* overflow-safe */
     return (elapsed < hauth->session.timeout_ms);
 }
 
@@ -557,6 +573,7 @@ NFC_AUTH_Result_t NFC_AUTH_InvalidateSession(NFC_AUTH_Handle_t *hauth)
     if (hauth == NULL) return NFC_AUTH_RESULT_INVALID_PARAM;
     hauth->session.active = false;
     hauth->state          = NFC_AUTH_STATE_IDLE;
+    hauth->txn_active = false;
     APP_LOGI("NFC", "[[NFC-AUTH]] session invalidated");
     auth_log_session_valid(hauth, "invalidate");
     return NFC_AUTH_RESULT_OK;
@@ -601,6 +618,7 @@ void NFC_AUTH_Reset(NFC_AUTH_Handle_t *hauth)
     hauth->state          = NFC_AUTH_STATE_IDLE;
     hauth->fail_count     = 0;
     hauth->session.active = false;
+    hauth->txn_active = false;
     memset(&hauth->stats, 0, sizeof(NFC_AUTH_Stats_t));
     APP_LOGI("NFC", "Reset");
     auth_log_session_valid(hauth, "reset");
@@ -627,4 +645,20 @@ void NFC_AUTH_GetDebugInfo(NFC_AUTH_Handle_t *hauth, NFC_AUTH_DebugInfo_t *info)
     info->session_timeout_ms = hauth->session.timeout_ms;
     info->last_event_tick_ms = hauth->session.start_tick;
 }
+
+/* Field-Detect 단일 모드용 트랜잭션 상태 조회 */
+bool NFC_AUTH_IsTransactionActive(NFC_AUTH_Handle_t *hauth)
+{
+    if (hauth == NULL) return false;
+    return hauth->txn_active;
+}
+
+bool NFC_AUTH_IsTransactionTimedOut(NFC_AUTH_Handle_t *hauth)
+{
+    uint32_t elapsed;
+    if (hauth == NULL || !hauth->txn_active) return false;
+    elapsed = HAL_GetTick() - hauth->txn_start_tick;  /* overflow-safe */
+    return (elapsed >= NFC_AUTH_TXN_TIMEOUT_MS);
+}
+
 
