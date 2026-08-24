@@ -333,7 +333,7 @@ static void App_GpioLpRestoreNbiotInterface(void)
     HAL_Delay(10);
 
     App_HwSetNbiotReset(GPIO_PIN_RESET);
-    HAL_Delay(10);
+    HAL_Delay(200);
     App_HwSetNbiotReset(GPIO_PIN_SET);
 
     /* LPUART1 수신(RX) 재활성화 */

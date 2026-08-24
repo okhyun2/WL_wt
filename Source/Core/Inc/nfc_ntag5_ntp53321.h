@@ -150,7 +150,12 @@ extern "C" {
 #define NFC_CONFIG1_ARBITER_PASSTHRU    (0x08U)    /* 10: Pass-through */
 #define NFC_CONFIG1_ARBITER_PHDC        (0x0CU)    /* 11: PHDC */
 #define NFC_CONFIG1_SRAM_ENABLED        (1U << 1)  /* R  : SRAM 접근 가능 여부 */
+#define NFC_CONFIG1_PT_TRANSFER_DIR_MASK   (0x01U)    /* bit[0]: PT_TRANSFER_DIR */
 #define NFC_CONFIG1_PT_TRANSFER_DIR     (1U << 0)  /* R/W: 0=I2C→NFC, 1=NFC→I2C */
+
+/* Block 0x10A2: Synchronization Block Reg(NFC: A2h)
+ * Byte0 = SYNCH_DATA_BLOCK_REG (LSB), Byte1 = SYNCH_DATA_BLOCK_REG (MSB)*/
+#define NFC_CFG_SYNC_DATA_BLOCK_REG_ADDR    0x10A2U  /* Sync data block  reg*/
 
 /* ============================================================
  * ED_CONF 필드 (NFC_CFG_EH_ED_CONFIG_ADDR 0x103D, Byte2)
@@ -179,7 +184,8 @@ extern "C" {
 /* Layer1 (Seoul/legacy) uses 0x2000 ~ 0x201F */
 
 /* Auth SRAM layout (Layer2) */
-#define NFC_SRAM_CMD_BLOCK              0x2020U
+//#define NFC_SRAM_CMD_BLOCK              0x2020U
+#define NFC_SRAM_CMD_BLOCK              0x203EU
 #define NFC_SRAM_CHALLENGE_BLOCK_START  0x2021U
 #define NFC_SRAM_CHALLENGE_BLOCK_END    0x2024U
 #define NFC_SRAM_RESPONSE_BLOCK_START   0x2025U
@@ -281,6 +287,8 @@ NFC_Result_t NFC_NTP53321_Reset(NFC_NTP53321_Handle_t *hntag);
 NFC_Result_t NFC_NTP53321_SetEDMode(NFC_NTP53321_Handle_t *hntag, NFC_EDMode_t mode);
 NFC_Result_t NFC_NTP53321_ConfigureCC(NFC_NTP53321_Handle_t *hntag);
 NFC_Result_t NFC_NTP53321_EnableSRAMMirror(NFC_NTP53321_Handle_t *hntag, bool enable);
+NFC_Result_t NFC_NTP53321_PTTransferDir(NFC_NTP53321_Handle_t *hntag, bool dir);
+NFC_Result_t NFC_NTP53321_EnableSRAMPathThru(NFC_NTP53321_Handle_t *hntag, bool enable);
 
 /* Memory Access (WRITE MEMORY / READ MEMORY) */
 NFC_Result_t NFC_NTP53321_ReadBlock(NFC_NTP53321_Handle_t *hntag,
@@ -330,6 +338,7 @@ void         NFC_NTP53321_NotifyDeferredEdEvent(NFC_NTP53321_Handle_t *hntag);
 
 /* RF 필드 유지 여부 확인 (STATUS0_REG Byte0 bit1 = NFC_FIELD_OK) */
 bool         NFC_NTP53321_IsFieldPresent(NFC_NTP53321_Handle_t *hntag);
+bool         NFC_NTP53321_IsSRAMDataReady(NFC_NTP53321_Handle_t *hntag);
 
 /* Stats */
 void         NFC_NTP53321_GetStats(NFC_NTP53321_Handle_t *hntag,

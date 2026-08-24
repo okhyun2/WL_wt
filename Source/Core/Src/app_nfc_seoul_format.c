@@ -503,7 +503,7 @@ static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_pay
     AppNfcSeoulSnapshot_t snapshot;
     uint8_t cursor;
 
-    APP_LOGI("NFC", "Seoul SRAM mirror cmd:0x%02x", cmd2);
+    APP_LOGI("NFC", "Seoul cmd:0x%02x", cmd2);
     if ((p_payload == NULL) || (p_payloadLength == NULL))
     {
         return APP_STATUS_INVALID_PARAM;
@@ -688,13 +688,14 @@ static uint8_t App_NfcSeoulWaitEepromAccessReady(const char *p_stage, uint16_t b
 }
 #endif
 
-static uint8_t App_NfcSeoulIsSramMirrorReady(void)
+static uint8_t App_NfcSeoulIsSramModeReady(void)
 {
     uint8_t status0;
     uint8_t status1;
     uint8_t cfg1;
     uint8_t arbiter;
     uint8_t sramEnabled;
+    uint8_t transferDir;
     uint8_t vccOk;
     uint8_t fieldOk;
     uint8_t vccBootOk;
@@ -711,7 +712,7 @@ static uint8_t App_NfcSeoulIsSramMirrorReady(void)
                                     0u,
                                     &status0) != NFC_RESULT_OK)
     {
-        APP_LOGW("NFC", "Seoul SRAM mirror check status0 read failed");
+        APP_LOGW("NFC", "Seoul SRAM mode check status0 read failed");
         return APP_FALSE;
     }
 
@@ -720,7 +721,7 @@ static uint8_t App_NfcSeoulIsSramMirrorReady(void)
                                     1u,
                                     &status1) != NFC_RESULT_OK)
     {
-        APP_LOGW("NFC", "Seoul SRAM mirror check status1 read failed");
+        APP_LOGW("NFC", "Seoul SRAM mode check status1 read failed");
         return APP_FALSE;
     }
 
@@ -729,19 +730,20 @@ static uint8_t App_NfcSeoulIsSramMirrorReady(void)
                                     1u,
                                     &cfg1) != NFC_RESULT_OK)
     {
-        APP_LOGW("NFC", "Seoul SRAM mirror check cfg1 read failed");
+        APP_LOGW("NFC", "Seoul SRAM mode check cfg1 read failed");
         return APP_FALSE;
     }
 
     arbiter = (uint8_t)(cfg1 & NFC_CONFIG1_ARBITER_MODE_MASK);
     sramEnabled = ((cfg1 & NFC_CONFIG1_SRAM_ENABLED) != 0u) ? APP_TRUE : APP_FALSE;
+    transferDir = ((cfg1 & NFC_CONFIG1_PT_TRANSFER_DIR) != 0u) ? APP_TRUE : APP_FALSE;
     vccOk = ((status0 & NFC_STATUS0_VCC_SUPPLY_OK) != 0u) ? APP_TRUE : APP_FALSE;
     fieldOk = ((status0 & NFC_STATUS0_NFC_FIELD_OK) != 0u) ? APP_TRUE : APP_FALSE;
     vccBootOk = ((status1 & NFC_STATUS1_VCC_BOOT_OK) != 0u) ? APP_TRUE : APP_FALSE;
     nfcBootOk = ((status1 & NFC_STATUS1_NFC_BOOT_OK) != 0u) ? APP_TRUE : APP_FALSE;
     i2cUnlocked = ((status1 & NFC_STATUS1_I2C_IF_LOCKED) == 0u) ? APP_TRUE : APP_FALSE;
 
-    APP_LOGI("NFC", "Seoul SRAM factors status0=0x%02X status1=0x%02X cfg1=0x%02X arb=0x%02X vcc=%u field=%u vcc_boot=%u nfc_boot=%u i2c_unlocked=%u sram_en=%u",
+    APP_LOGI("NFC", "Seoul SRAM factors status0=0x%02X status1=0x%02X cfg1=0x%02X arb=0x%02X vcc=%u field=%u vcc_boot=%u nfc_boot=%u i2c_unlocked=%u sram_en=%u dir=%u",
              (unsigned int)status0,
              (unsigned int)status1,
              (unsigned int)cfg1,
@@ -751,19 +753,19 @@ static uint8_t App_NfcSeoulIsSramMirrorReady(void)
              (unsigned int)vccBootOk,
              (unsigned int)nfcBootOk,
              (unsigned int)i2cUnlocked,
-             (unsigned int)sramEnabled);
+             (unsigned int)sramEnabled,
+             (unsigned int)transferDir);
 
-    if ((fieldOk == APP_TRUE) &&
-        ((arbiter != NFC_CONFIG1_ARBITER_SRAM_MIRROR) || (sramEnabled != APP_TRUE)))
+    if ((fieldOk == APP_TRUE) && (sramEnabled != APP_TRUE))
     {
         APP_LOGW("NFC", "Seoul SRAM field detected but session config not ready yet (arb=0x%02X sram_en=%u)",
                  (unsigned int)arbiter,
                  (unsigned int)sramEnabled);
     }
 
-    if (arbiter != NFC_CONFIG1_ARBITER_SRAM_MIRROR)
+    if (arbiter == NFC_CONFIG1_ARBITER_NORMAL)
     {
-        APP_LOGW("NFC", "Seoul SRAM write skipped, mirror arbiter not ready");
+        APP_LOGW("NFC", "Seoul SRAM write skipped, arbiter not ready");
         return APP_FALSE;
     }
 
@@ -939,29 +941,32 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
 
     uint8_t attempt;
 
-    /* mirror enable + ready 확인을 재시도 (I2C_IF_LOCKED / arbitration 충돌 흡수) */
-    #define APP_NFC_SEOUL_MIRROR_RETRY_MAX   (10u)
-    #define APP_NFC_SEOUL_MIRROR_RETRY_DELAY (5u)
+    /* sram mode + ready 확인을 재시도 (I2C_IF_LOCKED / arbitration 충돌 흡수) */
+    #define APP_NFC_SEOUL_SRAMMODE_RETRY_MAX   (10u)
+    #define APP_NFC_SEOUL_SRAMMODE_RETRY_DELAY (5u)
 
-    for (attempt = 0u; attempt < APP_NFC_SEOUL_MIRROR_RETRY_MAX; attempt++)
+    for (attempt = 0u; attempt < APP_NFC_SEOUL_SRAMMODE_RETRY_MAX; attempt++)
     {
-        nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, true);
+        //kiki TODO delete
+        //nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, true);
+        NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, true); //true:NFC->I2C, false:I2C->NFC
+        nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
         if (nfcRet == NFC_RESULT_OK)
         {
-            HAL_Delay(APP_NFC_SEOUL_MIRROR_RETRY_DELAY);
-            if (App_NfcSeoulIsSramMirrorReady() == APP_TRUE)
+            HAL_Delay(APP_NFC_SEOUL_SRAMMODE_RETRY_DELAY);
+            if (App_NfcSeoulIsSramModeReady() == APP_TRUE)
             {
                 break;   /* 준비 완료 */
             }
         }
-        HAL_Delay(APP_NFC_SEOUL_MIRROR_RETRY_DELAY);
+        HAL_Delay(APP_NFC_SEOUL_SRAMMODE_RETRY_DELAY);
     }
-    if(attempt >= APP_NFC_SEOUL_MIRROR_RETRY_MAX)
+    if(attempt >= APP_NFC_SEOUL_SRAMMODE_RETRY_MAX)
     {
         /* I2C_IF_LOCKED(=BUSY) 등은 잠깐 후 재시도 */
-        APP_LOGE("NFC", "Seoul mirror enable retry %u/%u ret=%d",
+        APP_LOGE("NFC", "Seoul enable retry %u/%u ret=%d",
                  (unsigned int)(attempt + 1u),
-                 (unsigned int)APP_NFC_SEOUL_MIRROR_RETRY_MAX,
+                 (unsigned int)APP_NFC_SEOUL_SRAMMODE_RETRY_MAX,
                  (int)nfcRet);
 
         g_appNfcSeoulSramSyncPending = APP_TRUE;
@@ -1002,10 +1007,13 @@ static AppStatus_t App_NfcSeoulWritePayloadEepromOnly(const uint8_t *p_payload, 
         return status;
     }
 
-    nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, false);
+        //kiki TODO delete
+    //nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, false);
+    NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, true); //true:NFC->I2C, false:I2C->NFC
+    nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
     if (nfcRet != NFC_RESULT_OK)
     {
-        APP_LOGW("NFC", "Seoul SRAM mirror disable returned %d before EEPROM write", (int)nfcRet);
+        APP_LOGW("NFC", "Seoul SRAM Mode disable returned %d before EEPROM write", (int)nfcRet);
     }
     HAL_Delay(APP_NFC_SEOUL_EEPROM_SETTLE_DELAY_MS);
     eepromStatus = App_NfcSeoulWriteNdefToBlock(APP_NFC_SEOUL_NDEF_EEPROM_BLOCK,
@@ -1052,10 +1060,13 @@ static AppStatus_t App_NfcSeoulWritePayload(const uint8_t *p_payload, uint8_t pa
         return status;
     }
 
-    nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, false);
+        //kiki TODO delete
+    //nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, false);
+    NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, true); //true:NFC->I2C, false:I2C->NFC
+        nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
     if (nfcRet != NFC_RESULT_OK)
     {
-        APP_LOGW("NFC", "Seoul SRAM mirror disable returned %d before EEPROM write", (int)nfcRet);
+        APP_LOGW("NFC", "Seoul SRAM Mode disable returned %d before EEPROM write", (int)nfcRet);
     }
     HAL_Delay(APP_NFC_SEOUL_EEPROM_SETTLE_DELAY_MS);
     eepromStatus = App_NfcSeoulWriteNdefToBlock(APP_NFC_SEOUL_NDEF_EEPROM_BLOCK,
