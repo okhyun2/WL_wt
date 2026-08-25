@@ -77,7 +77,7 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
         return NFC_RESULT_ERROR;
     }
 
-    reg_block[0] = (uint8_t)NFC_SRAM_UCMD_IND_ADDR;
+    reg_block[0] = (uint8_t)NFC_SRAM_UCMD_IND_BLOCK&0xFF;
     reg_block[1] = 0;
     reg_block[2] = 0;
     reg_block[3] = 0;

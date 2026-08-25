@@ -52,6 +52,7 @@ typedef struct
 
 AppStatus_t App_NfcSeoulInit(NFC_NTP53321_Handle_t *p_tag);
 AppStatus_t App_NfcSeoulProcessTag(AppNfcSeoulProcessResult_t *p_result);
+AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t frame_length, AppNfcSeoulProcessResult_t *p_result);
 AppStatus_t App_NfcSeoulNotifyStorageChanged(void);
 AppStatus_t App_NfcSeoulNotifyLiveMeterRecord(const AppMeterStorageRecord_t *p_record);
 AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void);

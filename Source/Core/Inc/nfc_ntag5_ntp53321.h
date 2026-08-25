@@ -199,7 +199,7 @@ extern "C" {
 #define NFC_SRAM_UCMD_RESULT_BLOCK_END  0x0038U
 #define NFC_SRAM_UCMD_STATUS_BLOCK      0x0039U
 
-#define NFC_SRAM_UCMD_IND_ADDR          0x003DU
+#define NFC_SRAM_UCMD_IND_BLOCK         0x003DU
 
 /* ============================================================
  * Hardware Pins
