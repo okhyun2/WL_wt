@@ -564,9 +564,7 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
 
         /* RF -> I2C direction + sync block write done */
         if (((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0U) &&
-            ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0U) &&
-            ((status1 & NFC_STATUS1_I2C_IF_LOCKED) == 0U) &&
-            ((status1 & NFC_STATUS1_NFC_IF_LOCKED) == 0U))
+            ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0U))
         {
             if (p_status0 != NULL) { *p_status0 = status0; }
             if (p_status1 != NULL) { *p_status1 = status1; }
@@ -670,6 +668,24 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
     {
         return APP_STATUS_INVALID_PARAM;
     }
+
+    ret = NFC_NTP53321_ReadBlock(&g_nfcTagHandle,
+                                 NFC_SRAM_CMD_BLOCK,
+                                 (uint8_t *)raw);
+    if (ret != NFC_RESULT_OK)
+    {
+        APP_LOGW("FSM",
+                 "trace nfc indicate read fail blk=0x%04X ret=%d",
+                 (unsigned int)NFC_SRAM_CMD_BLOCK,
+                 (int)ret);
+        return APP_STATUS_OK;
+    }
+    APP_LOGI("FSM",
+             "trace nfc cmd raw blk bytes=%02X %02X %02X %02X",
+             (unsigned int)raw[0],
+             (unsigned int)raw[1],
+             (unsigned int)raw[2],
+             (unsigned int)raw[3]);
 
     ret = NFC_NTP53321_ReadBlock(&g_nfcTagHandle,
                                  NFC_SRAM_UCMD_IND_BLOCK,
