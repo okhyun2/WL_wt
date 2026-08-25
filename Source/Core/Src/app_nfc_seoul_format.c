@@ -1000,7 +1000,11 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
 
     for (attempt = 0u; attempt < APP_NFC_SEOUL_SRAMMODE_RETRY_MAX; attempt++)
     {
+<<<<<<< HEAD
         NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, false); //true:NFC->I2C, false:I2C->NFC
+=======
+        NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, true); //true:NFC->I2C, false:I2C->NFC
+>>>>>>> be6d8387b3c1b4098d5bef7a84512aaf1b8d0bbc
         nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
         if (nfcRet == NFC_RESULT_OK)
         {
@@ -1058,7 +1062,11 @@ static AppStatus_t App_NfcSeoulWritePayloadEepromOnly(const uint8_t *p_payload, 
         return status;
     }
 
+<<<<<<< HEAD
     NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, false); //true:NFC->I2C, false:I2C->NFC
+=======
+    NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, true); //true:NFC->I2C, false:I2C->NFC
+>>>>>>> be6d8387b3c1b4098d5bef7a84512aaf1b8d0bbc
     nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
     if (nfcRet != NFC_RESULT_OK)
     {
@@ -1109,7 +1117,11 @@ static AppStatus_t App_NfcSeoulWritePayload(const uint8_t *p_payload, uint8_t pa
         return status;
     }
 
+<<<<<<< HEAD
     NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, false); //true:NFC->I2C, false:I2C->NFC
+=======
+    NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, true); //true:NFC->I2C, false:I2C->NFC
+>>>>>>> be6d8387b3c1b4098d5bef7a84512aaf1b8d0bbc
         nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
     if (nfcRet != NFC_RESULT_OK)
     {
