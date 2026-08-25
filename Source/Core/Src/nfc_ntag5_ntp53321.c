@@ -54,7 +54,7 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
     hntag->state = NFC_STATE_UNINITIALIZED;
 
     /* CC Block 읽기로 I2C 링크 확인 */
-#if 1 // debug TODO delete
+#if 0 // debug TODO delete
     NFC_NTP53321_ConfigureCC(hntag);
 #endif
     ret = nfc_i2c_mem_read(hntag,
@@ -77,7 +77,7 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
         return NFC_RESULT_ERROR;
     }
 
-    reg_block[0] = 0x20;
+    reg_block[0] = (uint8_t)NFC_SRAM_UCMD_IND_ADDR;
     reg_block[1] = 0;
     reg_block[2] = 0;
     reg_block[3] = 0;

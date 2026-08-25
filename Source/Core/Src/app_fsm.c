@@ -135,7 +135,7 @@ static uint8_t g_appFsmRtcMgmtTxWakePending = APP_FALSE;
 
 static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTES;
 
-#define APP_FSM_NFC_PT_TAIL_TEST_ENABLE   1U
+#define APP_FSM_NFC_PT_TAIL_TEST_ENABLE   0U
 #define APP_FSM_NFC_PT_TEST_BLOCK_DATA    0x203EU
 #define APP_FSM_NFC_PT_TEST_BLOCK_SYNC    0x203FU
 
@@ -191,15 +191,16 @@ static AppStatus_t App_FsmNfcDebugProbePassThroughTail(const char *stage)
 
 //////////////////////////////////////////////////////////////////////////////////////////
 #define APP_FSM_NFC_PT_VERIFY_ONLY_ENABLE   1U
-#define APP_FSM_NFC_PT_TEST_BLOCK_DATA      0x201FU
-#define APP_FSM_NFC_PT_TEST_BLOCK_SYNC      0x203FU
+//#define APP_FSM_NFC_PT_TEST_BLOCK_DATA      0x201FU
+#define APP_FSM_NFC_PT_TEST_BLOCK_DATA      0x0020U //00, 01, 02, 03
+#define APP_FSM_NFC_PT_TEST_BLOCK_SYNC      0x003DU //FA, CE, F5, 5F
 
 static AppStatus_t App_FsmNfcVerifyPassThroughTailOnly(const char *stage)
 {
 #if (APP_FSM_NFC_PT_VERIFY_ONLY_ENABLE == 1U)
-    //uint8_t dataBlock[4*0x10] = {0};
-    uint8_t dataBlock[4*2] = {0};
-    //uint8_t syncBlock[4*0x10] = {0};
+    uint8_t dataBlock[4] = {0};
+    //uint8_t dataBlock[4*2] = {0};
+    uint8_t syncBlock[4] = {0};
     NFC_Result_t ret;
 
     /* 1) payload tail block read */
@@ -223,7 +224,6 @@ static AppStatus_t App_FsmNfcVerifyPassThroughTailOnly(const char *stage)
     }
 
     /* 2) sync/end block read = release trigger */
-    /*
     ret = NFC_NTP53321_ReadBlock(&g_nfcTagHandle,
                                  APP_FSM_NFC_PT_TEST_BLOCK_SYNC,
                                  syncBlock);
@@ -238,7 +238,7 @@ static AppStatus_t App_FsmNfcVerifyPassThroughTailOnly(const char *stage)
     }
 
     APP_LOGI("FSM",
-             "trace nfc pt verify ok stage=%s 203E=%02X %02X %02X %02X 203F=%02X %02X %02X %02X",
+             "trace nfc pt verify ok stage=%s 2020=%02X %02X %02X %02X 203D=%02X %02X %02X %02X",
              (stage != NULL) ? stage : "-",
              (unsigned int)dataBlock[0],
              (unsigned int)dataBlock[1],
@@ -248,17 +248,6 @@ static AppStatus_t App_FsmNfcVerifyPassThroughTailOnly(const char *stage)
              (unsigned int)syncBlock[1],
              (unsigned int)syncBlock[2],
              (unsigned int)syncBlock[3]);
-    */
-    APP_LOGI("FSM",
-             "%02X %02X %02X %02X %02X %02X %02X %02X",
-             (unsigned int)dataBlock[0],
-             (unsigned int)dataBlock[1],
-             (unsigned int)dataBlock[2],
-             (unsigned int)dataBlock[3],
-             (unsigned int)dataBlock[4],
-             (unsigned int)dataBlock[5],
-             (unsigned int)dataBlock[6],
-             (unsigned int)dataBlock[7]);
 
 #else
     (void)stage;
@@ -679,7 +668,9 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
 
     return APP_STATUS_FATAL;
 }
+#endif
 
+#if 1
 static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 {
     NFC_AUTH_Result_t authStatus;
