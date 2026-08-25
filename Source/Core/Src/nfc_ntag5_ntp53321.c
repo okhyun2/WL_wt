@@ -54,7 +54,7 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
     hntag->state = NFC_STATE_UNINITIALIZED;
 
     /* CC Block 읽기로 I2C 링크 확인 */
-#if 0 // debug TODO delete
+#if 1 // debug TODO delete
     NFC_NTP53321_ConfigureCC(hntag);
 #endif
     ret = nfc_i2c_mem_read(hntag,
@@ -76,6 +76,31 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
         hntag->state = NFC_STATE_ERROR;
         return NFC_RESULT_ERROR;
     }
+
+    reg_block[0] = 0x20;
+    reg_block[1] = 0;
+    reg_block[2] = 0;
+    reg_block[3] = 0;
+    ret = nfc_i2c_mem_write(hntag,
+                            NFC_BLOCK_TO_I2C_ADDR(NFC_CFG_SYNC_DATA_BLOCK_ADDR),
+                            reg_block, 4U);
+    if (ret == NFC_RESULT_OK)
+    {
+        APP_LOGI("NFC", "Cfg Sync Data Block Addr");
+    }
+
+    ret = nfc_i2c_mem_read(hntag,
+                           NFC_BLOCK_TO_I2C_ADDR(NFC_CFG_SYNC_DATA_BLOCK_ADDR),
+                           reg_block, 4U);
+    if (ret != NFC_RESULT_OK)
+    {
+        APP_LOGE("NFC", "Init: I2C read FAILED (ret=%d)", ret);
+        hntag->state = NFC_STATE_ERROR;
+        return ret;
+    }
+
+    APP_LOGI("NFC", "Get SyncDataBlock: %02X %02X %02X %02X",
+             reg_block[0], reg_block[1], reg_block[2], reg_block[3]);
 
     /* STATUS 레지스터 읽기 (0x10A0) — VCC/NFC 부트 확인 */
     {
