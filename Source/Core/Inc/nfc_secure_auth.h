@@ -25,10 +25,17 @@ extern "C" {
 #define NFC_AUTH_TOKEN_SIZE             16U
 
 /* CMD values */
+#define NFC_METER_CMD_PREFIX            0x01U
+
+#define NFC_AUTH_CMD_PREFIX             0x10U
 #define NFC_AUTH_CMD_CONNECT            0x01U
 #define NFC_AUTH_CMD_CHALLENGE_READY    0x02U
 #define NFC_AUTH_CMD_RESPONSE           0x03U
 #define NFC_AUTH_CMD_CONFIRM            0x04U
+
+#define NFC_PING_CMD_PREFIX             0xFFU
+#define NFC_PING_RESP_PREFIX            0xFEU
+
 
 /* STATUS values */
 #define NFC_AUTH_STATUS_IDLE            0x00U

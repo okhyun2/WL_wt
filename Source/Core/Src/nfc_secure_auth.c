@@ -343,7 +343,8 @@ static NFC_AUTH_Result_t auth_wait_sync_write(NFC_AUTH_Handle_t *hauth)
                                         0U,
                                         &status0) == NFC_RESULT_OK)
         {
-            if (((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0U) &&
+            //TODO delete
+            if (/*((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0U) && */
                 ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0U))
             {
                 APP_LOGI("NFC", "[[NFC-AUTH]] sync-write gate ok status0=0x%02X", (unsigned int)status0);

@@ -484,6 +484,7 @@ AppStatus_t App_NfcInit(void)
 #define APP_FSM_NFC_PT_READ_TIMEOUT_MS     300U
 #define APP_FSM_NFC_PT_READ_POLL_MS        10U
 
+#if 0 //TODO delete
 static AppStatus_t App_FsmNfcEnsurePassThroughRxMode(void)
 {
     NFC_Result_t ret;
@@ -509,7 +510,7 @@ static AppStatus_t App_FsmNfcEnsurePassThroughRxMode(void)
 
     if (NFC_NTP53321_ReadSessionReg(&g_nfcTagHandle,
                                     NFC_SESSION_CONFIG_REG_ADDR,
-                                    0U,
+                                    1U,
                                     &cfg1) == NFC_RESULT_OK)
     {
         APP_LOGI("FSM",
@@ -523,6 +524,7 @@ static AppStatus_t App_FsmNfcEnsurePassThroughRxMode(void)
 
     return APP_STATUS_OK;
 }
+#endif
 
 static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
                                            uint8_t *p_status1)
@@ -561,8 +563,8 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
                  (unsigned int)status0,
                  (unsigned int)status1);
 
-        /* RF -> I2C direction + sync block write done */
-        if (((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0U) &&
+            //TODO delete
+        if (/*((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0U) &&*/
             ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0U))
         {
             if (p_status0 != NULL) { *p_status0 = status0; }
@@ -575,7 +577,6 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
         }
 
         HAL_Delay(APP_FSM_NFC_PT_WAIT_POLL_MS);
-
     } while ((HAL_GetTick() - startTick) < APP_FSM_NFC_PT_WAIT_TIMEOUT_MS);
 
     if (p_status0 != NULL) { *p_status0 = status0; }
@@ -608,14 +609,21 @@ static AppStatus_t App_FsmNfcWriteIndicateResponse(uint8_t prefix, uint8_t addr,
         return APP_STATUS_INIT_FAILED;
     }
 
+    APP_LOGI("FSM", "trace nfc indicate raw %02X %02X %02X %02X",
+             (unsigned int)indBuf[0],
+             (unsigned int)indBuf[1],
+             (unsigned int)indBuf[2],
+             (unsigned int)indBuf[3]);
+
     return APP_STATUS_OK;
 }
 
 static AppStatus_t App_FsmNfcHandlePingRequest(uint16_t startBlock, uint8_t blockLen)
 {
-    static const uint8_t kPingResponse[4] = { 0xFEu, 0x00u, 0x00u, 0x00u };
+    static const uint8_t kPingResponse[4] = { NFC_PING_RESP_PREFIX, 0x00u, 0x00u, 0x00u };
     NFC_Result_t ret;
 
+    #if 0 //TODO delete
     ret = NFC_NTP53321_PTTransferDir(&g_nfcTagHandle, false);
     if (ret != NFC_RESULT_OK)
     {
@@ -629,6 +637,7 @@ static AppStatus_t App_FsmNfcHandlePingRequest(uint16_t startBlock, uint8_t bloc
         APP_LOGW("FSM", "trace nfc ping rsp passthru fail ret=%d", (int)ret);
         return APP_STATUS_INIT_FAILED;
     }
+    #endif
 
     ret = NFC_NTP53321_WriteBlock(&g_nfcTagHandle, startBlock, kPingResponse);
     if (ret != NFC_RESULT_OK)
@@ -668,6 +677,7 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
         return APP_STATUS_INVALID_PARAM;
     }
 
+#if 0 // TODO delete
     ret = NFC_NTP53321_ReadBlock(&g_nfcTagHandle,
                                  NFC_SRAM_CMD_BLOCK,
                                  (uint8_t *)raw);
@@ -685,6 +695,7 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
              (unsigned int)raw[1],
              (unsigned int)raw[2],
              (unsigned int)raw[3]);
+#endif
 
     ret = NFC_NTP53321_ReadBlock(&g_nfcTagHandle,
                                  NFC_SRAM_UCMD_IND_BLOCK,
@@ -705,7 +716,8 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
              (unsigned int)ind.suffix);
 
     if ((ind.prefix != NFC_CMD_IND_NFC_TO_I2C_PREFIX) ||
-        (ind.suffix != NFC_CMD_IND_NFC_TO_I2C_SUFFIX) ||
+        /*(ind.suffix != NFC_CMD_IND_NFC_TO_I2C_SUFFIX) || */ // TODO fix
+        (ind.suffix != NFC_CMD_IND_NFC_TO_I2C_PREFIX) ||
         (ind.block_len == 0u))
     {
         APP_LOGI("FSM", "trace nfc indicate invalid -> stop path");
@@ -741,58 +753,66 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
              (unsigned int)raw[2],
              (unsigned int)raw[3]);
 
-    if ((byteCount >= 4u) &&
-        (raw[0] == 0xFFu) &&
-        (raw[1] == 0x00u) &&
-        (raw[2] == 0x00u) &&
-        (raw[3] == 0x00u))
+    if (byteCount >= 4u)
     {
-        APP_LOGI("FSM", "trace nfc cmd branch=PING blk=0x%04X", (unsigned int)startBlock);
-        return App_FsmNfcHandlePingRequest(startBlock, ind.block_len);
-    }
-
-    if ((byteCount >= 4u) && (raw[1] == 0xD4u))
-    {
-        APP_LOGI("FSM", "trace nfc cmd branch=SEOUL frame cmd2=0x%02X", (unsigned int)raw[2]);
-        return App_NfcSeoulProcessCommandFrame(raw, byteCount, p_seoulResult);
-    }
-
-    if ((startBlock == NFC_SRAM_CMD_BLOCK) &&
-        (byteCount >= 1u) &&
-        ((raw[0] == NFC_AUTH_CMD_CONNECT) ||
-         (raw[0] == NFC_AUTH_CMD_CHALLENGE_READY) ||
-         (raw[0] == NFC_AUTH_CMD_RESPONSE) ||
-         (raw[0] == NFC_AUTH_CMD_CONFIRM)))
-    {
-        NFC_AUTH_Result_t authStatus;
-        APP_LOGI("FSM", "trace nfc cmd branch=AUTH cmd=0x%02X", (unsigned int)raw[0]);
-        authStatus = NFC_AUTH_ProcessNFCEvent(&g_nfcAuthHandle, NFC_WAKEUP_EVENT_ED_PIN);
-        if ((authStatus != NFC_AUTH_RESULT_OK) &&
-            (authStatus != NFC_AUTH_RESULT_FAIL) &&
-            (authStatus != NFC_AUTH_RESULT_INVALID_STATE))
+        /* CMD: PING */
+        if ((raw[0] == NFC_PING_CMD_PREFIX) &&
+            (raw[1] == 0x00u) &&
+            (raw[2] == 0x00u) &&
+            (raw[3] == 0x00u))
         {
-            return APP_STATUS_FATAL;
+            APP_LOGI("FSM", "trace nfc cmd branch=PING blk=0x%04X", (unsigned int)startBlock);
+            return App_FsmNfcHandlePingRequest(startBlock, ind.block_len);
         }
-        return APP_STATUS_OK;
-    }
 
-    if ((startBlock == NFC_SRAM_UCMD_HEADER_BLOCK) ||
-        (startBlock == NFC_SRAM_UCMD_DATA_BLOCK_START))
-    {
-        NFC_CMD_Result_t cmdStatus;
-        APP_LOGI("FSM", "trace nfc cmd branch=UCMD start=0x%04X len=%u",
-                 (unsigned int)startBlock,
-                 (unsigned int)ind.block_len);
-        cmdStatus = NFC_CMD_Process(&g_nfcCmdHandle);
-        if ((cmdStatus != NFC_CMD_RESULT_OK) &&
-            (cmdStatus != NFC_CMD_RESULT_NOT_AUTH) &&
-            (cmdStatus != NFC_CMD_RESULT_INVALID_CMD) &&
-            (cmdStatus != NFC_CMD_RESULT_INVALID_LEN) &&
-            (cmdStatus != NFC_CMD_RESULT_INVALID_MAGIC))
+        /* CMD: METER */
+        if (((raw[0] == NFC_METER_CMD_PREFIX) &&
+             (raw[1] == APP_NFC_SEOUL_CMD_REQ_GROUP)) &&
+            ((raw[2] == APP_NFC_SEOUL_CMD_STOR_REQ) ||
+             (raw[2] == APP_NFC_SEOUL_CMD_MTR_REQ) ||
+             (raw[2] == APP_NFC_SEOUL_CMD_AMI_REQ) ||
+             (raw[2] == APP_NFC_SEOUL_CMD_RSET_REQ)))
         {
-            return APP_STATUS_FATAL;
+            APP_LOGI("FSM", "trace nfc cmd branch=SEOUL frame cmd2=0x%02X", (unsigned int)raw[2]);
+            return App_NfcSeoulProcessCommandFrame(raw, byteCount, p_seoulResult);
         }
-        return APP_STATUS_OK;
+
+        if ((raw[0] == NFC_AUTH_CMD_PREFIX) &&
+            ((raw[1] == NFC_AUTH_CMD_CONNECT) ||
+             (raw[1] == NFC_AUTH_CMD_CHALLENGE_READY) ||
+             (raw[1] == NFC_AUTH_CMD_RESPONSE) ||
+             (raw[1] == NFC_AUTH_CMD_CONFIRM)))
+        {
+            NFC_AUTH_Result_t authStatus;
+            APP_LOGI("FSM", "trace nfc cmd branch=AUTH cmd=0x%02X", (unsigned int)raw[0]);
+            authStatus = NFC_AUTH_ProcessNFCEvent(&g_nfcAuthHandle, NFC_WAKEUP_EVENT_ED_PIN);
+            if ((authStatus != NFC_AUTH_RESULT_OK) &&
+                (authStatus != NFC_AUTH_RESULT_FAIL) &&
+                (authStatus != NFC_AUTH_RESULT_INVALID_STATE))
+            {
+                return APP_STATUS_FATAL;
+            }
+            return APP_STATUS_OK;
+        }
+
+        if ((startBlock == NFC_SRAM_UCMD_HEADER_BLOCK) ||
+            (startBlock == NFC_SRAM_UCMD_DATA_BLOCK_START))
+        {
+            NFC_CMD_Result_t cmdStatus;
+            APP_LOGI("FSM", "trace nfc cmd branch=UCMD start=0x%04X len=%u",
+                     (unsigned int)startBlock,
+                     (unsigned int)ind.block_len);
+            cmdStatus = NFC_CMD_Process(&g_nfcCmdHandle);
+            if ((cmdStatus != NFC_CMD_RESULT_OK) &&
+                (cmdStatus != NFC_CMD_RESULT_NOT_AUTH) &&
+                (cmdStatus != NFC_CMD_RESULT_INVALID_CMD) &&
+                (cmdStatus != NFC_CMD_RESULT_INVALID_LEN) &&
+                (cmdStatus != NFC_CMD_RESULT_INVALID_MAGIC))
+            {
+                return APP_STATUS_FATAL;
+            }
+            return APP_STATUS_OK;
+        }
     }
 
     APP_LOGI("FSM", "trace nfc cmd absent/unsupported -> stop path");
@@ -815,6 +835,7 @@ static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
                                           &status0);
         if (ret != NFC_RESULT_OK)
         {
+            APP_LOGW("FSM", "trace nfc pt wait: status0 read fail ret=%d", (int)ret);
             HAL_Delay(APP_FSM_NFC_PT_READ_POLL_MS);
             continue;
         }
@@ -825,9 +846,15 @@ static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
                                           &status1);
         if (ret != NFC_RESULT_OK)
         {
+            APP_LOGW("FSM", "trace nfc pt wait: status1 read fail ret=%d", (int)ret);
             HAL_Delay(APP_FSM_NFC_PT_READ_POLL_MS);
             continue;
         }
+
+        APP_LOGI("FSM",
+                 "trace nfc pt wait: status0=0x%02X status1=0x%02X",
+                 (unsigned int)status0,
+                 (unsigned int)status1);
 
         if ((status0 & NFC_STATUS0_SYNCH_BLOCK_READ) != 0U)
         {
@@ -849,6 +876,7 @@ static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
              "trace nfc pt ack timeout: status0=0x%02X status1=0x%02X",
              (unsigned int)status0,
              (unsigned int)status1);
+
     return APP_STATUS_INIT_FAILED;
 }
 
@@ -903,11 +931,13 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 
     g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
 
+    #if 0 //TODO delete
     if (App_FsmNfcEnsurePassThroughRxMode() != APP_STATUS_OK)
     {
         APP_LOGW("FSM", "trace nfc pt setup failed -> release to idle");
         return APP_STATUS_OK;
     }
+    #endif
 
     if (App_FsmNfcWaitPtRxReady(NULL, NULL) != APP_STATUS_OK)
     {

@@ -8,59 +8,6 @@
 #include "app_meter_server_format.h"
 #include "app_meter_storage.h"
 
-#define APP_NFC_SEOUL_TLV_NDEF_MESSAGE            (0x03u)
-#define APP_NFC_SEOUL_TLV_TERMINATOR              (0xFEu)
-#define APP_NFC_SEOUL_NDEF_HEADER_SHORT_UNKNOWN   (0xD5u)
-#define APP_NFC_SEOUL_NDEF_MAX_BYTES              (64u)
-#define APP_NFC_SEOUL_NDEF_MAX_BLOCKS             ((APP_NFC_SEOUL_NDEF_MAX_BYTES + 3u) / 4u)
-#define APP_NFC_SEOUL_FORMAT_VERSION              (0x10u)
-#define APP_NFC_SEOUL_LAYER1_READ_ONLY            (0x01u)
-#define APP_NFC_SEOUL_LAYER2_PATENT_SUPPORTED     (0x01u)
-#define APP_NFC_SEOUL_METER_CODE_UNKNOWN          (0xFFu)
-#define APP_NFC_SEOUL_CARRIER_UNKNOWN             (0xFFu)
-#define APP_NFC_SEOUL_ACK_UNKNOWN                 (0xFFu)
-#define APP_NFC_SEOUL_COMM_ON                     (0x01u)
-#define APP_NFC_SEOUL_COMM_OFF                    (0x0Fu)
-
-#define APP_NFC_SEOUL_CMD_REQ_GROUP               (0xD4u)
-#define APP_NFC_SEOUL_CMD_RES_GROUP               (0xD5u)
-#define APP_NFC_SEOUL_CMD_STOR_RES                (0x00u)
-#define APP_NFC_SEOUL_CMD_MTR_REQ                 (0x01u)
-#define APP_NFC_SEOUL_CMD_MTR_RES                 (0x02u)
-#define APP_NFC_SEOUL_CMD_AMI_REQ                 (0x03u)
-#define APP_NFC_SEOUL_CMD_AMI_RES                 (0x04u)
-#define APP_NFC_SEOUL_CMD_RSET_REQ                (0x05u)
-#define APP_NFC_SEOUL_CMD_RSET_RES                (0x06u)
-
-#define APP_NFC_SEOUL_NDEF_EEPROM_BLOCK           (NFC_NDEF_START_BLOCK)
-#define APP_NFC_SEOUL_NDEF_SRAM_BLOCK             (NFC_SRAM_BASE_ADDR + 1u)
-#define APP_NFC_SEOUL_EEPROM_SETTLE_DELAY_MS      (5u)
-#define APP_NFC_SEOUL_EEPROM_BLOCK_DELAY_MS       (2u)
-#define APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET (6u)
-#define APP_NFC_SEOUL_STOR_RES_READING_TIME_OFFSET (12u)
-#define APP_NFC_SEOUL_STOR_RES_RECORD_COUNT_OFFSET (18u)
-
-typedef struct
-{
-    uint8_t meterIdBcd[4];
-    uint8_t reportTime[6];
-    uint8_t readingTime[6];
-    uint8_t recordCount;
-    uint8_t reading[4];
-    uint8_t caliberDecimal;
-    uint8_t meterCode;
-    uint8_t terminalId[4];
-    uint8_t firmwareVersion[2];
-    uint8_t formatVersion;
-    uint8_t alarmStatus;
-    uint8_t rsrp[2];
-    uint8_t ackCount;
-    uint8_t carrier;
-    uint8_t modemStatus;
-    uint8_t battery;
-    uint8_t commState;
-} AppNfcSeoulSnapshot_t;
-
 static NFC_NTP53321_Handle_t *g_appNfcSeoulTag;
 static uint8_t g_appNfcSeoulAttached;
 static uint8_t g_appNfcSeoulPayloadDirty;
@@ -703,7 +650,8 @@ static uint8_t App_NfcSeoulWaitSyncWriteGate(void)
                                         0u,
                                         &status0) == NFC_RESULT_OK)
         {
-            if (((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0u) &&
+            //TODO delete
+            if (/*((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0u) && */
                 ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0u))
             {
                 APP_LOGI("NFC", "Seoul sync-write gate ok status0=0x%02X", (unsigned int)status0);
@@ -992,6 +940,7 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
         }
     }
 
+    #if 0 //TODO delete
     uint8_t attempt;
 
     /* sram mode + ready 확인을 재시도 (I2C_IF_LOCKED / arbitration 충돌 흡수) */
@@ -1023,6 +972,7 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
         g_appNfcSeoulSramSyncPending = APP_TRUE;
         return APP_STATUS_NOT_INITIALIZED;
     }
+    #endif
 
     status = App_NfcSeoulWriteNdefToBlock(APP_NFC_SEOUL_NDEF_SRAM_BLOCK,
                                           ndef,
@@ -1058,6 +1008,7 @@ static AppStatus_t App_NfcSeoulWritePayloadEepromOnly(const uint8_t *p_payload, 
         return status;
     }
 
+    #if 0 //TODO delete
     NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, false); //true:NFC->I2C, false:I2C->NFC
     nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
     if (nfcRet != NFC_RESULT_OK)
@@ -1065,6 +1016,7 @@ static AppStatus_t App_NfcSeoulWritePayloadEepromOnly(const uint8_t *p_payload, 
         APP_LOGW("NFC", "Seoul SRAM Mode disable returned %d before EEPROM write", (int)nfcRet);
     }
     HAL_Delay(APP_NFC_SEOUL_EEPROM_SETTLE_DELAY_MS);
+    #endif
     eepromStatus = App_NfcSeoulWriteNdefToBlock(APP_NFC_SEOUL_NDEF_EEPROM_BLOCK,
                                                 ndef,
                                                 numBlocks,
@@ -1109,6 +1061,7 @@ static AppStatus_t App_NfcSeoulWritePayload(const uint8_t *p_payload, uint8_t pa
         return status;
     }
 
+    #if 0 //TODO delete
     NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, false); //true:NFC->I2C, false:I2C->NFC
     nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
     if (nfcRet != NFC_RESULT_OK)
@@ -1116,6 +1069,7 @@ static AppStatus_t App_NfcSeoulWritePayload(const uint8_t *p_payload, uint8_t pa
         APP_LOGW("NFC", "Seoul SRAM Mode disable returned %d before EEPROM write", (int)nfcRet);
     }
     HAL_Delay(APP_NFC_SEOUL_EEPROM_SETTLE_DELAY_MS);
+    #endif
     eepromStatus = App_NfcSeoulWriteNdefToBlock(APP_NFC_SEOUL_NDEF_EEPROM_BLOCK,
                                                 ndef,
                                                 numBlocks,
@@ -1458,7 +1412,7 @@ AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t fram
 
     switch (p_frame[2])
     {
-        case APP_NFC_SEOUL_CMD_STOR_RES: /* raw STOR_REQ frame uses cmd2=0x00 in the PDF */
+        case APP_NFC_SEOUL_CMD_STOR_REQ: /* raw STOR_REQ frame uses cmd2=0x00 in the PDF */
             cmd2 = APP_NFC_SEOUL_CMD_STOR_RES;
             break;
 

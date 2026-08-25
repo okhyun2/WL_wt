@@ -328,6 +328,7 @@ NFC_Result_t NFC_NTP53321_EnableSRAMMirror(NFC_NTP53321_Handle_t *hntag, bool en
     return NFC_RESULT_OK;
 }
 
+#if 0 //TODO delete
 NFC_Result_t NFC_NTP53321_PTTransferDir(NFC_NTP53321_Handle_t *hntag, bool dir)
 {
     NFC_Result_t ret;
@@ -366,8 +367,10 @@ NFC_Result_t NFC_NTP53321_PTTransferDir(NFC_NTP53321_Handle_t *hntag, bool dir)
     APP_LOGI("NFC", "SRAM PathThruDir %s cfg1=0x%02X", dir ? "NFC->I2C" : "I2C->NFC", (unsigned int)cfg1);
     return NFC_RESULT_OK;
 }
+#endif
 
 
+#if 0 //TODO delete
 /**
  * @brief SRAM PathThrough 활성화/비활성화
  *
@@ -450,6 +453,7 @@ NFC_Result_t NFC_NTP53321_EnableSRAMPathThru(NFC_NTP53321_Handle_t *hntag, bool 
     APP_LOGI("NFC", "SRAM PathThru %s cfg1=0x%02X", enable ? "ON" : "OFF", (unsigned int)cfg1);
     return NFC_RESULT_OK;
 }
+#endif
 
 /* ============================================================
  * Memory Access  (WRITE MEMORY / READ MEMORY)

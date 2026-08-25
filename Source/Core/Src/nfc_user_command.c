@@ -186,7 +186,8 @@ static NFC_CMD_Result_t nfc_cmd_wait_sync_write(NFC_CMD_Handle_t *hcmd)
                                         0U,
                                         &status0) == NFC_RESULT_OK)
         {
-            if (((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0U) &&
+            //TODO delete
+            if (/*((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0U) && */
                 ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0U))
             {
                 APP_LOGI("NFC", "UCMD sync-write gate ok status0=0x%02X", (unsigned int)status0);

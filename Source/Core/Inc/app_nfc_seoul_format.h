@@ -11,6 +11,60 @@ extern "C" {
 #include "app_meter_storage.h"
 #include "nfc_ntag5_ntp53321.h"
 
+#define APP_NFC_SEOUL_TLV_NDEF_MESSAGE            (0x03u)
+#define APP_NFC_SEOUL_TLV_TERMINATOR              (0xFEu)
+#define APP_NFC_SEOUL_NDEF_HEADER_SHORT_UNKNOWN   (0xD5u)
+#define APP_NFC_SEOUL_NDEF_MAX_BYTES              (64u)
+#define APP_NFC_SEOUL_NDEF_MAX_BLOCKS             ((APP_NFC_SEOUL_NDEF_MAX_BYTES + 3u) / 4u)
+#define APP_NFC_SEOUL_FORMAT_VERSION              (0x10u)
+#define APP_NFC_SEOUL_LAYER1_READ_ONLY            (0x01u)
+#define APP_NFC_SEOUL_LAYER2_PATENT_SUPPORTED     (0x01u)
+#define APP_NFC_SEOUL_METER_CODE_UNKNOWN          (0xFFu)
+#define APP_NFC_SEOUL_CARRIER_UNKNOWN             (0xFFu)
+#define APP_NFC_SEOUL_ACK_UNKNOWN                 (0xFFu)
+#define APP_NFC_SEOUL_COMM_ON                     (0x01u)
+#define APP_NFC_SEOUL_COMM_OFF                    (0x0Fu)
+
+#define APP_NFC_SEOUL_CMD_REQ_GROUP               (0xD4u)
+#define APP_NFC_SEOUL_CMD_RES_GROUP               (0xD5u)
+#define APP_NFC_SEOUL_CMD_STOR_REQ                (0x00u)
+#define APP_NFC_SEOUL_CMD_STOR_RES                (0x00u)
+#define APP_NFC_SEOUL_CMD_MTR_REQ                 (0x01u)
+#define APP_NFC_SEOUL_CMD_MTR_RES                 (0x02u)
+#define APP_NFC_SEOUL_CMD_AMI_REQ                 (0x03u)
+#define APP_NFC_SEOUL_CMD_AMI_RES                 (0x04u)
+#define APP_NFC_SEOUL_CMD_RSET_REQ                (0x05u)
+#define APP_NFC_SEOUL_CMD_RSET_RES                (0x06u)
+
+#define APP_NFC_SEOUL_NDEF_EEPROM_BLOCK           (NFC_NDEF_START_BLOCK)
+#define APP_NFC_SEOUL_NDEF_SRAM_BLOCK             (NFC_SRAM_BASE_ADDR + 1u)
+#define APP_NFC_SEOUL_EEPROM_SETTLE_DELAY_MS      (5u)
+#define APP_NFC_SEOUL_EEPROM_BLOCK_DELAY_MS       (2u)
+#define APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET (6u)
+#define APP_NFC_SEOUL_STOR_RES_READING_TIME_OFFSET (12u)
+#define APP_NFC_SEOUL_STOR_RES_RECORD_COUNT_OFFSET (18u)
+
+typedef struct
+{
+    uint8_t meterIdBcd[4];
+    uint8_t reportTime[6];
+    uint8_t readingTime[6];
+    uint8_t recordCount;
+    uint8_t reading[4];
+    uint8_t caliberDecimal;
+    uint8_t meterCode;
+    uint8_t terminalId[4];
+    uint8_t firmwareVersion[2];
+    uint8_t formatVersion;
+    uint8_t alarmStatus;
+    uint8_t rsrp[2];
+    uint8_t ackCount;
+    uint8_t carrier;
+    uint8_t modemStatus;
+    uint8_t battery;
+    uint8_t commState;
+} AppNfcSeoulSnapshot_t;
+
 typedef struct
 {
     uint8_t handled;
