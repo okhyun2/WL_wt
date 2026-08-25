@@ -573,6 +573,13 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
             APP_LOGI("FSM",
                      "trace nfc pt ready: sync-write observed status0=0x%02X",
                      (unsigned int)status0);
+
+            /* clear */
+            NFC_NTP53321_WriteSessionReg(&g_nfcTagHandle,
+                                          NFC_SESSION_STATUS_ADDR,
+                                          0U,
+                                          0x18,
+                                          0x00);
             return APP_STATUS_OK;
         }
 
@@ -716,8 +723,7 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
              (unsigned int)ind.suffix);
 
     if ((ind.prefix != NFC_CMD_IND_NFC_TO_I2C_PREFIX) ||
-        /*(ind.suffix != NFC_CMD_IND_NFC_TO_I2C_SUFFIX) || */ // TODO fix
-        (ind.suffix != NFC_CMD_IND_NFC_TO_I2C_PREFIX) ||
+        (ind.suffix != NFC_CMD_IND_NFC_TO_I2C_SUFFIX) ||
         (ind.block_len == 0u))
     {
         APP_LOGI("FSM", "trace nfc indicate invalid -> stop path");
@@ -863,6 +869,13 @@ static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
             APP_LOGI("FSM",
                      "trace nfc pt ack: sync-read observed status0=0x%02X",
                      (unsigned int)status0);
+
+            /* clear */
+            NFC_NTP53321_WriteSessionReg(&g_nfcTagHandle,
+                                          NFC_SESSION_STATUS_ADDR,
+                                          0U,
+                                          0x18,
+                                          0x00);
             return APP_STATUS_OK;
         }
 
