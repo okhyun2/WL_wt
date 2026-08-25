@@ -479,7 +479,6 @@ AppStatus_t App_NfcInit(void)
     return APP_STATUS_OK;
 }
 
-#if 1
 #define APP_FSM_NFC_PT_WAIT_TIMEOUT_MS     300U
 #define APP_FSM_NFC_PT_WAIT_POLL_MS        10U
 #define APP_FSM_NFC_PT_READ_TIMEOUT_MS     300U
@@ -852,9 +851,6 @@ static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
              (unsigned int)status1);
     return APP_STATUS_INIT_FAILED;
 }
-=======
->>>>>>> be6d8387b3c1b4098d5bef7a84512aaf1b8d0bbc
-#endif
 
 static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 {
