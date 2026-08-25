@@ -26,7 +26,17 @@ extern "C" {
 #define NFC_CMD_MAGIC_WORD      0xAA55U
 #define NFC_CMD_MAX_PAYLOAD     16U
 #define NFC_CMD_MAX_RESULT      16U
-#define NFC_CMD_VERSION_STR     "2.2.0"
+#define NFC_CMD_VERSION_STR     "2.3.0"
+
+/* UCMD indicate block (0x003D): F5 AABl 5F = NFC->I2C, F4 AABl 4F = I2C->NFC */
+#define NFC_CMD_IND_NFC_TO_I2C_PREFIX   0xF5U
+#define NFC_CMD_IND_NFC_TO_I2C_SUFFIX   0x5FU
+#define NFC_CMD_IND_I2C_TO_NFC_PREFIX   0xF4U
+#define NFC_CMD_IND_I2C_TO_NFC_SUFFIX   0x4FU
+#define NFC_CMD_IND_REQ_ADDR            ((uint8_t)(NFC_SRAM_UCMD_HEADER_BLOCK & 0xFFU))
+#define NFC_CMD_IND_REQ_BLOCK_LEN       ((uint8_t)(NFC_SRAM_UCMD_DATA_BLOCK_END - NFC_SRAM_UCMD_HEADER_BLOCK + 1U))
+#define NFC_CMD_IND_RSP_ADDR            ((uint8_t)(NFC_SRAM_UCMD_RESULT_BLOCK_START & 0xFFU))
+#define NFC_CMD_IND_RSP_BLOCK_LEN       ((uint8_t)(NFC_SRAM_UCMD_STATUS_BLOCK - NFC_SRAM_UCMD_RESULT_BLOCK_START + 1U))
 
 typedef enum {
     NFC_CMD_ID_GET_STATUS       = 0x01,
@@ -86,6 +96,13 @@ typedef struct {
     uint8_t data[NFC_CMD_MAX_RESULT];
     uint8_t timestamp[2];
 } NFC_CMD_ResultPacket_t;
+
+typedef struct {
+    uint8_t prefix;
+    uint8_t addr;
+    uint8_t block_len;
+    uint8_t suffix;
+} NFC_CMD_Indicate_t;
 
 typedef struct {
     uint8_t  fw_version[2];

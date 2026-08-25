@@ -947,8 +947,6 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
 
     for (attempt = 0u; attempt < APP_NFC_SEOUL_SRAMMODE_RETRY_MAX; attempt++)
     {
-        //kiki TODO delete
-        //nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, true);
         NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, true); //true:NFC->I2C, false:I2C->NFC
         nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
         if (nfcRet == NFC_RESULT_OK)
@@ -1007,8 +1005,6 @@ static AppStatus_t App_NfcSeoulWritePayloadEepromOnly(const uint8_t *p_payload, 
         return status;
     }
 
-        //kiki TODO delete
-    //nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, false);
     NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, true); //true:NFC->I2C, false:I2C->NFC
     nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
     if (nfcRet != NFC_RESULT_OK)
@@ -1060,8 +1056,6 @@ static AppStatus_t App_NfcSeoulWritePayload(const uint8_t *p_payload, uint8_t pa
         return status;
     }
 
-        //kiki TODO delete
-    //nfcRet = NFC_NTP53321_EnableSRAMMirror(g_appNfcSeoulTag, false);
     NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, true); //true:NFC->I2C, false:I2C->NFC
         nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
     if (nfcRet != NFC_RESULT_OK)

@@ -526,20 +526,6 @@ NFC_AUTH_Result_t NFC_AUTH_ProcessNFCEvent(NFC_AUTH_Handle_t *hauth,
     if (event != NFC_WAKEUP_EVENT_ED_PIN)
         return NFC_AUTH_RESULT_INVALID_STATE;
 
-    //debug kiki test TODO delete
-    {
-        int i;
-    for (i = 0; i < 10; i++)
-    {
-        ret = auth_read_cmd(hauth, &cmd);
-        if (ret != NFC_AUTH_RESULT_OK)
-            return ret;
-        if (cmd != 0)
-            break;
-        HAL_Delay(NFC_AUTH_POLL_INTERVAL_MS);
-    }
-    }
-
     ret = auth_read_cmd(hauth, &cmd);
     if (ret != NFC_AUTH_RESULT_OK) return ret;
 
