@@ -489,15 +489,6 @@ NFC_Result_t NFC_NTP53321_ReadBlock(NFC_NTP53321_Handle_t *hntag,
     if (hntag == NULL || data == NULL)
         return NFC_RESULT_ERROR_INVALID_PARAM;
 
-    #if 0
-    /* SRAM 영역이면 READ 전 SRAM_DATA_READY 확인 */
-    if ((block_addr >= NFC_SRAM_BASE_ADDR) && (block_addr <= NFC_SRAM_END_ADDR)) {
-        if (!nfc_wait_sram_data_ready(hntag)) {
-            return NFC_RESULT_ERROR_TIMEOUT;   /* 프로젝트에 정의된 타임아웃 결과코드 사용 */
-        }
-    }
-    #endif
-
     return nfc_i2c_mem_read(hntag,
                             NFC_BLOCK_TO_I2C_ADDR(block_addr),
                             data, NFC_EEPROM_BLOCK_SIZE);
@@ -522,17 +513,6 @@ NFC_Result_t NFC_NTP53321_ReadMultiBlock(NFC_NTP53321_Handle_t *hntag,
 
     if (hntag == NULL || data == NULL || num_blocks == 0U)
         return NFC_RESULT_ERROR_INVALID_PARAM;
-
-    #if 0
-    last_block = (uint16_t)(block_addr + num_blocks - 1U);
-    is_sram = ((block_addr >= NFC_SRAM_BASE_ADDR) && (last_block <= NFC_SRAM_END_ADDR));
-
-    if (is_sram) {
-        if (!nfc_wait_sram_data_ready(hntag)) {
-            return NFC_RESULT_ERROR_TIMEOUT;
-        }
-    }
-    #endif
 
     return nfc_i2c_mem_read(hntag,
                             NFC_BLOCK_TO_I2C_ADDR(block_addr),
