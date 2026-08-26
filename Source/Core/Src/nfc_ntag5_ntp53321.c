@@ -512,16 +512,47 @@ NFC_Result_t NFC_NTP53321_ReadMultiBlock(NFC_NTP53321_Handle_t *hntag,
                                           uint16_t block_addr,
                                           uint8_t *data, uint16_t num_blocks)
 {
-    uint16_t last_block;
-    bool     is_sram;
+    NFC_Result_t ret;
+    uint16_t     last_block;
+    uint16_t     i;
+    bool         is_eeprom;
+    bool         is_sram;
 
     if (hntag == NULL || data == NULL || num_blocks == 0U)
         return NFC_RESULT_ERROR_INVALID_PARAM;
 
-    return nfc_i2c_mem_read(hntag,
-                            NFC_BLOCK_TO_I2C_ADDR(block_addr),
-                            data,
-                            num_blocks * NFC_EEPROM_BLOCK_SIZE);
+    last_block = (uint16_t)(block_addr + num_blocks - 1U);
+    is_eeprom = ((block_addr >= NFC_EEPROM_BASE_ADDR) && (last_block <= NFC_EEPROM_END_ADDR));
+    is_sram = ((block_addr >= NFC_SRAM_BASE_ADDR) && (last_block <= NFC_SRAM_END_ADDR));
+    if ((!is_eeprom) && (!is_sram))
+    {
+        APP_LOGE("NFC", "ReadMultiBlock range invalid start=0x%04X blocks=%u",
+                 (unsigned int)block_addr,
+                 (unsigned int)num_blocks);
+        return NFC_RESULT_ERROR_INVALID_PARAM;
+    }
+
+    /* Multi -> Single */
+    for (i = 0U; i < num_blocks; i++)
+    {
+        ret = NFC_NTP53321_ReadBlock(hntag,
+                                      (uint16_t)(block_addr + i),
+                                      &data[i * NFC_EEPROM_BLOCK_SIZE]);
+        if (ret != NFC_RESULT_OK)
+        {
+            APP_LOGE("NFC", "ReadMultiBlock fallback fail blk=0x%04X idx=%u ret=%d",
+                     (unsigned int)(block_addr + i),
+                     (unsigned int)i,
+                     (int)ret);
+            return ret;
+        }
+
+        if (is_eeprom)
+            HAL_Delay(2U);
+    }
+
+    return NFC_RESULT_OK;
+
 }
 
 NFC_Result_t NFC_NTP53321_WriteMultiBlock(NFC_NTP53321_Handle_t *hntag,
@@ -548,20 +579,7 @@ NFC_Result_t NFC_NTP53321_WriteMultiBlock(NFC_NTP53321_Handle_t *hntag,
         return NFC_RESULT_ERROR_INVALID_PARAM;
     }
 
-    if (num_blocks == 1U)
-        return NFC_NTP53321_WriteBlock(hntag, block_addr, data);
-
-    ret = nfc_i2c_mem_write(hntag,
-                            NFC_BLOCK_TO_I2C_ADDR(block_addr),
-                            data,
-                            num_blocks * NFC_EEPROM_BLOCK_SIZE);
-    if (ret == NFC_RESULT_OK)
-        return NFC_RESULT_OK;
-
-    APP_LOGW("NFC", "WriteMultiBlock burst failed start=0x%04X blocks=%u, fallback single-block",
-             (unsigned int)block_addr,
-             (unsigned int)num_blocks);
-
+    /* Multi -> Single */
     for (i = 0U; i < num_blocks; i++)
     {
         ret = NFC_NTP53321_WriteBlock(hntag,

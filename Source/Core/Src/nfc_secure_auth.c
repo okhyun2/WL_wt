@@ -494,7 +494,9 @@ static NFC_AUTH_Result_t auth_handle_connect_common(NFC_AUTH_Handle_t *hauth,
                                                     uint16_t indicate_start_block,
                                                     uint8_t indicate_block_len)
 {
+    uint8_t      verify[16] = {0};
     NFC_Result_t ret;
+    uint8_t      verify_match;
 
     APP_LOGI("NFC", "[[NFC-AUTH]] auth start cmd=CONNECT state=%s",
            auth_state_name(hauth->state));
@@ -520,6 +522,59 @@ static NFC_AUTH_Result_t auth_handle_connect_common(NFC_AUTH_Handle_t *hauth,
         hauth->state = NFC_AUTH_STATE_IDLE;
         hauth->txn_active = false;
         return NFC_AUTH_RESULT_I2C_ERROR;
+    }
+
+    APP_LOGI("NFC", "[[NFC-AUTH]] challenge write ok start=0x%04X blocks=%u",
+             (unsigned int)NFC_SRAM_CHALLENGE_BLOCK_START,
+             (unsigned int)4U);
+
+    ret = NFC_NTP53321_ReadMultiBlock(hauth->hntag,
+                                      NFC_SRAM_CHALLENGE_BLOCK_START,
+                                      verify,
+                                      4U);
+    if (ret != NFC_RESULT_OK) {
+        APP_LOGW("NFC", "[[NFC-AUTH]] challenge readback fail start=0x%04X ret=%d",
+                 (unsigned int)NFC_SRAM_CHALLENGE_BLOCK_START,
+                 (int)ret);
+    } else {
+        verify_match = (memcmp(verify, hauth->session.challenge, sizeof(verify)) == 0) ? 1U : 0U;
+        APP_LOGI("NFC", "[[NFC-AUTH]] challenge readback 0x0021~0x0024 match=%u data=%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+                 (unsigned int)verify_match,
+                 (unsigned int)verify[0],
+                 (unsigned int)verify[1],
+                 (unsigned int)verify[2],
+                 (unsigned int)verify[3],
+                 (unsigned int)verify[4],
+                 (unsigned int)verify[5],
+                 (unsigned int)verify[6],
+                 (unsigned int)verify[7],
+                 (unsigned int)verify[8],
+                 (unsigned int)verify[9],
+                 (unsigned int)verify[10],
+                 (unsigned int)verify[11],
+                 (unsigned int)verify[12],
+                 (unsigned int)verify[13],
+                 (unsigned int)verify[14],
+                 (unsigned int)verify[15]);
+        if (verify_match == 0U) {
+            APP_LOGW("NFC", "[[NFC-AUTH]] challenge readback mismatch exp=%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+                     (unsigned int)hauth->session.challenge[0],
+                     (unsigned int)hauth->session.challenge[1],
+                     (unsigned int)hauth->session.challenge[2],
+                     (unsigned int)hauth->session.challenge[3],
+                     (unsigned int)hauth->session.challenge[4],
+                     (unsigned int)hauth->session.challenge[5],
+                     (unsigned int)hauth->session.challenge[6],
+                     (unsigned int)hauth->session.challenge[7],
+                     (unsigned int)hauth->session.challenge[8],
+                     (unsigned int)hauth->session.challenge[9],
+                     (unsigned int)hauth->session.challenge[10],
+                     (unsigned int)hauth->session.challenge[11],
+                     (unsigned int)hauth->session.challenge[12],
+                     (unsigned int)hauth->session.challenge[13],
+                     (unsigned int)hauth->session.challenge[14],
+                     (unsigned int)hauth->session.challenge[15]);
+        }
     }
 
     hauth->state = NFC_AUTH_STATE_CHALLENGING;
