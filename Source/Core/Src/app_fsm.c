@@ -950,6 +950,7 @@ static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
 static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 {
     AppNfcSeoulProcessResult_t seoulResult;
+    uint8_t authSameWakeWait = 0u;
 
     APP_LOGI("FSM",
              "trace nfc process enter irq=%u wake=%s",
@@ -1006,39 +1007,72 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     }
     #endif
 
-    if (App_FsmNfcWaitPtRxReady(NULL, NULL) != APP_STATUS_OK)
+    for (;;)
     {
-        APP_LOGI("FSM", "trace nfc no sync-write -> release to idle");
-        return APP_STATUS_OK;
-    }
+        (void)memset(&seoulResult, 0, sizeof(seoulResult));
 
-    if (App_FsmNfcHandleIndicatedCommand(&seoulResult) != APP_STATUS_OK)
-    {
-        return APP_STATUS_FATAL;
-    }
-
-    if (seoulResult.handled == APP_TRUE)
-    {
-        APP_LOGI("FSM",
-                 "trace nfc handled req=%02X%02X rsp=%02X%02X comm=%u",
-                 (unsigned int)seoulResult.requestCmd1,
-                 (unsigned int)seoulResult.requestCmd2,
-                 (unsigned int)seoulResult.responseCmd1,
-                 (unsigned int)seoulResult.responseCmd2,
-                 (unsigned int)seoulResult.commRequested);
-
-        if (seoulResult.commRequested == APP_TRUE)
+        if (App_FsmNfcWaitPtRxReady(NULL, NULL) != APP_STATUS_OK)
         {
-            if (App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK)
+            if (authSameWakeWait != 0u)
             {
-                App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT,
-                                     APP_FSM_STATE_NBIOT_DECIDE_WAKE,
-                                     APP_TRUE,
-                                     APP_FALSE,
-                                     APP_STATUS_OK);
-                APP_LOGI("FSM", "trace nbiot queued by nfc rset");
+                APP_LOGW("FSM",
+                         "trace nfc auth same-wake RESPONSE(0x03) wait timeout state=%s txn=%u",
+                         App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
+                         (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u));
+            }
+            else
+            {
+                APP_LOGI("FSM", "trace nfc no sync-write -> release to idle");
+            }
+            return APP_STATUS_OK;
+        }
+
+        if (App_FsmNfcHandleIndicatedCommand(&seoulResult) != APP_STATUS_OK)
+        {
+            return APP_STATUS_FATAL;
+        }
+
+        if (seoulResult.handled == APP_TRUE)
+        {
+            APP_LOGI("FSM",
+                     "trace nfc handled req=%02X%02X rsp=%02X%02X comm=%u",
+                     (unsigned int)seoulResult.requestCmd1,
+                     (unsigned int)seoulResult.requestCmd2,
+                     (unsigned int)seoulResult.responseCmd1,
+                     (unsigned int)seoulResult.responseCmd2,
+                     (unsigned int)seoulResult.commRequested);
+
+            if (seoulResult.commRequested == APP_TRUE)
+            {
+                if (App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK)
+                {
+                    App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT,
+                                         APP_FSM_STATE_NBIOT_DECIDE_WAKE,
+                                         APP_TRUE,
+                                         APP_FALSE,
+                                         APP_STATUS_OK);
+                    APP_LOGI("FSM", "trace nbiot queued by nfc rset");
+                }
             }
         }
+
+        if ((authSameWakeWait == 0u) &&
+            (g_nfcAuthHandle.state == NFC_AUTH_STATE_CHALLENGING) &&
+            (g_nfcAuthHandle.txn_active == true))
+        {
+            authSameWakeWait = 1u;
+            APP_LOGI("FSM",
+                     "trace nfc auth same-wake wait RESPONSE(0x03) state=%s txn=%u challenge=%02X %02X %02X %02X",
+                     App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
+                     (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u),
+                     (unsigned int)g_nfcAuthHandle.session.challenge[0],
+                     (unsigned int)g_nfcAuthHandle.session.challenge[1],
+                     (unsigned int)g_nfcAuthHandle.session.challenge[2],
+                     (unsigned int)g_nfcAuthHandle.session.challenge[3]);
+            continue;
+        }
+
+        break;
     }
 
     if ((g_nfcAuthHandle.state == NFC_AUTH_STATE_CHALLENGING) &&
