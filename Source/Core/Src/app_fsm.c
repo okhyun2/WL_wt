@@ -1088,7 +1088,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     }
     else
     {
-        APP_LOGI("FSM", "trace nfc no command -> release to stop");
+        APP_LOGI("FSM", "trace nfc exchange complete -> release to stop");
     }
     return APP_STATUS_OK;
 }

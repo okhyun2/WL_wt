@@ -501,6 +501,14 @@ static NFC_AUTH_Result_t auth_handle_connect_common(NFC_AUTH_Handle_t *hauth,
     APP_LOGI("NFC", "[[NFC-AUTH]] auth start cmd=CONNECT state=%s",
            auth_state_name(hauth->state));
 
+    if (hauth->session.active)
+    {
+        APP_LOGI("NFC", "[[NFC-AUTH]] new CONNECT clears session.active previous_state=%s",
+                 auth_state_name(hauth->state));
+    }
+    hauth->session.active = false;
+    memset(hauth->session.token, 0, sizeof(hauth->session.token));
+
     hauth->state = NFC_AUTH_STATE_CONNECTING;
     hauth->stats.total_attempts++;
     auth_write_status(hauth, NFC_AUTH_STATUS_CONNECTED);
@@ -927,7 +935,18 @@ bool NFC_AUTH_IsSessionValid(NFC_AUTH_Handle_t *hauth)
      *         RTC 델타로 계산해 누적한 보정값)을 더해 반환하므로
      *         STOP 모드 체류 시간까지 포함한 실제 경과시간을 얻는다. */
     elapsed = GetCorrectedTick() - hauth->session.start_tick; /* overflow-safe */
-    return (elapsed < hauth->session.timeout_ms);
+    if (elapsed >= hauth->session.timeout_ms)
+    {
+        hauth->session.active = false;
+        hauth->txn_active = false;
+        hauth->state = NFC_AUTH_STATE_IDLE;
+        memset(hauth->session.token, 0, sizeof(hauth->session.token));
+        APP_LOGI("NFC", "[[NFC-AUTH]] session expired after idle elapsed=%lu timeout=%lu",
+                 (unsigned long)elapsed,
+                 (unsigned long)hauth->session.timeout_ms);
+        return false;
+    }
+    return true;
 }
 
 NFC_AUTH_Result_t NFC_AUTH_InvalidateSession(NFC_AUTH_Handle_t *hauth)
