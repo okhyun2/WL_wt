@@ -66,6 +66,83 @@ volatile uint8_t  g_wwdg_main_loop_alive = 0;
 /* EWI 카운터 (가상 timeout 연장용) */
 volatile uint32_t g_wwdg_ewi_count = 0;
 
+static uint8_t g_appClockBackupRecoveryApplied = APP_FALSE;
+
+static HAL_StatusTypeDef App_ClockWaitLseReady(uint32_t timeoutMs)
+{
+  uint32_t tickstart = HAL_GetTick();
+
+  while (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
+  {
+    if ((HAL_GetTick() - tickstart) > timeoutMs)
+    {
+      return HAL_TIMEOUT;
+    }
+  }
+
+  return HAL_OK;
+}
+
+static void App_ClockRecoverBackupDomainOnce(uint8_t forceReset)
+{
+  uint32_t csr = RCC->CSR;
+  uint8_t resetNeeded = APP_FALSE;
+
+  if (g_appClockBackupRecoveryApplied == APP_TRUE)
+  {
+    return;
+  }
+
+  if (forceReset == APP_TRUE)
+  {
+    resetNeeded = APP_TRUE;
+  }
+  else if (((csr & RCC_CSR_RTCSEL) != RCC_CSR_RTCSEL_LSE) ||
+           ((csr & RCC_CSR_RTCEN) == 0u))
+  {
+    resetNeeded = APP_TRUE;
+  }
+  else
+  {
+    resetNeeded = APP_FALSE;
+  }
+
+  if (resetNeeded == APP_TRUE)
+  {
+    __HAL_RCC_BACKUPRESET_FORCE();
+    __HAL_RCC_BACKUPRESET_RELEASE();
+    g_appClockBackupRecoveryApplied = APP_TRUE;
+  }
+}
+
+static HAL_StatusTypeDef App_ClockStartLseWithRetry(void)
+{
+  uint32_t attempt;
+
+  SET_BIT(RCC->CSR, RCC_CSR_LSEON);
+
+  for (attempt = 0u; attempt < APP_CLOCK_LSE_RETRY_COUNT; ++attempt)
+  {
+    if (App_ClockWaitLseReady(APP_CLOCK_LSE_READY_TIMEOUT_MS) == HAL_OK)
+    {
+      HAL_Delay(APP_CLOCK_LSE_POST_READY_SETTLE_MS);
+      return HAL_OK;
+    }
+
+    if ((attempt == 0u) && (g_appClockBackupRecoveryApplied == APP_FALSE))
+    {
+      App_ClockRecoverBackupDomainOnce(APP_TRUE);
+    }
+
+    CLEAR_BIT(RCC->CSR, RCC_CSR_LSEON);
+    HAL_Delay(APP_CLOCK_LSE_RETRY_OFF_DELAY_MS);
+    SET_BIT(RCC->CSR, RCC_CSR_LSEON);
+    HAL_Delay(APP_CLOCK_LSE_RETRY_ON_DELAY_MS);
+  }
+
+  return HAL_TIMEOUT;
+}
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -231,11 +308,7 @@ void SystemClock_Config(void)
   */
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-  if ((RCC->CSR & RCC_CSR_RTCSEL) != RCC_CSR_RTCSEL_LSE)
-  {
-    __HAL_RCC_BACKUPRESET_FORCE();
-    __HAL_RCC_BACKUPRESET_RELEASE();
-  }
+  App_ClockRecoverBackupDomainOnce(APP_FALSE);
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -255,14 +328,9 @@ void SystemClock_Config(void)
 
   __HAL_RCC_LSEDRIVE_CONFIG(APP_CLOCK_LSE_DRIVE);
 
-  // wait selected low-speed clock ready
-  uint32_t tickstart = HAL_GetTick();
-  while (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
+  if (App_ClockStartLseWithRetry() != HAL_OK)
   {
-    if ((HAL_GetTick() - tickstart) > 5000U)
-    {
-      Error_Handler();
-    }
+    Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks

@@ -35,6 +35,89 @@ static void App_SystemRecoverNfcAfterWake(uint8_t standbyPrepareState);
 static AppStatus_t App_SystemRtcConfigureAlarmAForMetering(uint8_t *p_configured);
 static AppStatus_t App_SystemRtcConfigureAlarmBForReporting(uint8_t *p_configured);
 
+static uint8_t g_appSystemRtcBackupRecoveryApplied = APP_FALSE;
+
+static void App_SystemRtcResetBackupDomain(void)
+{
+    SET_BIT(RCC->CSR, RCC_CSR_RTCRST);
+    CLEAR_BIT(RCC->CSR, RCC_CSR_RTCRST);
+}
+
+static AppStatus_t App_SystemRtcWaitLseReady(uint32_t timeoutMs)
+{
+    uint32_t tickstart = HAL_GetTick();
+
+    while (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
+    {
+        if ((HAL_GetTick() - tickstart) > timeoutMs)
+        {
+            return APP_STATUS_INIT_FAILED;
+        }
+    }
+
+    return APP_STATUS_OK;
+}
+
+static void App_SystemRtcRecoverBackupDomainOnce(uint8_t forceReset)
+{
+    uint8_t resetNeeded = APP_FALSE;
+
+    if (g_appSystemRtcBackupRecoveryApplied == APP_TRUE)
+    {
+        return;
+    }
+
+    if (forceReset == APP_TRUE)
+    {
+        resetNeeded = APP_TRUE;
+    }
+    else if (((RCC->CSR & RCC_CSR_RTCSEL) != RCC_CSR_RTCSEL_LSE) ||
+             ((RCC->CSR & RCC_CSR_RTCEN) == 0u))
+    {
+        resetNeeded = APP_TRUE;
+    }
+    else
+    {
+        resetNeeded = APP_FALSE;
+    }
+
+    if (resetNeeded == APP_TRUE)
+    {
+        App_SystemRtcResetBackupDomain();
+        g_appSystemRtcBackupRecoveryApplied = APP_TRUE;
+    }
+}
+
+static AppStatus_t App_SystemRtcEnsureLseReady(void)
+{
+    AppStatus_t status;
+    uint32_t attempt;
+
+    SET_BIT(RCC->CSR, RCC_CSR_LSEON);
+
+    for (attempt = 0u; attempt < APP_CLOCK_LSE_RETRY_COUNT; ++attempt)
+    {
+        status = App_SystemRtcWaitLseReady(APP_CLOCK_LSE_READY_TIMEOUT_MS);
+        if (status == APP_STATUS_OK)
+        {
+            HAL_Delay(APP_CLOCK_LSE_POST_READY_SETTLE_MS);
+            return APP_STATUS_OK;
+        }
+
+        if ((attempt == 0u) && (g_appSystemRtcBackupRecoveryApplied == APP_FALSE))
+        {
+            App_SystemRtcRecoverBackupDomainOnce(APP_TRUE);
+        }
+
+        CLEAR_BIT(RCC->CSR, RCC_CSR_LSEON);
+        HAL_Delay(APP_CLOCK_LSE_RETRY_OFF_DELAY_MS);
+        SET_BIT(RCC->CSR, RCC_CSR_LSEON);
+        HAL_Delay(APP_CLOCK_LSE_RETRY_ON_DELAY_MS);
+    }
+
+    return APP_STATUS_INIT_FAILED;
+}
+
 static uint8_t App_SystemCanDebugLog(void)
 {
     const AppLogContext_t *p_logContext;
@@ -394,13 +477,16 @@ static AppStatus_t App_SystemRtcInitBase(void)
         return status;
     }
 
-    SET_BIT(RCC->CSR, RCC_CSR_LSEON);
-    APP_RETURN_IF_FALSE((__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) != RESET), APP_STATUS_INIT_FAILED);
+    App_SystemRtcRecoverBackupDomainOnce(APP_FALSE);
+
+    status = App_SystemRtcEnsureLseReady();
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
 
     if (((RCC->CSR & RCC_CSR_RTCSEL) != RCC_CSR_RTCSEL_LSE) || ((RCC->CSR & RCC_CSR_RTCEN) == 0u))
     {
-        SET_BIT(RCC->CSR, RCC_CSR_RTCRST);
-        CLEAR_BIT(RCC->CSR, RCC_CSR_RTCRST);
         MODIFY_REG(RCC->CSR, RCC_CSR_RTCSEL, RCC_CSR_RTCSEL_LSE);
         SET_BIT(RCC->CSR, RCC_CSR_RTCEN);
     }

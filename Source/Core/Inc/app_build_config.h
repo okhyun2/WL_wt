@@ -82,6 +82,11 @@ extern "C" {
 #define APP_CLOCK_LSE_DRIVE                         RCC_LSEDRIVE_LOW
 #define APP_CLOCK_LSI_NOMINAL_HZ                    (APP_CLOCK_LSE_NOMINAL_HZ)
 #define APP_CLOCK_SYSTICK_HZ                        (1000u)
+#define APP_CLOCK_LSE_READY_TIMEOUT_MS              (8000u)
+#define APP_CLOCK_LSE_RETRY_COUNT                   (3u)
+#define APP_CLOCK_LSE_RETRY_OFF_DELAY_MS            (100u)
+#define APP_CLOCK_LSE_RETRY_ON_DELAY_MS             (500u)
+#define APP_CLOCK_LSE_POST_READY_SETTLE_MS          (300u)
 
 #define APP_DEBUG_UART_TIMEOUT_MS                   (100u)
 #define APP_DEBUG_CONSOLE_RX_LINE_SIZE              (64u)
