@@ -986,6 +986,34 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
     return status;
 }
 
+static AppStatus_t App_NfcSeoulWriteResponseStatus(void)
+{
+    static const uint8_t kStatusBuf[4] = { 0x03u, 0x00u, 0x00u, 0x00u };
+    NFC_Result_t ret;
+
+    if ((g_appNfcSeoulAttached != APP_TRUE) || (g_appNfcSeoulTag == NULL))
+    {
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    ret = NFC_NTP53321_WriteBlock(g_appNfcSeoulTag, NFC_SRAM_STATUS_BLOCK, (uint8_t *)kStatusBuf);
+    if (ret != NFC_RESULT_OK)
+    {
+        APP_LOGE("NFC", "Seoul status write fail blk=0x%04X ret=%d",
+                 (unsigned int)NFC_SRAM_STATUS_BLOCK,
+                 (int)ret);
+        return APP_STATUS_INIT_FAILED;
+    }
+
+    APP_LOGI("NFC", "Seoul status raw blk=0x%04X bytes=%02X %02X %02X %02X",
+             (unsigned int)NFC_SRAM_STATUS_BLOCK,
+             (unsigned int)kStatusBuf[0],
+             (unsigned int)kStatusBuf[1],
+             (unsigned int)kStatusBuf[2],
+             (unsigned int)kStatusBuf[3]);
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_NfcSeoulWriteResponseIndicate(uint16_t startBlock, uint8_t blockLen)
 {
     uint8_t indicate[4];
@@ -1002,8 +1030,10 @@ static AppStatus_t App_NfcSeoulWriteResponseIndicate(uint16_t startBlock, uint8_
     }
 
     indicate[0] = NFC_CMD_IND_I2C_TO_NFC_PREFIX;
-    indicate[1] = (uint8_t)(startBlock & 0xFFu);
-    indicate[2] = blockLen;
+    //indicate[1] = (uint8_t)(startBlock & 0xFFu);
+    //indicate[2] = blockLen;
+    indicate[1] = NFC_SRAM_CMD_BLOCK; //fix
+    indicate[2] = 1; //fix
     indicate[3] = NFC_CMD_IND_I2C_TO_NFC_SUFFIX;
 
     HAL_Delay(5u);
@@ -1058,6 +1088,7 @@ static AppStatus_t App_NfcSeoulWritePayloadWithLocation(const uint8_t *p_payload
         APP_LOGE("NFC", "Seoul NDEF EEPROM write failed");
         return APP_STATUS_INIT_FAILED;
     }
+    App_LogHexDump(APP_LOG_LEVEL_INFO, "Seoul NDEF", (const uint8_t *)ndef, numBlocks*NFC_EEPROM_BLOCK_SIZE);
 
     g_appNfcSeoulSramSyncPending = APP_FALSE;
 
@@ -1431,6 +1462,13 @@ AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t fram
         return status;
     }
 
+    status = App_NfcSeoulWriteResponseStatus();
+    if (status != APP_STATUS_OK)
+    {
+        g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
+        return status;
+    }
+
     status = App_NfcSeoulWriteResponseIndicate(responseStartBlock, responseBlockLen);
     if (status != APP_STATUS_OK)
     {
@@ -1560,6 +1598,13 @@ AppStatus_t App_NfcSeoulProcessTag(AppNfcSeoulProcessResult_t *p_result)
                                                   responseLength,
                                                   &responseStartBlock,
                                                   &responseBlockLen);
+    if (status != APP_STATUS_OK)
+    {
+        g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
+        return status;
+    }
+
+    status = App_NfcSeoulWriteResponseStatus();
     if (status != APP_STATUS_OK)
     {
         g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
