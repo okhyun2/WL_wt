@@ -591,6 +591,14 @@ static NFC_AUTH_Result_t auth_handle_connect_common(NFC_AUTH_Handle_t *hauth,
     }
     auth_wait_sync_read(hauth);
     APP_LOGI("NFC", "[[NFC-AUTH]] challenge issued");
+    APP_LOGI("NFC", "[[NFC-AUTH]] awaiting RESPONSE(0x03) state=%s txn=%u start_tick=%lu challenge=%02X %02X %02X %02X",
+             auth_state_name(hauth->state),
+             (unsigned int)(hauth->txn_active ? 1u : 0u),
+             (unsigned long)hauth->txn_start_tick,
+             (unsigned int)hauth->session.challenge[0],
+             (unsigned int)hauth->session.challenge[1],
+             (unsigned int)hauth->session.challenge[2],
+             (unsigned int)hauth->session.challenge[3]);
     auth_log_session_valid(hauth, "post-challenge");
     return NFC_AUTH_RESULT_OK;
 }
@@ -621,6 +629,13 @@ static NFC_AUTH_Result_t auth_handle_response_common(NFC_AUTH_Handle_t *hauth,
 
     APP_LOGI("NFC", "[[NFC-AUTH]] response received state=%s",
            auth_state_name(hauth->state));
+    APP_LOGI("NFC", "[[NFC-AUTH]] response entry txn=%u elapsed=%lu challenge=%02X %02X %02X %02X",
+             (unsigned int)(hauth->txn_active ? 1u : 0u),
+             (unsigned long)(HAL_GetTick() - hauth->txn_start_tick),
+             (unsigned int)hauth->session.challenge[0],
+             (unsigned int)hauth->session.challenge[1],
+             (unsigned int)hauth->session.challenge[2],
+             (unsigned int)hauth->session.challenge[3]);
 
     if (hauth->state != NFC_AUTH_STATE_CHALLENGING) {
         APP_LOGE("NFC", "Bad state for RESPONSE (%d)", hauth->state);

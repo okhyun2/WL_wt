@@ -119,6 +119,8 @@ static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked);
 static const char *App_FsmNfcGetWakeEventName(NFC_WakeupEvent_t event);
 static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
                                            uint8_t *p_status1);
+static const char *App_FsmNfcGetAuthStateName(NFC_AUTH_State_t state);
+
 
 NFC_NTP53321_Handle_t g_nfcTagHandle;
 NFC_AUTH_Handle_t g_nfcAuthHandle;
@@ -808,11 +810,42 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
                      (unsigned int)raw[1],
                      (unsigned int)startBlock,
                      (unsigned int)ind.block_len);
+            APP_LOGI("FSM", "trace nfc auth ctx before state=%s txn=%u sess=%u fail=%u",
+                     App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
+                     (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u),
+                     (unsigned int)(g_nfcAuthHandle.session.active ? 1u : 0u),
+                     (unsigned int)g_nfcAuthHandle.fail_count);
             authStatus = NFC_AUTH_ProcessCommandFrame(&g_nfcAuthHandle,
                                                       raw,
                                                       byteCount,
                                                       startBlock,
                                                       ind.block_len);
+            APP_LOGI("FSM", "trace nfc auth ctx after subcmd=0x%02X status=%d state=%s txn=%u sess=%u fail=%u",
+                     (unsigned int)raw[1],
+                     (int)authStatus,
+                     App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
+                     (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u),
+                     (unsigned int)(g_nfcAuthHandle.session.active ? 1u : 0u),
+                     (unsigned int)g_nfcAuthHandle.fail_count);
+            if ((raw[1] == NFC_AUTH_CMD_CONNECT) &&
+                (authStatus == NFC_AUTH_RESULT_OK) &&
+                (g_nfcAuthHandle.state == NFC_AUTH_STATE_CHALLENGING) &&
+                (g_nfcAuthHandle.txn_active == true))
+            {
+                APP_LOGI("FSM", "trace nfc auth awaiting RESPONSE(0x03) next wake challenge=%02X %02X %02X %02X",
+                         (unsigned int)g_nfcAuthHandle.session.challenge[0],
+                         (unsigned int)g_nfcAuthHandle.session.challenge[1],
+                         (unsigned int)g_nfcAuthHandle.session.challenge[2],
+                         (unsigned int)g_nfcAuthHandle.session.challenge[3]);
+            }
+            else if (raw[1] == NFC_AUTH_CMD_RESPONSE)
+            {
+                APP_LOGI("FSM", "trace nfc auth RESPONSE processed status=%d state=%s txn=%u sess=%u",
+                         (int)authStatus,
+                         App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
+                         (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u),
+                         (unsigned int)(g_nfcAuthHandle.session.active ? 1u : 0u));
+            }
             if ((authStatus != NFC_AUTH_RESULT_OK) &&
                 (authStatus != NFC_AUTH_RESULT_FAIL) &&
                 (authStatus != NFC_AUTH_RESULT_INVALID_STATE))
@@ -1008,7 +1041,21 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
         }
     }
 
-    APP_LOGI("FSM", "trace nfc no command -> release to stop");
+    if ((g_nfcAuthHandle.state == NFC_AUTH_STATE_CHALLENGING) &&
+        (g_nfcAuthHandle.txn_active == true))
+    {
+        APP_LOGI("FSM", "trace nfc auth pending RESPONSE(0x03) release-to-stop state=%s txn=%u challenge=%02X %02X %02X %02X",
+                 App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
+                 (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u),
+                 (unsigned int)g_nfcAuthHandle.session.challenge[0],
+                 (unsigned int)g_nfcAuthHandle.session.challenge[1],
+                 (unsigned int)g_nfcAuthHandle.session.challenge[2],
+                 (unsigned int)g_nfcAuthHandle.session.challenge[3]);
+    }
+    else
+    {
+        APP_LOGI("FSM", "trace nfc no command -> release to stop");
+    }
     return APP_STATUS_OK;
 }
 
