@@ -46,7 +46,7 @@ static void auth_log_session_valid(NFC_AUTH_Handle_t *hauth, const char *reason)
         valid = 1U;
     }
 
-    APP_LOGI("NFC", "[[NFC-AUTH]] %s state=%s session_valid=%u fail=%u elapsed=%lu timeout=%lu",
+    APP_LOGI("NFC", "[[NFC-AUTH]] %s state=%s session_valid=%u fail=%u elapsed=%lu timeout=%lu(disabled)",
              (reason != NULL) ? reason : "auth",
              (hauth != NULL) ? auth_state_name(hauth->state) : "NULL",
              (unsigned int)valid,
@@ -729,7 +729,7 @@ static NFC_AUTH_Result_t auth_handle_response_common(NFC_AUTH_Handle_t *hauth,
 
         /* STOP 보정 tick 사용 */
         hauth->session.start_tick  = GetCorrectedTick();
-        hauth->session.timeout_ms  = NFC_AUTH_SESSION_TIMEOUT_MS;
+        hauth->session.timeout_ms  = 0U;
         hauth->session.active      = true;
         aes128_encrypt(hauth->master_key, response, hauth->session.token);
 
@@ -817,7 +817,7 @@ NFC_AUTH_Result_t NFC_AUTH_Init(NFC_AUTH_Handle_t *hauth,
     hauth->hntag              = hntag;
     hauth->state              = NFC_AUTH_STATE_IDLE;
     hauth->initialized        = true;
-    hauth->session.timeout_ms = NFC_AUTH_SESSION_TIMEOUT_MS;
+    hauth->session.timeout_ms = 0U;
 
     memcpy(hauth->master_key, master_key, NFC_AUTH_KEY_SIZE);
 
@@ -926,26 +926,8 @@ NFC_AUTH_Result_t NFC_AUTH_ProcessCommandFrame(NFC_AUTH_Handle_t *hauth,
 /* Overflow-safe session validity check */
 bool NFC_AUTH_IsSessionValid(NFC_AUTH_Handle_t *hauth)
 {
-    uint32_t elapsed;
     if (hauth == NULL || !hauth->session.active) return false;
     if (hauth->state != NFC_AUTH_STATE_AUTHENTICATED) return false;
-    /* HAL_GetTick()은 App_SystemEnterStopMode()에서
-     *         HAL_SuspendTick()으로 정지되어 STOP 체류 시간이 누락된다.
-     *         GetCorrectedTick()은 g_tick_offset(App_SystemEnterStopMode()가
-     *         RTC 델타로 계산해 누적한 보정값)을 더해 반환하므로
-     *         STOP 모드 체류 시간까지 포함한 실제 경과시간을 얻는다. */
-    elapsed = GetCorrectedTick() - hauth->session.start_tick; /* overflow-safe */
-    if (elapsed >= hauth->session.timeout_ms)
-    {
-        hauth->session.active = false;
-        hauth->txn_active = false;
-        hauth->state = NFC_AUTH_STATE_IDLE;
-        memset(hauth->session.token, 0, sizeof(hauth->session.token));
-        APP_LOGI("NFC", "[[NFC-AUTH]] session expired after idle elapsed=%lu timeout=%lu",
-                 (unsigned long)elapsed,
-                 (unsigned long)hauth->session.timeout_ms);
-        return false;
-    }
     return true;
 }
 
