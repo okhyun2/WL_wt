@@ -423,11 +423,18 @@ static NFC_AUTH_Result_t auth_read_cmd(NFC_AUTH_Handle_t *hauth,
 
 static NFC_AUTH_Result_t auth_write_cmd(NFC_AUTH_Handle_t *hauth, uint8_t cmd)
 {
-    uint8_t buf[4] = { cmd, 0x00U, 0x00U, 0x00U };
+    uint8_t buf[4] = { NFC_AUTH_CMD_PREFIX, cmd, 0x00U, 0x00U };
     NFC_Result_t ret = NFC_NTP53321_WriteBlock(hauth->hntag,
                                                NFC_SRAM_CMD_BLOCK,
                                                buf);
-    APP_LOGI("NFC", "[[NFC-AUTH]] cmd=0x%02x written", cmd);
+    APP_LOGI("FSM", "[[NFC-AUTH]] trace nfc rsp written blk=0x%04X len=%u bytes=%02X %02X %02X %02X",
+             (unsigned int)NFC_SRAM_CMD_BLOCK,
+             (unsigned int)1,
+             (unsigned int)buf[0],
+             (unsigned int)buf[1],
+             (unsigned int)buf[2],
+             (unsigned int)buf[3]);
+
     return (ret == NFC_RESULT_OK) ? NFC_AUTH_RESULT_OK
                                   : NFC_AUTH_RESULT_I2C_ERROR;
 }

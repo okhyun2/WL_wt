@@ -606,6 +606,7 @@ static AppStatus_t App_FsmNfcWriteIndicateResponse(uint8_t prefix, uint8_t addr,
     indBuf[2] = blockLen;
     indBuf[3] = suffix;
 
+    HAL_Delay(5U);
     ret = NFC_NTP53321_WriteBlock(&g_nfcTagHandle, NFC_SRAM_UCMD_IND_BLOCK, indBuf);
     if (ret != NFC_RESULT_OK)
     {
@@ -664,9 +665,14 @@ static AppStatus_t App_FsmNfcHandlePingRequest(uint16_t startBlock, uint8_t bloc
         return APP_STATUS_INIT_FAILED;
     }
 
-    APP_LOGI("FSM", "trace nfc ping rsp written blk=0x%04X len=%u",
+    APP_LOGI("FSM", "trace nfc ping rsp written blk=0x%04X len=%u bytes=%02X %02X %02X %02X",
              (unsigned int)startBlock,
-             (unsigned int)blockLen);
+             (unsigned int)blockLen,
+             (unsigned int)kPingResponse[0],
+             (unsigned int)kPingResponse[1],
+             (unsigned int)kPingResponse[2],
+             (unsigned int)kPingResponse[3]);
+
     (void)App_FsmNfcWaitPtReadAck(NULL, NULL);
     return APP_STATUS_OK;
 }
