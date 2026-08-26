@@ -629,23 +629,17 @@ static AppStatus_t App_FsmNfcWriteIndicateResponse(uint8_t prefix, uint8_t addr,
 static AppStatus_t App_FsmNfcHandlePingRequest(uint16_t startBlock, uint8_t blockLen)
 {
     static const uint8_t kPingResponse[4] = { NFC_PING_RESP_PREFIX, 0x00u, 0x00u, 0x00u };
+    const uint8_t responseBlockLen = 1u;
+    AppStatus_t ackStatus;
     NFC_Result_t ret;
 
-    #if 0 //TODO delete
-    ret = NFC_NTP53321_PTTransferDir(&g_nfcTagHandle, false);
-    if (ret != NFC_RESULT_OK)
+    if (blockLen != responseBlockLen)
     {
-        APP_LOGW("FSM", "trace nfc ping rsp dir set fail ret=%d", (int)ret);
-        return APP_STATUS_INIT_FAILED;
+        APP_LOGW("FSM",
+                 "trace nfc ping req len=%u -> rsp len force=%u",
+                 (unsigned int)blockLen,
+                 (unsigned int)responseBlockLen);
     }
-
-    ret = NFC_NTP53321_EnableSRAMPathThru(&g_nfcTagHandle, true);
-    if (ret != NFC_RESULT_OK)
-    {
-        APP_LOGW("FSM", "trace nfc ping rsp passthru fail ret=%d", (int)ret);
-        return APP_STATUS_INIT_FAILED;
-    }
-    #endif
 
     ret = NFC_NTP53321_WriteBlock(&g_nfcTagHandle, startBlock, kPingResponse);
     if (ret != NFC_RESULT_OK)
@@ -659,21 +653,29 @@ static AppStatus_t App_FsmNfcHandlePingRequest(uint16_t startBlock, uint8_t bloc
 
     if (App_FsmNfcWriteIndicateResponse(NFC_CMD_IND_I2C_TO_NFC_PREFIX,
                                         (uint8_t)(startBlock & 0xFFu),
-                                        blockLen,
+                                        responseBlockLen,
                                         NFC_CMD_IND_I2C_TO_NFC_SUFFIX) != APP_STATUS_OK)
     {
         return APP_STATUS_INIT_FAILED;
     }
 
-    APP_LOGI("FSM", "trace nfc ping rsp written blk=0x%04X len=%u bytes=%02X %02X %02X %02X",
+    APP_LOGI("FSM",
+             "trace nfc ping rsp written blk=0x%04X len=%u bytes=%02X %02X %02X %02X",
              (unsigned int)startBlock,
-             (unsigned int)blockLen,
+             (unsigned int)responseBlockLen,
              (unsigned int)kPingResponse[0],
              (unsigned int)kPingResponse[1],
              (unsigned int)kPingResponse[2],
              (unsigned int)kPingResponse[3]);
 
-    (void)App_FsmNfcWaitPtReadAck(NULL, NULL);
+    ackStatus = App_FsmNfcWaitPtReadAck(NULL, NULL);
+    if (ackStatus != APP_STATUS_OK)
+    {
+        APP_LOGW("FSM", "trace nfc ping rsp ack timeout blk=0x%04X", (unsigned int)startBlock);
+        return ackStatus;
+    }
+
+    APP_LOGI("FSM", "trace nfc ping rsp ack ok blk=0x%04X", (unsigned int)startBlock);
     return APP_STATUS_OK;
 }
 
@@ -745,6 +747,12 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
     startBlock = (uint16_t)ind.addr;
     byteCount = (uint8_t)(ind.block_len * 4u);
 
+    APP_LOGI("FSM",
+             "trace nfc cmd fetch AA=0x%02X BL=%u bytes=%u",
+             (unsigned int)ind.addr,
+             (unsigned int)ind.block_len,
+             (unsigned int)byteCount);
+
     ret = NFC_NTP53321_ReadMultiBlock(&g_nfcTagHandle, startBlock, raw, ind.block_len);
     if (ret != NFC_RESULT_OK)
     {
@@ -796,8 +804,15 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
              (raw[1] == NFC_AUTH_CMD_CONFIRM)))
         {
             NFC_AUTH_Result_t authStatus;
-            APP_LOGI("FSM", "trace nfc cmd branch=AUTH cmd=0x%02X", (unsigned int)raw[0]);
-            authStatus = NFC_AUTH_ProcessNFCEvent(&g_nfcAuthHandle, NFC_WAKEUP_EVENT_ED_PIN);
+            APP_LOGI("FSM", "trace nfc cmd branch=AUTH subcmd=0x%02X start=0x%04X len=%u",
+                     (unsigned int)raw[1],
+                     (unsigned int)startBlock,
+                     (unsigned int)ind.block_len);
+            authStatus = NFC_AUTH_ProcessCommandFrame(&g_nfcAuthHandle,
+                                                      raw,
+                                                      byteCount,
+                                                      startBlock,
+                                                      ind.block_len);
             if ((authStatus != NFC_AUTH_RESULT_OK) &&
                 (authStatus != NFC_AUTH_RESULT_FAIL) &&
                 (authStatus != NFC_AUTH_RESULT_INVALID_STATE))

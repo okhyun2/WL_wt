@@ -113,6 +113,11 @@ NFC_AUTH_Result_t NFC_AUTH_Init(NFC_AUTH_Handle_t *hauth,
 
 NFC_AUTH_Result_t NFC_AUTH_ProcessNFCEvent(NFC_AUTH_Handle_t *hauth,
                                             NFC_WakeupEvent_t event);
+NFC_AUTH_Result_t NFC_AUTH_ProcessCommandFrame(NFC_AUTH_Handle_t *hauth,
+                                               const uint8_t *raw,
+                                               uint8_t byte_count,
+                                               uint16_t start_block,
+                                               uint8_t block_len);
 
 bool              NFC_AUTH_IsSessionValid(NFC_AUTH_Handle_t *hauth);
 NFC_AUTH_Result_t NFC_AUTH_InvalidateSession(NFC_AUTH_Handle_t *hauth);
