@@ -46,6 +46,7 @@ static AppStatus_t App_ClockCaptureContext(void)
 
     halSysClkSource = __HAL_RCC_GET_SYSCLK_SOURCE();
     g_appClockContext.sysclkSource = App_ClockDecodeSystemSource(halSysClkSource);
+    /* lseReady field is reused as selected low-speed clock ready flag (LSE or LSI). */
     g_appClockContext.lseReady = (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) != RESET) ? APP_TRUE : APP_FALSE;
     g_appClockContext.flashLatency = __HAL_FLASH_GET_LATENCY();
 

@@ -797,19 +797,20 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     g_appSystemContext.bootStage = APP_BOOT_STAGE_LOG_READY;
 
     APP_LOGI("SYS", "Boot complete: %s v%s", APP_NAME_STRING, App_SystemGetVersionString());
-    APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu LSE=%u",
+    APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu %s=%u",
                                  (unsigned long)p_clockContext->sysclkHz,
                                  (unsigned long)p_clockContext->hclkHz,
                                  (unsigned long)p_clockContext->pclk1Hz,
                                  (unsigned long)p_clockContext->pclk2Hz,
                                  (unsigned long)p_clockContext->msiRange,
+                                 "LSE",
                                  (unsigned int)p_clockContext->lseReady);
     APP_LOGI("SYS", "Device UID hash=0x%08lX", (unsigned long)App_ClockGetDeviceUidHash());
     APP_LOGI("GPIO", "LP policy ready: SWD=%lu",
                                  (unsigned long)g_appGpioLpConfig.swdPolicy);
     APP_LOGI("RTC", "STOP wake period=%lu ms (%s)",
                                  (unsigned long)APP_RTC_WAKEUP_PERIOD_MS,
-                                 (APP_RTC_WAKEUP_PERIOD_MS == 0) ? "Don't work stop":"LSE rtc wakeup");
+                                 (APP_RTC_WAKEUP_PERIOD_MS == 0) ? "Don't work stop" : "LSE" " rtc wakeup");
     APP_LOGI("DBG", "USART1 debug console ready at %lu baud",
                                  (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate);
     APP_LOGI("METER", "USART2 meter ready at %lu baud",

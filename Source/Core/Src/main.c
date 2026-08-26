@@ -231,11 +231,11 @@ void SystemClock_Config(void)
   */
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-  #if 0 //kiki TODO del
-  // reset backup domain. 
-  __HAL_RCC_BACKUPRESET_FORCE();
-  __HAL_RCC_BACKUPRESET_RELEASE();
-  #endif
+  if ((RCC->CSR & RCC_CSR_RTCSEL) != RCC_CSR_RTCSEL_LSE)
+  {
+    __HAL_RCC_BACKUPRESET_FORCE();
+    __HAL_RCC_BACKUPRESET_RELEASE();
+  }
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -243,6 +243,7 @@ void SystemClock_Config(void)
 
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE|RCC_OSCILLATORTYPE_MSI;
   RCC_OscInitStruct.LSEState = RCC_LSE_ON;
+  RCC_OscInitStruct.LSIState = RCC_LSI_OFF;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.MSIClockRange = APP_CLOCK_MSI_RANGE_BOOT;
@@ -254,13 +255,12 @@ void SystemClock_Config(void)
 
   __HAL_RCC_LSEDRIVE_CONFIG(APP_CLOCK_LSE_DRIVE);
 
-  //wait stable LSE
+  // wait selected low-speed clock ready
   uint32_t tickstart = HAL_GetTick();
   while (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
   {
-    if ((HAL_GetTick() - tickstart) > 5000U)  // timeout 5sec
+    if ((HAL_GetTick() - tickstart) > 5000U)
     {
-      // fail start LSE
       Error_Handler();
     }
   }
@@ -732,8 +732,8 @@ static void MX_RTC_Init(void)
   */
   hrtc.Instance = RTC;
   hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
-  hrtc.Init.AsynchPrediv = 127;
-  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.AsynchPrediv = APP_RTC_LSE_ASYNC_PREDIV;
+  hrtc.Init.SynchPrediv = APP_RTC_LSE_SYNC_PREDIV;
   hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
   hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
   hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
