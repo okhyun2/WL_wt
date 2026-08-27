@@ -41,7 +41,7 @@
 #define APP_FSM_TX_MGMT_SLOT_OFFSET_MS        (8u * 60000u)
 #define APP_FSM_TX_METER_PROXIMITY_GUARD_MS   (2u * 60000u)
 #define APP_FSM_TX_SERVICE_MGMT_GAP_MS        (2u * 60000u)
-#define APP_FSM_TX_DEVICE_SPREAD_MAX_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
+#define APP_FSM_TX_DEVICE_SPREAD_MAX_MS       (APP_POLICY_REPORT_SPREAD_FALLBACK_MS)
 #endif
 
 typedef struct
@@ -68,6 +68,7 @@ typedef struct
     uint32_t lastDispatchedMsOfDay;
     uint32_t baseSlotOffsetMs;
     uint32_t fixedOffsetMs;
+    uint32_t configuredSpreadMaxMs;
     uint32_t currentJitterMs;
 } AppFsmTxScheduleContext_t;
 
@@ -105,6 +106,7 @@ static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void);
 static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed);
 static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed);
 static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due);
+static AppStatus_t App_FsmTxScheduleLoadSpreadMaxMs(uint32_t *p_spreadMaxMs);
 static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due);
 static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void);
 static uint8_t App_FsmScheduleIsEarlierOrEqual(uint32_t lhsDateKey,
@@ -2293,6 +2295,23 @@ static AppStatus_t App_FsmTxScheduleLoadPeriod(uint8_t *p_periodHours)
     return APP_STATUS_OK;
 }
 
+static AppStatus_t App_FsmTxScheduleLoadSpreadMaxMs(uint32_t *p_spreadMaxMs)
+{
+    AppMeterServerFormatOptions_t options;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(p_spreadMaxMs != NULL, APP_STATUS_INVALID_PARAM);
+
+    status = App_MeterServerOptionsLoad(&options);
+    if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
+    {
+        return status;
+    }
+
+    *p_spreadMaxMs = App_MeterServerOptionsGetReportingSpreadMs(&options);
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_FsmMgmtTxScheduleLoadPeriod(uint8_t *p_periodHours)
 {
     AppMeterServerFormatOptions_t options;
@@ -2364,12 +2383,14 @@ static void App_FsmTxScheduleDisableContext(AppFsmTxScheduleContext_t *p_schedul
     p_schedule->lastDispatchedMsOfDay = 0u;
     p_schedule->baseSlotOffsetMs = 0u;
     p_schedule->fixedOffsetMs = 0u;
+    p_schedule->configuredSpreadMaxMs = 0u;
     p_schedule->offsetApplied = APP_FALSE;
     p_schedule->currentJitterMs = 0u;
 }
 
 static AppStatus_t App_FsmTxScheduleEnsureInitializedCommon(AppFsmTxScheduleContext_t *p_schedule,
                                                             uint8_t periodHours,
+                                                            uint32_t spreadMaxMs,
                                                             uint32_t hashSalt,
                                                             uint32_t baseSlotOffsetMs,
                                                             const char *p_tag,
@@ -2408,17 +2429,20 @@ static AppStatus_t App_FsmTxScheduleEnsureInitializedCommon(AppFsmTxScheduleCont
 
     p_schedule->baseSlotOffsetMs = baseSlotOffsetMs;
 
-    if (p_schedule->offsetApplied != APP_TRUE)
+    if ((p_schedule->offsetApplied != APP_TRUE) ||
+        (p_schedule->configuredSpreadMaxMs != spreadMaxMs))
     {
-        uint32_t spreadMaxSeconds = APP_FSM_TX_DEVICE_SPREAD_MAX_MS / 1000u;
+        uint32_t spreadMaxSeconds = spreadMaxMs / 1000u;
         p_schedule->fixedOffsetMs =
             ((App_ClockGetDeviceUidHash() ^ hashSalt) % (spreadMaxSeconds + 1u)) * 1000u;
+        p_schedule->configuredSpreadMaxMs = spreadMaxMs;
         p_schedule->offsetApplied = APP_TRUE;
     }
 
     if ((p_schedule->initialized == APP_TRUE) &&
         (p_schedule->enabled == APP_TRUE) &&
         (p_schedule->periodHours == periodHours) &&
+        (p_schedule->configuredSpreadMaxMs == spreadMaxMs) &&
         (p_schedule->rtcReadyLogged == APP_TRUE))
     {
         return APP_STATUS_OK;
@@ -2459,6 +2483,7 @@ static AppStatus_t App_FsmTxScheduleEnsureInitialized(void)
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     status = App_FsmTxScheduleEnsureInitializedCommon(&g_appFsmTxSchedule,
                                                       periodHours,
+                                                      APP_FSM_TX_DEVICE_SPREAD_MAX_MS,
                                                       0x53525643u,
                                                       APP_FSM_TX_SERVICE_SLOT_OFFSET_MS,
                                                       "[[ServiceTxSchedule]]",
@@ -2485,6 +2510,7 @@ static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void)
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     status = App_FsmTxScheduleEnsureInitializedCommon(&g_appFsmMgmtTxSchedule,
                                                       periodHours,
+                                                      APP_FSM_TX_DEVICE_SPREAD_MAX_MS,
                                                       0x4D474D54u,
                                                       APP_FSM_TX_MGMT_SLOT_OFFSET_MS,
                                                       "[[MgmtTxSchedule]]",

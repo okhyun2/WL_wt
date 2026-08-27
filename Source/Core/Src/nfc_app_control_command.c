@@ -50,6 +50,11 @@ static uint8_t nfc_app_ctrl_append_u16le(uint8_t *p_rsp_raw,
                      nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, (uint8_t)((value >> 8) & 0xFFU)));
 }
 
+static uint8_t nfc_app_ctrl_is_binary_flag(uint8_t value)
+{
+    return (uint8_t)((value == 0U) || (value == 1U));
+}
+
 static uint8_t nfc_app_ctrl_is_supported_period(uint8_t period)
 {
     return (uint8_t)((period == NFC_APP_CTRL_PERIOD_DISABLED) ||
@@ -169,7 +174,8 @@ static uint8_t nfc_app_ctrl_handle_nb(const NfcAppCtrlCmd_t *p_cmd,
             }
             if ((nfc_app_ctrl_is_supported_period(p_body[0]) == 0U) ||
                 (nfc_app_ctrl_is_supported_period(p_body[1]) == 0U) ||
-                (p_body[1] < p_body[0])) {
+                (p_body[1] < p_body[0]) ||
+                ((p_body[3] != 0U) && ((nfc_app_ctrl_is_supported_period(p_body[3]) == 0U) || (p_body[3] > p_body[1])))) {
                 return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
             }
             status = nfc_app_ctrl_load_options(&options);
@@ -203,9 +209,50 @@ static uint8_t nfc_app_ctrl_handle_nb(const NfcAppCtrlCmd_t *p_cmd,
             return (uint8_t)NFC_CMD_RESULT_OK;
 
         case NFC_APP_CTRL_NB_SPREAD_SET:
+            if (body_len != 1U) {
+                return (uint8_t)NFC_CMD_RESULT_INVALID_LEN;
+            }
+            status = nfc_app_ctrl_load_options(&options);
+            if (status != APP_STATUS_OK) {
+                nfc_app_ctrl_response_init(p_rsp_raw, p_rsp_len, p_cmd, nfc_app_ctrl_map_status(status));
+                return (uint8_t)NFC_CMD_RESULT_OK;
+            }
+            if ((p_body[0] != 0U) &&
+                ((nfc_app_ctrl_is_supported_period(p_body[0]) == 0U) ||
+                 (p_body[0] > options.reportingPeriodHours))) {
+                return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
+            }
+            options.reportingSpreadHours = p_body[0];
+            status = App_MeterServerOptionsSave(&options);
+            nfc_app_ctrl_response_init(p_rsp_raw, p_rsp_len, p_cmd, nfc_app_ctrl_map_status(status));
+            (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.reportingSpreadHours);
+            (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.reportingPeriodHours);
+            return (uint8_t)NFC_CMD_RESULT_OK;
+
         case NFC_APP_CTRL_NB_SPREAD_GET:
+            if (body_len != 0U) {
+                return (uint8_t)NFC_CMD_RESULT_INVALID_LEN;
+            }
+            status = nfc_app_ctrl_load_options(&options);
+            nfc_app_ctrl_response_init(p_rsp_raw, p_rsp_len, p_cmd, nfc_app_ctrl_map_status(status));
+            if (status == APP_STATUS_OK) {
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.reportingSpreadHours);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.reportingPeriodHours);
+            }
+            return (uint8_t)NFC_CMD_RESULT_OK;
+
         case NFC_APP_CTRL_NB_ACK_STATUS_GET:
-            nfc_app_ctrl_response_init(p_rsp_raw, p_rsp_len, p_cmd, (uint8_t)NFC_APP_CTRL_OP_NOT_SUPPORTED);
+            if (body_len != 0U) {
+                return (uint8_t)NFC_CMD_RESULT_INVALID_LEN;
+            }
+            status = nfc_app_ctrl_load_options(&options);
+            nfc_app_ctrl_response_init(p_rsp_raw, p_rsp_len, p_cmd, nfc_app_ctrl_map_status(status));
+            if (status == APP_STATUS_OK) {
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.ackWaitEnabled);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.ackTimeoutSec);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.ackPoll100Ms);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.deleteAfterSend);
+            }
             return (uint8_t)NFC_CMD_RESULT_OK;
 
         case NFC_APP_CTRL_NB_RESET_SUPPORT_GET:
@@ -319,17 +366,19 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
                 (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.meteringPeriodHours);
                 (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.reportingPeriodHours);
                 (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.managementReportingPeriodHours);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.reportingSpreadHours);
             }
             return (uint8_t)NFC_CMD_RESULT_OK;
 
         case NFC_APP_CTRL_PARAM_SCHEDULE_SET:
-            if (body_len != 3U) {
+            if (body_len != 4U) {
                 return (uint8_t)NFC_CMD_RESULT_INVALID_LEN;
             }
             if ((nfc_app_ctrl_is_supported_period(p_body[0]) == 0U) ||
                 (nfc_app_ctrl_is_supported_period(p_body[1]) == 0U) ||
                 (nfc_app_ctrl_is_supported_period(p_body[2]) == 0U) ||
-                (p_body[1] < p_body[0])) {
+                (p_body[1] < p_body[0]) ||
+                ((p_body[3] != 0U) && ((nfc_app_ctrl_is_supported_period(p_body[3]) == 0U) || (p_body[3] > p_body[1])))) {
                 return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
             }
             status = nfc_app_ctrl_load_options(&options);
@@ -337,6 +386,7 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
                 options.meteringPeriodHours = p_body[0];
                 options.reportingPeriodHours = p_body[1];
                 options.managementReportingPeriodHours = p_body[2];
+                options.reportingSpreadHours = p_body[3];
                 status = App_MeterServerOptionsValidate(&options);
                 if (status == APP_STATUS_OK) {
                     status = App_MeterServerOptionsSave(&options);
@@ -347,12 +397,50 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
                 (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.meteringPeriodHours);
                 (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.reportingPeriodHours);
                 (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.managementReportingPeriodHours);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.reportingSpreadHours);
             }
             return (uint8_t)NFC_CMD_RESULT_OK;
 
         case NFC_APP_CTRL_PARAM_POLICY_GET:
+            if (body_len != 0U) {
+                return (uint8_t)NFC_CMD_RESULT_INVALID_LEN;
+            }
+            status = nfc_app_ctrl_load_options(&options);
+            nfc_app_ctrl_response_init(p_rsp_raw, p_rsp_len, p_cmd, nfc_app_ctrl_map_status(status));
+            if (status == APP_STATUS_OK) {
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.ackWaitEnabled);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.ackTimeoutSec);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.ackPoll100Ms);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.deleteAfterSend);
+            }
+            return (uint8_t)NFC_CMD_RESULT_OK;
+
         case NFC_APP_CTRL_PARAM_POLICY_SET:
-            nfc_app_ctrl_response_init(p_rsp_raw, p_rsp_len, p_cmd, (uint8_t)NFC_APP_CTRL_OP_NOT_SUPPORTED);
+            if (body_len != 4U) {
+                return (uint8_t)NFC_CMD_RESULT_INVALID_LEN;
+            }
+            if ((nfc_app_ctrl_is_binary_flag(p_body[0]) == 0U) ||
+                (p_body[1] == 0U) ||
+                (p_body[2] == 0U) ||
+                (((uint32_t)p_body[2] * 100U) > ((uint32_t)p_body[1] * 1000U)) ||
+                (nfc_app_ctrl_is_binary_flag(p_body[3]) == 0U)) {
+                return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
+            }
+            status = nfc_app_ctrl_load_options(&options);
+            if (status == APP_STATUS_OK) {
+                options.ackWaitEnabled = p_body[0];
+                options.ackTimeoutSec = p_body[1];
+                options.ackPoll100Ms = p_body[2];
+                options.deleteAfterSend = p_body[3];
+                status = App_MeterServerOptionsSave(&options);
+            }
+            nfc_app_ctrl_response_init(p_rsp_raw, p_rsp_len, p_cmd, nfc_app_ctrl_map_status(status));
+            if (status == APP_STATUS_OK) {
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.ackWaitEnabled);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.ackTimeoutSec);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.ackPoll100Ms);
+                (void)nfc_app_ctrl_append_byte(p_rsp_raw, p_rsp_len, options.deleteAfterSend);
+            }
             return (uint8_t)NFC_CMD_RESULT_OK;
 
         case NFC_APP_CTRL_PARAM_DEVICE_GET:
@@ -390,7 +478,7 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
                 return (uint8_t)NFC_CMD_RESULT_INVALID_LEN;
             }
             nfc_app_ctrl_response_init(p_rsp_raw, p_rsp_len, p_cmd, (uint8_t)NFC_APP_CTRL_OP_OK);
-            if ((p_body[0] == 0x00U) || (p_body[0] == 0x01U)) {
+            if ((p_body[0] == 0x00U) || (p_body[0] == 0x01U) || (p_body[0] == 0x02U)) {
                 App_MeterServerOptionsSetDefaults(&options);
                 status = App_MeterServerOptionsSave(&options);
                 p_rsp_raw[0] = nfc_app_ctrl_map_status(status);

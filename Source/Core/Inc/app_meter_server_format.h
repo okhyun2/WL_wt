@@ -40,6 +40,11 @@ typedef struct
     uint8_t meteringPeriodHours;
     uint8_t reportingPeriodHours;
     uint8_t managementReportingPeriodHours; /* 0: disabled, otherwise same enum as reportingPeriodHours */
+    uint8_t reportingSpreadHours;           /* 0: legacy/default spread, otherwise <= reportingPeriodHours */
+    uint8_t ackWaitEnabled;                 /* 0:disable, 1:enable */
+    uint8_t ackTimeoutSec;                  /* 1..255 sec */
+    uint8_t ackPoll100Ms;                   /* 100ms unit, 1..255 */
+    uint8_t deleteAfterSend;                /* 0:mark sent only, 1:delete after success */
 } AppMeterServerFormatOptions_t;
 
 typedef struct
@@ -114,6 +119,16 @@ void App_MeterServerOptionsSetTxPeriods(AppMeterServerFormatOptions_t *p_options
                                         uint8_t meteringHours,
                                         uint8_t reportingHours,
                                         uint8_t managementReportingHours);
+void App_MeterServerOptionsSetSpread(AppMeterServerFormatOptions_t *p_options,
+                                     uint8_t spreadHours);
+void App_MeterServerOptionsSetPolicy(AppMeterServerFormatOptions_t *p_options,
+                                     uint8_t ackWaitEnabled,
+                                     uint8_t ackTimeoutSec,
+                                     uint8_t ackPoll100Ms,
+                                     uint8_t deleteAfterSend);
+uint32_t App_MeterServerOptionsGetReportingSpreadMs(const AppMeterServerFormatOptions_t *p_options);
+uint32_t App_MeterServerOptionsGetAckTimeoutMs(const AppMeterServerFormatOptions_t *p_options);
+uint32_t App_MeterServerOptionsGetAckPollMs(const AppMeterServerFormatOptions_t *p_options);
 
 /* 채워진 options를 EEPROM에 저장 (변경된 경우에만 실제 write) */
 AppStatus_t App_MeterServerOptionsUpdate(const AppMeterServerFormatOptions_t *p_options);

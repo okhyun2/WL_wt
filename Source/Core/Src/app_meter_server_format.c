@@ -38,8 +38,17 @@ uint8_t App_MeterServerOptionsNormalizePeriod(uint8_t hours)
 
 static uint8_t App_MeterServerOptionsIsTxPeriodSupportedOrDisabled(uint8_t hours)
 {
-    (void)hours;
-    return APP_TRUE;
+    return (uint8_t)((hours == 0u) || (App_MeterServerOptionsIsPeriodSupported(hours) == APP_TRUE));
+}
+
+static uint8_t App_MeterServerOptionsIsBinaryFlag(uint8_t value)
+{
+    return (uint8_t)((value == 0u) || (value == 1u));
+}
+
+static uint8_t App_MeterServerOptionsNormalizeBinaryFlag(uint8_t value, uint8_t defaultValue)
+{
+    return (App_MeterServerOptionsIsBinaryFlag(value) == APP_TRUE) ? value : defaultValue;
 }
 
 AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_options)
@@ -47,12 +56,22 @@ AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_opti
     uint8_t originalMetering;
     uint8_t originalReporting;
     uint8_t originalManagementReporting;
+    uint8_t originalSpread;
+    uint8_t originalAckWait;
+    uint8_t originalAckTimeoutSec;
+    uint8_t originalAckPoll100Ms;
+    uint8_t originalDeleteAfterSend;
 
     APP_RETURN_IF_FALSE(p_options != NULL, APP_STATUS_INVALID_PARAM);
 
     originalMetering = p_options->meteringPeriodHours;
     originalReporting = p_options->reportingPeriodHours;
     originalManagementReporting = p_options->managementReportingPeriodHours;
+    originalSpread = p_options->reportingSpreadHours;
+    originalAckWait = p_options->ackWaitEnabled;
+    originalAckTimeoutSec = p_options->ackTimeoutSec;
+    originalAckPoll100Ms = p_options->ackPoll100Ms;
+    originalDeleteAfterSend = p_options->deleteAfterSend;
 
     p_options->meteringPeriodHours =
         (App_MeterServerOptionsIsPeriodSupported(originalMetering) == APP_TRUE)
@@ -69,17 +88,67 @@ AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_opti
         ? originalManagementReporting
         : (uint8_t)APP_POLICY_DEFAULT_MANAGEMENT_REPORTING_PERIOD_HOURS;
 
+    if ((originalSpread == 0u) ||
+        ((App_MeterServerOptionsIsPeriodSupported(originalSpread) == APP_TRUE) &&
+         (originalSpread <= p_options->reportingPeriodHours)))
+    {
+        p_options->reportingSpreadHours = originalSpread;
+    }
+    else
+    {
+        p_options->reportingSpreadHours = (uint8_t)APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS;
+        if ((p_options->reportingSpreadHours != 0u) &&
+            (p_options->reportingSpreadHours > p_options->reportingPeriodHours))
+        {
+            p_options->reportingSpreadHours = p_options->reportingPeriodHours;
+        }
+    }
+
+    p_options->ackWaitEnabled = App_MeterServerOptionsNormalizeBinaryFlag(originalAckWait,
+                                                                          (uint8_t)APP_POLICY_WAIT_SERVER_ACK_ENABLE);
+    p_options->ackTimeoutSec = (originalAckTimeoutSec != 0u)
+                               ? originalAckTimeoutSec
+                               : (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_TIMEOUT_SEC;
+    p_options->ackPoll100Ms = (originalAckPoll100Ms != 0u)
+                              ? originalAckPoll100Ms
+                              : (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS;
+    if (((uint32_t)p_options->ackPoll100Ms * 100u) > ((uint32_t)p_options->ackTimeoutSec * 1000u))
+    {
+        p_options->ackPoll100Ms = (uint8_t)(p_options->ackTimeoutSec * 10u);
+        if (p_options->ackPoll100Ms == 0u)
+        {
+            p_options->ackPoll100Ms = 1u;
+        }
+    }
+    p_options->deleteAfterSend = App_MeterServerOptionsNormalizeBinaryFlag(originalDeleteAfterSend,
+                                                                            (uint8_t)APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS);
+
     if ((originalMetering != p_options->meteringPeriodHours) ||
         (originalReporting != p_options->reportingPeriodHours) ||
-        (originalManagementReporting != p_options->managementReportingPeriodHours))
+        (originalManagementReporting != p_options->managementReportingPeriodHours) ||
+        (originalSpread != p_options->reportingSpreadHours) ||
+        (originalAckWait != p_options->ackWaitEnabled) ||
+        (originalAckTimeoutSec != p_options->ackTimeoutSec) ||
+        (originalAckPoll100Ms != p_options->ackPoll100Ms) ||
+        (originalDeleteAfterSend != p_options->deleteAfterSend))
     {
-        APP_LOGW("OPT", "invalid period corrected meter=%u->%u report=%u->%u mgmt=%u->%u",
+        APP_LOGW("OPT", "invalid option corrected meter=%u->%u report=%u->%u mgmt=%u->%u spread=%u->%u ackWait=%u->%u ackTimeout=%u->%u ackPoll=%u->%u delete=%u->%u",
                  (unsigned)originalMetering,
                  (unsigned)p_options->meteringPeriodHours,
                  (unsigned)originalReporting,
                  (unsigned)p_options->reportingPeriodHours,
                  (unsigned)originalManagementReporting,
-                 (unsigned)p_options->managementReportingPeriodHours);
+                 (unsigned)p_options->managementReportingPeriodHours,
+                 (unsigned)originalSpread,
+                 (unsigned)p_options->reportingSpreadHours,
+                 (unsigned)originalAckWait,
+                 (unsigned)p_options->ackWaitEnabled,
+                 (unsigned)originalAckTimeoutSec,
+                 (unsigned)p_options->ackTimeoutSec,
+                 (unsigned)originalAckPoll100Ms,
+                 (unsigned)p_options->ackPoll100Ms,
+                 (unsigned)originalDeleteAfterSend,
+                 (unsigned)p_options->deleteAfterSend);
     }
 
     return APP_STATUS_OK;
@@ -180,6 +249,11 @@ void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options)
     p_options->meteringPeriodHours = (uint8_t)APP_POLICY_DEFAULT_METERING_PERIOD_HOURS;
     p_options->reportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS;
     p_options->managementReportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_MANAGEMENT_REPORTING_PERIOD_HOURS;
+    p_options->reportingSpreadHours = (uint8_t)APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS;
+    p_options->ackWaitEnabled = (uint8_t)APP_POLICY_WAIT_SERVER_ACK_ENABLE;
+    p_options->ackTimeoutSec = (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_TIMEOUT_SEC;
+    p_options->ackPoll100Ms = (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS;
+    p_options->deleteAfterSend = (uint8_t)APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS;
     (void)App_MeterServerOptionsValidate(p_options);
 }
 
@@ -708,6 +782,13 @@ void App_MeterServerOptionsDump(const AppMeterServerFormatOptions_t *p_options)
     APP_LOGI("OPT", "  mgmtReportPeriod: %u hour(s) (%s)",
              (unsigned)p_options->managementReportingPeriodHours,
              (p_options->managementReportingPeriodHours == 0u) ? "disabled" : "enabled");
+    APP_LOGI("OPT", "  reportSpread   : %u hour(s) (%s)",
+             (unsigned)p_options->reportingSpreadHours,
+             (p_options->reportingSpreadHours == 0u) ? "legacy/default" : "configured");
+    APP_LOGI("OPT", "  ackWaitEnabled : %u", (unsigned)p_options->ackWaitEnabled);
+    APP_LOGI("OPT", "  ackTimeoutSec  : %u", (unsigned)p_options->ackTimeoutSec);
+    APP_LOGI("OPT", "  ackPoll100Ms   : %u", (unsigned)p_options->ackPoll100Ms);
+    APP_LOGI("OPT", "  deleteAfterSend: %u", (unsigned)p_options->deleteAfterSend);
 
     APP_LOGI("OPT", "  slot(idx=%u, seq=%u)",
              (unsigned)g_appMeterServerOptionsRegion.latestSlotIndex,
@@ -810,6 +891,52 @@ void App_MeterServerOptionsSetTxPeriods(AppMeterServerFormatOptions_t *p_options
     p_options->reportingPeriodHours = reportingHours;
     p_options->managementReportingPeriodHours = managementReportingHours;
     (void)App_MeterServerOptionsValidate(p_options);
+}
+
+void App_MeterServerOptionsSetSpread(AppMeterServerFormatOptions_t *p_options,
+                                     uint8_t spreadHours)
+{
+    if (p_options == NULL) { return; }
+    p_options->reportingSpreadHours = spreadHours;
+    (void)App_MeterServerOptionsValidate(p_options);
+}
+
+void App_MeterServerOptionsSetPolicy(AppMeterServerFormatOptions_t *p_options,
+                                     uint8_t ackWaitEnabled,
+                                     uint8_t ackTimeoutSec,
+                                     uint8_t ackPoll100Ms,
+                                     uint8_t deleteAfterSend)
+{
+    if (p_options == NULL) { return; }
+    p_options->ackWaitEnabled = ackWaitEnabled;
+    p_options->ackTimeoutSec = ackTimeoutSec;
+    p_options->ackPoll100Ms = ackPoll100Ms;
+    p_options->deleteAfterSend = deleteAfterSend;
+    (void)App_MeterServerOptionsValidate(p_options);
+}
+
+uint32_t App_MeterServerOptionsGetReportingSpreadMs(const AppMeterServerFormatOptions_t *p_options)
+{
+    APP_RETURN_IF_FALSE(p_options != NULL, APP_POLICY_REPORT_SPREAD_FALLBACK_MS);
+
+    if (p_options->reportingSpreadHours == 0u)
+    {
+        return APP_POLICY_REPORT_SPREAD_FALLBACK_MS;
+    }
+
+    return ((uint32_t)p_options->reportingSpreadHours * 60u * 60u * 1000u);
+}
+
+uint32_t App_MeterServerOptionsGetAckTimeoutMs(const AppMeterServerFormatOptions_t *p_options)
+{
+    APP_RETURN_IF_FALSE(p_options != NULL, APP_POLICY_SERVER_ACK_TIMEOUT_MS);
+    return ((uint32_t)p_options->ackTimeoutSec * 1000u);
+}
+
+uint32_t App_MeterServerOptionsGetAckPollMs(const AppMeterServerFormatOptions_t *p_options)
+{
+    APP_RETURN_IF_FALSE(p_options != NULL, APP_POLICY_SERVER_ACK_POLL_MS);
+    return ((uint32_t)p_options->ackPoll100Ms * 100u);
 }
 
 /* ----------------------------------------------------------------

@@ -215,12 +215,29 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
 static AppBc95AtStatus_t App_Bc95AtParseQlwuldataStatus(const char *p_resp, int *p_statusOut, int *p_seqOut);
 static AppStatus_t App_Bc95AtPlatformRegister(void);
 static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint16_t length, uint8_t seqNum);
+static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, uint32_t pollMs);
 static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
                                                      uint8_t deleteStorage,
                                                      uint8_t unsentOnly,
                                                      const AppMeterStorageRecord_t *p_liveRecord);
 static void App_Bc95AtBytesToHex(const uint8_t *p_in, uint32_t inLen, char *p_out);
 static uint8_t App_Bc95AtNextUdpSeq(void);
+
+static uint8_t App_NbiotResolveDeleteAfterSend(uint8_t requestedDeleteStorage,
+                                               const AppMeterServerFormatOptions_t *p_options)
+{
+    APP_RETURN_IF_FALSE(p_options != NULL, requestedDeleteStorage);
+    return (uint8_t)((requestedDeleteStorage == APP_TRUE) ||
+                     (p_options->deleteAfterSend == APP_TRUE));
+}
+
+static uint8_t App_NbiotResolveWaitServerAck(const AppMeterServerFormatOptions_t *p_options)
+{
+    APP_RETURN_IF_FALSE(p_options != NULL, (uint8_t)APP_POLICY_WAIT_SERVER_ACK_ENABLE);
+    return App_MeterServerOptionsValidate((AppMeterServerFormatOptions_t *)p_options) == APP_STATUS_OK
+           ? p_options->ackWaitEnabled
+           : (uint8_t)APP_POLICY_WAIT_SERVER_ACK_ENABLE;
+}
 
 static void App_HwNbiotPowerCycle(void)
 {
@@ -3387,12 +3404,14 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
     AppMeterServerFormatResult_t buildResult;
     uint8_t packet[APP_METER_SERVER_FORMAT_MAX_PACKET_SIZE];
     uint8_t seqNum;
+    uint8_t effectiveDeleteStorage;
     uint32_t sendAttempt;
 
     APP_RETURN_IF_FALSE((p_logTag != NULL), APP_STATUS_INVALID_PARAM);
 
     App_MeterServerOptionsLoad(&opt);
     App_MeterServerOptionsDump(&opt);
+    effectiveDeleteStorage = App_NbiotResolveDeleteAfterSend(deleteStorage, &opt);
     if (p_liveRecord != NULL)
     {
         status = App_MeterServerFormatBuildFromRecord(&opt, p_liveRecord, packet, sizeof(packet), &buildResult);
@@ -3462,7 +3481,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
                          (unsigned int)buildResult.recordCount);
                 return markStatus;
             }
-            if (deleteStorage == APP_TRUE)
+            if (effectiveDeleteStorage == APP_TRUE)
             {
                 uint8_t deletedCount = 0u;
                 AppStatus_t clearStatus = App_MeterStorageDeleteOldestSent(&deletedCount);
@@ -3484,7 +3503,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
                          (unsigned int)App_MeterStorageCount());
             }
         }
-        else if (deleteStorage == APP_TRUE)
+        else if (effectiveDeleteStorage == APP_TRUE)
         {
             AppStatus_t clearStatus = App_MeterStorageDeleteOldest(buildResult.recordCount);
             if (clearStatus != APP_STATUS_OK)
@@ -4252,11 +4271,12 @@ static AppBc95AtStatus_t App_Bc95AtParseNsorfForSocket(const char *p_resp,
     return APP_BC95_AT_ERR_NO_DATA;
 }
 
-static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs)
+static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, uint32_t pollMs)
 {
 #if (APP_POLICY_WAIT_SERVER_ACK_ENABLE != APP_TRUE)
     (void)socketId;
     (void)timeoutMs;
+    (void)pollMs;
     return APP_STATUS_OK;
 #else
     AppStatus_t status;
@@ -4306,7 +4326,7 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs)
             }
         }
 
-        App_Bc95AtDelayWithFeed(APP_POLICY_SERVER_ACK_POLL_MS);
+        App_Bc95AtDelayWithFeed(pollMs);
     }
 
     APP_LOGW("NBIOT", "Server ACK timeout (sock=%ld, timeout=%lums)",
@@ -4661,6 +4681,10 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
                                   AppBc95UdpResult_t *p_result)
 {
     AppStatus_t status;
+    AppMeterServerFormatOptions_t opt;
+    uint8_t waitServerAck;
+    uint32_t ackTimeoutMs;
+    uint32_t ackPollMs;
     int32_t socketId = -1;
     char ipBuf[APP_BC95_IP_STR_SIZE];
     uint32_t attempt;
@@ -4675,6 +4699,15 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     APP_RETURN_IF_FALSE((p_logTag != NULL) && (p_host != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((p_data != NULL) && (length > 0u), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((length <= APP_BC95_UDP_MAX_PAYLOAD), APP_STATUS_INVALID_PARAM);
+
+    status = App_MeterServerOptionsLoad(&opt);
+    if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
+    {
+        return status;
+    }
+    waitServerAck = App_NbiotResolveWaitServerAck(&opt);
+    ackTimeoutMs = App_MeterServerOptionsGetAckTimeoutMs(&opt);
+    ackPollMs = App_MeterServerOptionsGetAckPollMs(&opt);
 
     /* 1) DNS */
     result.lastStage = APP_BC95_UDP_STAGE_RESOLVE;
@@ -4749,14 +4782,18 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     }
 
 #if (APP_POLICY_WAIT_SERVER_ACK_ENABLE == APP_TRUE)
-    if (status == APP_STATUS_OK)
+    if ((status == APP_STATUS_OK) && (waitServerAck == APP_TRUE))
     {
 #if (APP_POLICY_TEST_MODE_SKIP_SERVER_ACK_WAIT == APP_TRUE)
         APP_LOGW("NBIOT", "%s Test mode: skip server ACK wait/timeout", p_logTag);
 #else
-        APP_LOGI("NBIOT", "%s wait server ACK timeout=%lu ms", p_logTag, (unsigned long)APP_POLICY_SERVER_ACK_TIMEOUT_MS);
-        status = App_Bc95AtWaitUdpAck(socketId, APP_POLICY_SERVER_ACK_TIMEOUT_MS);
+        APP_LOGI("NBIOT", "%s wait server ACK timeout=%lu ms poll=%lu ms", p_logTag, (unsigned long)ackTimeoutMs, (unsigned long)ackPollMs);
+        status = App_Bc95AtWaitUdpAck(socketId, ackTimeoutMs, ackPollMs);
 #endif
+    }
+    else if ((status == APP_STATUS_OK) && (waitServerAck != APP_TRUE))
+    {
+        APP_LOGW("NBIOT", "%s runtime policy: skip server ACK wait", p_logTag);
     }
 #endif
 
@@ -5504,11 +5541,13 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
     AppMeterServerFormatOptions_t opt;
     AppMeterServerFormatResult_t buildResult;
     uint8_t packet[APP_METER_SERVER_FORMAT_MAX_PACKET_SIZE];
+    uint8_t effectiveDeleteStorage;
 
     APP_RETURN_IF_FALSE((p_logTag != NULL) && (p_host != NULL), APP_STATUS_INVALID_PARAM);
 
     App_MeterServerOptionsLoad(&opt);
     App_MeterServerOptionsDump(&opt);
+    effectiveDeleteStorage = App_NbiotResolveDeleteAfterSend(deleteStorage, &opt);
     if (p_liveRecord != NULL)
     {
         status = App_MeterServerFormatBuildFromRecord(&opt, p_liveRecord, packet, sizeof(packet), &buildResult);
@@ -5542,7 +5581,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                     return markStatus;
                 }
 
-                if (deleteStorage == APP_TRUE)
+                if (effectiveDeleteStorage == APP_TRUE)
                 {
                     uint8_t deletedCount = 0u;
                     AppStatus_t clearStatus = App_MeterStorageDeleteOldestSent(&deletedCount);
@@ -5571,7 +5610,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                              (unsigned int)App_MeterStorageCount());
                 }
             }
-            else if (deleteStorage == APP_TRUE)
+            else if (effectiveDeleteStorage == APP_TRUE)
             {
                 AppStatus_t clearStatus = App_MeterStorageDeleteOldest(buildResult.recordCount);
                 if (clearStatus != APP_STATUS_OK)
