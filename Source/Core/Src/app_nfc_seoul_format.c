@@ -523,6 +523,26 @@ static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_pay
             APP_NFC_SEOUL_APPEND(&snapshot.commState, 1u);
             break;
 
+        case APP_NFC_SEOUL_CMD_ALL_RES:
+            APP_NFC_SEOUL_APPEND(snapshot.meterIdBcd, sizeof(snapshot.meterIdBcd));
+            APP_NFC_SEOUL_APPEND(snapshot.reportTime, sizeof(snapshot.reportTime));
+            APP_NFC_SEOUL_APPEND(snapshot.readingTime, sizeof(snapshot.readingTime));
+            APP_NFC_SEOUL_APPEND(&snapshot.recordCount, 1u);
+            APP_NFC_SEOUL_APPEND(snapshot.reading, sizeof(snapshot.reading));
+            APP_NFC_SEOUL_APPEND(&snapshot.caliberDecimal, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.meterCode, 1u);
+            APP_NFC_SEOUL_APPEND(snapshot.terminalId, sizeof(snapshot.terminalId));
+            APP_NFC_SEOUL_APPEND(snapshot.firmwareVersion, sizeof(snapshot.firmwareVersion));
+            APP_NFC_SEOUL_APPEND(&snapshot.formatVersion, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.alarmStatus, 1u);
+            APP_NFC_SEOUL_APPEND(snapshot.rsrp, sizeof(snapshot.rsrp));
+            APP_NFC_SEOUL_APPEND(&snapshot.ackCount, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.carrier, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.modemStatus, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.battery, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.commState, 1u);
+            break;
+
         default:
             return APP_STATUS_INVALID_PARAM;
     }
@@ -1463,6 +1483,11 @@ AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t fram
 
         case APP_NFC_SEOUL_CMD_RSET_REQ:
             cmd2 = APP_NFC_SEOUL_CMD_RSET_RES;
+            p_result->commRequested = APP_TRUE;
+            break;
+
+        case APP_NFC_SEOUL_CMD_ALL_REQ:
+            cmd2 = APP_NFC_SEOUL_CMD_ALL_RES;
             p_result->commRequested = APP_TRUE;
             break;
 

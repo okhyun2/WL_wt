@@ -35,6 +35,8 @@ extern "C" {
 #define APP_NFC_SEOUL_CMD_AMI_RES                 (0x04u)
 #define APP_NFC_SEOUL_CMD_RSET_REQ                (0x05u)
 #define APP_NFC_SEOUL_CMD_RSET_RES                (0x06u)
+#define APP_NFC_SEOUL_CMD_ALL_REQ                 (0x0Eu)
+#define APP_NFC_SEOUL_CMD_ALL_RES                 (0x0Fu)
 
 #define APP_NFC_SEOUL_NDEF_EEPROM_BLOCK           (NFC_NDEF_START_BLOCK)
 #define APP_NFC_SEOUL_NDEF_SRAM_BLOCK             (NFC_SRAM_BASE_ADDR + 1u)
