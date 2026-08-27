@@ -671,9 +671,7 @@ static uint8_t App_NfcSeoulWaitSyncWriteGate(void)
                                         0u,
                                         &status0) == NFC_RESULT_OK)
         {
-            //TODO delete
-            if (/*((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0u) && */
-                ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0u))
+            if ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0u)
             {
                 APP_LOGI("NFC", "Seoul sync-write gate ok status0=0x%02X", (unsigned int)status0);
                 return APP_TRUE;
@@ -961,40 +959,6 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
         }
     }
 
-    #if 0 //TODO delete
-    uint8_t attempt;
-
-    /* sram mode + ready 확인을 재시도 (I2C_IF_LOCKED / arbitration 충돌 흡수) */
-    #define APP_NFC_SEOUL_SRAMMODE_RETRY_MAX   (10u)
-    #define APP_NFC_SEOUL_SRAMMODE_RETRY_DELAY (5u)
-
-    for (attempt = 0u; attempt < APP_NFC_SEOUL_SRAMMODE_RETRY_MAX; attempt++)
-    {
-        NFC_NTP53321_PTTransferDir(g_appNfcSeoulTag, false); //true:NFC->I2C, false:I2C->NFC
-        nfcRet = NFC_NTP53321_EnableSRAMPathThru(g_appNfcSeoulTag, true);
-        if (nfcRet == NFC_RESULT_OK)
-        {
-            HAL_Delay(APP_NFC_SEOUL_SRAMMODE_RETRY_DELAY);
-            if (App_NfcSeoulIsSramModeReady() == APP_TRUE)
-            {
-                break;   /* 준비 완료 */
-            }
-        }
-        HAL_Delay(APP_NFC_SEOUL_SRAMMODE_RETRY_DELAY);
-    }
-    if(attempt >= APP_NFC_SEOUL_SRAMMODE_RETRY_MAX)
-    {
-        /* I2C_IF_LOCKED(=BUSY) 등은 잠깐 후 재시도 */
-        APP_LOGE("NFC", "Seoul enable retry %u/%u ret=%d",
-                 (unsigned int)(attempt + 1u),
-                 (unsigned int)APP_NFC_SEOUL_SRAMMODE_RETRY_MAX,
-                 (int)nfcRet);
-
-        g_appNfcSeoulSramSyncPending = APP_TRUE;
-        return APP_STATUS_NOT_INITIALIZED;
-    }
-    #endif
-
     status = App_NfcSeoulWriteNdefToBlock(APP_NFC_SEOUL_NDEF_SRAM_BLOCK,
                                           ndef,
                                           numBlocks,
@@ -1190,11 +1154,8 @@ static uint8_t App_NfcSeoulTryExtractPayload(uint16_t startBlock, uint8_t *p_pay
         return APP_FALSE;
     }
 
-    //debug
-    #if 1 //kiki TODO delete
     APP_LOGI("NFC", "read startBlock:%04x", startBlock);
     App_LogHexDump(APP_LOG_LEVEL_INFO, "NFC-Debug", (const uint8_t *)raw, APP_NFC_SEOUL_NDEF_MAX_BYTES);
-    #endif
 
     if((raw[8] != APP_NFC_SEOUL_CMD_REQ_GROUP) && (raw[8] != APP_NFC_SEOUL_CMD_RES_GROUP) )
     {

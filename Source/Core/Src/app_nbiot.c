@@ -4163,6 +4163,7 @@ AppStatus_t App_Bc95AtCreateUdpSocket(uint16_t localPort, int32_t *p_socketOut)
     return APP_STATUS_OK;
 }
 
+#if 0 //optimize for del
 static AppBc95AtStatus_t App_Bc95AtParseNsostr(const char *p_resp,
                                                int *p_sock, int *p_seq, int *p_status)
 {
@@ -4177,6 +4178,7 @@ static AppBc95AtStatus_t App_Bc95AtParseNsostr(const char *p_resp,
     if (sscanf(p_pfx, "%d,%d,%d", p_sock, p_seq, p_status) != 3) return APP_BC95_AT_ERR_FORMAT;
     return APP_BC95_AT_OK;
 }
+#endif
 
 static AppBc95AtStatus_t App_Bc95AtFindNsostrForSocketSeq(const char *p_resp,
                                                           int targetSock,
@@ -5022,49 +5024,12 @@ AppStatus_t App_Bc95AtSyncTimeToRtc(void)
 {
     AppBc95Time_t timeInfo;
 
-  #if 0 //kiki TODO del
-    AppStatus_t status;
-    status = App_Bc95AtFetchTimeWithRetry(&timeInfo, APP_BC95_TIME_SYNC_RETRY_MAX);
-    if (status != APP_STATUS_OK)
+    if ((App_Bc95AtFetchTimeWithRetry(&timeInfo, APP_BC95_TIME_SYNC_RETRY_MAX) == APP_STATUS_OK) &&
+        (timeInfo.valid != 0u))
     {
-        APP_LOGE("NBIOT", "Time fetch failed (status=%d)", (int)status);
-        return status;
+        return App_ClockSyncFromNbiot(&timeInfo); /* INITS/오차 판단 + 타임존 반영 */
     }
-
-    APP_LOGI("NBIOT", "Module time: %04u-%02u-%02u %02u:%02u:%02u (TZ=%+d/15min)",
-             (unsigned)timeInfo.dateTime.year, (unsigned)timeInfo.dateTime.month, (unsigned)timeInfo.dateTime.day,
-             (unsigned)timeInfo.dateTime.hour, (unsigned)timeInfo.dateTime.minute, (unsigned)timeInfo.dateTime.second,
-             (int)timeInfo.tzQuarterHour);
-
-    /* 기존 RTC_SetTime() 사용
-     *   year   : 2자리(YY, 2000 기준) - HAL_RTC_SetDate 가 요구하는 형식
-     *   month  : 1~12
-     *   date   : 1~31
-     *   hour/min/sec : 0~23 / 0~59 / 0~59
-     */
-    RTC_SetTime((int)(timeInfo.dateTime.year - 2000u),
-                (int)timeInfo.dateTime.month,
-                (int)timeInfo.dateTime.day,
-                (int)timeInfo.dateTime.hour,
-                (int)timeInfo.dateTime.minute,
-                (int)timeInfo.dateTime.second);
-
-    APP_LOGI("NBIOT", "RTC set to 20%02u-%02u-%02u %02u:%02u:%02u",
-             (unsigned)(timeInfo.dateTime.year - 2000u),
-             (unsigned)timeInfo.dateTime.month, (unsigned)timeInfo.dateTime.day,
-             (unsigned)timeInfo.dateTime.hour, (unsigned)timeInfo.dateTime.minute, (unsigned)timeInfo.dateTime.second);
-
-    return APP_STATUS_OK;
-
-  #else
-if ((App_Bc95AtFetchTimeWithRetry(&timeInfo, APP_BC95_TIME_SYNC_RETRY_MAX) == APP_STATUS_OK) &&
-    (timeInfo.valid != 0u))
-{
-    return App_ClockSyncFromNbiot(&timeInfo);   /* INITS/오차 판단 + 타임존 반영 */
-}
-return APP_STATUS_FATAL;
-#endif
-
+    return APP_STATUS_FATAL;
 }
 
 #ifndef APP_RTC_SYNC_THRESHOLD_SEC
@@ -5102,6 +5067,7 @@ static int64_t App_DateTimeToEpoch(const AppDateTime_t *dt)
 }
 
 /* epoch 초 → AppDateTime_t (역변환). 타임존 보정 결과를 다시 년/월/일로 */
+#if 0 //optimize for del
 static void App_EpochToDateTime(int64_t epoch, AppDateTime_t *dt)
 {
     static const uint8_t mdaysNorm[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
@@ -5138,6 +5104,7 @@ static void App_EpochToDateTime(int64_t epoch, AppDateTime_t *dt)
         dt->day   = (uint8_t)(days + 1);
     }
 }
+#endif
 
 /**
  * @brief NB-IoT CCLK 시각을 타임존 보정 후 RTC와 비교하여,

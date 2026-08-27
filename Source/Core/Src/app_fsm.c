@@ -491,48 +491,6 @@ AppStatus_t App_NfcInit(void)
 #define APP_FSM_NFC_PT_READ_TIMEOUT_MS     300U
 #define APP_FSM_NFC_PT_READ_POLL_MS        10U
 
-#if 0 //TODO delete
-static AppStatus_t App_FsmNfcEnsurePassThroughRxMode(void)
-{
-    NFC_Result_t ret;
-    uint8_t cfg1 = 0U;
-
-    ret = NFC_NTP53321_PTTransferDir(&g_nfcTagHandle, true);
-    if (ret != NFC_RESULT_OK)
-    {
-        APP_LOGW("FSM",
-                 "trace nfc pt setup: dir NFC->I2C failed ret=%d",
-                 (int)ret);
-        return APP_STATUS_INIT_FAILED;
-    }
-
-    ret = NFC_NTP53321_EnableSRAMPathThru(&g_nfcTagHandle, true);
-    if (ret != NFC_RESULT_OK)
-    {
-        APP_LOGW("FSM",
-                 "trace nfc pt setup: enable pass-through failed ret=%d",
-                 (int)ret);
-        return APP_STATUS_INIT_FAILED;
-    }
-
-    if (NFC_NTP53321_ReadSessionReg(&g_nfcTagHandle,
-                                    NFC_SESSION_CONFIG_REG_ADDR,
-                                    1U,
-                                    &cfg1) == NFC_RESULT_OK)
-    {
-        APP_LOGI("FSM",
-                 "trace nfc pt setup: dir=NFC->I2C passthru=on cfg1=0x%02X",
-                 (unsigned int)cfg1);
-    }
-    else
-    {
-        APP_LOGI("FSM", "trace nfc pt setup: dir=NFC->I2C passthru=on cfg1=read-fail");
-    }
-
-    return APP_STATUS_OK;
-}
-#endif
-
 static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
                                            uint8_t *p_status1)
 {
@@ -570,9 +528,7 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
                  (unsigned int)status0,
                  (unsigned int)status1);
 
-            //TODO delete
-        if (/*((status0 & NFC_STATUS0_PT_TRANSFER_DIR) != 0U) &&*/
-            ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0U))
+        if ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0U)
         {
             if (p_status0 != NULL) { *p_status0 = status0; }
             if (p_status1 != NULL) { *p_status1 = status1; }
@@ -698,26 +654,6 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
     {
         return APP_STATUS_INVALID_PARAM;
     }
-
-#if 0 // TODO delete
-    ret = NFC_NTP53321_ReadBlock(&g_nfcTagHandle,
-                                 NFC_SRAM_CMD_BLOCK,
-                                 (uint8_t *)raw);
-    if (ret != NFC_RESULT_OK)
-    {
-        APP_LOGW("FSM",
-                 "trace nfc indicate read fail blk=0x%04X ret=%d",
-                 (unsigned int)NFC_SRAM_CMD_BLOCK,
-                 (int)ret);
-        return APP_STATUS_OK;
-    }
-    APP_LOGI("FSM",
-             "trace nfc cmd raw blk bytes=%02X %02X %02X %02X",
-             (unsigned int)raw[0],
-             (unsigned int)raw[1],
-             (unsigned int)raw[2],
-             (unsigned int)raw[3]);
-#endif
 
     ret = NFC_NTP53321_ReadBlock(&g_nfcTagHandle,
                                  NFC_SRAM_UCMD_IND_BLOCK,
@@ -1087,14 +1023,6 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     }
 
     g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
-
-    #if 0 //TODO delete
-    if (App_FsmNfcEnsurePassThroughRxMode() != APP_STATUS_OK)
-    {
-        APP_LOGW("FSM", "trace nfc pt setup failed -> release to idle");
-        return APP_STATUS_OK;
-    }
-    #endif
 
     for (;;)
     {
@@ -3008,6 +2936,7 @@ static void App_FsmExecuteResetBoot(void)
     }
 }
 
+#if 0 //optimize for del
 static AppStatus_t App_FsmHandleFatalLowPower(const char *p_reason, AppStatus_t fatalStatus)
 {
     AppStatus_t powerOffStatus;
@@ -3036,6 +2965,7 @@ static AppStatus_t App_FsmHandleFatalLowPower(const char *p_reason, AppStatus_t 
     APP_RETURN_IF_FALSE(App_SystemRequestLowPowerNoWake(APP_TRUE) == APP_STATUS_OK, APP_STATUS_INIT_FAILED);
     return APP_STATUS_OK;
 }
+#endif
 
 static AppStatus_t App_FsmHandleWakeupLowPower(const char *p_reason, AppStatus_t fatalStatus)
 {

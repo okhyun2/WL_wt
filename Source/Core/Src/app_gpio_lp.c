@@ -66,6 +66,7 @@ static void App_GpioLpEnablePortClocks(void)
 /**
  * @brief Disable all GPIO port clocks used by the board.
  */
+#if 0 //optimize for del
 static void App_GpioLpDisablePortClocks(void)
 {
     __HAL_RCC_GPIOA_CLK_DISABLE();
@@ -74,6 +75,7 @@ static void App_GpioLpDisablePortClocks(void)
     __HAL_RCC_GPIOD_CLK_DISABLE();
     __HAL_RCC_GPIOH_CLK_DISABLE();
 }
+#endif
 
 
 /**
@@ -122,6 +124,7 @@ void App_GpioLpConfigOutput(GPIO_TypeDef *gpioPort, uint32_t pinMask, GPIO_PinSt
  * @param gpioPort GPIO port.
  * @param pinMask Pin mask.
  */
+#if 0 //optimize for del
 static void App_GpioLpConfigExtiRising(GPIO_TypeDef *gpioPort, uint32_t pinMask)
 {
     GPIO_InitTypeDef gpioInit;
@@ -133,6 +136,7 @@ static void App_GpioLpConfigExtiRising(GPIO_TypeDef *gpioPort, uint32_t pinMask)
 
     HAL_GPIO_Init(gpioPort, &gpioInit);
 }
+#endif
 
 /**
  * @brief Configure selected pins as rising-edge wake/event inputs.

@@ -550,15 +550,19 @@ static void MX_I2C3_Init(void)
 }
 
 #if 0 //no use
+#if 0 //optimize for del
 static void disable_lptim_wakeup(void)
 {
     __HAL_LPTIM_WAKEUPTIMER_EXTI_DISABLE_IT();
 }
+#endif
 
+#if 0 //optimize for del
 static void enable_lptim_wakeup(void)
 {
     __HAL_LPTIM_WAKEUPTIMER_EXTI_ENABLE_IT();
 }
+#endif
 
 #define LPTIM1_ARR  (1023U)   // 32.768kHz / 32 / 1024 = 1Hz
 

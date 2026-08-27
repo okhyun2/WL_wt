@@ -328,133 +328,6 @@ NFC_Result_t NFC_NTP53321_EnableSRAMMirror(NFC_NTP53321_Handle_t *hntag, bool en
     return NFC_RESULT_OK;
 }
 
-#if 0 //TODO delete
-NFC_Result_t NFC_NTP53321_PTTransferDir(NFC_NTP53321_Handle_t *hntag, bool dir)
-{
-    NFC_Result_t ret;
-    uint8_t      value;
-    uint8_t      status0 = 0U;
-    uint8_t      status1 = 0U;
-    uint8_t      cfg1 = 0U;
-    uint8_t      arbiter = 0U;
-
-    if ((hntag == NULL) || (hntag->hi2c == NULL))
-    {
-        return NFC_RESULT_ERROR_INVALID_PARAM;
-    }
-
-    value = dir ? 1 : 0; /* R/W: 0=I2C→NFC, 1=NFC→I2C */
-
-    ret = nfc_i2c_reg_write(hntag,
-                            NFC_SESSION_CONFIG_REG_ADDR,
-                            1U,
-                            NFC_CONFIG1_PT_TRANSFER_DIR_MASK,
-                            value);
-    if (ret != NFC_RESULT_OK)
-    {
-        return ret;
-    }
-
-    ret = NFC_NTP53321_ReadSessionReg(hntag,
-                                      NFC_SESSION_CONFIG_REG_ADDR,
-                                      1U,
-                                      &cfg1);
-    if (ret != NFC_RESULT_OK)
-    {
-        return ret;
-    }
-
-    APP_LOGI("NFC", "SRAM PathThruDir %s cfg1=0x%02X", dir ? "NFC->I2C" : "I2C->NFC", (unsigned int)cfg1);
-    return NFC_RESULT_OK;
-}
-#endif
-
-
-#if 0 //TODO delete
-/**
- * @brief SRAM PathThrough 활성화/비활성화
- *
- * ARBITER_MODE는 CONFIG_REG(세션, 0x10A1 Byte1)의 bit[3:2]로 즉시 제어합니다.
- * → WRITE REGISTER 사용 (nfc_i2c_reg_write)
- *   block=0x10A1, reg_offset=1(Byte1=CONFIG_1_REG),
- *   mask=0x0C(bit3:2), value=0x08(passthru) 또는 0x00(normal)
- */
-NFC_Result_t NFC_NTP53321_EnableSRAMPathThru(NFC_NTP53321_Handle_t *hntag, bool enable)
-{
-    NFC_Result_t ret;
-    uint8_t      value;
-    uint8_t      status0 = 0U;
-    uint8_t      status1 = 0U;
-    uint8_t      cfg1 = 0U;
-    uint8_t      arbiter = 0U;
-
-    if ((hntag == NULL) || (hntag->hi2c == NULL))
-    {
-        return NFC_RESULT_ERROR_INVALID_PARAM;
-    }
-
-    value = enable ? NFC_CONFIG1_ARBITER_PASSTHRU : NFC_CONFIG1_ARBITER_NORMAL;
-
-    if (enable)
-    {
-        ret = NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 0U, &status0);
-        if (ret != NFC_RESULT_OK)
-        {
-            return ret;
-        }
-
-        ret = NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 1U, &status1);
-        if (ret != NFC_RESULT_OK)
-        {
-            return ret;
-        }
-
-        if ((status1 & NFC_STATUS1_I2C_IF_LOCKED) != 0u)
-        {
-            APP_LOGD("NFC", "I2C_IF_LOCKED");
-            return NFC_RESULT_ERROR_BUSY;
-        }
-
-        if (((status0 & NFC_STATUS0_VCC_SUPPLY_OK) == 0u) ||
-            ((status0 & NFC_STATUS0_NFC_FIELD_OK) == 0u) ||
-            ((status1 & NFC_STATUS1_VCC_BOOT_OK) == 0u) ||
-            ((status1 & NFC_STATUS1_NFC_BOOT_OK) == 0u))
-        {
-            return NFC_RESULT_ERROR_BUSY;
-        }
-    }
-
-    ret = nfc_i2c_reg_write(hntag,
-                            NFC_SESSION_CONFIG_REG_ADDR,
-                            1U,
-                            NFC_CONFIG1_ARBITER_MODE_MASK,
-                            value);
-    if (ret != NFC_RESULT_OK)
-    {
-        return ret;
-    }
-
-    ret = NFC_NTP53321_ReadSessionReg(hntag,
-                                      NFC_SESSION_CONFIG_REG_ADDR,
-                                      1U,
-                                      &cfg1);
-    if (ret != NFC_RESULT_OK)
-    {
-        return ret;
-    }
-
-    arbiter = (uint8_t)(cfg1 & NFC_CONFIG1_ARBITER_MODE_MASK);
-    if ((arbiter != (value & NFC_CONFIG1_ARBITER_MODE_MASK)) || (enable && ((cfg1 & NFC_CONFIG1_SRAM_ENABLED) == 0u)))
-    {
-        APP_LOGE("NFC", "SRAM_EN");
-        return NFC_RESULT_ERROR_BUSY;
-    }
-
-    APP_LOGI("NFC", "SRAM PathThru %s cfg1=0x%02X", enable ? "ON" : "OFF", (unsigned int)cfg1);
-    return NFC_RESULT_OK;
-}
-#endif
-
 /* ============================================================
  * Memory Access  (WRITE MEMORY / READ MEMORY)
  * ============================================================ */
@@ -467,6 +340,7 @@ NFC_Result_t NFC_NTP53321_EnableSRAMPathThru(NFC_NTP53321_Handle_t *hntag, bool 
  * 리더(NFC)가 SRAM에 데이터를 실제로 썼는지 확인 후 READ를 진행하기 위함.
  * ARBITER_MODE = SRAM_MIRROR 상태에서만 유효하게 동작.
  */
+#if 0 //optimize for del
 static bool nfc_wait_sram_data_ready(NFC_NTP53321_Handle_t *h)
 {
     NFC_Result_t ret;
@@ -486,6 +360,7 @@ static bool nfc_wait_sram_data_ready(NFC_NTP53321_Handle_t *h)
     APP_LOGW("NFC", "SRAM_DATA_READY timeout (status0=0x%02X)", status0);
     return false;
 }
+#endif
 
 NFC_Result_t NFC_NTP53321_ReadBlock(NFC_NTP53321_Handle_t *hntag,
                                      uint16_t block_addr, uint8_t *data)
