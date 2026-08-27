@@ -8,6 +8,7 @@
  */
 
 #include "nfc_user_command.h"
+#include "nfc_app_control_command.h"
 #include "app_build_config.h"
 #include <stdio.h>
 #include <string.h>
@@ -646,6 +647,46 @@ static NFC_CMD_Result_t NFC_CMD_Handler_ResetDevice(
     return NFC_CMD_RESULT_OK;   /* never reached */
 }
 
+
+static NFC_CMD_Result_t NFC_CMD_Handler_AppControl(
+        void *hv, const NFC_CMD_Packet_t *pkt, NFC_CMD_ResultPacket_t *res)
+{
+    uint8_t appRsp[NFC_APP_CTRL_RSP_MAX_LEN] = {0};
+    uint8_t appRspLen = 0U;
+    uint8_t transportResult;
+    (void)hv;
+
+    nfc_cmd_prepare_result(res, NFC_CMD_RESULT_OK);
+
+    transportResult = NfcAppCtrl_Execute(pkt->payload,
+                                         pkt->header.payload_len,
+                                         appRsp,
+                                         &appRspLen);
+    if (transportResult != (uint8_t)NFC_CMD_RESULT_OK) {
+        res->result_code = transportResult;
+        res->data_len = 0U;
+        APP_LOGI("NFC", "AppControl rejected transport=%u", (unsigned int)transportResult);
+        return (NFC_CMD_Result_t)transportResult;
+    }
+
+    if (appRspLen > NFC_CMD_MAX_RESULT) {
+        appRspLen = NFC_CMD_MAX_RESULT;
+    }
+
+    res->result_code = NFC_CMD_RESULT_OK;
+    res->data_len = appRspLen;
+    if (appRspLen > 0U) {
+        memcpy(res->data, appRsp, appRspLen);
+    }
+
+    APP_LOGI("NFC", "AppControl accepted len=%u op=0x%02X grp=0x%02X item=0x%02X",
+             (unsigned int)appRspLen,
+             (unsigned int)((appRspLen > 0U) ? appRsp[0] : 0U),
+             (unsigned int)((appRspLen > 2U) ? appRsp[2] : 0U),
+             (unsigned int)((appRspLen > 3U) ? appRsp[3] : 0U));
+    return NFC_CMD_RESULT_OK;
+}
+
 static NFC_CMD_Result_t NFC_CMD_Handler_FactoryReset(
         void *hv, const NFC_CMD_Packet_t *pkt, NFC_CMD_ResultPacket_t *res)
 {
@@ -686,6 +727,7 @@ static const NFC_CMD_TableEntry_t nfc_cmd_table[] = {
     {NFC_CMD_ID_SET_INTERVAL,  NFC_CMD_PERM_CONFIG, NFC_CMD_Handler_SetInterval,  "SetInterval" },
     {NFC_CMD_ID_RESET_DEVICE,  NFC_CMD_PERM_ADMIN,  NFC_CMD_Handler_ResetDevice,  "ResetDevice" },
     {NFC_CMD_ID_FACTORY_RESET, NFC_CMD_PERM_ADMIN,  NFC_CMD_Handler_FactoryReset, "FactoryReset"},
+    {NFC_CMD_ID_APP_CONTROL,   NFC_CMD_PERM_ALL,    NFC_CMD_Handler_AppControl,  "AppControl" },
 };
 #define NFC_CMD_TABLE_SIZE  (sizeof(nfc_cmd_table)/sizeof(nfc_cmd_table[0]))
 
@@ -814,6 +856,16 @@ NFC_CMD_Result_t NFC_CMD_Process(NFC_CMD_Handle_t *hcmd)
            entry->name, ret,
            (unsigned long)hcmd->cmd_success_count,
            (unsigned long)hcmd->cmd_fail_count);
+
+    if (((uint8_t)pkt.header.cmd_id == (uint8_t)NFC_CMD_ID_APP_CONTROL) &&
+        (ret == NFC_CMD_RESULT_OK) &&
+        NfcAppCtrl_ConsumePendingReset())
+    {
+        APP_LOGI("NFC", "AppControl reset requested, rebooting in 200ms...");
+        HAL_Delay(200U);
+        NVIC_SystemReset();
+    }
+
     return ret;
 }
 

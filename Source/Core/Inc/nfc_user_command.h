@@ -26,7 +26,7 @@ extern "C" {
 #define NFC_CMD_MAGIC_WORD      0xAA55U
 #define NFC_CMD_MAX_PAYLOAD     16U
 #define NFC_CMD_MAX_RESULT      16U
-#define NFC_CMD_VERSION_STR     "2.3.0"
+#define NFC_CMD_VERSION_STR     "2.4.0"
 
 /* UCMD indicate block (0x003D): F5 AABl 5F = NFC->I2C, F4 AABl 4F = I2C->NFC */
 #define NFC_CMD_IND_NFC_TO_I2C_PREFIX   0xF5U
@@ -52,6 +52,7 @@ typedef enum {
     NFC_CMD_ID_SET_INTERVAL     = 0x0B,
     NFC_CMD_ID_RESET_DEVICE     = 0x10,
     NFC_CMD_ID_FACTORY_RESET    = 0x11,
+    NFC_CMD_ID_APP_CONTROL     = 0x12,
     NFC_CMD_ID_MAX              = 0xFF,
 } NFC_CMD_ID_t;
 
