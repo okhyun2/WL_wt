@@ -986,6 +986,34 @@ static AppStatus_t App_NfcSeoulWriteSramPayloadOnly(const uint8_t *p_payload, ui
     return status;
 }
 
+static AppStatus_t App_NfcSeoulWriteResponseCmd(uint8_t cmd)
+{
+    uint8_t kCmdBuf[4] = { NFC_METER_CMD_PREFIX, APP_NFC_SEOUL_CMD_REQ_GROUP, cmd, 0x00u };
+    NFC_Result_t ret;
+
+    if ((g_appNfcSeoulAttached != APP_TRUE) || (g_appNfcSeoulTag == NULL))
+    {
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    ret = NFC_NTP53321_WriteBlock(g_appNfcSeoulTag, NFC_SRAM_CMD_BLOCK, (uint8_t *)kCmdBuf);
+    if (ret != NFC_RESULT_OK)
+    {
+        APP_LOGE("NFC", "Seoul rsp cmd write fail blk=0x%04X ret=%d",
+                 (unsigned int)NFC_SRAM_CMD_BLOCK,
+                 (int)ret);
+        return APP_STATUS_INIT_FAILED;
+    }
+
+    APP_LOGI("NFC", "Seoul rsp cmd raw blk=0x%04X bytes=%02X %02X %02X %02X",
+             (unsigned int)NFC_SRAM_CMD_BLOCK,
+             (unsigned int)kCmdBuf[0],
+             (unsigned int)kCmdBuf[1],
+             (unsigned int)kCmdBuf[2],
+             (unsigned int)kCmdBuf[3]);
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_NfcSeoulWriteResponseStatus(void)
 {
     static const uint8_t kStatusBuf[4] = { 0x03u, 0x00u, 0x00u, 0x00u };
@@ -1456,6 +1484,13 @@ AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t fram
                                                   responseLength,
                                                   &responseStartBlock,
                                                   &responseBlockLen);
+    if (status != APP_STATUS_OK)
+    {
+        g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
+        return status;
+    }
+
+    status = App_NfcSeoulWriteResponseCmd(cmd2);
     if (status != APP_STATUS_OK)
     {
         g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
