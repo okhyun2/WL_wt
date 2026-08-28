@@ -1,6 +1,6 @@
 /**
  * @file    nfc_user_command.h
- * @brief   NFC Layer2 UCMD transport for direct APP_CONTROL commands.
+ * @brief   NFC UCMD transport layer for direct APP_CONTROL commands.
  */
 
 #ifndef NFC_USER_COMMAND_H
@@ -15,18 +15,16 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
+#define NFC_CMD_MAGIC_WORD              0xAA55U
 #define NFC_CMD_MAX_PAYLOAD             32U
 #define NFC_CMD_MAX_RESULT              32U
-#define NFC_CMD_VERSION_STR             "3.0.0"
+#define NFC_CMD_VERSION_STR             "3.1.0"
 
-/* UCMD indicate block (0x003D): F5 AABl 5F = NFC->I2C, F4 AABl 4F = I2C->NFC */
 #define NFC_CMD_IND_NFC_TO_I2C_PREFIX   0xF5U
 #define NFC_CMD_IND_NFC_TO_I2C_SUFFIX   0x5FU
 #define NFC_CMD_IND_I2C_TO_NFC_PREFIX   0xF4U
 #define NFC_CMD_IND_I2C_TO_NFC_SUFFIX   0x4FU
 #define NFC_CMD_IND_REQ_ADDR            ((uint8_t)(NFC_SRAM_UCMD_CMD_BLOCK & 0xFFU))
-#define NFC_CMD_IND_REQ_BLOCK_LEN_MIN   0x01U
-#define NFC_CMD_IND_REQ_BLOCK_LEN_MAX   ((uint8_t)(NFC_SRAM_UCMD_PAYLOAD_BLOCK_END - NFC_SRAM_UCMD_CMD_BLOCK + 1U))
 #define NFC_CMD_IND_RSP_ADDR            ((uint8_t)(NFC_SRAM_UCMD_PAYLOAD_BLOCK_START & 0xFFU))
 #define NFC_CMD_IND_RSP_BLOCK_LEN_MAX   ((uint8_t)(NFC_SRAM_UCMD_PAYLOAD_BLOCK_END - NFC_SRAM_UCMD_PAYLOAD_BLOCK_START + 1U))
 
@@ -66,7 +64,7 @@ typedef struct {
     uint8_t op_status;
     uint8_t payload_len;
     uint8_t reserved;
-} NFC_CMD_ResultPacket_t;
+} NFC_CMD_StatusPacket_t;
 
 typedef struct {
     uint16_t temp_threshold_x10;
@@ -94,4 +92,5 @@ void             NFC_CMD_PrintStats(NFC_CMD_Handle_t *hcmd);
 #ifdef __cplusplus
 }
 #endif
+
 #endif /* NFC_USER_COMMAND_H */
