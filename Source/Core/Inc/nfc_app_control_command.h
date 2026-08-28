@@ -10,8 +10,8 @@ extern "C" {
 
 #define NFC_APP_CTRL_CMD_CLASS         (0x20U)
 #define NFC_APP_CTRL_CMD_SIZE          (4U)
-#define NFC_APP_CTRL_REQ_MAX_LEN       (16U)
-#define NFC_APP_CTRL_RSP_MAX_LEN       (14U)
+#define NFC_APP_CTRL_REQ_MAX_LEN       (32U)
+#define NFC_APP_CTRL_RSP_MAX_LEN       (32U)
 #define NFC_APP_CTRL_REQ_BODY_MAX      (NFC_APP_CTRL_REQ_MAX_LEN - NFC_APP_CTRL_CMD_SIZE)
 #define NFC_APP_CTRL_RSP_OVERHEAD      (5U)  /* op_status(1) + CMD echo(4) */
 #define NFC_APP_CTRL_RSP_BODY_MAX      (NFC_APP_CTRL_RSP_MAX_LEN - NFC_APP_CTRL_RSP_OVERHEAD)

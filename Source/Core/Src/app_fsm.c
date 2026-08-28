@@ -734,12 +734,14 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
             ((raw[2] == APP_NFC_SEOUL_CMD_STOR_REQ) ||
              (raw[2] == APP_NFC_SEOUL_CMD_MTR_REQ) ||
              (raw[2] == APP_NFC_SEOUL_CMD_AMI_REQ) ||
-             (raw[2] == APP_NFC_SEOUL_CMD_RSET_REQ)))
+             (raw[2] == APP_NFC_SEOUL_CMD_RSET_REQ) ||
+             (raw[2] == APP_NFC_SEOUL_CMD_ALL_REQ)))
         {
             APP_LOGI("FSM", "trace nfc cmd branch=SEOUL frame cmd2=0x%02X", (unsigned int)raw[2]);
             return App_NfcSeoulProcessCommandFrame(raw, byteCount, p_seoulResult);
         }
 
+        /* CMD: AUTH */
         if ((raw[0] == NFC_AUTH_CMD_PREFIX) &&
             ((raw[1] == NFC_AUTH_CMD_CONNECT) ||
              (raw[1] == NFC_AUTH_CMD_CHALLENGE_READY) ||
@@ -796,8 +798,11 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
             return APP_STATUS_OK;
         }
 
-        if ((startBlock == NFC_SRAM_UCMD_HEADER_BLOCK) ||
-            (startBlock == NFC_SRAM_UCMD_DATA_BLOCK_START))
+        /* CMD: UCMD */
+        if ((raw[0] == NFC_APP_CTRL_CMD_CLASS) &&
+            ((raw[1] == NFC_APP_CTRL_GROUP_NB_CONTROL) ||
+             (raw[1] == NFC_APP_CTRL_GROUP_SELFTEST) ||
+             (raw[1] == NFC_APP_CTRL_GROUP_PARAMETER) ))
         {
             NFC_CMD_Result_t cmdStatus;
             APP_LOGI("FSM", "trace nfc cmd branch=UCMD start=0x%04X len=%u",
@@ -849,13 +854,13 @@ static void App_FsmNfcTraceUcmdDispatch(void)
     NFC_Result_t ret;
 
     ret = NFC_NTP53321_ReadBlock(&g_nfcTagHandle,
-                                 NFC_SRAM_UCMD_HEADER_BLOCK,
+                                 NFC_SRAM_UCMD_CMD_BLOCK,
                                  (uint8_t *)&hdr);
     if (ret != NFC_RESULT_OK)
     {
         APP_LOGW("FSM",
                  "trace ucmd peek header read fail blk=0x%04X ret=%d",
-                 (unsigned int)NFC_SRAM_UCMD_HEADER_BLOCK,
+                 (unsigned int)NFC_SRAM_UCMD_CMD_BLOCK,
                  (int)ret);
         return;
     }
@@ -877,13 +882,13 @@ static void App_FsmNfcTraceUcmdDispatch(void)
     if (hdr.cmd_id == (uint8_t)NFC_CMD_ID_APP_CONTROL)
     {
         ret = NFC_NTP53321_ReadBlock(&g_nfcTagHandle,
-                                     NFC_SRAM_UCMD_DATA_BLOCK_START,
+                                     NFC_SRAM_UCMD_PAYLOAD_BLOCK_START,
                                      firstPayloadWord);
         if (ret != NFC_RESULT_OK)
         {
             APP_LOGW("FSM",
                      "trace appctrl peek payload read fail blk=0x%04X ret=%d",
-                     (unsigned int)NFC_SRAM_UCMD_DATA_BLOCK_START,
+                     (unsigned int)NFC_SRAM_UCMD_PAYLOAD_BLOCK_START,
                      (int)ret);
             return;
         }

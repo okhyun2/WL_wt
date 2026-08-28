@@ -232,21 +232,21 @@ static NFC_CMD_Result_t nfc_cmd_read_packet(NFC_CMD_Handle_t *hcmd,
 {
     NFC_Result_t ret;
     ret = NFC_NTP53321_ReadBlock(hcmd->hntag,
-                                  NFC_SRAM_UCMD_HEADER_BLOCK,
+                                  NFC_SRAM_UCMD_CMD_BLOCK,
                                   (uint8_t *)&pkt->header);
     if (ret != NFC_RESULT_OK) {
         APP_LOGE("NFC", "UCMD read header failed blk=0x%04X ret=%d",
-                 (unsigned int)NFC_SRAM_UCMD_HEADER_BLOCK,
+                 (unsigned int)NFC_SRAM_UCMD_CMD_BLOCK,
                  (int)ret);
         return NFC_CMD_RESULT_I2C_ERROR;
     }
 
     ret = NFC_NTP53321_ReadMultiBlock(hcmd->hntag,
-                                       NFC_SRAM_UCMD_DATA_BLOCK_START,
+                                       NFC_SRAM_UCMD_PAYLOAD_BLOCK_START,
                                        pkt->payload, 4U);
     if (ret != NFC_RESULT_OK) {
         APP_LOGE("NFC", "UCMD read payload failed blk=0x%04X ret=%d",
-                 (unsigned int)NFC_SRAM_UCMD_DATA_BLOCK_START,
+                 (unsigned int)NFC_SRAM_UCMD_PAYLOAD_BLOCK_START,
                  (int)ret);
         return NFC_CMD_RESULT_I2C_ERROR;
     }
@@ -332,7 +332,7 @@ static NFC_CMD_Result_t nfc_cmd_write_result(NFC_CMD_Handle_t *hcmd,
     memcpy(&buf[2], r->data, dlen);
 
     ret = NFC_NTP53321_WriteMultiBlock(hcmd->hntag,
-                                        NFC_SRAM_UCMD_RESULT_BLOCK_START,
+                                        NFC_SRAM_UCMD_PAYLOAD_BLOCK_START,
                                         buf, 4U);
     return (ret == NFC_RESULT_OK) ? NFC_CMD_RESULT_OK
                                   : NFC_CMD_RESULT_I2C_ERROR;
