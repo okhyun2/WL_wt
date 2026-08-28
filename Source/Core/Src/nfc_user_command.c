@@ -268,12 +268,21 @@ NFC_CMD_Result_t NFC_CMD_Process(NFC_CMD_Handle_t *hcmd)
     if ((hcmd->hauth->state != NFC_AUTH_STATE_AUTHENTICATED) ||
         (hcmd->hauth->session.active != true))
     {
+        APP_LOGW("NFC", "No authentication state=%lu active=%u",
+             (unsigned long)hcmd->hauth->state,
+             (unsigned int)(hcmd->hauth->session.active ? 1u : 0u));
+
         hcmd->cmd_no_auth_count++;
+
+        //TODO debug uncomment
+        APP_LOGW("NFC", "Debug skip authentication");
+        /*
         (void)nfc_cmd_write_response_payload(hcmd, NULL, 0U, &writtenBlocks);
         (void)nfc_cmd_write_status(hcmd, NFC_CMD_STATUS_DONE_FAIL, (uint8_t)NFC_APP_CTRL_OP_FAIL, 0U);
         (void)nfc_cmd_publish_response_indicate(hcmd, writtenBlocks);
         nfc_cmd_wait_sync_read(hcmd);
         return NFC_CMD_RESULT_NOT_AUTH;
+        */
     }
 
     status = nfc_cmd_write_status(hcmd, NFC_CMD_STATUS_PROCESSING, (uint8_t)NFC_APP_CTRL_OP_BUSY, 0U);
