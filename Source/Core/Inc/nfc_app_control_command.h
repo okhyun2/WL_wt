@@ -23,9 +23,7 @@ typedef enum
 
 typedef enum
 {
-    NFC_APP_CTRL_NB_RESET_SUPPORT_GET  = 0x01U,
     NFC_APP_CTRL_NB_RESET_EXECUTE      = 0x02U,
-    NFC_APP_CTRL_NB_RESET_STATUS_GET   = 0x03U,
     NFC_APP_CTRL_NB_PERIOD_SET         = 0x10U,
     NFC_APP_CTRL_NB_PERIOD_GET         = 0x11U,
     NFC_APP_CTRL_NB_SPREAD_SET         = 0x12U,

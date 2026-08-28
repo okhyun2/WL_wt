@@ -163,9 +163,7 @@ static bool nfc_cmd_is_valid_request_indicate(const NFC_CMD_Indicate_t *ind)
 
     return (ind->prefix == NFC_CMD_IND_NFC_TO_I2C_PREFIX) &&
            (ind->suffix == NFC_CMD_IND_NFC_TO_I2C_SUFFIX) &&
-           (ind->addr == NFC_CMD_IND_REQ_ADDR) &&
-           (ind->block_len >= NFC_CMD_IND_REQ_BLOCK_LEN_MIN) &&
-           (ind->block_len <= NFC_CMD_IND_REQ_BLOCK_LEN_MAX);
+           (ind->addr == NFC_CMD_IND_REQ_ADDR);
 }
 
 static NFC_CMD_Result_t nfc_cmd_read_packet(NFC_CMD_Handle_t *hcmd,
@@ -173,9 +171,9 @@ static NFC_CMD_Result_t nfc_cmd_read_packet(NFC_CMD_Handle_t *hcmd,
                                             NFC_CMD_Packet_t *pkt)
 {
     NFC_Result_t ret;
-    uint8_t payloadBlocks;
+    (void)ind;
 
-    if ((hcmd == NULL) || (ind == NULL) || (pkt == NULL))
+    if ((hcmd == NULL) || (pkt == NULL))
     {
         return NFC_CMD_RESULT_INVALID_PARAM;
     }
@@ -187,44 +185,19 @@ static NFC_CMD_Result_t nfc_cmd_read_packet(NFC_CMD_Handle_t *hcmd,
                                  pkt->cmd);
     if (ret != NFC_RESULT_OK)
     {
-        APP_LOGE("NFC", "UCMD read cmd failed blk=0x%04X ret=%d",
-                 (unsigned int)NFC_SRAM_UCMD_CMD_BLOCK,
-                 (int)ret);
         return NFC_CMD_RESULT_I2C_ERROR;
     }
 
-    if (ind->block_len > 1U)
+    ret = NFC_NTP53321_ReadMultiBlock(hcmd->hntag,
+                                      NFC_SRAM_UCMD_PAYLOAD_BLOCK_START,
+                                      pkt->payload,
+                                      NFC_CMD_IND_RSP_BLOCK_LEN_MAX);
+    if (ret != NFC_RESULT_OK)
     {
-        payloadBlocks = (uint8_t)(ind->block_len - 1U);
-        if (payloadBlocks > NFC_CMD_IND_RSP_BLOCK_LEN_MAX)
-        {
-            return NFC_CMD_RESULT_INVALID_LEN;
-        }
-
-        ret = NFC_NTP53321_ReadMultiBlock(hcmd->hntag,
-                                          NFC_SRAM_UCMD_PAYLOAD_BLOCK_START,
-                                          pkt->payload,
-                                          payloadBlocks);
-        if (ret != NFC_RESULT_OK)
-        {
-            APP_LOGE("NFC", "UCMD read payload failed blk=0x%04X ret=%d",
-                     (unsigned int)NFC_SRAM_UCMD_PAYLOAD_BLOCK_START,
-                     (int)ret);
-            return NFC_CMD_RESULT_I2C_ERROR;
-        }
-        pkt->payload_len = (uint8_t)(payloadBlocks * 4U);
+        return NFC_CMD_RESULT_I2C_ERROR;
     }
 
-    APP_LOGI("NFC", "UCMD cmd=%02X %02X %02X %02X payloadLen=%u payload0=%02X %02X %02X %02X",
-             (unsigned int)pkt->cmd[0],
-             (unsigned int)pkt->cmd[1],
-             (unsigned int)pkt->cmd[2],
-             (unsigned int)pkt->cmd[3],
-             (unsigned int)pkt->payload_len,
-             (unsigned int)pkt->payload[0],
-             (unsigned int)pkt->payload[1],
-             (unsigned int)pkt->payload[2],
-             (unsigned int)pkt->payload[3]);
+    pkt->payload_len = NFC_CMD_MAX_PAYLOAD;
     return NFC_CMD_RESULT_OK;
 }
 

@@ -524,16 +524,6 @@ static uint8_t nfc_app_ctrl_handle_nb(const NfcAppCtrlCmd_t *p_cmd,
 
     switch (p_cmd->zz)
     {
-        case NFC_APP_CTRL_NB_RESET_SUPPORT_GET:
-            if (body_len != 0U)
-            {
-                return (uint8_t)NFC_CMD_RESULT_INVALID_LEN;
-            }
-            *p_op_status = (uint8_t)NFC_APP_CTRL_OP_OK;
-            (void)nfc_app_ctrl_append_byte(p_rsp_payload, p_rsp_len, 0x01U);
-            (void)nfc_app_ctrl_append_byte(p_rsp_payload, p_rsp_len, 0x03U);
-            return (uint8_t)NFC_CMD_RESULT_OK;
-
         case NFC_APP_CTRL_NB_RESET_EXECUTE:
             if (body_len < 2U)
             {
@@ -576,30 +566,6 @@ static uint8_t nfc_app_ctrl_handle_nb(const NfcAppCtrlCmd_t *p_cmd,
             (void)nfc_app_ctrl_append_byte(p_rsp_payload, p_rsp_len, 0x01U);
             (void)nfc_app_ctrl_append_byte(p_rsp_payload, p_rsp_len,
                                            (uint8_t)(resetMode == NFC_APP_CTRL_RESET_MODE_GRACEFUL ? 1U : 0U));
-            return (uint8_t)NFC_CMD_RESULT_OK;
-
-        case NFC_APP_CTRL_NB_RESET_STATUS_GET:
-            if (body_len != 0U)
-            {
-                return (uint8_t)NFC_CMD_RESULT_INVALID_LEN;
-            }
-            status = nfc_app_ctrl_load_device(&device);
-            if (status != APP_STATUS_OK)
-            {
-                *p_op_status = nfc_app_ctrl_map_status(status);
-                return (uint8_t)NFC_CMD_RESULT_OK;
-            }
-            *p_op_status = (uint8_t)NFC_APP_CTRL_OP_OK;
-            verifyResult = 0U;
-            if (device.reserved[NFC_APP_CTRL_DEVICE_RESERVED_RESET_TRACK_VALID_IDX] == NFC_APP_CTRL_RESET_TRACK_VALID_MARKER)
-            {
-                verifyResult = (uint8_t)(((uint8_t)(device.bootCount & 0xFFU) !=
-                                          device.reserved[NFC_APP_CTRL_DEVICE_RESERVED_RESET_TRACK_BOOT_IDX]) ? 1U : 0U);
-            }
-            (void)nfc_app_ctrl_append_byte(p_rsp_payload, p_rsp_len, verifyResult);
-            (void)nfc_app_ctrl_append_byte(p_rsp_payload, p_rsp_len, nfc_app_ctrl_get_attach_state_byte());
-            (void)nfc_app_ctrl_append_byte(p_rsp_payload, p_rsp_len, device.reserved[NFC_APP_CTRL_DEVICE_RESERVED_RESET_TRACK_REASON_IDX]);
-            (void)nfc_app_ctrl_append_byte(p_rsp_payload, p_rsp_len, 0x00U);
             return (uint8_t)NFC_CMD_RESULT_OK;
 
         case NFC_APP_CTRL_NB_PERIOD_SET:
