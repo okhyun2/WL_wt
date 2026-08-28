@@ -900,6 +900,19 @@ static void MX_GPIO_Init(void)
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
+  //Booting Buzzer
+  {
+    uint8_t index;
+
+    for (index = 0u; index < 2; index++)
+    {
+      HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_SET);
+      HAL_Delay(80);
+      HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
+      HAL_Delay(50);
+    }
+  }
+
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
