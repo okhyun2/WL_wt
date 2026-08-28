@@ -29,9 +29,8 @@ static NFC_CMD_Result_t nfc_cmd_write_response_payload(NFC_CMD_Handle_t *hcmd,
                                                        const uint8_t *p_payload,
                                                        uint8_t payloadLen,
                                                        uint8_t *p_writtenBlocks);
-static NFC_CMD_Result_t nfc_cmd_read_packet(NFC_CMD_Handle_t *hcmd,
-                                            const NFC_CMD_Indicate_t *ind,
-                                            NFC_CMD_Packet_t *pkt);
+static NFC_CMD_Result_t nfc_cmd_read_packet_fixed(NFC_CMD_Handle_t *hcmd,
+                                                  NFC_CMD_Packet_t *pkt);
 static NFC_CMD_Result_t nfc_cmd_publish_response_indicate(NFC_CMD_Handle_t *hcmd,
                                                           uint8_t payloadBlocks);
 static bool nfc_cmd_is_valid_request_indicate(const NFC_CMD_Indicate_t *ind);
@@ -166,19 +165,17 @@ static bool nfc_cmd_is_valid_request_indicate(const NFC_CMD_Indicate_t *ind)
            (ind->addr == NFC_CMD_IND_REQ_ADDR);
 }
 
-static NFC_CMD_Result_t nfc_cmd_read_packet(NFC_CMD_Handle_t *hcmd,
-                                            const NFC_CMD_Indicate_t *ind,
-                                            NFC_CMD_Packet_t *pkt)
+static NFC_CMD_Result_t nfc_cmd_read_packet_fixed(NFC_CMD_Handle_t *hcmd,
+                                                  NFC_CMD_Packet_t *pkt)
 {
     NFC_Result_t ret;
-    (void)ind;
 
     if ((hcmd == NULL) || (pkt == NULL))
     {
         return NFC_CMD_RESULT_INVALID_PARAM;
     }
 
-    (void)memset(pkt, 0, sizeof(*pkt));
+    memset(pkt, 0, sizeof(*pkt));
 
     ret = NFC_NTP53321_ReadBlock(hcmd->hntag,
                                  NFC_SRAM_UCMD_CMD_BLOCK,
@@ -191,13 +188,20 @@ static NFC_CMD_Result_t nfc_cmd_read_packet(NFC_CMD_Handle_t *hcmd,
     ret = NFC_NTP53321_ReadMultiBlock(hcmd->hntag,
                                       NFC_SRAM_UCMD_PAYLOAD_BLOCK_START,
                                       pkt->payload,
-                                      NFC_CMD_IND_RSP_BLOCK_LEN_MAX);
+                                      8U); /* 0x0031~0x0038 = 8 blocks */
     if (ret != NFC_RESULT_OK)
     {
         return NFC_CMD_RESULT_I2C_ERROR;
     }
 
     pkt->payload_len = NFC_CMD_MAX_PAYLOAD;
+
+    // debug
+    App_LogHexDump(APP_LOG_LEVEL_INFO,
+                   "NFC",
+                   (const uint8_t *)pkt->payload,
+                   pkt->payload_len);
+
     return NFC_CMD_RESULT_OK;
 }
 
@@ -239,6 +243,11 @@ static NFC_CMD_Result_t nfc_cmd_write_response_payload(NFC_CMD_Handle_t *hcmd,
                  (unsigned int)blockCount);
         return NFC_CMD_RESULT_I2C_ERROR;
     }
+    // debug
+    App_LogHexDump(APP_LOG_LEVEL_INFO,
+                   "NFC",
+                   (const uint8_t *)raw,
+                   blockCount * NFC_SRAM_BLOCK_SIZE);
 
     *p_writtenBlocks = blockCount;
     return NFC_CMD_RESULT_OK;
@@ -303,76 +312,56 @@ NFC_CMD_Result_t NFC_CMD_Init(NFC_CMD_Handle_t *hcmd,
 
 NFC_CMD_Result_t NFC_CMD_Process(NFC_CMD_Handle_t *hcmd)
 {
-    NFC_CMD_Indicate_t ind;
     NFC_CMD_Packet_t pkt;
     NfcAppCtrlCmd_t cmd;
     uint8_t rspPayload[NFC_CMD_MAX_RESULT];
     uint8_t rspPayloadLen = 0U;
     uint8_t opStatus = (uint8_t)NFC_APP_CTRL_OP_FAIL;
-    uint8_t writtenBlocks = NFC_CMD_MIN_RESPONSE_BLOCKS;
+    uint8_t writtenBlocks = 1U;
     NFC_CMD_Result_t status;
-    uint32_t resetDelayMs = 0U;
 
-    if ((hcmd == NULL) || (hcmd->initialized != true) || (hcmd->hntag == NULL) || (hcmd->hauth == NULL))
+    if ((hcmd == NULL) || (hcmd->initialized != true) ||
+        (hcmd->hntag == NULL) || (hcmd->hauth == NULL))
     {
         return NFC_CMD_RESULT_INVALID_PARAM;
     }
 
-    status = nfc_cmd_wait_sync_write(hcmd);
-    if (status != NFC_CMD_RESULT_OK)
-    {
-        return status;
-    }
-
-    status = nfc_cmd_read_indicate(hcmd, &ind);
-    if (status != NFC_CMD_RESULT_OK)
-    {
-        return status;
-    }
-
-    if (nfc_cmd_is_valid_request_indicate(&ind) != true)
-    {
-        APP_LOGW("NFC", "UCMD invalid indicate %02X %02X %02X %02X",
-                 (unsigned int)ind.prefix,
-                 (unsigned int)ind.addr,
-                 (unsigned int)ind.block_len,
-                 (unsigned int)ind.suffix);
-        (void)nfc_cmd_write_status(hcmd, NFC_CMD_STATUS_DONE_FAIL, (uint8_t)NFC_APP_CTRL_OP_RANGE_ERROR, 0U);
-        return NFC_CMD_RESULT_INVALID_PARAM;
-    }
-
-    status = nfc_cmd_write_status(hcmd, NFC_CMD_STATUS_PROCESSING, (uint8_t)NFC_APP_CTRL_OP_BUSY, 0U);
-    if (status != NFC_CMD_RESULT_OK)
-    {
-        return status;
-    }
-
+    #if 0 //TODO debug. uncomment
     if ((hcmd->hauth->state != NFC_AUTH_STATE_AUTHENTICATED) ||
         (hcmd->hauth->session.active != true))
     {
         hcmd->cmd_no_auth_count++;
-        (void)nfc_cmd_write_response_payload(hcmd, NULL, 0U, &writtenBlocks);
-        (void)nfc_cmd_write_status(hcmd, NFC_CMD_STATUS_DONE_FAIL, (uint8_t)NFC_APP_CTRL_OP_FAIL, 0U);
-        (void)nfc_cmd_publish_response_indicate(hcmd, writtenBlocks);
+        APP_LOGE("NFC", "No authentication state=%lu active=%u",
+                 (unsigned long)hcmd->hauth->state,
+                 (unsigned int)(hcmd->hauth->session.active ? 1u : 0u));
+
+        (void)nfc_cmd_write_status(hcmd, NFC_CMD_STATUS_DONE_FAIL,
+                                   (uint8_t)NFC_APP_CTRL_OP_FAIL, 0U);
+        (void)nfc_cmd_publish_response_indicate(hcmd, 1U);
         nfc_cmd_wait_sync_read(hcmd);
         return NFC_CMD_RESULT_NOT_AUTH;
     }
+    #endif
 
-    status = nfc_cmd_read_packet(hcmd, &ind, &pkt);
+    (void)nfc_cmd_write_status(hcmd, NFC_CMD_STATUS_PROCESSING,
+                               (uint8_t)NFC_APP_CTRL_OP_BUSY, 0U);   /* optional */
+
+    status = nfc_cmd_read_packet_fixed(hcmd, &pkt);   /* CMD 4B + payload 32B fixed */
     if (status != NFC_CMD_RESULT_OK)
     {
-        (void)nfc_cmd_write_status(hcmd, NFC_CMD_STATUS_DONE_FAIL, (uint8_t)NFC_APP_CTRL_OP_STORAGE_FAIL, 0U);
+        (void)nfc_cmd_write_status(hcmd, NFC_CMD_STATUS_DONE_FAIL,
+                                   (uint8_t)NFC_APP_CTRL_OP_STORAGE_FAIL, 0U);
         return status;
     }
 
-    (void)memcpy(&cmd, pkt.cmd, sizeof(cmd));
+    memcpy(&cmd, pkt.cmd, sizeof(cmd));
+
     status = (NFC_CMD_Result_t)NfcAppCtrl_Execute(&cmd,
                                                   pkt.payload,
-                                                  pkt.payload_len,
+                                                  NFC_CMD_MAX_PAYLOAD,
                                                   rspPayload,
                                                   &rspPayloadLen,
                                                   &opStatus);
-
     if (status == NFC_CMD_RESULT_OK)
     {
         hcmd->cmd_success_count++;
@@ -407,6 +396,7 @@ NFC_CMD_Result_t NFC_CMD_Process(NFC_CMD_Handle_t *hcmd)
 
     if ((status == NFC_CMD_RESULT_OK) && (NfcAppCtrl_ConsumePendingReset() == true))
     {
+        uint32_t resetDelayMs = 0;
         resetDelayMs = NfcAppCtrl_GetPendingResetDelayMs();
         if (resetDelayMs != 0U)
         {

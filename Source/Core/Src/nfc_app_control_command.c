@@ -109,32 +109,6 @@ static uint8_t nfc_app_ctrl_is_supported_period(uint8_t period)
                      (App_MeterServerOptionsIsPeriodSupported(period) != 0U));
 }
 
-static uint8_t nfc_app_ctrl_validate_cmd(const NfcAppCtrlCmd_t *p_cmd)
-{
-    if (p_cmd == NULL)
-    {
-        return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
-    }
-    if (p_cmd->xx != NFC_APP_CTRL_CMD_CLASS)
-    {
-        return (uint8_t)NFC_CMD_RESULT_INVALID_CMD;
-    }
-    if (p_cmd->reserved != 0x00U)
-    {
-        return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
-    }
-
-    switch (p_cmd->yy)
-    {
-        case NFC_APP_CTRL_GROUP_NB_CONTROL:
-        case NFC_APP_CTRL_GROUP_SELFTEST:
-        case NFC_APP_CTRL_GROUP_PARAMETER:
-            return (uint8_t)NFC_CMD_RESULT_OK;
-        default:
-            return (uint8_t)NFC_CMD_RESULT_INVALID_CMD;
-    }
-}
-
 static AppStatus_t nfc_app_ctrl_load_options(AppMeterServerFormatOptions_t *p_options)
 {
     AppStatus_t status;
@@ -1234,12 +1208,6 @@ uint8_t NfcAppCtrl_Execute(const NfcAppCtrlCmd_t *p_cmd,
 
     nfc_app_ctrl_response_reset(p_rsp_payload, p_rsp_payload_len);
     *p_op_status = (uint8_t)NFC_APP_CTRL_OP_FAIL;
-
-    ret = nfc_app_ctrl_validate_cmd(p_cmd);
-    if (ret != (uint8_t)NFC_CMD_RESULT_OK)
-    {
-        return ret;
-    }
 
     APP_LOGI("NFC", "AppCtrl cmd=%02X %02X %02X %02X payloadLen=%u",
              (unsigned int)p_cmd->xx,
