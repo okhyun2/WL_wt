@@ -12,70 +12,89 @@ extern "C" {
 #define NFC_APP_CTRL_CMD_SIZE          (4U)
 #define NFC_APP_CTRL_REQ_MAX_LEN       (32U)
 #define NFC_APP_CTRL_RSP_MAX_LEN       (32U)
-#define NFC_APP_CTRL_REQ_BODY_MAX      (NFC_APP_CTRL_REQ_MAX_LEN - NFC_APP_CTRL_CMD_SIZE)
-#define NFC_APP_CTRL_RSP_OVERHEAD      (5U)  /* op_status(1) + CMD echo(4) */
-#define NFC_APP_CTRL_RSP_BODY_MAX      (NFC_APP_CTRL_RSP_MAX_LEN - NFC_APP_CTRL_RSP_OVERHEAD)
 
 typedef enum
 {
-    NFC_APP_CTRL_GROUP_NB_CONTROL = 0x01,
-    NFC_APP_CTRL_GROUP_SELFTEST   = 0x02,
-    NFC_APP_CTRL_GROUP_PARAMETER  = 0x03,
-    NFC_APP_CTRL_GROUP_VENDOR     = 0x7FU
+    NFC_APP_CTRL_GROUP_NB_CONTROL = 0x01U,
+    NFC_APP_CTRL_GROUP_SELFTEST   = 0x02U,
+    NFC_APP_CTRL_GROUP_PARAMETER  = 0x03U,
+    NFC_APP_CTRL_GROUP_RESERVED   = 0x1FU
 } NfcAppCtrlGroup_t;
 
 typedef enum
 {
-    NFC_APP_CTRL_NB_RESET_EXECUTE    = 0x01,
-    NFC_APP_CTRL_NB_PERIOD_SET       = 0x02,
-    NFC_APP_CTRL_NB_PERIOD_GET       = 0x03,
-    NFC_APP_CTRL_NB_SPREAD_SET       = 0x04,
-    NFC_APP_CTRL_NB_SPREAD_GET       = 0x05,
-    NFC_APP_CTRL_NB_ACK_STATUS_GET   = 0x06,
-    NFC_APP_CTRL_NB_RESET_SUPPORT_GET = 0x07
+    NFC_APP_CTRL_NB_RESET_SUPPORT_GET  = 0x01U,
+    NFC_APP_CTRL_NB_RESET_EXECUTE      = 0x02U,
+    NFC_APP_CTRL_NB_RESET_STATUS_GET   = 0x03U,
+    NFC_APP_CTRL_NB_PERIOD_SET         = 0x10U,
+    NFC_APP_CTRL_NB_PERIOD_GET         = 0x11U,
+    NFC_APP_CTRL_NB_SPREAD_SET         = 0x12U,
+    NFC_APP_CTRL_NB_SPREAD_GET         = 0x13U,
+    NFC_APP_CTRL_NB_ACK_STATUS_GET     = 0x14U,
+    NFC_APP_CTRL_NB_RESERVED           = 0x1FU
 } NfcAppCtrlNbItem_t;
 
 typedef enum
 {
-    NFC_APP_CTRL_SELFTEST_RUN_QUICK  = 0x01,
-    NFC_APP_CTRL_SELFTEST_RUN_FULL   = 0x02,
-    NFC_APP_CTRL_SELFTEST_SUMMARY_GET = 0x03,
-    NFC_APP_CTRL_SELFTEST_DETAIL_GET = 0x04
+    NFC_APP_CTRL_SELFTEST_RUN_QUICK   = 0x01U,
+    NFC_APP_CTRL_SELFTEST_RUN_FULL    = 0x02U,
+    NFC_APP_CTRL_SELFTEST_SUMMARY_GET = 0x03U,
+    NFC_APP_CTRL_SELFTEST_DETAIL_GET  = 0x04U,
+    NFC_APP_CTRL_SELFTEST_RETRY_ITEM  = 0x05U,
+    NFC_APP_CTRL_SELFTEST_CLEAR       = 0x06U,
+    NFC_APP_CTRL_SELFTEST_RESERVED    = 0x1FU
 } NfcAppCtrlSelfTestItemCmd_t;
 
 typedef enum
 {
-    NFC_APP_CTRL_PARAM_SCHEDULE_GET    = 0x01,
-    NFC_APP_CTRL_PARAM_SCHEDULE_SET    = 0x02,
-    NFC_APP_CTRL_PARAM_POLICY_GET      = 0x03,
-    NFC_APP_CTRL_PARAM_POLICY_SET      = 0x04,
-    NFC_APP_CTRL_PARAM_DEVICE_GET      = 0x05,
-    NFC_APP_CTRL_PARAM_DEVICE_SET      = 0x06,
-    NFC_APP_CTRL_PARAM_RESTORE_DEFAULT = 0x07
+    NFC_APP_CTRL_PARAM_SCHEDULE_GET    = 0x01U,
+    NFC_APP_CTRL_PARAM_SCHEDULE_SET    = 0x02U,
+    NFC_APP_CTRL_PARAM_POLICY_GET      = 0x03U,
+    NFC_APP_CTRL_PARAM_POLICY_SET      = 0x04U,
+    NFC_APP_CTRL_PARAM_DEVICE_GET      = 0x05U,
+    NFC_APP_CTRL_PARAM_DEVICE_SET      = 0x06U,
+    NFC_APP_CTRL_PARAM_RESTORE_DEFAULT = 0x07U,
+    NFC_APP_CTRL_PARAM_READBACK_GET    = 0x08U,
+    NFC_APP_CTRL_PARAM_RESERVED        = 0x1FU
 } NfcAppCtrlParamItem_t;
 
 typedef enum
 {
-    NFC_APP_CTRL_OP_OK            = 0x00,
-    NFC_APP_CTRL_OP_FAIL          = 0x01,
-    NFC_APP_CTRL_OP_BUSY          = 0x02,
-    NFC_APP_CTRL_OP_NOT_SUPPORTED = 0x03,
-    NFC_APP_CTRL_OP_RANGE_ERROR   = 0x04,
-    NFC_APP_CTRL_OP_VERIFY_FAIL   = 0x05,
-    NFC_APP_CTRL_OP_STORAGE_FAIL  = 0x06,
-    NFC_APP_CTRL_OP_IN_PROGRESS   = 0x07
+    NFC_APP_CTRL_OP_OK            = 0x00U,
+    NFC_APP_CTRL_OP_FAIL          = 0x01U,
+    NFC_APP_CTRL_OP_BUSY          = 0x02U,
+    NFC_APP_CTRL_OP_NOT_SUPPORTED = 0x03U,
+    NFC_APP_CTRL_OP_RANGE_ERROR   = 0x04U,
+    NFC_APP_CTRL_OP_VERIFY_FAIL   = 0x05U,
+    NFC_APP_CTRL_OP_STORAGE_FAIL  = 0x06U,
+    NFC_APP_CTRL_OP_IN_PROGRESS   = 0x07U
 } NfcAppCtrlOpStatus_t;
 
 typedef enum
 {
-    NFC_APP_CTRL_PERIOD_DISABLED = 0x00,
-    NFC_APP_CTRL_PERIOD_1H = 0x01,
-    NFC_APP_CTRL_PERIOD_2H = 0x02,
-    NFC_APP_CTRL_PERIOD_3H = 0x03,
-    NFC_APP_CTRL_PERIOD_4H = 0x04,
-    NFC_APP_CTRL_PERIOD_6H = 0x06,
-    NFC_APP_CTRL_PERIOD_12H = 0x0CU
+    NFC_APP_CTRL_DIAG_STATE_IDLE        = 0x00U,
+    NFC_APP_CTRL_DIAG_STATE_RUNNING     = 0x01U,
+    NFC_APP_CTRL_DIAG_STATE_DONE        = 0x02U,
+    NFC_APP_CTRL_DIAG_STATE_FAIL        = 0x03U,
+    NFC_APP_CTRL_DIAG_STATE_UNAVAILABLE = 0x04U
+} NfcAppCtrlDiagState_t;
+
+typedef enum
+{
+    NFC_APP_CTRL_PERIOD_DISABLED = 0x00U,
+    NFC_APP_CTRL_PERIOD_1H       = 0x01U,
+    NFC_APP_CTRL_PERIOD_2H       = 0x02U,
+    NFC_APP_CTRL_PERIOD_3H       = 0x03U,
+    NFC_APP_CTRL_PERIOD_4H       = 0x04U,
+    NFC_APP_CTRL_PERIOD_6H       = 0x06U,
+    NFC_APP_CTRL_PERIOD_12H      = 0x0CU
 } NfcAppCtrlPeriod_t;
+
+typedef enum
+{
+    NFC_APP_CTRL_RESET_MODE_IMMEDIATE = 0x00U,
+    NFC_APP_CTRL_RESET_MODE_GRACEFUL  = 0x01U
+} NfcAppCtrlResetMode_t;
 
 typedef struct
 {
@@ -85,21 +104,14 @@ typedef struct
     uint8_t reserved;
 } NfcAppCtrlCmd_t;
 
-typedef struct
-{
-    uint8_t opStatus;
-    NfcAppCtrlCmd_t cmdEcho;
-    uint8_t body[NFC_APP_CTRL_RSP_BODY_MAX];
-} NfcAppCtrlResponseRaw_t;
-
-typedef char _nfc_app_ctrl_req_body_chk[(NFC_APP_CTRL_REQ_BODY_MAX == 12U) ? 1 : -1];
-typedef char _nfc_app_ctrl_rsp_body_chk[(NFC_APP_CTRL_RSP_BODY_MAX == 9U) ? 1 : -1];
-
-uint8_t NfcAppCtrl_Execute(const uint8_t *p_req_raw,
-                           uint8_t req_len,
-                           uint8_t *p_rsp_raw,
-                           uint8_t *p_rsp_len);
+uint8_t NfcAppCtrl_Execute(const NfcAppCtrlCmd_t *p_cmd,
+                           const uint8_t *p_req_payload,
+                           uint8_t req_payload_len,
+                           uint8_t *p_rsp_payload,
+                           uint8_t *p_rsp_payload_len,
+                           uint8_t *p_op_status);
 bool NfcAppCtrl_ConsumePendingReset(void);
+uint32_t NfcAppCtrl_GetPendingResetDelayMs(void);
 
 #ifdef __cplusplus
 }
