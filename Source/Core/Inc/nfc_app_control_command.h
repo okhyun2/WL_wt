@@ -101,6 +101,7 @@ typedef struct
     uint8_t zz;
     uint8_t reserved;
 } NfcAppCtrlCmd_t;
+#pragma pack(pop)
 
 typedef char _nfc_app_ctrl_req_union_size_chk[(sizeof(NfcAppCtrlReqPayload_u) == NFC_APP_CTRL_PAYLOAD_SIZE) ? 1 : -1];
 typedef char _nfc_app_ctrl_rsp_union_size_chk[(sizeof(NfcAppCtrlRspPayload_u) == NFC_APP_CTRL_PAYLOAD_SIZE) ? 1 : -1];
