@@ -17,6 +17,17 @@ static AppClockContext_t g_appClockContext;
 
 static uint8_t  g_lseBgAttemptActive = APP_FALSE;
 static uint32_t g_lseBgAttemptStartMs = 0u;
+static AppRtcClockSource_t g_bootRtcSourceCaptured = APP_RTC_CLOCK_SOURCE_UNKNOWN;
+
+const char *App_ClockRtcSourceToString(AppRtcClockSource_t source)
+{
+    switch (source)
+    {
+        case APP_RTC_CLOCK_SOURCE_LSI: return "LSI";
+        case APP_RTC_CLOCK_SOURCE_LSE: return "LSE";
+        default:                       return "UNKNOWN";
+    }
+}
 
 AppRtcClockSource_t App_ClockGetActiveRtcSource(void)
 {
@@ -52,6 +63,7 @@ AppStatus_t App_ClockBootStartLsiFirst(void)
 
     g_lseBgAttemptActive  = APP_TRUE;
     g_lseBgAttemptStartMs = HAL_GetTick();
+    g_bootRtcSourceCaptured = App_ClockGetActiveRtcSource();   /* 이 시점 값을 보존 */
 
     return APP_STATUS_OK;
 }
@@ -94,20 +106,28 @@ void App_ClockPollLseAndSwitchIfReady(void)
         if ((HAL_GetTick() - g_lseBgAttemptStartMs) > APP_CLOCK_LSE_BG_TOTAL_TIMEOUT_MS)
         {
             g_lseBgAttemptActive = APP_FALSE;
-            APP_LOGW("CLK", "LSE not ready in %lu ms, keep running on LSI",
-                     (unsigned long)APP_CLOCK_LSE_BG_TOTAL_TIMEOUT_MS);
+            APP_LOGW("CLK", "LSE not ready in %lu ms, current source=%s (keep running)",
+                     (unsigned long)APP_CLOCK_LSE_BG_TOTAL_TIMEOUT_MS,
+                     App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()));
         }
         return;
     }
 
     HAL_Delay(APP_CLOCK_LSE_POST_READY_SETTLE_MS);
 
+    AppRtcClockSource_t before = App_ClockGetActiveRtcSource();
+
     if (App_ClockSwitchRtcSourceKeepingTime(RCC_RTCCLKSOURCE_LSE,
                                              APP_RTC_LSE_ASYNC_PREDIV,
                                              APP_RTC_LSE_SYNC_PREDIV) == APP_STATUS_OK)
     {
-        HAL_RCCEx_EnableLSECSS_IT();   /* 런타임 LSE 장애 감시 시작 (EXTI19/RTC_IRQn 공유) */
-        APP_LOGI("CLK", "RTC clock switched: LSI -> LSE");
+        AppRtcClockSource_t after = App_ClockGetActiveRtcSource();
+
+        HAL_RCCEx_EnableLSECSS_IT(); /* 런타임 LSE 장애 감시 시작 (EXTI19/RTC_IRQn 공유) */
+        APP_LOGI("CLK", "RTC clock source switched: %s -> %s (RCC->CSR=0x%08lX)",
+                 App_ClockRtcSourceToString(before),
+                 App_ClockRtcSourceToString(after),
+                 (unsigned long)RCC->CSR); /* 문자열 + raw CSR 값 함께 출력 */
     }
 
     g_lseBgAttemptActive = APP_FALSE;
@@ -116,11 +136,20 @@ void App_ClockPollLseAndSwitchIfReady(void)
 /* HAL 약한 콜백 오버라이드: LSE 장애 시 자동으로 LSI로 폴백 */
 void HAL_RCCEx_LSECSS_Callback(void)
 {
+    AppRtcClockSource_t before = App_ClockGetActiveRtcSource();
+
     (void)App_ClockSwitchRtcSourceKeepingTime(RCC_RTCCLKSOURCE_LSI,
                                                APP_RTC_LSI_ASYNC_PREDIV,
                                                APP_RTC_LSI_SYNC_PREDIV);
-    CLEAR_BIT(RCC->CSR, RCC_CSR_LSEON);
-    APP_LOGE("CLK", "LSE CSS fault detected -> fell back to LSI");
+    {
+        AppRtcClockSource_t after = App_ClockGetActiveRtcSource();
+
+        CLEAR_BIT(RCC->CSR, RCC_CSR_LSEON);
+        APP_LOGE("CLK", "LSE CSS fault detected: RTC clock source switched %s -> %s (RCC->CSR=0x%08lX)",
+                 App_ClockRtcSourceToString(before),
+                 App_ClockRtcSourceToString(after),
+                 (unsigned long)RCC->CSR);
+    }
 }
 
 static AppClockSource_t App_ClockDecodeSystemSource(uint32_t halSource)
@@ -170,7 +199,9 @@ static AppStatus_t App_ClockCaptureContext(void)
     APP_RETURN_IF_FALSE(g_appClockContext.sysclkSource == APP_CLOCK_SOURCE_MSI, APP_STATUS_CLOCK_SOURCE_INVALID);
     APP_RETURN_IF_FALSE((__HAL_RCC_GET_FLAG(RCC_FLAG_MSIRDY) != RESET), APP_STATUS_CLOCK_VERIFY_FAILED);
 
-    APP_RETURN_IF_FALSE(g_appClockContext.lseReady == APP_TRUE, APP_STATUS_CLOCK_VERIFY_FAILED);
+    g_appClockContext.rtcSourceAtBoot  = g_bootRtcSourceCaptured;
+    g_appClockContext.rtcSourceCurrent = App_ClockGetActiveRtcSource();
+    APP_RETURN_IF_FALSE(App_ClockGetActiveRtcSource() != APP_RTC_CLOCK_SOURCE_UNKNOWN, APP_STATUS_CLOCK_VERIFY_FAILED);
     APP_RETURN_IF_FALSE(oscConfig.MSIState == RCC_MSI_ON, APP_STATUS_CLOCK_VERIFY_FAILED);
     APP_RETURN_IF_FALSE(oscConfig.MSIClockRange == APP_CLOCK_MSI_RANGE_BOOT, APP_STATUS_CLOCK_VERIFY_FAILED);
 

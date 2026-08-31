@@ -283,7 +283,7 @@ int main(void)
 
     /* 메인 루프 정상 동작 표시 */
     APP_WWDGFeed();
-    App_ClockPollLseAndSwitchIfReady(); /* 추가: non-blocking LSE 준비 확인/전환 */
+    App_ClockPollLseAndSwitchIfReady(); /* non-blocking LSE 준비 확인/전환 */
     App_SystemProcess();
   }
   /* USER CODE END 3 */

@@ -39,6 +39,8 @@ typedef struct
     uint32_t pclk1Hz;
     uint32_t pclk2Hz;
     AppClockSource_t sysclkSource;
+    AppClockSource_t rtcSourceAtBoot;   /* SystemClock_Config() 직후 확정된 소스 */
+    AppClockSource_t rtcSourceCurrent;  /* App_ClockInit() 호출 시점의 소스 */
 } AppClockContext_t;
 
 #define APP_RTC_TIME_STR_LEN     (20u)   /* "yyyy-mm-dd hh:mm:ss" + NUL = 20 */
@@ -59,6 +61,8 @@ typedef enum
     APP_RTC_CLOCK_SOURCE_LSI,
     APP_RTC_CLOCK_SOURCE_LSE
 } AppRtcClockSource_t;
+
+const char *App_ClockRtcSourceToString(AppRtcClockSource_t source);
 
 /* 부팅 시 LSI로 즉시 RTC 클럭을 확정하고 LSE는 백그라운드로 기동 시작 */
 AppStatus_t App_ClockBootStartLsiFirst(void);

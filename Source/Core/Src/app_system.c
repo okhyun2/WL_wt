@@ -240,6 +240,12 @@ static void handle_rtc_alarm_wakeup(uint32_t flags)
 static void handle_rtc_wut_wakeup(void)
 {
     g_appSystemContext.lastRtcAlarmFlags = WAKEUP_FLAG_RTC_WUT;
+    if (App_SystemCanDebugLog() == APP_TRUE)
+    {
+        APP_LOGI("CLK", "Wake(WUT) RTC clock source=%s",
+                 App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()));
+    }
+
     App_SystemHandleRtcCallBack();
 }
 
@@ -880,14 +886,18 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     g_appSystemContext.bootStage = APP_BOOT_STAGE_LOG_READY;
 
     APP_LOGI("SYS", "Boot complete: %s v%s", APP_NAME_STRING, App_SystemGetVersionString());
-    APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu %s=%u",
-                                 (unsigned long)p_clockContext->sysclkHz,
-                                 (unsigned long)p_clockContext->hclkHz,
-                                 (unsigned long)p_clockContext->pclk1Hz,
-                                 (unsigned long)p_clockContext->pclk2Hz,
-                                 (unsigned long)p_clockContext->msiRange,
-                                 "LSE",
-                                 (unsigned int)p_clockContext->lseReady);
+    APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu",
+             (unsigned long)p_clockContext->sysclkHz,
+             (unsigned long)p_clockContext->hclkHz,
+             (unsigned long)p_clockContext->pclk1Hz,
+             (unsigned long)p_clockContext->pclk2Hz,
+             (unsigned long)p_clockContext->msiRange);
+
+    APP_LOGI("CLK", "RTC clock source: at_boot=%s current=%s LSERDY=%u (RCC->CSR=0x%08lX)",
+             App_ClockRtcSourceToString(p_clockContext->rtcSourceAtBoot),
+             App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()),
+             (unsigned int)p_clockContext->lseReady,
+             (unsigned long)RCC->CSR);
     APP_LOGI("SYS", "Device UID hash=0x%08lX", (unsigned long)App_ClockGetDeviceUidHash());
     APP_LOGI("GPIO", "LP policy ready: SWD=%lu",
                                  (unsigned long)g_appGpioLpConfig.swdPolicy);
