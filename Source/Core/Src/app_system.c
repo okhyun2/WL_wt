@@ -1166,8 +1166,10 @@ static AppStatus_t App_SystemEnterStopMode(void)
     uint8_t standbyPrepareState = APP_SYSTEM_NFC_STANDBY_PREP_NONE;
     AppStatus_t adcRestoreStatus;
 	
-    APP_LOGI("LP", "Enter STOP mode%s",
-             (g_appSystemContext.stopNoWakeRequested == APP_TRUE) ? " (fatal/no-wake)" : "");
+    APP_LOGI("LP", "Enter STOP mode%s rtcClockSource=%s (RCC->CSR=0x%08lX)",
+             (g_appSystemContext.stopNoWakeRequested == APP_TRUE) ? " (fatal/no-wake)" : "",
+             App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()),
+             (unsigned long)RCC->CSR);
 
     g_appSystemContext.stopCandidateCount++;
 
