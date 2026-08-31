@@ -148,6 +148,17 @@ void App_ClockPollLseAndSwitchIfReady(void)
             HAL_RCCEx_EnableLSECSS_IT();
             APP_LOGI("CLK", "LSE CSS armed after %lu ms stable window",
                      (unsigned long)APP_CLOCK_LSE_CSS_ARM_DELAY_MS);
+            // Confirm Buzzer
+            {
+                uint8_t index;
+
+                for (index = 0u; index < 1; index++)
+                {
+                    HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_SET);
+                    HAL_Delay(80);
+                    HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
+                }
+            }
         }
         else
         {
