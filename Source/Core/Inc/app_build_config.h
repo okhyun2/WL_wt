@@ -87,6 +87,9 @@ extern "C" {
 #define APP_CLOCK_LSE_RETRY_OFF_DELAY_MS            (100u)
 #define APP_CLOCK_LSE_RETRY_ON_DELAY_MS             (500u)
 #define APP_CLOCK_LSE_POST_READY_SETTLE_MS          (300u)
+/* 부팅 시 LSE를 블로킹 대기하지 않기 위한 백그라운드 정책 (신규) */
+#define APP_CLOCK_LSE_BG_POLL_PERIOD_MS              (200u)
+#define APP_CLOCK_LSE_BG_TOTAL_TIMEOUT_MS            (10000u)
 
 #define APP_DEBUG_UART_TIMEOUT_MS                   (100u)
 #define APP_DEBUG_CONSOLE_RX_LINE_SIZE              (64u)
@@ -177,8 +180,8 @@ extern "C" {
 
 #define APP_RTC_LSE_ASYNC_PREDIV                    (127u)
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
-#define APP_RTC_LSI_ASYNC_PREDIV                    (APP_RTC_LSE_ASYNC_PREDIV)
-#define APP_RTC_LSI_SYNC_PREDIV                     (APP_RTC_LSE_SYNC_PREDIV)
+#define APP_RTC_LSI_ASYNC_PREDIV                    (127u)
+#define APP_RTC_LSI_SYNC_PREDIV                     (288u)
 #define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) // test/debug/fallback only
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (10*60*1000u) // test/debug/fallback only
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (60*1000u) // test/debug/fallback only

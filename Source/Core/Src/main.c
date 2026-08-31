@@ -283,7 +283,7 @@ int main(void)
 
     /* 메인 루프 정상 동작 표시 */
     APP_WWDGFeed();
-
+    App_ClockPollLseAndSwitchIfReady(); /* 추가: non-blocking LSE 준비 확인/전환 */
     App_SystemProcess();
   }
   /* USER CODE END 3 */
@@ -314,27 +314,13 @@ void SystemClock_Config(void)
   * in the RCC_OscInitTypeDef structure.
   */
 
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE|RCC_OSCILLATORTYPE_MSI;
-  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
-  RCC_OscInitStruct.LSIState = RCC_LSI_OFF;
-  RCC_OscInitStruct.MSIState = RCC_MSI_ON;
-  RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.MSIClockRange = APP_CLOCK_MSI_RANGE_BOOT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  __HAL_RCC_LSEDRIVE_CONFIG(APP_CLOCK_LSE_DRIVE);
-
-  if (App_ClockStartLseWithRetry() != HAL_OK)
+  if (App_ClockBootStartLsiFirst() != APP_STATUS_OK) /* MSI도 여기서 같이 켜짐 */
   {
     Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
+   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK|RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
@@ -345,20 +331,8 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1
-    |RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC;
-#if 0 //no use
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1
-    |RCC_PERIPHCLK_I2C3|RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_LPTIM1;
-#endif
-  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
-  PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
-  PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_LSE;
-  PeriphClkInit.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
-  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
-#if 0 //no use
-  PeriphClkInit.LptimClockSelection = RCC_LPTIM1CLKSOURCE_LSE;
-#endif
+
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_LPUART1|RCC_PERIPHCLK_I2C3;
   
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
@@ -804,8 +778,11 @@ static void MX_RTC_Init(void)
   */
   hrtc.Instance = RTC;
   hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
-  hrtc.Init.AsynchPrediv = APP_RTC_LSE_ASYNC_PREDIV;
-  hrtc.Init.SynchPrediv = APP_RTC_LSE_SYNC_PREDIV;
+  {
+    uint8_t isLse = (App_ClockGetActiveRtcSource() == APP_RTC_CLOCK_SOURCE_LSE) ? APP_TRUE : APP_FALSE;
+    hrtc.Init.AsynchPrediv = isLse ? APP_RTC_LSE_ASYNC_PREDIV : APP_RTC_LSI_ASYNC_PREDIV;
+    hrtc.Init.SynchPrediv = isLse ? APP_RTC_LSE_SYNC_PREDIV : APP_RTC_LSI_SYNC_PREDIV;
+  }
   hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
   hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
   hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;

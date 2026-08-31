@@ -470,25 +470,22 @@ static AppStatus_t App_SystemRtcWaitFlagSet(uint32_t flagMask)
 static AppStatus_t App_SystemRtcInitBase(void)
 {
     AppStatus_t status;
+    uint32_t asyncPrediv, syncPrediv;
 
     status = App_SystemRtcOpenBackupDomain();
-    if (status != APP_STATUS_OK)
+    if (status != APP_STATUS_OK) return status;
+
+    /* LSE 강제 전환/블로킹 대기 로직 제거: 현재 클럭 소스를 그대로 신뢰함.
+       소스 전환은 App_ClockBootStartLsiFirst/PollLseAndSwitchIfReady가 전담 */
+    if (App_ClockGetActiveRtcSource() == APP_RTC_CLOCK_SOURCE_LSE)
     {
-        return status;
+        asyncPrediv = APP_RTC_LSE_ASYNC_PREDIV;
+        syncPrediv  = APP_RTC_LSE_SYNC_PREDIV;
     }
-
-    App_SystemRtcRecoverBackupDomainOnce(APP_FALSE);
-
-    status = App_SystemRtcEnsureLseReady();
-    if (status != APP_STATUS_OK)
+    else
     {
-        return status;
-    }
-
-    if (((RCC->CSR & RCC_CSR_RTCSEL) != RCC_CSR_RTCSEL_LSE) || ((RCC->CSR & RCC_CSR_RTCEN) == 0u))
-    {
-        MODIFY_REG(RCC->CSR, RCC_CSR_RTCSEL, RCC_CSR_RTCSEL_LSE);
-        SET_BIT(RCC->CSR, RCC_CSR_RTCEN);
+        asyncPrediv = APP_RTC_LSI_ASYNC_PREDIV;
+        syncPrediv  = APP_RTC_LSI_SYNC_PREDIV;
     }
 
     if ((RTC->ISR & RTC_ISR_INITS) == 0u)
@@ -503,8 +500,8 @@ static AppStatus_t App_SystemRtcInitBase(void)
         }
 
         CLEAR_BIT(RTC->CR, RTC_CR_FMT | RTC_CR_WUTE | RTC_CR_WUTIE);
-        RTC->PRER = ((APP_RTC_LSE_ASYNC_PREDIV << RTC_PRER_PREDIV_A_Pos) & RTC_PRER_PREDIV_A) |
-                    ((APP_RTC_LSE_SYNC_PREDIV << RTC_PRER_PREDIV_S_Pos) & RTC_PRER_PREDIV_S);
+        RTC->PRER = ((asyncPrediv << RTC_PRER_PREDIV_A_Pos) & RTC_PRER_PREDIV_A) |
+                    ((syncPrediv  << RTC_PRER_PREDIV_S_Pos) & RTC_PRER_PREDIV_S);
         RTC->TR = 0u;
         RTC->DR = (1u << RTC_DR_WDU_Pos) | (1u << RTC_DR_MU_Pos) | (1u << RTC_DR_DU_Pos);
         CLEAR_BIT(RTC->ISR, RTC_ISR_INIT);

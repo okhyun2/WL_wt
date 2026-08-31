@@ -15,6 +15,114 @@
 
 static AppClockContext_t g_appClockContext;
 
+static uint8_t  g_lseBgAttemptActive = APP_FALSE;
+static uint32_t g_lseBgAttemptStartMs = 0u;
+
+AppRtcClockSource_t App_ClockGetActiveRtcSource(void)
+{
+    uint32_t sel = RCC->CSR & RCC_CSR_RTCSEL;
+
+    if (sel == RCC_CSR_RTCSEL_LSE) return APP_RTC_CLOCK_SOURCE_LSE;
+    if (sel == RCC_CSR_RTCSEL_LSI) return APP_RTC_CLOCK_SOURCE_LSI;
+    return APP_RTC_CLOCK_SOURCE_UNKNOWN;
+}
+
+AppStatus_t App_ClockBootStartLsiFirst(void)
+{
+    RCC_OscInitTypeDef oscConfig = {0};
+    RCC_PeriphCLKInitTypeDef periphClk = {0};
+
+    /* LSI는 기동이 사실상 즉시(수 us) 끝나므로 대기가 필요 없음 */
+    oscConfig.OscillatorType = RCC_OSCILLATORTYPE_LSI | RCC_OSCILLATORTYPE_MSI;
+    oscConfig.LSIState = RCC_LSI_ON;
+    oscConfig.MSIState = RCC_MSI_ON;
+    oscConfig.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
+    oscConfig.MSIClockRange = APP_CLOCK_MSI_RANGE_BOOT;
+    oscConfig.PLL.PLLState = RCC_PLL_NONE;
+    APP_RETURN_IF_HAL_ERROR(HAL_RCC_OscConfig(&oscConfig), APP_STATUS_CLOCK_VERIFY_FAILED);
+
+    /* RTC 소스를 LSI로 고정. HAL이 필요 시 백업도메인 리셋을 자동 수행함 */
+    periphClk.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+    periphClk.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+    APP_RETURN_IF_HAL_ERROR(HAL_RCCEx_PeriphCLKConfig(&periphClk), APP_STATUS_CLOCK_VERIFY_FAILED);
+
+    /* LSE는 켜기만 하고 대기하지 않음: 준비 여부는 이후 백그라운드 폴링이 확인 */
+    __HAL_RCC_LSEDRIVE_CONFIG(APP_CLOCK_LSE_DRIVE);
+    SET_BIT(RCC->CSR, RCC_CSR_LSEON);
+
+    g_lseBgAttemptActive  = APP_TRUE;
+    g_lseBgAttemptStartMs = HAL_GetTick();
+
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_ClockSwitchRtcSourceKeepingTime(uint32_t targetRtcClockSel,
+                                                        uint32_t asyncPrediv,
+                                                        uint32_t syncPrediv)
+{
+    AppDateTime_t saved;
+    RCC_PeriphCLKInitTypeDef periphClk = {0};
+
+    (void)RTC_GetTime(&saved);
+
+    periphClk.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+    periphClk.RTCClockSelection = targetRtcClockSel;
+    /* 소스가 바뀌면 HAL이 백업도메인을 리셋하므로 RTC/PRER/시각이 초기화됨 */
+    APP_RETURN_IF_HAL_ERROR(HAL_RCCEx_PeriphCLKConfig(&periphClk), APP_STATUS_CLOCK_VERIFY_FAILED);
+
+    hrtc.Instance = RTC;
+    hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+    hrtc.Init.AsynchPrediv = asyncPrediv;
+    hrtc.Init.SynchPrediv = syncPrediv;
+    hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+    hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
+    hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+    hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+    APP_RETURN_IF_HAL_ERROR(HAL_RTC_Init(&hrtc), APP_STATUS_CLOCK_VERIFY_FAILED);
+
+    RTC_SetTime(saved.year, saved.month, saved.day, saved.hour, saved.minute, saved.second);
+
+    return APP_STATUS_OK;
+}
+
+void App_ClockPollLseAndSwitchIfReady(void)
+{
+    if (g_lseBgAttemptActive == APP_FALSE) return;
+
+    if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
+    {
+        if ((HAL_GetTick() - g_lseBgAttemptStartMs) > APP_CLOCK_LSE_BG_TOTAL_TIMEOUT_MS)
+        {
+            g_lseBgAttemptActive = APP_FALSE;
+            APP_LOGW("CLK", "LSE not ready in %lu ms, keep running on LSI",
+                     (unsigned long)APP_CLOCK_LSE_BG_TOTAL_TIMEOUT_MS);
+        }
+        return;
+    }
+
+    HAL_Delay(APP_CLOCK_LSE_POST_READY_SETTLE_MS);
+
+    if (App_ClockSwitchRtcSourceKeepingTime(RCC_RTCCLKSOURCE_LSE,
+                                             APP_RTC_LSE_ASYNC_PREDIV,
+                                             APP_RTC_LSE_SYNC_PREDIV) == APP_STATUS_OK)
+    {
+        HAL_RCCEx_EnableLSECSS_IT();   /* 런타임 LSE 장애 감시 시작 (EXTI19/RTC_IRQn 공유) */
+        APP_LOGI("CLK", "RTC clock switched: LSI -> LSE");
+    }
+
+    g_lseBgAttemptActive = APP_FALSE;
+}
+
+/* HAL 약한 콜백 오버라이드: LSE 장애 시 자동으로 LSI로 폴백 */
+void HAL_RCCEx_LSECSS_Callback(void)
+{
+    (void)App_ClockSwitchRtcSourceKeepingTime(RCC_RTCCLKSOURCE_LSI,
+                                               APP_RTC_LSI_ASYNC_PREDIV,
+                                               APP_RTC_LSI_SYNC_PREDIV);
+    CLEAR_BIT(RCC->CSR, RCC_CSR_LSEON);
+    APP_LOGE("CLK", "LSE CSS fault detected -> fell back to LSI");
+}
+
 static AppClockSource_t App_ClockDecodeSystemSource(uint32_t halSource)
 {
     switch (halSource)

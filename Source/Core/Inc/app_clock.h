@@ -53,6 +53,22 @@ typedef struct
     uint8_t  second;        /* 0~59 */
 } AppDateTime_t;
 
+typedef enum
+{
+    APP_RTC_CLOCK_SOURCE_UNKNOWN = 0,
+    APP_RTC_CLOCK_SOURCE_LSI,
+    APP_RTC_CLOCK_SOURCE_LSE
+} AppRtcClockSource_t;
+
+/* 부팅 시 LSI로 즉시 RTC 클럭을 확정하고 LSE는 백그라운드로 기동 시작 */
+AppStatus_t App_ClockBootStartLsiFirst(void);
+
+/* main loop/FSM housekeeping에서 주기적으로 호출: LSE 준비되면 시각 보존 후 전환 */
+void App_ClockPollLseAndSwitchIfReady(void);
+
+/* RCC->CSR 기반으로 현재 RTC가 어떤 소스로 구동 중인지 조회 (별도 상태 저장 불필요) */
+AppRtcClockSource_t App_ClockGetActiveRtcSource(void);
+
 /**
  * @brief Validate SystemClock_Config() result and capture clock context.
  *

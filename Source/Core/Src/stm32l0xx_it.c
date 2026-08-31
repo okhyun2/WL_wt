@@ -167,8 +167,20 @@ void SysTick_Handler(void)
 /******************************************************************************/
 void RTC_IRQHandler(void)
 {
-  uint32_t rtc_isr = RTC->ISR;
+  uint32_t rtc_isr;
   uint32_t rtc_pending_flags = WAKEUP_FLAG_NONE;
+
+  /* 추가: LSECSS는 EXTI Line19를 RTC_IRQn과 공유. HAL이 RCC 플래그 확인/클리어 및
+   EXTI pending 클리어까지 내부에서 처리하므로 무조건 먼저 호출해도 안전함 */
+  HAL_RCCEx_LSECSS_IRQHandler();
+
+  rtc_isr = RTC->ISR;
+  g_wakeup_ctx.raw_rtc_isr = rtc_isr;
+
+  if (!(rtc_isr & (RTC_ISR_ALRAF | RTC_ISR_ALRBF | RTC_ISR_WUTF)))
+  {
+    return; /* LSECSS만 발생했고 RTC 알람/WUT는 없는 정상 케이스 */
+  }
 
   /* 디버그용 원본 값 저장 */
   g_wakeup_ctx.raw_rtc_isr = rtc_isr;
