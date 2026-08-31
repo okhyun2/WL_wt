@@ -118,16 +118,45 @@ void App_ClockPollLseAndSwitchIfReady(void)
     AppRtcClockSource_t before = App_ClockGetActiveRtcSource();
 
     if (App_ClockSwitchRtcSourceKeepingTime(RCC_RTCCLKSOURCE_LSE,
-                                             APP_RTC_LSE_ASYNC_PREDIV,
-                                             APP_RTC_LSE_SYNC_PREDIV) == APP_STATUS_OK)
+                                            APP_RTC_LSE_ASYNC_PREDIV,
+                                            APP_RTC_LSE_SYNC_PREDIV) == APP_STATUS_OK)
     {
         AppRtcClockSource_t after = App_ClockGetActiveRtcSource();
+        uint32_t armWaitStart = HAL_GetTick();
+        uint8_t lseStableForArm = APP_TRUE;
 
-        HAL_RCCEx_EnableLSECSS_IT(); /* 런타임 LSE 장애 감시 시작 (EXTI19/RTC_IRQn 공유) */
-        APP_LOGI("CLK", "RTC clock source switched: %s -> %s (RCC->CSR=0x%08lX)",
+        APP_LOGI("CLK", "RTC clock source switched: %s -> %s (RCC->CSR=0x%08lX), arming CSS in %lu ms",
                  App_ClockRtcSourceToString(before),
                  App_ClockRtcSourceToString(after),
-                 (unsigned long)RCC->CSR); /* 문자열 + raw CSR 값 함께 출력 */
+                 (unsigned long)RCC->CSR,
+                 (unsigned long)APP_CLOCK_LSE_CSS_ARM_DELAY_MS);
+
+        /* 백업도메인 리셋으로 인한 발진 재기동 직후이므로,
+           일정 시간 LSERDY가 끊기지 않고 유지되는지 확인한 뒤에만 CSS를 무장(arm)함 */
+        while ((HAL_GetTick() - armWaitStart) < APP_CLOCK_LSE_CSS_ARM_DELAY_MS)
+        {
+            HAL_Delay(APP_CLOCK_LSE_CSS_ARM_RECHECK_MS);
+            if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
+            {
+                lseStableForArm = APP_FALSE;
+                break;
+            }
+        }
+
+        if (lseStableForArm == APP_TRUE)
+        {
+            HAL_RCCEx_EnableLSECSS_IT();
+            APP_LOGI("CLK", "LSE CSS armed after %lu ms stable window",
+                     (unsigned long)APP_CLOCK_LSE_CSS_ARM_DELAY_MS);
+        }
+        else
+        {
+            /* 안정화 실패: LSI로 되돌리고 다음 웨이크업에서 재시도 */
+            (void)App_ClockSwitchRtcSourceKeepingTime(RCC_RTCCLKSOURCE_LSI,
+                                                      APP_RTC_LSI_ASYNC_PREDIV,
+                                                      APP_RTC_LSI_SYNC_PREDIV);
+            APP_LOGW("CLK", "LSE unstable during arm window, reverted to LSI");
+        }
     }
 
     g_lseBgAttemptActive = APP_FALSE;

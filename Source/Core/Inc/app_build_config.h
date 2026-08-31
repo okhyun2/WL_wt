@@ -79,7 +79,7 @@ extern "C" {
 #define APP_CLOCK_PCLK2_BOOT_HZ                     (APP_CLOCK_SYSCLK_BOOT_HZ)
 #define APP_CLOCK_FLASH_LATENCY_BOOT                FLASH_LATENCY_0
 #define APP_CLOCK_LSE_NOMINAL_HZ                    (32768u)
-#define APP_CLOCK_LSE_DRIVE                         RCC_LSEDRIVE_LOW
+#define APP_CLOCK_LSE_DRIVE                         RCC_LSEDRIVE_MEDIUMLOW
 #define APP_CLOCK_LSI_NOMINAL_HZ                    (APP_CLOCK_LSE_NOMINAL_HZ)
 #define APP_CLOCK_SYSTICK_HZ                        (1000u)
 #define APP_CLOCK_LSE_READY_TIMEOUT_MS              (8000u)
@@ -90,6 +90,8 @@ extern "C" {
 /* 부팅 시 LSE를 블로킹 대기하지 않기 위한 백그라운드 정책 (신규) */
 #define APP_CLOCK_LSE_BG_POLL_PERIOD_MS              (200u)
 #define APP_CLOCK_LSE_BG_TOTAL_TIMEOUT_MS            (10000u)
+#define APP_CLOCK_LSE_CSS_ARM_DELAY_MS              (2000u)  /* 전환 후 CSS 무장 전 추가 안정화 대기 */
+#define APP_CLOCK_LSE_CSS_ARM_RECHECK_MS            (50u)    /* 안정화 대기 중 LSERDY 재확인 주기 */
 
 #define APP_DEBUG_UART_TIMEOUT_MS                   (100u)
 #define APP_DEBUG_CONSOLE_RX_LINE_SIZE              (64u)
