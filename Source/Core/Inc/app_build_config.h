@@ -79,7 +79,7 @@ extern "C" {
 #define APP_CLOCK_PCLK2_BOOT_HZ                     (APP_CLOCK_SYSCLK_BOOT_HZ)
 #define APP_CLOCK_FLASH_LATENCY_BOOT                FLASH_LATENCY_0
 #define APP_CLOCK_LSE_NOMINAL_HZ                    (32768u)
-#define APP_CLOCK_LSE_DRIVE                         RCC_LSEDRIVE_MEDIUMLOW
+#define APP_CLOCK_LSE_DRIVE                         RCC_LSEDRIVE_MEDIUMHIGH
 #define APP_CLOCK_LSI_NOMINAL_HZ                    (APP_CLOCK_LSE_NOMINAL_HZ)
 #define APP_CLOCK_SYSTICK_HZ                        (1000u)
 #define APP_CLOCK_LSE_READY_TIMEOUT_MS              (8000u)
