@@ -200,7 +200,7 @@ static void App_NfcSeoulLogLayer1Profile(const AppNfcSeoulSnapshot_t *p_snapshot
         return;
     }
 
-    APP_LOGI("NFC",
+    APP_LOGN("NFC",
              "[[NFC-L1]] cmd=0x%02X fmt=0x%02X readonly=%u patent_l2=%u recordCount=%u comm=%u battery=0x%02X",
              (unsigned int)responseCmd,
              (unsigned int)g_appNfcSeoulLayer1Info.snapshotFormatVersion,
@@ -1218,7 +1218,7 @@ AppStatus_t App_NfcSeoulInit(NFC_NTP53321_Handle_t *p_tag)
 #endif
     (void)memset(&g_appNfcSeoulDebugInfo, 0, sizeof(g_appNfcSeoulDebugInfo));
 
-    APP_LOGI("NFC",
+    APP_LOGN("NFC",
              "[[NFC-L1]] Seoul format init fmt=0x%02X readonly=%u patent_l2=%u",
              (unsigned int)g_appNfcSeoulLayer1Info.snapshotFormatVersion,
              (unsigned int)g_appNfcSeoulLayer1Info.readOnlyLayer1,

@@ -259,7 +259,7 @@ int main(void)
     uint32_t randomMs = (HAL_GetTick() ^ deviceHash) % 1000u;
     uint32_t offsetMs = (offsetSec * 1000u) + randomMs;
 
-    APP_LOGI("MAIN", "Boot NBIoT offset delay=%lu ms (uidHash=0x%08lX)",
+    APP_LOGN("MAIN", "Boot NBIoT offset delay=%lu ms (uidHash=0x%08lX)",
              (unsigned long)offsetMs, (unsigned long)deviceHash);
 
     HAL_Delay(offsetMs);

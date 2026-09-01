@@ -655,7 +655,7 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
     g_appSelfTestContext.failCount = 0u;
     (void)memset(g_appSelfTestContext.items, 0, sizeof(g_appSelfTestContext.items));
 
-    APP_LOGI("SELF", "Operational data collection start");
+    APP_LOGN("SELF", "Operational data collection start");
 
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
 #if defined(SUPPORT_METER_NORMAL)
@@ -671,7 +671,7 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
     g_appSelfTestContext.running = APP_FALSE;
     g_appSelfTestContext.lastSequenceStatus = (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
 
-    APP_LOGI("SELF", "Operational data collection done: pass=%lu fail=%lu",
+    APP_LOGN("SELF", "Operational data collection done: pass=%lu fail=%lu",
                                  (unsigned long)g_appSelfTestContext.passCount,
                                  (unsigned long)g_appSelfTestContext.failCount);
 

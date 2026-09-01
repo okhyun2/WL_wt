@@ -217,7 +217,7 @@ static uint32_t App_FsmMeterApplyPostNbiotPowerOffGuard(const char *p_logTag)
             if (elapsedSincePowerOffDoneMs < minGuardMs)
             {
                 uint32_t waitMs = minGuardMs - elapsedSincePowerOffDoneMs;
-                APP_LOGI("FSM", "%s apply post-NBIOT power-off guard wait=%lu ms (elapsed=%lu ms, min=%lu ms, cfun0Status=%ld)",
+                APP_LOGN("FSM", "%s apply post-NBIOT power-off guard wait=%lu ms (elapsed=%lu ms, min=%lu ms, cfun0Status=%ld)",
                          (p_logTag != NULL) ? p_logTag : "[[MeterWake]]",
                          (unsigned long)waitMs,
                          (unsigned long)elapsedSincePowerOffDoneMs,
@@ -240,7 +240,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     uint8_t storageEnabledPrev;
     AppStatus_t status;
     uint32_t elapsedSincePowerOffDoneMs = App_FsmMeterApplyPostNbiotPowerOffGuard("[[MeterWake]]");
-    APP_LOGI("FSM", "[[MeterWake]] scheduled meter probe start (since NBIOT power-off done=%lu ms)",
+    APP_LOGN("FSM", "[[MeterWake]] scheduled meter probe start (since NBIOT power-off done=%lu ms)",
              (unsigned long)elapsedSincePowerOffDoneMs);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
     HAL_Delay(100u);
@@ -278,7 +278,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     App_MeterSetStorageEnabled(storageEnabledPrev);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    APP_LOGI("FSM", "[[MeterWake]] scheduled meter record stored");
+    APP_LOGN("FSM", "[[MeterWake]] scheduled meter record stored");
     return APP_STATUS_OK;
 #elif defined(SUPPORT_METER_SC1xxx)
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
@@ -286,7 +286,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     AppStatus_t status;
     uint32_t elapsedSincePowerOffDoneMs = App_FsmMeterApplyPostNbiotPowerOffGuard("[[MeterWake]]");
 
-    APP_LOGI("FSM", "[[MeterWake]] scheduled SC1xxx meter probe start (since NBIOT power-off done=%lu ms)",
+    APP_LOGN("FSM", "[[MeterWake]] scheduled SC1xxx meter probe start (since NBIOT power-off done=%lu ms)",
              (unsigned long)elapsedSincePowerOffDoneMs);
 
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
@@ -325,7 +325,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     App_MeterSetStorageEnabled(storageEnabledPrev);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    APP_LOGI("FSM", "[[MeterWake]] scheduled SC1xxx meter record stored");
+    APP_LOGN("FSM", "[[MeterWake]] scheduled SC1xxx meter record stored");
     return APP_STATUS_OK;
 #else
     return APP_STATUS_INVALID_PARAM;
@@ -343,7 +343,7 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
     APP_RETURN_IF_FALSE(p_liveRecord != NULL, APP_STATUS_INVALID_PARAM);
 
     elapsedSincePowerOffDoneMs = App_FsmMeterApplyPostNbiotPowerOffGuard("[[BootLiveTx]]");
-    APP_LOGI("FSM", "[[BootLiveTx]] first meter probe start (no storage, since NBIOT power-off done=%lu ms)",
+    APP_LOGN("FSM", "[[BootLiveTx]] first meter probe start (no storage, since NBIOT power-off done=%lu ms)",
              (unsigned long)elapsedSincePowerOffDoneMs);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
     HAL_Delay(100u);
@@ -378,7 +378,7 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
                                                       APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
                                                       p_liveRecord);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    APP_LOGI("FSM", "[[BootLiveTx]] first meter record prepared for service+mgmt send (not stored)");
+    APP_LOGN("FSM", "[[BootLiveTx]] first meter record prepared for service+mgmt send (not stored)");
     return APP_STATUS_OK;
 #elif defined(SUPPORT_METER_SC1xxx)
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {0};
@@ -387,7 +387,7 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
 
     APP_RETURN_IF_FALSE(p_liveRecord != NULL, APP_STATUS_INVALID_PARAM);
     elapsedSincePowerOffDoneMs = App_FsmMeterApplyPostNbiotPowerOffGuard("[[BootLiveTx]]");
-    APP_LOGI("FSM", "[[BootLiveTx]] first SC1xxx meter probe start (no storage, since NBIOT power-off done=%lu ms)",
+    APP_LOGN("FSM", "[[BootLiveTx]] first SC1xxx meter probe start (no storage, since NBIOT power-off done=%lu ms)",
              (unsigned long)elapsedSincePowerOffDoneMs);
 
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
@@ -423,7 +423,7 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
                                                             APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN,
                                                             p_liveRecord);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    APP_LOGI("FSM", "[[BootLiveTx]] first SC1xxx meter record prepared for service+mgmt send (not stored)");
+    APP_LOGN("FSM", "[[BootLiveTx]] first SC1xxx meter record prepared for service+mgmt send (not stored)");
     return APP_STATUS_OK;
 #else
     APP_RETURN_IF_FALSE(p_liveRecord != NULL, APP_STATUS_INVALID_PARAM);
@@ -1947,7 +1947,7 @@ static AppStatus_t App_FsmMeterScheduleEnsureInitialized(void)
     g_appFsmMeterSchedule.enabled = APP_TRUE;
     g_appFsmMeterSchedule.rtcReadyLogged = APP_TRUE;
 
-    APP_LOGI("FSM", "[[MeterSchedule]] enabled period=%uh next=%lu %02lu:%02lu:%02lu",
+    APP_LOGN("FSM", "[[MeterSchedule]] enabled period=%uh next=%lu %02lu:%02lu:%02lu",
              (unsigned)g_appFsmMeterSchedule.periodHours,
              (unsigned long)g_appFsmMeterSchedule.nextDueDateKey,
              (unsigned long)(g_appFsmMeterSchedule.nextDueMsOfDay / 3600000u),
@@ -2007,7 +2007,7 @@ static AppStatus_t App_FsmCheckMeterScheduledState(uint8_t *p_state)
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     App_FsmSignalEventForState(APP_FSM_STATE_METER_WAIT_TRIGGER);
-    APP_LOGI("FSM", "[[MeterSchedule]] due slot=%lu -> queue meter read, next=%lu %02lu:%02lu:%02lu",
+    APP_LOGN("FSM", "[[MeterSchedule]] due slot=%lu -> queue meter read, next=%lu %02lu:%02lu:%02lu",
              (unsigned long)dueSlotKey,
              (unsigned long)g_appFsmMeterSchedule.nextDueDateKey,
              (unsigned long)(g_appFsmMeterSchedule.nextDueMsOfDay / 3600000u),
@@ -2064,7 +2064,7 @@ static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void)
                                           &g_appFsmMeterSchedule.nextDueMsOfDay);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    APP_LOGI("FSM", "[[MeterSchedule]] alarm consume slot=%lu -> next=%lu %02lu:%02lu:%02lu",
+    APP_LOGN("FSM", "[[MeterSchedule]] alarm consume slot=%lu -> next=%lu %02lu:%02lu:%02lu",
              (unsigned long)dueSlotKey,
              (unsigned long)g_appFsmMeterSchedule.nextDueDateKey,
              (unsigned long)(g_appFsmMeterSchedule.nextDueMsOfDay / 3600000u),
@@ -2127,7 +2127,7 @@ static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void)
                                                            &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-        APP_LOGI("FSM", "[[MgmtTxSchedule]] service-gap guard shift %lu %02lu:%02lu:%02lu -> %lu %02lu:%02lu:%02lu (service_anchor=%lu %02lu:%02lu:%02lu, gap=%lu)",
+        APP_LOGN("FSM", "[[MgmtTxSchedule]] service-gap guard shift %lu %02lu:%02lu:%02lu -> %lu %02lu:%02lu:%02lu (service_anchor=%lu %02lu:%02lu:%02lu, gap=%lu)",
                  (unsigned long)prevDateKey,
                  (unsigned long)(prevMsOfDay / 3600000u),
                  (unsigned long)((prevMsOfDay % 3600000u) / 60000u),
@@ -2284,7 +2284,7 @@ static AppStatus_t App_FsmTxScheduleEnsureInitializedCommon(AppFsmTxScheduleCont
     {
         if (p_schedule->enabled == APP_TRUE)
         {
-            APP_LOGI("FSM", "%s disabled (period=0)", p_tag);
+            APP_LOGN("FSM", "%s disabled (period=0)", p_tag);
         }
         App_FsmTxScheduleDisableContext(p_schedule);
         return APP_STATUS_NOT_INITIALIZED;
@@ -2329,7 +2329,7 @@ static AppStatus_t App_FsmTxScheduleEnsureInitializedCommon(AppFsmTxScheduleCont
     p_schedule->enabled = APP_TRUE;
     p_schedule->rtcReadyLogged = APP_TRUE;
 
-    APP_LOGI("FSM", "%s enabled period=%uh mode=period-offset next=%lu %02lu:%02lu:%02lu base_offset=%lu spread=%lu jitter=%lu",
+    APP_LOGN("FSM", "%s enabled period=%uh mode=period-offset next=%lu %02lu:%02lu:%02lu base_offset=%lu spread=%lu jitter=%lu",
              p_tag,
              (unsigned)p_schedule->periodHours,
              (unsigned long)p_schedule->nextDueDateKey,
@@ -2441,7 +2441,7 @@ static AppStatus_t App_FsmTxScheduleCheckDueCommon(AppFsmTxScheduleContext_t *p_
                                              &p_schedule->currentJitterMs);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    APP_LOGI("FSM", "%s due %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=period-offset",
+    APP_LOGN("FSM", "%s due %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=period-offset",
              p_tag,
              (unsigned long)p_schedule->lastDispatchedDateKey,
              (unsigned long)(p_schedule->lastDispatchedMsOfDay / 3600000u),
@@ -2550,7 +2550,7 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNowCommon(AppFsmTxScheduleContext_
                                              &p_schedule->currentJitterMs);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    APP_LOGI("FSM", "%s alarm consume %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=period-offset",
+    APP_LOGN("FSM", "%s alarm consume %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=period-offset",
              p_tag,
              (unsigned long)p_schedule->lastDispatchedDateKey,
              (unsigned long)(p_schedule->lastDispatchedMsOfDay / 3600000u),
@@ -2817,7 +2817,7 @@ static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked)
              (nowMsOfDay < g_appFsmUsimHold.holdUntilMsOfDay)))
         {
             *p_blocked = APP_TRUE;
-            APP_LOGI("FSM", "[[UsimHold]] phase=%s RTC valid hold active -> skip attach/send until %lu %02lu:%02lu:%02lu",
+            APP_LOGN("FSM", "[[UsimHold]] phase=%s RTC valid hold active -> skip attach/send until %lu %02lu:%02lu:%02lu",
                      App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)g_appFsmUsimHold.phase),
                      (unsigned long)g_appFsmUsimHold.holdUntilDateKey,
                      (unsigned long)(g_appFsmUsimHold.holdUntilMsOfDay / 3600000u),
@@ -2826,7 +2826,7 @@ static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked)
             return APP_STATUS_OK;
         }
 
-        APP_LOGI("FSM", "[[UsimHold]] phase=%s hold expired -> allow retry",
+        APP_LOGN("FSM", "[[UsimHold]] phase=%s hold expired -> allow retry",
                  App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)g_appFsmUsimHold.phase));
         App_FsmUsimHoldClear();
         return APP_STATUS_OK;
@@ -2841,14 +2841,14 @@ static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked)
         g_appFsmUsimHold.remainingWakeupSeconds -= wakeupChunk;
         *p_blocked = APP_TRUE;
 
-        APP_LOGI("FSM", "[[UsimHold]] phase=%s RTC invalid -> skip meter/tx, next retry wake in %lus remaining=%lus",
+        APP_LOGN("FSM", "[[UsimHold]] phase=%s RTC invalid -> skip meter/tx, next retry wake in %lus remaining=%lus",
                  App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)g_appFsmUsimHold.phase),
                  (unsigned long)wakeupChunk,
                  (unsigned long)g_appFsmUsimHold.remainingWakeupSeconds);
         return APP_STATUS_OK;
     }
 
-    APP_LOGI("FSM", "[[UsimHold]] phase=%s hold expired -> allow meter/tx retry",
+    APP_LOGN("FSM", "[[UsimHold]] phase=%s hold expired -> allow meter/tx retry",
              App_Bc95AtGetNetPhaseString((AppBc95NetPhase_t)g_appFsmUsimHold.phase));
     App_FsmUsimHoldClear();
     return APP_STATUS_OK;
@@ -3206,7 +3206,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                     g_appFsmWakeCollectionPending = APP_FALSE;
                     App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
                     App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
-                    APP_LOGI("FSM", "[[TxSchedule]] skip attach/send before service/mgmt due");
+                    APP_LOGN("FSM", "[[TxSchedule]] skip attach/send before service/mgmt due");
                     break;
                 }
 
@@ -3241,7 +3241,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 #if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
             if ((isBootResetTrack != APP_TRUE) && (g_appFsmWakeCollectionPending == APP_TRUE))
             {
-                APP_LOGI("FSM", "[[WakeRoutine]] collect device data before attach");
+                APP_LOGN("FSM", "[[WakeRoutine]] collect device data before attach");
                 APP_RETURN_IF_FALSE(App_SystemRunWakeDataCollection() == APP_STATUS_OK, APP_STATUS_FATAL);
                 g_appFsmWakeCollectionPending = APP_FALSE;
             }
@@ -3250,12 +3250,12 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 #ifdef SUPPORT_SELFTEST
             if (isBootResetTrack == APP_TRUE)
             {
-                APP_LOGI("FSM", "[[BootTrack]] board boot -> run cold-boot reset/provision track before selftest");
+                APP_LOGN("FSM", "[[BootTrack]] board boot -> run cold-boot reset/provision track before selftest");
             }
 #else
             if (isBootResetTrack == APP_TRUE)
             {
-                APP_LOGI("FSM", "[[BootTrack]] board boot -> run cold-boot reset/provision track");
+                APP_LOGN("FSM", "[[BootTrack]] board boot -> run cold-boot reset/provision track");
             }
 #endif
 
@@ -3268,11 +3268,11 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 }
 
 #ifdef SUPPORT_SELFTEST
-                APP_LOGI("FSM", "[[BootTrack]] reset/provision success -> run full selftest");
+                APP_LOGN("FSM", "[[BootTrack]] reset/provision success -> run full selftest");
                 APP_RETURN_IF_FALSE(App_SystemRunBootSelfTest() == APP_STATUS_OK, APP_STATUS_FATAL);
 #else
 #if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
-                APP_LOGI("FSM", "[[BootTrack]] reset/provision success -> collect device data");
+                APP_LOGN("FSM", "[[BootTrack]] reset/provision success -> collect device data");
                 APP_RETURN_IF_FALSE(App_SystemRunWakeDataCollection() == APP_STATUS_OK, APP_STATUS_FATAL);
 #endif /* APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 #endif /* SUPPORT_SELFTEST */
@@ -3377,14 +3377,14 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             {
                 APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-                APP_LOGI("FSM", "[[AlarmCollision]] short deferred wake -> queue service/mgmt transmit path");
+                APP_LOGN("FSM", "[[AlarmCollision]] short deferred wake -> queue service/mgmt transmit path");
             }
             else if (g_appFsmWakeCollectionPending != APP_TRUE)
             {
                 g_appFsmWakeCollectionPending = APP_TRUE;
                 APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-                APP_LOGI("FSM", "[[WakeRoutine]] RTC/WUT wake -> queue collect/attach/send/poweroff");
+                APP_LOGN("FSM", "[[WakeRoutine]] RTC/WUT wake -> queue collect/attach/send/poweroff");
             }
             // Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_RTC, APP_FSM_STATE_RTC_READY, APP_FALSE, APP_FALSE, APP_STATUS_OK);
@@ -3424,7 +3424,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 g_appFsmWakeCollectionPending = APP_TRUE;
                 APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-                APP_LOGI("FSM", "[[WakeRoutine]] LPTIM wake -> queue collect/attach/send/poweroff");
+                APP_LOGN("FSM", "[[WakeRoutine]] LPTIM wake -> queue collect/attach/send/poweroff");
             }
             //Clear eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_LPTIM, APP_FSM_STATE_LPTIM_READY, APP_FALSE, APP_FALSE, APP_STATUS_OK);
@@ -3491,7 +3491,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 g_appFsmInitialBootRoutineQueued = APP_TRUE;
                 APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-                APP_LOGI("FSM", "[[BootRoutine]] queue first attach/selftest/send/poweroff cycle");
+                APP_LOGN("FSM", "[[BootRoutine]] queue first attach/selftest/send/poweroff cycle");
             }
             App_FsmMarkComponent(APP_FSM_COMPONENT_STORAGE, APP_FSM_STATE_STORAGE_RELEASE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
@@ -3716,7 +3716,7 @@ void App_FsmInvalidateRtcSchedules(void)
     g_appFsmMgmtTxSchedule.nextDueDateKey = 0u;
     g_appFsmMgmtTxSchedule.nextDueMsOfDay = 0u;
 
-    APP_LOGI("FSM", "[[RtcSync]] invalidate meter/service/mgmt due cache -> alarms will be recalculated on next STOP entry");
+    APP_LOGN("FSM", "[[RtcSync]] invalidate meter/service/mgmt due cache -> alarms will be recalculated on next STOP entry");
 }
 
 static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
@@ -3772,7 +3772,7 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
         status = App_FsmQueueStateBack(APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, 0u);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
         App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-        APP_LOGI("FSM", "[[AlarmCollision]] AlarmA+AlarmB -> meter first, defer service/mgmt tx to short next cycle");
+        APP_LOGN("FSM", "[[AlarmCollision]] AlarmA+AlarmB -> meter first, defer service/mgmt tx to short next cycle");
         return APP_STATUS_OK;
     }
 
@@ -3782,7 +3782,7 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
         status = App_FsmQueueStateBack(APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, 0u);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
         App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-        APP_LOGI("FSM", "[[AlarmA]] RTC wake -> queue meter read only (same-slot duplicate suppressed)");
+        APP_LOGN("FSM", "[[AlarmA(meter)]] RTC wake -> queue meter read only (same-slot duplicate suppressed)");
     }
 
     if ((hasAlarmB == APP_TRUE) && (g_appFsmRtcTxWakePending == APP_TRUE))
@@ -3791,7 +3791,7 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
         status = App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
         App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-        APP_LOGI("FSM", "[[AlarmB]] RTC wake -> queue service/mgmt transmit path (next due advanced)");
+        APP_LOGN("FSM", "[[AlarmB(tx)]] RTC wake -> queue service/mgmt transmit path (next due advanced)");
     }
 
     return APP_STATUS_OK;

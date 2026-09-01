@@ -35,6 +35,9 @@ static const char *App_LogLevelToString(AppLogLevel_t level)
         case APP_LOG_LEVEL_INFO:
             return "INFO";
 
+        case APP_LOG_LEVEL_NOTICE:
+            return "NOTI";
+
         case APP_LOG_LEVEL_WARN:
             return "WARN";
 

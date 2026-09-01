@@ -1154,7 +1154,7 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
     p_probe->lastStatus = status;
     if (status != APP_STATUS_OK)
     {
-        APP_LOGI("NBIOT", "[[ReadyProbe]] AT ping fail (status=%d)", (int)status);
+        APP_LOGN("NBIOT", "[[ReadyProbe]] AT ping fail (status=%d)", (int)status);
         return status;
     }
     p_probe->atReady = APP_TRUE;
@@ -1166,7 +1166,7 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
     p_probe->lastStatus = status;
     if (status != APP_STATUS_OK)
     {
-        APP_LOGI("NBIOT", "[[ReadyProbe]] CMEE enable fail (status=%d)", (int)status);
+        APP_LOGE("NBIOT", "[[ReadyProbe]] CMEE enable fail (status=%d)", (int)status);
         return status;
     }
     p_probe->cmeeReady = APP_TRUE;
@@ -1179,7 +1179,7 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
     p_probe->lastStatus = status;
     if (status != APP_STATUS_OK)
     {
-        APP_LOGI("NBIOT", "[[ReadyProbe]] IMSI probe UART issue (status=%d)", (int)status);
+        APP_LOGE("NBIOT", "[[ReadyProbe]] IMSI probe UART issue (status=%d)", (int)status);
         return status;
     }
 
@@ -1190,7 +1190,7 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
     {
         p_probe->usimReady = APP_TRUE;
         p_probe->lastStatus = APP_STATUS_OK;
-        APP_LOGI("NBIOT", "[[ReadyProbe]] service ready (AT=1, CMEE=1, USIM=1)");
+        APP_LOGN("NBIOT", "[[ReadyProbe]] service ready (AT=1, CMEE=1, USIM=1)");
         return APP_STATUS_OK;
     }
 
@@ -1199,13 +1199,13 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
         (void)App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
         p_probe->lastCmeError = cmeErr;
         p_probe->lastStatus = APP_STATUS_UART_TIMEOUT;
-        APP_LOGI("NBIOT", "[[ReadyProbe]] service not ready yet (AT=1, CMEE=1, USIM=0, CME=%ld)",
+        APP_LOGE("NBIOT", "[[ReadyProbe]] service not ready yet (AT=1, CMEE=1, USIM=0, CME=%ld)",
                  (long)cmeErr);
         return APP_STATUS_UART_TIMEOUT;
     }
 
     p_probe->lastStatus = APP_STATUS_FATAL;
-    APP_LOGI("NBIOT", "[[ReadyProbe]] IMSI parse fail (status=%s)",
+    APP_LOGE("NBIOT", "[[ReadyProbe]] IMSI parse fail (status=%s)",
              App_Bc95AtGetStatusString(atStatus));
     return APP_STATUS_FATAL;
 }
@@ -2400,7 +2400,7 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
 
             if (snapshot.phase == APP_BC95_NET_PHASE_READY)
             {
-                APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+                APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
                     " Network ready (elapsed=%lums, ip=%s, poll=%lu)",
                          (unsigned long)elapsed, snapshot.ipAddr, (unsigned long)pollCount);
                 if (p_status != NULL) (void)memcpy(p_status, &snapshot, sizeof(*p_status));
@@ -2579,7 +2579,7 @@ static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
     APP_RETURN_IF_FALSE((p_cmdLabel != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((p_logPrefix != NULL), APP_STATUS_INVALID_PARAM);
 
-    APP_LOGI("NBIOT", "%s TX %s", p_logPrefix, p_cmdLabel);
+    APP_LOGN("NBIOT", "%s TX %s", p_logPrefix, p_cmdLabel);
     status = App_Bc95AtSendWithRetry(p_cmd,
                                      g_appBc95AtRxBuf,
                                      (uint16_t)sizeof(g_appBc95AtRxBuf),
@@ -2617,7 +2617,7 @@ static AppStatus_t App_Bc95AtSendBestEffortQuery(const char *p_cmd,
     APP_RETURN_IF_FALSE((p_cmdLabel != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((p_logPrefix != NULL), APP_STATUS_INVALID_PARAM);
 
-    APP_LOGI("NBIOT", "%s TX %s", p_logPrefix, p_cmdLabel);
+    APP_LOGN("NBIOT", "%s TX %s", p_logPrefix, p_cmdLabel);
     status = App_Bc95AtSendCommand(p_cmd,
                                    g_appBc95AtRxBuf,
                                    (uint16_t)sizeof(g_appBc95AtRxBuf),
@@ -2697,7 +2697,7 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
         return APP_STATUS_UART_TIMEOUT;
     }
 
-    APP_LOGI("NBIOT", "[[ReadyProbe]] CFUN?=%ld during recoverable-CME recovery (origin=%ld)",
+    APP_LOGN("NBIOT", "[[ReadyProbe]] CFUN?=%ld during recoverable-CME recovery (origin=%ld)",
              (long)funVal,
              (long)cmeErr);
     if (funVal == 0)
@@ -2708,7 +2708,7 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
                                                "[[ReadyProbe]]");
         if (status == APP_STATUS_OK)
         {
-            APP_LOGI("NBIOT", "[[ReadyProbe]] recoverable-CME CFUN recovery command accepted");
+            APP_LOGN("NBIOT", "[[ReadyProbe]] recoverable-CME CFUN recovery command accepted");
         }
         return status;
     }
@@ -2730,7 +2730,7 @@ static AppStatus_t App_Bc95AtSendRebootBestEffort(void)
 
     cmdLen = (uint16_t)strlen(APP_BC95_AT_CMD_NRB);
     App_Bc95AtDrainRxLine(APP_UART_NBIOT_HANDLE, 30u);
-    APP_LOGI("NBIOT", "[[BootTrack]] TX AT+NRB");
+    APP_LOGN("NBIOT", "[[BootTrack]] TX AT+NRB");
     halStatus = HAL_UART_Transmit(APP_UART_NBIOT_HANDLE,
                                   (uint8_t *)APP_BC95_AT_CMD_NRB,
                                   cmdLen,
@@ -2749,7 +2749,7 @@ static AppStatus_t App_Bc95AtSendRebootBestEffort(void)
         return status;
     }
 
-    APP_LOGI("NBIOT", "[[BootTrack]] AT+NRB ready");
+    APP_LOGN("NBIOT", "[[BootTrack]] AT+NRB ready");
     return APP_STATUS_OK;
 }
 
@@ -2798,7 +2798,7 @@ static AppStatus_t App_NbiotRunBoardAttachVerificationSequence(void)
 {
     AppStatus_t status;
 
-    APP_LOGI("NBIOT", "[[BootTrack]] start board attach-verification sequence");
+    APP_LOGN("NBIOT", "[[BootTrack]] start board attach-verification sequence");
     status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_NBAND_SET,
                                            APP_BC95_AT_RX_TIMEOUT_MS,
                                            "AT+NBAND=" APP_BC95_PLATFORM_NBAND_STRING,
@@ -2846,7 +2846,7 @@ static AppStatus_t App_NbiotRunBoardProvisioningSequence(void)
 {
     AppStatus_t status;
 
-    APP_LOGI("NBIOT", "[[BootTrack]] start board provisioning sequence");
+    APP_LOGN("NBIOT", "[[BootTrack]] start board provisioning sequence");
     status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QLWSERVERIP_SET_BS,
                                            APP_BC95_AT_RX_TIMEOUT_MS,
                                            "AT+QLWSERVERIP=BS,...",
@@ -2956,7 +2956,7 @@ static AppStatus_t App_NbiotRunPostProvisionFinalizeSequence(void)
     AppStatus_t status;
     AppBc95NetStatus_t netStatus;
 
-    APP_LOGI("NBIOT", "[[BootTrack]] start post-provision settle/reattach sequence");
+    APP_LOGN("NBIOT", "[[BootTrack]] start post-provision settle/reattach sequence");
     App_Bc95AtDelayWithFeed(APP_BC95_POST_PROVISION_SETTLE_MS);
 
     status = App_Bc95AtWaitForServiceReady(APP_BC95_POST_PROVISION_SERVICE_READY_TIMEOUT_MS);
@@ -2980,7 +2980,7 @@ static AppStatus_t App_NbiotRunPostProvisionFinalizeSequence(void)
             status = App_Bc95AtWaitForNetwork(APP_BC95_POST_PROVISION_REATTACH_TIMEOUT_MS, &netStatus);
             if (status == APP_STATUS_OK)
             {
-                APP_LOGI("NBIOT", "[[BootTrack]] post-provision reattach ready phase=%s ip=%s",
+                APP_LOGN("NBIOT", "[[BootTrack]] post-provision reattach ready phase=%s ip=%s",
                          App_Bc95AtGetNetPhaseString(netStatus.phase),
                          netStatus.ipAddr);
             }
@@ -3026,7 +3026,7 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
 {
     AppStatus_t status;
 
-    APP_LOGI("NBIOT", "[[BootTrack]] start cold-boot reset/provision flow");
+    APP_LOGN("NBIOT", "[[BootTrack]] start cold-boot reset/provision flow");
     status = App_NbiotRunBootConfigurationSequence();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
@@ -3039,7 +3039,7 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
     status = App_NbiotRunPostProvisionFinalizeSequence();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    APP_LOGI("NBIOT", "[[BootTrack]] done (board-aligned provisioning flow)");
+    APP_LOGN("NBIOT", "[[BootTrack]] done (board-aligned provisioning flow)");
     return APP_STATUS_OK;
 }
 
@@ -3047,7 +3047,7 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
 {
     AppStatus_t status;
 
-    APP_LOGI("NBIOT", "[[ServicePlatformWake]] start (fast-path only)");
+    APP_LOGN("NBIOT", "[[ServicePlatformWake]] start (fast-path only)");
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
     (void)App_NBIoTSyncTime();
@@ -3060,7 +3060,7 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
 
 AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage)
 {
-    APP_LOGI("NBIOT", "[[MgmtSocketWake]] start");
+    APP_LOGN("NBIOT", "[[MgmtSocketWake]] start");
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
     return App_NBIoTTransmitMgmtUdp(deleteStorage);
@@ -3210,7 +3210,7 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
             continue;
         }
 
-        APP_LOGI("NBIOT", "[[ServicePlatformWake]] QLWEVTIND=%d", eventType);
+        APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWEVTIND=%d", eventType);
         if (App_Bc95AtPlatformEventIsReady(eventType) == APP_TRUE)
         {
             return APP_STATUS_OK;
@@ -3285,7 +3285,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
                                                       &needRegisterRetry);
     if (status == APP_STATUS_OK)
     {
-        APP_LOGI("NBIOT", "[[ServicePlatformWake]] already-registered fast path hit");
+        APP_LOGN("NBIOT", "[[ServicePlatformWake]] already-registered fast path hit");
         return APP_STATUS_OK;
     }
     if ((status != APP_STATUS_UART_TIMEOUT) && (status != APP_STATUS_FATAL))
@@ -3351,7 +3351,7 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
                         (unsigned)seqNum);
     APP_RETURN_IF_FALSE((printed > 0) && ((uint32_t)printed < sizeof(appBc95AtCmdTxBuf)), APP_STATUS_INVALID_PARAM);
 
-    APP_LOGI("NBIOT", "[[ServicePlatformWake]] QLWULDATAEX send len=%u seq=%u mode=0x0100",
+    APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWULDATAEX send len=%u seq=%u mode=0x0100",
              (unsigned)length,
              (unsigned)seqNum);
     status = App_Bc95AtSendCommand(appBc95AtCmdTxBuf,
@@ -3377,7 +3377,7 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
         APP_RETURN_IF_FALSE(atStatus == APP_BC95_AT_OK, APP_STATUS_FATAL);
         if (App_Bc95AtParseQlwuldataStatus((const char *)g_appBc95AtRxBuf, &qlwStatus, &qlwSeq) == APP_BC95_AT_OK)
         {
-            APP_LOGI("NBIOT", "[[ServicePlatformWake]] QLWULDATASTATUS=%d seq=%d", qlwStatus, qlwSeq);
+            APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWULDATASTATUS=%d seq=%d", qlwStatus, qlwSeq);
             if ((qlwStatus == 4) && ((qlwSeq < 0) || (qlwSeq == (int)seqNum)))
             {
                 return APP_STATUS_OK;
@@ -3424,7 +3424,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
     }
     if (status != APP_STATUS_OK)
     {
-        APP_LOGI("NBIOT", "%s skip send", p_logTag);
+        APP_LOGW("NBIOT", "%s skip send", p_logTag);
         return status;
     }
 
@@ -3466,7 +3466,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
     {
         if (p_liveRecord != NULL)
         {
-            APP_LOGI("NBIOT", "%s live meter record sent without storage (records=%u)",
+            APP_LOGN("NBIOT", "%s live meter record sent without storage (records=%u)",
                      p_logTag,
                      (unsigned int)buildResult.recordCount);
         }
@@ -3497,7 +3497,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
             }
             else
             {
-                APP_LOGI("NBIOT", "%s storage marked sent (records=%u, remain=%u)",
+                APP_LOGN("NBIOT", "%s storage marked sent (records=%u, remain=%u)",
                          p_logTag,
                          (unsigned int)buildResult.recordCount,
                          (unsigned int)App_MeterStorageCount());
@@ -3520,7 +3520,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
 
     if (status == APP_STATUS_OK)
     {
-        APP_LOGI("NBIOT", "%s PlatformSendResult: sent=%u seq=%u confirmed=1",
+        APP_LOGN("NBIOT", "%s PlatformSendResult: sent=%u seq=%u confirmed=1",
                  p_logTag,
                  (unsigned)buildResult.packetLength,
                  (unsigned)seqNum);
@@ -3554,7 +3554,7 @@ static AppStatus_t App_NbiotCarrierPerformSwReset(void)
 
     App_Bc95AtDelayWithFeed(APP_NBIOT_SW_RESET_SETTLE_MS);
     (void)App_NBIoTAtInit();
-    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_RESET " SW reset sequence complete");
+    APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_RESET " SW reset sequence complete");
     return APP_STATUS_OK;
 }
 
@@ -3571,7 +3571,7 @@ static AppStatus_t App_NbiotCarrierPerformHwReset(void)
      * reset even though the modem is actually alive.
      */
     (void)App_NBIoTAtInit();
-    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_RESET " HW reset sequence complete");
+    APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_RESET " HW reset sequence complete");
     return APP_STATUS_OK;
 }
 
@@ -3588,14 +3588,14 @@ static AppStatus_t App_NbiotCarrierWaitForCereg0(uint32_t timeoutMs)
         if (status == APP_STATUS_OK)
         {
             g_appNbiotCarrierContext.lastNetStatus = snapshot;
-            APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " poll: phase=%s CEREG=%s CGATT=%u",
+            APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " poll: phase=%s CEREG=%s CGATT=%u",
                      App_Bc95AtGetNetPhaseString(snapshot.phase),
                      App_Bc95AtGetCeregStatString(snapshot.ceregStat),
                      (unsigned)snapshot.cgattState);
 
             if ((snapshot.ceregStat == APP_BC95_CEREG_NOT_REGISTERED) || (snapshot.cfunValue != 1u))
             {
-                APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " complete: CEREG=%s CGATT=%u",
+                APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " complete: CEREG=%s CGATT=%u",
                          App_Bc95AtGetCeregStatString(snapshot.ceregStat),
                          (unsigned)snapshot.cgattState);
                 return APP_STATUS_OK;
@@ -5152,7 +5152,7 @@ AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime)
         }
         else
         {
-            APP_LOGI("RTC", "within tolerance -> keep RTC");
+            APP_LOGN("RTC", "[[RTC]] within tolerance -> keep RTC");
         }
     }
 
@@ -5162,7 +5162,7 @@ AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime)
                     nbTime->dateTime.hour, nbTime->dateTime.minute, nbTime->dateTime.second);
         /* RTC_SetTime → HAL_RTC_SetTime/SetDate 가 INIT 진입/해제하며 INITS=1로 만듦 */
 
-        APP_LOGI("NBIOT", "RTC set to %04u-%02u-%02u %02u:%02u:%02u",
+        APP_LOGN("RTC", "[[RTC]] set to %04u-%02u-%02u %02u:%02u:%02u",
                  (unsigned)nbTime->dateTime.year,
                  (unsigned)nbTime->dateTime.month, (unsigned)nbTime->dateTime.day,
                  (unsigned)nbTime->dateTime.hour, (unsigned)nbTime->dateTime.minute, (unsigned)nbTime->dateTime.second);
@@ -5355,7 +5355,7 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
     g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_IDLE;
     g_appNbiotCarrierContext.lastResetType = APP_NBIOT_CARRIER_RESET_NONE;
 
-    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+    APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
              " mandatory start (window=%lums total=%lums swMax=%u hwMax=%u)",
              (unsigned long)APP_NBIOT_ATTACH_TIMEOUT_MS,
              (unsigned long)APP_NBIOT_ATTACH_TOTAL_FAIL_LIMIT_MS,
@@ -5369,7 +5369,7 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
         g_appNbiotCarrierContext.lastAttemptTick = HAL_GetTick();
         g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_BOOT_WAIT;
 
-        APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+        APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
                  " attempt=%u state=%s",
                  (unsigned)g_appNbiotCarrierContext.attachAttemptCount,
                  App_NbiotCarrierAttachStateString(g_appNbiotCarrierContext.attachState));
@@ -5392,7 +5392,7 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
 #ifdef NBIOT_SUPPORT_DNS
             (void)App_Bc95AtWarmupDns(WARMUPDNS_SERVER_DOMAIN);
 #endif // NBIOT_SUPPORT_DNS
-            APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+            APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
                      " success attempt=%u elapsed=%lums phase=%s ip=%s",
                      (unsigned)g_appNbiotCarrierContext.attachAttemptCount,
                      (unsigned long)(HAL_GetTick() - g_appNbiotCarrierContext.attachStartTick),
@@ -5532,7 +5532,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
         {
             if (p_liveRecord != NULL)
             {
-                APP_LOGI("NBIOT", "%s live meter record sent without storage (records=%u)",
+                APP_LOGN("NBIOT", "%s live meter record sent without storage (records=%u)",
                          p_logTag,
                          (unsigned int)buildResult.recordCount);
             }
@@ -5563,7 +5563,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                     buildResult.cleared = (deletedCount != 0u) ? APP_TRUE : APP_FALSE;
                     if (deletedCount != 0u)
                     {
-                        APP_LOGI("NBIOT", "%s storage deleted (records=%u, remain=%u)",
+                        APP_LOGN("NBIOT", "%s storage deleted (records=%u, remain=%u)",
                                  p_logTag,
                                  (unsigned int)deletedCount,
                                  (unsigned int)App_MeterStorageCount());
@@ -5571,7 +5571,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                 }
                 else
                 {
-                    APP_LOGI("NBIOT", "%s storage marked sent (records=%u, remain=%u)",
+                    APP_LOGN("NBIOT", "%s storage marked sent (records=%u, remain=%u)",
                              p_logTag,
                              (unsigned int)buildResult.recordCount,
                              (unsigned int)App_MeterStorageCount());
@@ -5589,7 +5589,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                     return clearStatus;
                 }
                 buildResult.cleared = APP_TRUE;
-                APP_LOGI("NBIOT", "%s storage deleted (records=%u, remain=%u)",
+                APP_LOGN("NBIOT", "%s storage deleted (records=%u, remain=%u)",
                          p_logTag,
                          (unsigned int)buildResult.recordCount,
                          (unsigned int)App_MeterStorageCount());
@@ -5598,7 +5598,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
     }
     else
     {
-        APP_LOGI("NBIOT", "%s skip send", p_logTag);
+        APP_LOGW("NBIOT", "%s skip send", p_logTag);
     }
 
     APP_LOGD("NBIOT", "%s build len=%u payload=%u rec=%u checksum=0x%02X cleared=%u delete=%u live=%u",
@@ -5613,7 +5613,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
 
     if (status == APP_STATUS_OK)
     {
-        APP_LOGI("NBIOT", "%s SendResult: stage=%d, ip=%s, port=%u, sent=%u, seq=%u, confirmed=%u",
+        APP_LOGN("NBIOT", "%s SendResult: stage=%d, ip=%s, port=%u, sent=%u, seq=%u, confirmed=%u",
                  p_logTag,
                  (int)sendResult.lastStage,
                  sendResult.resolvedIp,
@@ -5680,7 +5680,7 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
     g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_DETACH_REQ;
     g_appNbiotCarrierContext.lastDetachTick = HAL_GetTick();
 
-    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
+    APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
              " mandatory start (close sockets + AT+CGATT=0 + wait CEREG:0 + AT+CFUN=0)");
 
     App_Bc95AtCloseAllSockets();
@@ -5711,7 +5711,7 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
         else
         {
             detachWaitStatus = APP_STATUS_OK;
-            APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " skipped (attach not ready, state=%s)",
+            APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " skipped (attach not ready, state=%s)",
                      App_NbiotCarrierAttachStateString(g_appNbiotCarrierContext.attachState));
         }
 
@@ -5744,7 +5744,7 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
     g_appNbiotCarrierContext.lastPowerOffDoneTick = HAL_GetTick();
     g_appNbiotCarrierContext.lastPowerOffCfun0Status = cfunMinStatus;
     g_appNbiotCarrierContext.lastStatus = APP_STATUS_OK;
-    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
+    APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
              " done state=%s detachStatus=%d cfun0Status=%d",
              App_NbiotCarrierPowerOffStateString(g_appNbiotCarrierContext.powerOffState),
              (int)detachWaitStatus,

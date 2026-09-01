@@ -118,16 +118,6 @@ static AppStatus_t App_SystemRtcEnsureLseReady(void)
     return APP_STATUS_INIT_FAILED;
 }
 
-static uint8_t App_SystemCanDebugLog(void)
-{
-    const AppLogContext_t *p_logContext;
-
-    p_logContext = App_LogGetContext();
-    return ((g_appSystemContext.logReady == APP_TRUE) &&
-            (p_logContext != NULL) &&
-            (p_logContext->initialized == APP_TRUE)) ? APP_TRUE : APP_FALSE;
-}
-
 static const char *App_SystemBuildWakeupFlagString(uint32_t wakeFlags)
 {
     static char wakeFlagString[96];
@@ -211,24 +201,18 @@ static void handle_rtc_alarm_wakeup(uint32_t flags)
     {
         g_appSystemContext.rtcAlarmAWakeEventCount++;
         handled = APP_TRUE;
-        if (App_SystemCanDebugLog() == APP_TRUE)
-        {
-            APP_LOGI("LP",
-                     "RTC Alarm A wake count=%lu",
-                     (unsigned long)g_appSystemContext.rtcAlarmAWakeEventCount);
-        }
+        APP_LOGD("LP",
+                 "RTC Alarm A wake count=%lu",
+                 (unsigned long)g_appSystemContext.rtcAlarmAWakeEventCount);
     }
 
     if ((rtcAlarmFlags & WAKEUP_FLAG_RTC_ALARM_B) != 0u)
     {
         g_appSystemContext.rtcAlarmBWakeEventCount++;
         handled = APP_TRUE;
-        if (App_SystemCanDebugLog() == APP_TRUE)
-        {
-            APP_LOGI("LP",
-                     "RTC Alarm B wake count=%lu",
-                     (unsigned long)g_appSystemContext.rtcAlarmBWakeEventCount);
-        }
+        APP_LOGD("LP",
+                 "RTC Alarm B wake count=%lu",
+                 (unsigned long)g_appSystemContext.rtcAlarmBWakeEventCount);
     }
 
     if (handled == APP_TRUE)
@@ -240,11 +224,8 @@ static void handle_rtc_alarm_wakeup(uint32_t flags)
 static void handle_rtc_wut_wakeup(void)
 {
     g_appSystemContext.lastRtcAlarmFlags = WAKEUP_FLAG_RTC_WUT;
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGI("CLK", "Wake(WUT) RTC clock source=%s",
-                 App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()));
-    }
+    APP_LOGD("CLK", "Wake(WUT) RTC clock source=%s",
+             App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()));
 
     App_SystemHandleRtcCallBack();
 }
@@ -263,10 +244,10 @@ static void handle_exti_wakeup(uint32_t flags)
 
 void debug_print_wakeup_info(void)
 {
-    APP_LOGD("SYS", "[DEBUG] source cnt: %d", g_wakeup_ctx.source_count);
+    APP_LOGD("SYS", "source cnt: %d", g_wakeup_ctx.source_count);
     if (g_wakeup_ctx.source_count > 0)
     {
-        APP_LOGD("SYS", "[DEBUG] Multiple wakeup sources detected: %d", g_wakeup_ctx.source_count);
+        APP_LOGD("SYS", "  Multiple wakeup sources detected: %d", g_wakeup_ctx.source_count);
         APP_LOGD("SYS", "  Processed flags: 0x%08lX", g_wakeup_ctx.processed_flags);
         APP_LOGD("SYS", "  Raw registers - LPTIM: 0x%08lX, RTC: 0x%08lX, EXTI: 0x%08lX",
                  g_wakeup_ctx.raw_lptim_isr, g_wakeup_ctx.raw_rtc_isr, g_wakeup_ctx.raw_exti_pr);
@@ -291,16 +272,13 @@ void wakeup_process_all_pending(void)
 
     g_wakeup_ctx.processed_flags = WAKEUP_FLAG_NONE;
 
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGI("LP",
-                 "Wake pending flags=0x%08lX(%s) raw_lptim=0x%08lX raw_rtc=0x%08lX raw_exti=0x%08lX",
-                 (unsigned long)pending_flags,
-                 App_SystemBuildWakeupFlagString(pending_flags),
-                 (unsigned long)g_wakeup_ctx.raw_lptim_isr,
-                 (unsigned long)g_wakeup_ctx.raw_rtc_isr,
-                 (unsigned long)g_wakeup_ctx.raw_exti_pr);
-    }
+    APP_LOGD("LP",
+             "Wake pending flags=0x%08lX(%s) raw_lptim=0x%08lX raw_rtc=0x%08lX raw_exti=0x%08lX",
+             (unsigned long)pending_flags,
+             App_SystemBuildWakeupFlagString(pending_flags),
+             (unsigned long)g_wakeup_ctx.raw_lptim_isr,
+             (unsigned long)g_wakeup_ctx.raw_rtc_isr,
+             (unsigned long)g_wakeup_ctx.raw_exti_pr);
 
     /* 소스 개수 계산 */
     uint32_t temp = pending_flags;
@@ -337,25 +315,20 @@ void wakeup_process_all_pending(void)
         g_wakeup_ctx.processed_flags |= exti_flags;
     }
 
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGI("LP",
-                 "Wake processed flags=0x%08lX(%s) source_count=%u",
-                 (unsigned long)g_wakeup_ctx.processed_flags,
-                 App_SystemBuildWakeupFlagString(g_wakeup_ctx.processed_flags),
-                 (unsigned int)g_wakeup_ctx.source_count);
-    }
+    APP_LOGD("LP",
+             "Wake processed flags=0x%08lX(%s) source_count=%u",
+             (unsigned long)g_wakeup_ctx.processed_flags,
+             App_SystemBuildWakeupFlagString(g_wakeup_ctx.processed_flags),
+             (unsigned int)g_wakeup_ctx.source_count);
 
     /* 미처리 플래그 확인 */
     uint32_t unhandled = pending_flags & ~g_wakeup_ctx.processed_flags;
-    if (unhandled) {
-        if (App_SystemCanDebugLog() == APP_TRUE)
-        {
-            APP_LOGE("LP",
-                     "Wake unhandled flags=0x%08lX(%s)",
-                     (unsigned long)unhandled,
-                     App_SystemBuildWakeupFlagString(unhandled));
-        }
+    if (unhandled)
+    {
+        APP_LOGE("LP",
+                 "Wake unhandled flags=0x%08lX(%s)",
+                 (unsigned long)unhandled,
+                 App_SystemBuildWakeupFlagString(unhandled));
         /* 예상치 못한 wakeup 소스 처리 또는 오류 처리 */
         Error_Handler();
     }
@@ -636,7 +609,7 @@ static AppStatus_t App_SystemRtcConfigureAlarmInternal(const AppDateTime_t *p_du
     APP_RETURN_IF_FALSE(HAL_RTC_SetAlarm_IT(&hrtc, &alarm, RTC_FORMAT_BIN) == HAL_OK,
                         APP_STATUS_INIT_FAILED);
 
-    APP_LOGI("RTC", "%s set %04u-%02u-%02u %02u:%02u:%02u",
+    APP_LOGN("RTC", "%s set %04u-%02u-%02u %02u:%02u:%02u",
              p_label,
              (unsigned int)p_dueTime->year,
              (unsigned int)p_dueTime->month,
@@ -661,7 +634,7 @@ static AppStatus_t App_SystemRtcConfigureAlarmAForMetering(uint8_t *p_configured
         return status;
     }
 
-    status = App_SystemRtcConfigureAlarmInternal(&dueTime, RTC_ALARM_A, "AlarmA(meter)");
+    status = App_SystemRtcConfigureAlarmInternal(&dueTime, RTC_ALARM_A, "[[AlarmA(meter)]]");
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     *p_configured = APP_TRUE;
     return APP_STATUS_OK;
@@ -681,7 +654,7 @@ static AppStatus_t App_SystemRtcConfigureAlarmBForReporting(uint8_t *p_configure
         return status;
     }
 
-    status = App_SystemRtcConfigureAlarmInternal(&dueTime, RTC_ALARM_B, "AlarmB(tx)");
+    status = App_SystemRtcConfigureAlarmInternal(&dueTime, RTC_ALARM_B, "[[AlarmB(tx)]]");
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     *p_configured = APP_TRUE;
     return APP_STATUS_OK;
@@ -759,7 +732,7 @@ AppStatus_t App_SystemRequestShortRtcWakeup(uint32_t wakeupSeconds)
     APP_RETURN_IF_FALSE((wakeupSeconds > 0u) && (wakeupSeconds <= 0x10000u), APP_STATUS_INVALID_PARAM);
 
     g_appSystemContext.forcedRtcWakeupSeconds = wakeupSeconds;
-    APP_LOGI("RTC", "[[CollisionPolicy]] request deferred tx short wake=%lus", (unsigned long)wakeupSeconds);
+    APP_LOGN("RTC", "[[CollisionPolicy]] request deferred tx short wake=%lus", (unsigned long)wakeupSeconds);
     return APP_STATUS_OK;
 }
 
@@ -774,16 +747,11 @@ void App_SystemNotifyWakeSource(uint32_t sourceMask)
     g_appSystemContext.lastWakeTickMs = HAL_GetTick();
     g_appSystemContext.stopRequested = APP_FALSE;
     App_SystemResetStopQualification();
-#ifdef DEBUG
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGD("WAKE",
-                       "source=%s mask=0x%08lX tick=%lu",
-                       App_SystemBuildWakeSourceString(g_appSystemContext.wakeSourceMask),
-                       (unsigned long)g_appSystemContext.wakeSourceMask,
-                       (unsigned long)g_appSystemContext.lastWakeTickMs);
-    }
-#endif
+    APP_LOGD("WAKE",
+             "source=%s mask=0x%08lX tick=%lu",
+             App_SystemBuildWakeSourceString(g_appSystemContext.wakeSourceMask),
+             (unsigned long)g_appSystemContext.wakeSourceMask,
+             (unsigned long)g_appSystemContext.lastWakeTickMs);
 }
 
 static void App_SystemQueueStateCommand(uint8_t nextState)
@@ -885,7 +853,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     g_appSystemContext.logReady = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_LOG_READY;
 
-    APP_LOGI("SYS", "Boot complete: %s v%s", APP_NAME_STRING, App_SystemGetVersionString());
+    APP_LOGN("SYS", "Boot: %s v%s", APP_NAME_STRING, App_SystemGetVersionString());
     APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu",
              (unsigned long)p_clockContext->sysclkHz,
              (unsigned long)p_clockContext->hclkHz,
@@ -893,12 +861,12 @@ static AppStatus_t App_SystemPrintBootLogs(void)
              (unsigned long)p_clockContext->pclk2Hz,
              (unsigned long)p_clockContext->msiRange);
 
-    APP_LOGI("CLK", "RTC clock source: at_boot=%s current=%s LSERDY=%u (RCC->CSR=0x%08lX)",
+    APP_LOGN("CLK", "RTC clock source: at_boot=%s current=%s LSERDY=%u (RCC->CSR=0x%08lX)",
              App_ClockRtcSourceToString(p_clockContext->rtcSourceAtBoot),
              App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()),
              (unsigned int)p_clockContext->lseReady,
              (unsigned long)RCC->CSR);
-    APP_LOGI("SYS", "Device UID hash=0x%08lX", (unsigned long)App_ClockGetDeviceUidHash());
+    APP_LOGN("SYS", "Device UID hash=0x%08lX", (unsigned long)App_ClockGetDeviceUidHash());
     APP_LOGI("GPIO", "LP policy ready: SWD=%lu",
                                  (unsigned long)g_appGpioLpConfig.swdPolicy);
     APP_LOGI("RTC", "STOP wake period=%lu ms (%s)",
@@ -912,7 +880,6 @@ static AppStatus_t App_SystemPrintBootLogs(void)
                                  (unsigned long)APP_UART_NBIOT_HANDLE->Init.BaudRate);
     APP_LOGI("NFC", "I2C2 NFC ready at %sKhz",
                                  (((unsigned long)APP_I2C_NFC_HANDLE->Init.Timing == 0x00000708)?"100":"unknown"));
-    APP_LOGI("SYS", "Boot path complete: clock/log/debug ready");
 
     return APP_STATUS_OK;
 }
@@ -1166,7 +1133,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
     uint8_t standbyPrepareState = APP_SYSTEM_NFC_STANDBY_PREP_NONE;
     AppStatus_t adcRestoreStatus;
 	
-    APP_LOGI("LP", "Enter STOP mode%s rtcClockSource=%s (RCC->CSR=0x%08lX)",
+    APP_LOGN("LP", "Enter STOP mode%s rtcClockSource=%s (RCC->CSR=0x%08lX)",
              (g_appSystemContext.stopNoWakeRequested == APP_TRUE) ? " (fatal/no-wake)" : "",
              App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()),
              (unsigned long)RCC->CSR);
@@ -1303,19 +1270,14 @@ static AppStatus_t App_SystemEnterStopMode(void)
     g_appSystemContext.lastStopEntryTickMs = HAL_GetTick();
     g_appSystemContext.wakeSourceMask = APP_SYSTEM_WAKE_SRC_NONE;
 
-#ifdef DEBUG
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        // this don't print because stopped external interface.
-        APP_LOGI("LP", "STOP candidate=%lu qual=%u idle=%lu sleep=%lu stop=%lu dryrun=%u",
-                       (unsigned long)g_appSystemContext.stopCandidateCount,
-                       (unsigned int)g_appSystemContext.stopQualificationCount,
-                       (unsigned long)g_appSystemContext.idleCounter,
-                       (unsigned long)g_appSystemContext.sleepEntryCount,
-                       (unsigned long)g_appSystemContext.stopEntryCount,
-                       (unsigned int)APP_LP_STOP_DEBUG_DRY_RUN);
-    }
-#endif
+    // this don't print because stopped external interface.
+    APP_LOGD("LP", "STOP candidate=%lu qual=%u idle=%lu sleep=%lu stop=%lu dryrun=%u",
+             (unsigned long)g_appSystemContext.stopCandidateCount,
+             (unsigned int)g_appSystemContext.stopQualificationCount,
+             (unsigned long)g_appSystemContext.idleCounter,
+             (unsigned long)g_appSystemContext.sleepEntryCount,
+             (unsigned long)g_appSystemContext.stopEntryCount,
+             (unsigned int)APP_LP_STOP_DEBUG_DRY_RUN);
 
 #if (APP_LP_STOP_DEBUG_DRY_RUN == APP_TRUE)
     g_appSystemContext.stopDryRunCount++;
@@ -1334,16 +1296,11 @@ static AppStatus_t App_SystemEnterStopMode(void)
         APP_LOGE("LP", "ADC restore after STOP dry-run failed: status=%lu", (unsigned long)adcRestoreStatus);
         return adcRestoreStatus;
     }
-#ifdef DEBUG
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        // this don't print because stopped external interface.
-        APP_LOGW("LP", "STOP dry-run only: candidate=%lu dryrun=%lu wake=%s",
-                       (unsigned long)g_appSystemContext.stopCandidateCount,
-                       (unsigned long)g_appSystemContext.stopDryRunCount,
-                       App_SystemGetWakeSourceString());
-    }
-#endif
+    // this don't print because stopped external interface.
+    APP_LOGW("LP", "STOP dry-run only: candidate=%lu dryrun=%lu wake=%s",
+             (unsigned long)g_appSystemContext.stopCandidateCount,
+             (unsigned long)g_appSystemContext.stopDryRunCount,
+             App_SystemGetWakeSourceString());
     return APP_STATUS_OK;
 #else
 
@@ -1362,14 +1319,11 @@ static AppStatus_t App_SystemEnterStopMode(void)
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
 
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGI("LP",
-                 "STOP enter prep: rtc_before=%llu old_wake_mask=0x%08lX pending_flags=0x%08lX",
-                 (unsigned long long)rtc_time_before_stop,
-                 (unsigned long)g_appSystemContext.oldWakeSourceMask,
-                 (unsigned long)g_wakeup_ctx.pending_flags);
-    }
+    APP_LOGD("LP",
+             "STOP enter prep: rtc_before=%llu old_wake_mask=0x%08lX pending_flags=0x%08lX",
+             (unsigned long long)rtc_time_before_stop,
+             (unsigned long)g_appSystemContext.oldWakeSourceMask,
+             (unsigned long)g_wakeup_ctx.pending_flags);
 
     HAL_PWREx_EnableUltraLowPower();   /* VREFINT off in Stop */
     HAL_PWREx_EnableFastWakeUp();      /* VREFINT 안정 대기 skip */
@@ -1424,9 +1378,8 @@ static AppStatus_t App_SystemEnterStopMode(void)
     /* Wakeup 직후 WWDG 즉시 Refresh (안전 마진 확보) */
     HAL_WWDG_Refresh(APP_WWDG_HANDLE);
 
-#ifdef DEBUG
     debug_print_wakeup_info();
-#endif
+
     g_appSystemContext.oldWakeSourceMask |= g_appSystemContext.wakeSourceMask;
 
     if (g_appSystemContext.wakeSourceMask == APP_SYSTEM_WAKE_SRC_NONE)
@@ -1436,14 +1389,11 @@ static AppStatus_t App_SystemEnterStopMode(void)
 
     g_appSystemContext.stopEntryCount++;
 
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGI("LP", "STOP exit wake=%s, mask=%x count=%lu tick=%lu",
-                       App_SystemGetWakeSourceString(),
-                       g_appSystemContext.wakeSourceMask,
-                       (unsigned long)g_appSystemContext.stopEntryCount,
-                       (unsigned long)g_appSystemContext.lastWakeTickMs);
-    }
+    APP_LOGN("LP", "STOP exit wake=%s, mask=%x count=%lu tick=%lu",
+             App_SystemGetWakeSourceString(),
+             g_appSystemContext.wakeSourceMask,
+             (unsigned long)g_appSystemContext.stopEntryCount,
+             (unsigned long)g_appSystemContext.lastWakeTickMs);
 
     return APP_STATUS_OK;
 #endif
@@ -1467,18 +1417,13 @@ static void App_SystemHandleIdle(void)
             }
         }
 
-#ifdef DEBUG
-        if (App_SystemCanDebugLog() == APP_TRUE)
-        {
-            APP_LOGD("LP",
-                           "STOP qualify: step=%u/%u decision=%s idle=%lu dispatch=%lu",
-                           (unsigned int)g_appSystemContext.stopQualificationCount,
-                           (unsigned int)APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT,
-                           App_FsmGetDecisionString(),
-                           (unsigned long)g_appSystemContext.idleCounter,
-                           (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
-        }
-#endif
+        APP_LOGD("LP",
+                 "STOP qualify: step=%u/%u decision=%s idle=%lu dispatch=%lu",
+                 (unsigned int)g_appSystemContext.stopQualificationCount,
+                 (unsigned int)APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT,
+                 App_FsmGetDecisionString(),
+                 (unsigned long)g_appSystemContext.idleCounter,
+                 (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
 
         if (g_appSystemContext.stopQualificationCount >= APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT)
         {
@@ -1509,17 +1454,12 @@ static void App_SystemHandleIdle(void)
         App_SystemResetStopQualification();
     }
 
-#ifdef DEBUG
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGD("SYS",
-                       "Entering idle path: mode=%s stop_req=%u idle=%lu dispatch=%lu",
-                       (APP_FSM_USE_WFI_IDLE == APP_TRUE) ? "WFI" : "delay",
-                       (unsigned int)g_appSystemContext.stopRequested,
-                       (unsigned long)g_appSystemContext.idleCounter,
-                       (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
-    }
-#endif
+    APP_LOGD("SYS",
+             "Entering idle path: mode=%s stop_req=%u idle=%lu dispatch=%lu",
+             (APP_FSM_USE_WFI_IDLE == APP_TRUE) ? "WFI" : "delay",
+             (unsigned int)g_appSystemContext.stopRequested,
+             (unsigned long)g_appSystemContext.idleCounter,
+             (unsigned long)((p_fsmSummary != NULL) ? p_fsmSummary->lastLoopDispatchCount : 0u));
 
     if (APP_FSM_USE_WFI_IDLE == APP_TRUE)
     {
@@ -1547,14 +1487,11 @@ void App_SystemHandleLptim1AutoReloadMatchCallback(void)
     App_SystemNotifyWakeSource(APP_SYSTEM_WAKE_SRC_LPTIM);
     App_SystemQueueStateCommand(APP_FSM_STATE_LPTIM_WAKE_SERVICE);
 
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGI("LP",
-                 "Wake source callback: LPTIM count=%lu raw_isr=0x%08lX pending=0x%08lX",
-                 (unsigned long)g_appSystemContext.lptimWakeEventCount,
-                 (unsigned long)g_wakeup_ctx.raw_lptim_isr,
-                 (unsigned long)g_wakeup_ctx.pending_flags);
-    }
+    APP_LOGD("LP",
+             "Wake source callback: LPTIM count=%lu raw_isr=0x%08lX pending=0x%08lX",
+             (unsigned long)g_appSystemContext.lptimWakeEventCount,
+             (unsigned long)g_wakeup_ctx.raw_lptim_isr,
+             (unsigned long)g_wakeup_ctx.pending_flags);
 }
 
 void App_SystemHandleRtcCallBack(void)
@@ -1570,15 +1507,12 @@ void App_SystemHandleRtcCallBack(void)
     App_SystemQueueStateCommand(APP_FSM_STATE_RTC_WAKE_SERVICE);
     App_SystemQueueStateCommand(APP_FSM_STATE_WATCHDOG_FEED);
 
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGI("LP",
-                 "Wake source callback: RTC count=%lu raw_rtc=0x%08lX pending=0x%08lX alarm_flags=0x%08lX",
-                 (unsigned long)g_appSystemContext.rtcWakeEventCount,
-                 (unsigned long)g_wakeup_ctx.raw_rtc_isr,
-                 (unsigned long)g_wakeup_ctx.pending_flags,
-                 (unsigned long)g_appSystemContext.pendingRtcAlarmFlags);
-    }
+    APP_LOGD("LP",
+             "Wake source callback: RTC count=%lu raw_rtc=0x%08lX pending=0x%08lX alarm_flags=0x%08lX",
+             (unsigned long)g_appSystemContext.rtcWakeEventCount,
+             (unsigned long)g_wakeup_ctx.raw_rtc_isr,
+             (unsigned long)g_wakeup_ctx.pending_flags,
+             (unsigned long)g_appSystemContext.pendingRtcAlarmFlags);
 }
 
 void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
@@ -1589,14 +1523,11 @@ void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
         return;
     }
 
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGI("LP",
-                 "Wake source callback: EXTI pinmask=0x%04X raw_exti=0x%08lX pending=0x%08lX",
-                 (unsigned int)GPIO_Pin,
-                 (unsigned long)g_wakeup_ctx.raw_exti_pr,
-                 (unsigned long)g_wakeup_ctx.pending_flags);
-    }
+    APP_LOGD("LP",
+             "Wake source callback: EXTI pinmask=0x%04X raw_exti=0x%08lX pending=0x%08lX",
+             (unsigned int)GPIO_Pin,
+             (unsigned long)g_wakeup_ctx.raw_exti_pr,
+             (unsigned long)g_wakeup_ctx.pending_flags);
 
     switch (GPIO_Pin)
     {
@@ -1606,10 +1537,7 @@ void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
             break;
 
         default:
-            if (App_SystemCanDebugLog() == APP_TRUE)
-            {
-                APP_LOGW("LP", "Unhandled EXTI wake pinmask=0x%04X", (unsigned int)GPIO_Pin);
-            }
+            APP_LOGW("LP", "Unhandled EXTI wake pinmask=0x%04X", (unsigned int)GPIO_Pin);
             break;
     }
 }
@@ -1699,7 +1627,7 @@ AppStatus_t App_SystemInit(void)
     }
 
     (void)App_DualBootConfirmSlot2();
-    APP_LOGI("BOOT",
+    APP_LOGN("BOOT",
                "running image=%s(%lu) state=%s active=%lu pending=%lu",
                App_DualBootGetCurrentSlotName(),
                (unsigned long)App_DualBootGetCurrentSlotId(),
@@ -1731,12 +1659,10 @@ AppStatus_t App_SystemInit(void)
 
     APP_LOGI("SYS", "Initial attach/selftest/report and wake report routines delegated to FSM");
 
-#ifdef DEBUG
     APP_LOGD("SYS", "Application ready: boot=%lu/%lu stop_req=%u",
                                  (unsigned long)g_appSystemContext.bootStage,
                                  (unsigned long)APP_BOOT_STAGE_APP_READY,
                                  (unsigned int)g_appSystemContext.stopRequested);
-#endif
 
 
     return APP_STATUS_OK;
@@ -1758,28 +1684,23 @@ void App_SystemProcess(void)
     if (status != APP_STATUS_OK)
     {
         App_ErrorRecord(status, __FILE__, __LINE__);
-#ifdef DEBUG
         APP_LOGE("SYS", "FSM run failed: status=%lu", (unsigned long)status);
-#endif
     }
 
     p_fsmSummary = App_FsmGetSummary();
     if (((p_fsmSummary != NULL) && (p_fsmSummary->lastLoopDispatchCount == 0u)) ||
         (g_appSystemContext.stopRequested == APP_TRUE))
     {
-#ifdef DEBUG
         if ((p_fsmSummary != NULL) &&
             (p_fsmSummary->lastLoopDispatchCount != 0u) &&
-            (g_appSystemContext.stopRequested == APP_TRUE) &&
-            (App_SystemCanDebugLog() == APP_TRUE))
+            (g_appSystemContext.stopRequested == APP_TRUE))
         {
             APP_LOGD("LP",
-                           "idle gate forced: dispatch=%lu decision=%s stop_req=%u",
-                           (unsigned long)p_fsmSummary->lastLoopDispatchCount,
-                           App_FsmGetDecisionString(),
-                           (unsigned int)g_appSystemContext.stopRequested);
+                     "idle gate forced: dispatch=%lu decision=%s stop_req=%u",
+                     (unsigned long)p_fsmSummary->lastLoopDispatchCount,
+                     App_FsmGetDecisionString(),
+                     (unsigned int)g_appSystemContext.stopRequested);
         }
-#endif
         App_SystemHandleIdle();
     }
     else
@@ -1798,12 +1719,7 @@ AppStatus_t App_SystemOnBeforeStopEnter(void)
 
     APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
     status = App_GpioLpOnBeforeStopEnter();
-#ifdef DEBUG
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGD("LP", "before STOP status=%lu", (unsigned long)status);
-    }
-#endif
+    APP_LOGD("LP", "before STOP status=%lu", (unsigned long)status);
     return status;
 }
 
@@ -1813,12 +1729,7 @@ AppStatus_t App_SystemOnAfterStopExit(void)
 
     APP_RETURN_IF_FALSE((g_appSystemContext.bootStage >= APP_BOOT_STAGE_GPIO_LP_READY), APP_STATUS_NOT_INITIALIZED);
     status = App_GpioLpOnAfterStopExit();
-#ifdef DEBUG
-    if (App_SystemCanDebugLog() == APP_TRUE)
-    {
-        APP_LOGD("LP", "after STOP status=%lu wake=%s", (unsigned long)status, App_SystemGetWakeSourceString());
-    }
-#endif
+    APP_LOGD("LP", "after STOP status=%lu wake=%s", (unsigned long)status, App_SystemGetWakeSourceString());
     return status;
 }
 
@@ -1840,26 +1751,20 @@ AppStatus_t App_SystemSetNbiotPowered(uint8_t powered)
 
 AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
 {
-#ifdef DEBUG
     uint8_t previousRequest;
     const AppFsmSummary_t *p_fsmSummary;
-#endif
 
     APP_RETURN_IF_FALSE((allowStop == APP_FALSE) || (allowStop == APP_TRUE), APP_STATUS_INVALID_PARAM);
 
-#ifdef DEBUG
     previousRequest = g_appSystemContext.stopRequested;
-#endif
     g_appSystemContext.stopRequested = allowStop;
 
-#ifdef DEBUG
     APP_LOGD("LP",
              "STOP request update: prev=%u new=%u no_wake=%u caller_tick=%lu",
              (unsigned int)previousRequest,
              (unsigned int)allowStop,
              (unsigned int)g_appSystemContext.stopNoWakeRequested,
              (unsigned long)HAL_GetTick());
-#endif
 
     if (allowStop == APP_TRUE)
     {
@@ -1875,9 +1780,8 @@ AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
         App_SystemResetStopQualification();
     }
 
-#ifdef DEBUG
     p_fsmSummary = App_FsmGetSummary();
-    if ((previousRequest != allowStop) && (App_SystemCanDebugLog() == APP_TRUE))
+    if ((previousRequest != allowStop) )
     {
         APP_LOGD("LP",
                  "stop_request=%u decision=%s dispatch=%lu qualify=%u no_wake=%u",
@@ -1887,7 +1791,6 @@ AppStatus_t App_SystemRequestLowPower(uint8_t allowStop)
                  (unsigned int)g_appSystemContext.stopQualificationCount,
                  (unsigned int)g_appSystemContext.stopNoWakeRequested);
     }
-#endif
     return APP_STATUS_OK;
 }
 

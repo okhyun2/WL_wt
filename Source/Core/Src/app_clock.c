@@ -125,7 +125,7 @@ void App_ClockPollLseAndSwitchIfReady(void)
         uint32_t armWaitStart = HAL_GetTick();
         uint8_t lseStableForArm = APP_TRUE;
 
-        APP_LOGI("CLK", "RTC clock source switched: %s -> %s (RCC->CSR=0x%08lX), arming CSS in %lu ms",
+        APP_LOGN("CLK", "RTC clock source switched: %s -> %s (RCC->CSR=0x%08lX), arming CSS in %lu ms",
                  App_ClockRtcSourceToString(before),
                  App_ClockRtcSourceToString(after),
                  (unsigned long)RCC->CSR,
