@@ -142,8 +142,10 @@ static const char *App_SystemBuildWakeupFlagString(uint32_t wakeFlags)
         first = APP_FALSE;                                       \
     } while (0)
 
+    #if 0 //TODO delete
     if ((wakeFlags & WAKEUP_FLAG_LPTIM1_ARR) != 0u)  { APP_SYSTEM_APPEND_WAKE_FLAG("LPTIM1_ARR"); }
     if ((wakeFlags & WAKEUP_FLAG_LPTIM1_CMP) != 0u)  { APP_SYSTEM_APPEND_WAKE_FLAG("LPTIM1_CMP"); }
+    #endif
     if ((wakeFlags & WAKEUP_FLAG_RTC_ALARM_A) != 0u) { APP_SYSTEM_APPEND_WAKE_FLAG("RTC_ALARM_A"); }
     if ((wakeFlags & WAKEUP_FLAG_RTC_ALARM_B) != 0u) { APP_SYSTEM_APPEND_WAKE_FLAG("RTC_ALARM_B"); }
     if ((wakeFlags & WAKEUP_FLAG_RTC_WUT) != 0u)     { APP_SYSTEM_APPEND_WAKE_FLAG("RTC_WUT"); }
@@ -170,6 +172,7 @@ static const char *App_SystemBuildWakeupFlagString(uint32_t wakeFlags)
 }
 
 
+    #if 0 //TODO delete
 static void handle_lptim1_wakeup(uint32_t flags)
 {
     if (flags & WAKEUP_FLAG_LPTIM1_ARR) {
@@ -182,6 +185,7 @@ static void handle_lptim1_wakeup(uint32_t flags)
         // 예: scheduled_event_execute();
     }
 }
+    #endif
 
 static void handle_rtc_alarm_wakeup(uint32_t flags)
 {
@@ -249,8 +253,12 @@ void debug_print_wakeup_info(void)
     {
         APP_LOGD("SYS", "  Multiple wakeup sources detected: %d", g_wakeup_ctx.source_count);
         APP_LOGD("SYS", "  Processed flags: 0x%08lX", g_wakeup_ctx.processed_flags);
+    #if 0 //TODO delete
         APP_LOGD("SYS", "  Raw registers - LPTIM: 0x%08lX, RTC: 0x%08lX, EXTI: 0x%08lX",
                  g_wakeup_ctx.raw_lptim_isr, g_wakeup_ctx.raw_rtc_isr, g_wakeup_ctx.raw_exti_pr);
+    #endif
+        APP_LOGD("SYS", "  Raw registers - RTC: 0x%08lX, EXTI: 0x%08lX",
+                 g_wakeup_ctx.raw_rtc_isr, g_wakeup_ctx.raw_exti_pr);
     }
 }
 
@@ -272,11 +280,19 @@ void wakeup_process_all_pending(void)
 
     g_wakeup_ctx.processed_flags = WAKEUP_FLAG_NONE;
 
+    #if 0 //TODO delete
     APP_LOGD("LP",
              "Wake pending flags=0x%08lX(%s) raw_lptim=0x%08lX raw_rtc=0x%08lX raw_exti=0x%08lX",
              (unsigned long)pending_flags,
              App_SystemBuildWakeupFlagString(pending_flags),
              (unsigned long)g_wakeup_ctx.raw_lptim_isr,
+             (unsigned long)g_wakeup_ctx.raw_rtc_isr,
+             (unsigned long)g_wakeup_ctx.raw_exti_pr);
+    #endif
+    APP_LOGD("LP",
+             "Wake pending flags=0x%08lX(%s) raw_rtc=0x%08lX raw_exti=0x%08lX",
+             (unsigned long)pending_flags,
+             App_SystemBuildWakeupFlagString(pending_flags),
              (unsigned long)g_wakeup_ctx.raw_rtc_isr,
              (unsigned long)g_wakeup_ctx.raw_exti_pr);
 
@@ -290,25 +306,27 @@ void wakeup_process_all_pending(void)
 
     /* 모든 소스를 순회하며 처리 (중간에 return 없이 전체 검사) */
 
-    /* 1. LPTIM1 처리 */
+    #if 0 //TODO delete
+    /* LPTIM1 처리 */
     if (pending_flags & WAKEUP_MASK_LPTIM1) {
         handle_lptim1_wakeup(pending_flags & WAKEUP_MASK_LPTIM1);
         g_wakeup_ctx.processed_flags |= (pending_flags & WAKEUP_MASK_LPTIM1);
     }
+    #endif
 
-    /* 2. RTC Alarm 처리 */
+    /* RTC Alarm 처리 */
     if (pending_flags & WAKEUP_MASK_RTC_ALARM) {
         handle_rtc_alarm_wakeup(pending_flags & WAKEUP_MASK_RTC_ALARM);
         g_wakeup_ctx.processed_flags |= (pending_flags & WAKEUP_MASK_RTC_ALARM);
     }
 
-    /* 3. RTC Wakeup Timer 처리 */
+    /* RTC Wakeup Timer 처리 */
     if (pending_flags & WAKEUP_FLAG_RTC_WUT) {
         handle_rtc_wut_wakeup();
         g_wakeup_ctx.processed_flags |= WAKEUP_FLAG_RTC_WUT;
     }
 
-    /* 4. 모든 EXTI 핀 처리 */
+    /* 모든 EXTI 핀 처리 */
     uint32_t exti_flags = pending_flags & (WAKEUP_MASK_EXTI0_1 | WAKEUP_MASK_EXTI2_3 | WAKEUP_MASK_EXTI4_15);
     if (exti_flags) {
         handle_exti_wakeup(exti_flags);
@@ -379,10 +397,12 @@ static const char *App_SystemBuildWakeSourceString(uint32_t wakeMask)
         APP_SYSTEM_APPEND_WAKE("RTC");
     }
 
+    #if 0 //TODO delete
     if ((wakeMask & APP_SYSTEM_WAKE_SRC_LPTIM) != 0u)
     {
         APP_SYSTEM_APPEND_WAKE("LPTIM");
     }
+    #endif
 
     if ((wakeMask & APP_SYSTEM_WAKE_SRC_DEBUG_DRYRUN) != 0u)
     {
@@ -762,10 +782,14 @@ static void App_SystemQueueStateCommand(uint8_t nextState)
 static void App_SystemConfigureWakeupInterrupts(void)
 {
     __HAL_RCC_SYSCFG_CLK_ENABLE();
+    #if 0 //TODO delete
     __HAL_RCC_LPTIM1_CLK_ENABLE();
+    #endif
 
+    #if 0 //TODO delete
     HAL_NVIC_SetPriority(LPTIM1_IRQn, 1u, 0);
     HAL_NVIC_EnableIRQ(LPTIM1_IRQn);
+    #endif
     HAL_NVIC_SetPriority(RTC_IRQn, 1u, 0u);
     HAL_NVIC_EnableIRQ(RTC_IRQn);
     HAL_NVIC_SetPriority(EXTI0_1_IRQn, 2u, 0u);
@@ -818,7 +842,9 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
         APP_GPIO_LP_CLK_LPUART1 |
         APP_GPIO_LP_CLK_I2C2 |
         APP_GPIO_LP_CLK_I2C3 |
+    #if 0 //TODO delete
         APP_GPIO_LP_CLK_LPTIM1 |
+    #endif
         APP_GPIO_LP_CLK_SYSCFG;
 
     status = App_GpioLpInit(&g_appGpioLpConfig);
@@ -1143,8 +1169,12 @@ static AppStatus_t App_SystemEnterStopMode(void)
     if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
     {
         App_SystemRtcDisableWakeupTimer();
+    #if 0 //TODO delete
         g_appSystemContext.oldWakeSourceMask &= ~(APP_SYSTEM_WAKE_SRC_RTC | APP_SYSTEM_WAKE_SRC_LPTIM);
         APP_LOGW("LP", "fatal no-wake STOP: periodic RTC/LPTIM wake disabled");
+    #endif
+        g_appSystemContext.oldWakeSourceMask &= ~(APP_SYSTEM_WAKE_SRC_RTC);
+        APP_LOGW("RTC", "fatal no-wake STOP: periodic RTC wake disabled");
     }
     else if( (g_appSystemContext.oldWakeSourceMask == APP_SYSTEM_WAKE_SRC_NONE) ||
              (g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_RTC) )
@@ -1242,6 +1272,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
             APP_LOGW("RTC", "No AlarmA/B configured and periodic fallback suppressed");
         }
     }
+    #if 0 //TODO delete
     else if(g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_LPTIM)
     {
         float fTemp = 0.0;
@@ -1253,6 +1284,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
         g_appSystemContext.oldWakeSourceMask &= ~APP_SYSTEM_WAKE_SRC_LPTIM;
         APP_LOGI("LPTIM", "STOP periodic:%ds", wakeupSeconds);
     }
+    #endif
 
     standbyPrepareState = App_SystemPrepareNfcStandbyForStop();
 
@@ -1475,6 +1507,7 @@ static void App_SystemHandleIdle(void)
     }
 }
 
+    #if 0 //TODO delete
 void App_SystemHandleLptim1AutoReloadMatchCallback(void)
 {
     if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
@@ -1493,6 +1526,7 @@ void App_SystemHandleLptim1AutoReloadMatchCallback(void)
              (unsigned long)g_wakeup_ctx.raw_lptim_isr,
              (unsigned long)g_wakeup_ctx.pending_flags);
 }
+    #endif
 
 void App_SystemHandleRtcCallBack(void)
 {

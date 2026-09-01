@@ -304,6 +304,7 @@ void HAL_I2C_MspDeInit(I2C_HandleTypeDef* hi2c)
 
 }
 
+    #if 0 //TODO delete
 /**
   * @brief LPTIM MSP Initialization
   * This function configures the hardware resources used in this example
@@ -354,6 +355,7 @@ void HAL_LPTIM_MspDeInit(LPTIM_HandleTypeDef* hlptim)
   }
 
 }
+    #endif
 
 /**
   * @brief UART MSP Initialization

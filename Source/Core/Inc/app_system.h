@@ -68,7 +68,9 @@ typedef struct {
     volatile uint32_t pending_flags;    // IRQHandler에서 누적된 미처리 플래그
     uint32_t          processed_flags;  // 메인 루프에서 처리 완료된 플래그
     uint8_t           source_count;     // 감지된 소스 개수
+    #if 0 //TODO delete
     uint32_t          raw_lptim_isr;    // 디버그용 원본 레지스터 값
+    #endif
     uint32_t          raw_rtc_isr;      // 디버그용 원본 레지스터 값
     uint32_t          raw_exti_pr;      // 디버그용 원본 레지스터 값
 } wakeup_context_t;
@@ -187,7 +189,9 @@ AppStatus_t App_SystemSetNbiotPowered(uint8_t powered);
 AppStatus_t App_SystemRequestLowPower(uint8_t allowStop);
 AppStatus_t App_SystemRequestLowPowerNoWake(uint8_t allowStopNoWake);
 void App_SystemNotifyWakeSource(uint32_t sourceMask);
+    #if 0 //TODO delete
 void App_SystemHandleLptim1AutoReloadMatchCallback(void);
+    #endif
 void App_SystemHandleRtcCallBack(void);
 void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin);
 uint32_t App_SystemGetWakeSourceMask(void);

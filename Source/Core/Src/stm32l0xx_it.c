@@ -79,7 +79,9 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 }
 
 /* External variables --------------------------------------------------------*/
+    #if 0 //TODO delete
 extern LPTIM_HandleTypeDef hlptim1;
+    #endif
 extern RTC_HandleTypeDef hrtc;
 extern WWDG_HandleTypeDef hwwdg;
 /* USER CODE BEGIN EV */
@@ -231,6 +233,7 @@ void RTC_IRQHandler(void)
   }
 }
 
+    #if 0 //TODO delete
 void LPTIM1_IRQHandler(void)
 {
   uint32_t isr = LPTIM1->ISR;
@@ -258,6 +261,7 @@ void LPTIM1_IRQHandler(void)
     EXTI->PR = (1U << 23); // EXTI Line 23 클리어
   }
 }
+    #endif
 
 void EXTI0_1_IRQHandler(void)
 {
