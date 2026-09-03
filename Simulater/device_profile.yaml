@@ -1,0 +1,10 @@
+address: 1
+backflow: false
+battery_code: 0
+baudrate: 1200
+diameter_mm: 15
+id_str: 09123456
+indoor_leak: false
+initial_meter_value: 12345678
+port: COM3
+q3_over: false
