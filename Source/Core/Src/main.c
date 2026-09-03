@@ -265,6 +265,17 @@ int main(void)
     HAL_Delay(offsetMs);
   }
 
+  #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
+  /* EPC 시험 세션 시작 마커 - APP_EPC_TEST_MODE_ENABLE=0 이면 이 블록 전체가
+     전처리 단계에서 제거되어 운영 빌드 코드/바이너리에 전혀 남지 않는다. */
+  EPC_LOGI("session start testId=%s fw=%u.%u slot=%s",
+           APP_EPC_TEST_ID_STRING,
+           (unsigned)APP_FW_VERSION_MAJOR,
+           (unsigned)APP_FW_VERSION_MINOR,
+           APP_SLOT_NAME);
+  #endif
+
+
 #if 0 //no use
   LPTIM1_Start(); //add periodic wakeup source. max 4min
 #endif

@@ -13,6 +13,11 @@
 
 static uint8_t g_appMeterStorageEnabled = APP_TRUE;
 
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
+/* EPC 시험 전용: 계량기 프레임 처리 시도 횟수(성공/실패 무관, 부팅 후 누적) */
+static uint32_t g_epcMeterAttemptSeq = 0u;
+#endif
+
 /* 4바이트 배열 → uint32_t (Little Endian) */
 static uint32_t App_MeterBytesToUint32LE(const uint8_t *bytes)
 {
@@ -406,11 +411,26 @@ AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t le
     /* 핵심: Binary → Union Cascading */
     //App_MeterResult_t result = App_MeterParseFrame(&rx_frame, uart_rx_buffer, sizeof(uart_rx_buffer));
     App_MeterResult_t result = App_MeterParseFrame(&rx_frame, pRxBuf, length);
-    
-    if (result == APP_METER_OK) {
+
+    #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
+    g_epcMeterAttemptSeq++;
+    #endif
+
+    if (result == APP_METER_OK)
+    {
         APP_LOGD("METER", "Success Meter parsing.");
-        
+
         App_MeterPrintUnionDetailed(&rx_frame);
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
+        /* Test1 파싱용 단일 라인: seq,res,id,val */
+        EPC_LOGI("test=%s,seq=%lu,res=OK,id=%08lu,val=%08lu",
+                 APP_EPC_TEST_ID_STRING,
+                 (unsigned long)g_epcMeterAttemptSeq,
+                 (unsigned long)BCD_To_Decimal(App_MeterGetIdentificationNumber(&rx_frame)),
+                 (unsigned long)BCD_To_Decimal(App_MeterGetMeasurementData(&rx_frame)));
+#endif
+
         APP_RETURN_IF_FALSE(App_MeterBuildDigitalRecord(&rx_frame, &liveRecord) == APP_STATUS_OK, APP_STATUS_FATAL);
 
         storageEnabled = App_MeterIsStorageEnabled();
@@ -427,9 +447,19 @@ AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t le
         (void)status;
 
         return(APP_STATUS_OK);
-        
-    } else {
+    }
+    else
+    {
         APP_LOGE("METER", "Fail Meter parsing(%d)", result);
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
+        /* 실패 시에도 seq를 남겨 시뮬레이터 로그와 매칭 시 "몇 번째 시도가 빠졌는지" 추적 가능 */
+        EPC_LOGI("test=%s,seq=%lu,res=ERR%d,id=--------,val=--------",
+                 APP_EPC_TEST_ID_STRING,
+                 (unsigned long)g_epcMeterAttemptSeq,
+                 (int)result);
+#endif
+
         return(APP_STATUS_FATAL);
     }
 }

@@ -156,6 +156,17 @@ AppStatus_t App_LogHexDump(AppLogLevel_t level, const char *p_module, const uint
  #define APP_LOGE(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_ERROR, (module), (fmt), ##__VA_ARGS__)
 #endif
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+/**
+ * @brief EPC 시험 전용 로그 매크로 (APP_LOGI 바로 다음에 위치).
+ *        APP_EPC_TEST_MODE_ENABLE == APP_FALSE 이면 이 매크로 자체가
+ *        정의되지 않는다. 호출부도 반드시 동일 조건으로 감싸야 하며,
+ *        감싸지 않으면 빌드 시점에 "정의되지 않은 심볼" 에러로 즉시 검출된다.
+ */
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
+    #define EPC_LOGI(fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_INFO, APP_EPC_LOG_TAG, (fmt), ##__VA_ARGS__)
+#endif
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #ifdef __cplusplus
 }

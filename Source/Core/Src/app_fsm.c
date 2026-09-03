@@ -28,6 +28,12 @@
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (20u * 60000u)   /* 10 min : management TX */
 #endif
 
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 1u)
+/* [[EPC TEST1]] 검침 데이터 수집 신뢰성 시험: 검침 주기만 10초로 단축.
+   서비스/관리서버 송신 주기(APP_DEBUG_TX_PERIOD_MS 등)는 건드리지 않아 정책값 그대로 유지됨. */
+#define APP_DEBUG_METER_PERIOD_MS      (APP_EPC_TEST1_METERING_PERIOD_SEC * 1000u)
+#endif
+
 #define APP_FSM_MGMT_TX_BUSY_DEFER_MS  (30u * 1000u)
 
 #if 0 //debug

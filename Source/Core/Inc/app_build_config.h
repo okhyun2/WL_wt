@@ -17,6 +17,21 @@ extern "C" {
 
 #define APP_NAME_STRING                             "WaterLink WaterTerminal"
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+/* ================================================================
+ *  EPC Test Mode (시험용 빌드 옵션)
+ * ================================================================ */
+#define APP_EPC_TEST_MODE_ENABLE                    (APP_FALSE)   /* 1:시험 코드 포함, 0:완전 제거 */
+#define APP_EPC_LOG_TAG                             "EPC"
+#define APP_EPC_TEST_ID_STRING                      "TEST1"
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
+#define APP_EPC_ACTIVE_TEST_ID                      (1u)   /* 1:시험1(검침 데이터 수집 신뢰성), 다른 시험 추가 시 값 변경 */
+#define APP_EPC_TEST1_METERING_PERIOD_SEC           (10u)  /* 시험1 전용 검침 주기(초) */
+#endif
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /* 128KB dual-boot flash layout */
 #define APP_FLASH_TARGET_SIZE_BYTES                 (128u * 1024u)
 #define APP_BOOTLOADER_BASE_ADDR                    (0x08000000u)
