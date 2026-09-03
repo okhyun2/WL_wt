@@ -16,6 +16,8 @@ from scenarios import (NormalOnlyScenario, Test1NormalCollection, Test2ChecksumE
                         Test3SelfDiagnosisCase, Test11EnduranceCycle)
 from comm_logger import CommLogger
 
+from log_compare_gui import CompareWindow
+
 APP_VERSION = "1.0.0"
 
 # ------------------------------------------------------------------
@@ -45,37 +47,14 @@ def battery_code_to_volt_label(code: int) -> str:
 # 콤보박스에 표시할 선택 가능한 전압 목록: 3.7 ~ 0.6 (0.1V 단위, 0.6은 "0.7V 미만" 대표)
 BATTERY_VOLT_CHOICES = [f"{t / 10:.1f}" for t in range(37, 5, -1)]
 
+from test_defs import TEST_META
+
 TEST_DEFS = {
-    "0": {
-        "label": "기본(정상 응답만 반복)",
-        "desc": "정상 응답만 반복 (시험 아님)",
-        "factory": lambda p: NormalOnlyScenario(),
-        "needs_case": False,
-    },
-    "1": {
-        "label": "시험1 - 검침 데이터 수집 신뢰성",
-        "desc": "1차 고정지연 30ms 500회 + 2차 지터지연 20~50ms 500회",
-        "factory": lambda p: Test1NormalCollection(),
-        "needs_case": False,
-    },
-    "2": {
-        "label": "시험2 - 체크섬 오류 검출 성능",
-        "desc": "정상 500회 + 오류 500회(단일비트/다중비트/체크섬) 균등 배분",
-        "factory": lambda p: Test2ChecksumError(),
-        "needs_case": False,
-    },
-    "3": {
-        "label": "시험3 - 자가진단 (Case 선택)",
-        "desc": "Case 선택에 따른 자가진단 상황 재현",
-        "factory": lambda p: Test3SelfDiagnosisCase(case=p["case"]),
-        "needs_case": True,
-    },
-    "11": {
-        "label": "시험11 - 반복동작 내구성",
-        "desc": "연속 정상 응답, 계량값 지속 증가",
-        "factory": lambda p: Test11EnduranceCycle(),
-        "needs_case": False,
-    },
+    "0":  {**TEST_META["0"],  "factory": lambda p: NormalOnlyScenario()},
+    "1":  {**TEST_META["1"],  "factory": lambda p: Test1NormalCollection()},
+    "2":  {**TEST_META["2"],  "factory": lambda p: Test2ChecksumError()},
+    "3":  {**TEST_META["3"],  "factory": lambda p: Test3SelfDiagnosisCase(case=p["case"])},
+    "11": {**TEST_META["11"], "factory": lambda p: Test11EnduranceCycle()},
 }
 
 def inject_error(long_frame: bytes, error_type: str) -> bytes:
@@ -121,6 +100,8 @@ class SimulatorGUI(tk.Tk):
         self.log_save_path = tk.StringVar(value="")
         self.counters = {"total": 0, "normal": 0, "error": 0, "no_resp": 0}
 
+        self._compare_win = None                 # 팝업 중복 방지용 참조
+
         self._build_device_frame()
         self._build_log_save_frame()
         self._build_connection_frame()
@@ -130,6 +111,38 @@ class SimulatorGUI(tk.Tk):
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(100, self._poll_queue)
+
+        self._compare_win = None                       # 비교 팝업 중복 방지용 참조
+        self._last_completed_log_path = None            # 마지막으로 저장 완료된 CSV 경로
+
+    # ----------------------------------------------------------
+    # 0) 메뉴바 (도구 -> 로그 비교)
+    # ----------------------------------------------------------
+    def _build_menu_bar(self):
+        menu_bar = tk.Menu(self)
+        tools_menu = tk.Menu(menu_bar, tearoff=0)
+        tools_menu.add_command(label="시뮬레이터-DUT 로그 비교...", command=self._on_open_log_compare)
+        menu_bar.add_cascade(label="도구", menu=tools_menu)
+        self.config(menu=menu_bar)
+
+    def _on_open_log_compare(self):
+        if self.comm_logger is not None:
+            default_sim_csv = self.comm_logger.log_path
+        elif self._last_completed_log_path:
+            default_sim_csv = self._last_completed_log_path
+        else:
+            default_sim_csv = self.log_save_path.get().strip()
+    
+        default_test_id = self.test_var.get().split(" | ")[0] if hasattr(self, "test_var") else "1"
+    
+        if self._compare_win is not None and self._compare_win.winfo_exists():
+            self._compare_win.lift()
+            self._compare_win.focus_force()
+            return
+    
+        self._compare_win = CompareWindow(
+            self, default_sim_csv=default_sim_csv, default_test_id=default_test_id
+        )
 
     # ----------------------------------------------------------
     # 1) 장치 설정 영역
@@ -397,7 +410,7 @@ class SimulatorGUI(tk.Tk):
             except OSError as e:
                 messagebox.showerror("로그 파일 오류", f"로그 파일을 열 수 없습니다.\n{e}")
                 self.comm_logger = None
-        
+
         # 연결 중에는 저장 옵션을 잠금
         self.log_save_check.configure(state="disabled")
         self.log_path_entry.configure(state="disabled")
@@ -446,7 +459,9 @@ class SimulatorGUI(tk.Tk):
                 pass
         self.serial_conn = None
 
+        had_logger = self.comm_logger is not None
         if self.comm_logger:
+            self._last_completed_log_path = self.comm_logger.log_path   # 완료된 경로 기억
             self.comm_logger.close()
             self.comm_logger = None
 
@@ -524,7 +539,10 @@ class SimulatorGUI(tk.Tk):
 
         toolbar = ttk.Frame(frame)
         toolbar.pack(fill="x", padx=6, pady=(4, 0))
-        ttk.Button(toolbar, text="로그 지우기", command=self._on_clear_log).pack(side="right")
+        ttk.Button(toolbar, text="로그 지우기", command=self._on_clear_log).pack(side="left")
+        self.compare_btn = ttk.Button(toolbar, text="시뮬레이터-DUT 로그 비교",
+                                       command=self._on_open_log_compare)
+        self.compare_btn.pack(side="right")
 
         columns = ("seq", "time", "req_c", "req_a", "req_valid", "mode", "resp_hex", "note")
         self.tree = ttk.Treeview(frame, columns=columns, show="headings", height=18)
@@ -535,12 +553,12 @@ class SimulatorGUI(tk.Tk):
         for col in columns:
             self.tree.heading(col, text=headers[col])
             self.tree.column(col, width=widths[col], anchor="w")
-
+    
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
         self.tree.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
-
+        
     # ----------------------------------------------------------
     # 리스너 스레드: 연결 중에는 항상 동작, 시나리오만 교체됨
     # ----------------------------------------------------------
