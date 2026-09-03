@@ -39,6 +39,9 @@ class NormalOnlyScenario(BaseScenario):
     def decide(self, request_index: int) -> str:
         return "normal"
 
+    def value_increment(self, request_index: int) -> int:
+        return 0   # 연결 대기 중에는 검침값을 변화시키지 않음
+
 class Test1NormalCollection(BaseScenario):
     test_id = "1"
     description = "검침 데이터 수집 신뢰성 (1차 고정지연 500회 + 2차 지터지연 500회)"

@@ -1,3 +1,4 @@
+import os
 import threading
 import queue
 import time
@@ -20,34 +21,62 @@ APP_VERSION = "1.0.0"
 # ------------------------------------------------------------------
 # 시험 항목 정의 (GUI에서 파라미터를 받아 시나리오 인스턴스를 생성)
 # ------------------------------------------------------------------
+# 배터리 전압 → 5bit 코드(4,3,2,1,0) 변환 (프로토콜 규격 표 기준)
+# code 0        : 3.7V 이상
+# code 1~30     : (3.7 - 0.1*code) 이상 ~ (3.8 - 0.1*code) 미만
+# code 31       : 0.7V 미만
+BATTERY_VOLT_MAX_CODE = 31
+
+def battery_volt_to_code(volt: float) -> int:
+    """전압(V) -> 5bit 코드. 0.1V 단위 정수 연산으로 부동소수점 오차 방지."""
+    tenths = round(volt * 10)          # 3.7V -> 37
+    code = 37 - tenths
+    return max(0, min(BATTERY_VOLT_MAX_CODE, code))
+
+def battery_code_to_volt_label(code: int) -> str:
+    """5bit 코드 -> 대표 전압 문자열 (콤보박스 표시/역매핑용)."""
+    if code <= 0:
+        return "3.7"
+    if code >= BATTERY_VOLT_MAX_CODE:
+        return "0.6"                   # "0.7V 미만"의 대표값
+    tenths = 37 - code
+    return f"{tenths / 10:.1f}"
+
+# 콤보박스에 표시할 선택 가능한 전압 목록: 3.7 ~ 0.6 (0.1V 단위, 0.6은 "0.7V 미만" 대표)
+BATTERY_VOLT_CHOICES = [f"{t / 10:.1f}" for t in range(37, 5, -1)]
+
 TEST_DEFS = {
     "0": {
         "label": "기본(정상 응답만 반복)",
+        "desc": "정상 응답만 반복 (시험 아님)",
         "factory": lambda p: NormalOnlyScenario(),
         "needs_case": False,
     },
     "1": {
         "label": "시험1 - 검침 데이터 수집 신뢰성",
+        "desc": "1차 고정지연 30ms 500회 + 2차 지터지연 20~50ms 500회",
         "factory": lambda p: Test1NormalCollection(),
         "needs_case": False,
     },
     "2": {
         "label": "시험2 - 체크섬 오류 검출 성능",
+        "desc": "정상 500회 + 오류 500회(단일비트/다중비트/체크섬) 균등 배분",
         "factory": lambda p: Test2ChecksumError(),
         "needs_case": False,
     },
     "3": {
         "label": "시험3 - 자가진단 (Case 선택)",
+        "desc": "Case 선택에 따른 자가진단 상황 재현",
         "factory": lambda p: Test3SelfDiagnosisCase(case=p["case"]),
         "needs_case": True,
     },
     "11": {
         "label": "시험11 - 반복동작 내구성",
+        "desc": "연속 정상 응답, 계량값 지속 증가",
         "factory": lambda p: Test11EnduranceCycle(),
         "needs_case": False,
     },
 }
-
 
 def inject_error(long_frame: bytes, error_type: str) -> bytes:
     frame = bytearray(long_frame)
@@ -69,8 +98,8 @@ def inject_error(long_frame: bytes, error_type: str) -> bytes:
 class SimulatorGUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(f"계량기 시뮬레이터 v{APP_VERSION}")
-        self.geometry("980x720")
+        self.title(f"계량기(서울시 디지털계량기 V1.3) 시뮬레이터 v{APP_VERSION}")
+        self.geometry("1180x720")
         self.state_lock = threading.Lock()
         self.live_status = {"battery_code": 0, "q3_over": False,
                      "backflow": False, "indoor_leak": False}
@@ -93,9 +122,9 @@ class SimulatorGUI(tk.Tk):
         self.counters = {"total": 0, "normal": 0, "error": 0, "no_resp": 0}
 
         self._build_device_frame()
-        self._build_test_frame()
-        self._build_connection_frame()
         self._build_log_save_frame()
+        self._build_connection_frame()
+        self._build_test_frame()
         self._build_test_control_frame()
         self._build_log_frame()
 
@@ -108,9 +137,9 @@ class SimulatorGUI(tk.Tk):
     def _build_device_frame(self):
         frame = ttk.LabelFrame(self, text="장치 설정 (실제 계량기 개체 묘사)")
         frame.pack(fill="x", padx=10, pady=6)
-
+    
         self.vars = {
-            "port": tk.StringVar(value="COM3"),
+            "port": tk.StringVar(value="COM6"),
             "baudrate": tk.IntVar(value=1200),
             "address": tk.IntVar(value=1),
             "id_str": tk.StringVar(value="09123456"),
@@ -121,49 +150,61 @@ class SimulatorGUI(tk.Tk):
             "backflow": tk.BooleanVar(value=False),
             "indoor_leak": tk.BooleanVar(value=False),
         }
-
+        self.battery_volt_var = tk.StringVar(value="3.7")   # 화면 표시/선택용
+    
         for key in ("battery_code", "q3_over", "backflow", "indoor_leak"):
             self.vars[key].trace_add("write", self._on_status_var_changed)
 
+        self.battery_volt_var.trace_add("write", self._on_battery_volt_changed)
+    
+        # row1: 포트 / Baudrate / 주소 / 기물번호 / 구경 / 초기 검침값 (요청 순서)
         row1 = ttk.Frame(frame); row1.pack(fill="x", padx=6, pady=3)
+    
         ttk.Label(row1, text="포트").pack(side="left")
         self.port_combo = ttk.Combobox(row1, textvariable=self.vars["port"],
                                         width=10, values=self._list_ports())
         self.port_combo.pack(side="left", padx=4)
         ttk.Button(row1, text="포트 검색", command=self._refresh_ports).pack(side="left", padx=4)
-
+    
         ttk.Label(row1, text="Baudrate").pack(side="left", padx=(16, 0))
         ttk.Entry(row1, textvariable=self.vars["baudrate"], width=8).pack(side="left", padx=4)
+    
+        ttk.Separator(row1, orient="vertical").pack(side="left", fill="y", padx=12)
 
         ttk.Label(row1, text="주소(A)").pack(side="left", padx=(16, 0))
         ttk.Entry(row1, textvariable=self.vars["address"], width=6).pack(side="left", padx=4)
-
-        row2 = ttk.Frame(frame); row2.pack(fill="x", padx=6, pady=3)
-        ttk.Label(row2, text="기물번호").pack(side="left")
-        ttk.Entry(row2, textvariable=self.vars["id_str"], width=12).pack(side="left", padx=4)
-
-        ttk.Label(row2, text="구경(mm)").pack(side="left", padx=(16, 0))
-        ttk.Combobox(row2, textvariable=self.vars["diameter_mm"], width=6,
+    
+        ttk.Label(row1, text="기물번호").pack(side="left", padx=(16, 0))
+        ttk.Entry(row1, textvariable=self.vars["id_str"], width=12).pack(side="left", padx=4)
+    
+        ttk.Label(row1, text="구경(mm)").pack(side="left", padx=(16, 0))
+        ttk.Combobox(row1, textvariable=self.vars["diameter_mm"], width=6,
                      values=[15, 20, 25, 32, 40, 50, 80, 100, 150, 200, 250, 300]
                      ).pack(side="left", padx=4)
-
-        ttk.Label(row2, text="초기 검침값").pack(side="left", padx=(16, 0))
-        ttk.Entry(row2, textvariable=self.vars["initial_meter_value"], width=12).pack(side="left", padx=4)
-
-        row3 = ttk.Frame(frame); row3.pack(fill="x", padx=6, pady=3)
-        ttk.Label(row3, text="배터리코드(0~31)").pack(side="left")
+    
+        ttk.Label(row1, text="초기 검침값").pack(side="left", padx=(16, 0))
+        ttk.Entry(row1, textvariable=self.vars["initial_meter_value"], width=12).pack(side="left", padx=4)
+    
+        # row2: 배터리 전압 / 체크박스 / 설정 저장·불러오기
+        row2 = ttk.Frame(frame); row2.pack(fill="x", padx=6, pady=3)
+        
+        ttk.Label(row2, text="실시간 설정", foreground="gray").pack(side="left")
+        ttk.Separator(row2, orient="vertical").pack(side="left", fill="y", padx=10)
+        
+        ttk.Label(row2, text="배터리 전압").pack(side="left")
         self.battery_combo = ttk.Combobox(
-            row3, textvariable=self.vars["battery_code"], width=6, state="readonly",
-            values=list(range(32)),
+            row2, textvariable=self.battery_volt_var, width=6, state="readonly",
+            values=BATTERY_VOLT_CHOICES,
         )
         self.battery_combo.pack(side="left", padx=4)
-
-        ttk.Checkbutton(row3, text="Q3 초과", variable=self.vars["q3_over"]).pack(side="left", padx=(16, 0))
-        ttk.Checkbutton(row3, text="역류", variable=self.vars["backflow"]).pack(side="left", padx=10)
-        ttk.Checkbutton(row3, text="옥내누수", variable=self.vars["indoor_leak"]).pack(side="left")
-
-        ttk.Button(row3, text="설정 불러오기", command=self._load_config).pack(side="right", padx=4)
-        ttk.Button(row3, text="설정 저장", command=self._save_config).pack(side="right", padx=4)
+        ttk.Label(row2, text="V").pack(side="left")
+        
+        ttk.Checkbutton(row2, text="Q3 초과", variable=self.vars["q3_over"]).pack(side="left", padx=(16, 0))
+        ttk.Checkbutton(row2, text="역류", variable=self.vars["backflow"]).pack(side="left", padx=10)
+        ttk.Checkbutton(row2, text="옥내누수", variable=self.vars["indoor_leak"]).pack(side="left")
+        
+        ttk.Button(row2, text="설정 불러오기", command=self._load_config).pack(side="right", padx=4)
+        ttk.Button(row2, text="설정 저장", command=self._save_config).pack(side="right", padx=4)
 
     def _on_status_var_changed(self, *args):
         try:
@@ -178,6 +219,14 @@ class SimulatorGUI(tk.Tk):
             return
         with self.state_lock:
             self.live_status = new_status
+
+    def _on_battery_volt_changed(self, *args):
+        try:
+            volt = float(self.battery_volt_var.get())
+        except (tk.TclError, ValueError):
+            return
+        code = battery_volt_to_code(volt)
+        self.vars["battery_code"].set(code)   # 기존 trace가 자동으로 live_status 갱신까지 처리
 
     def _list_ports(self):
         return [p.device for p in serial.tools.list_ports.comports()]
@@ -194,6 +243,8 @@ class SimulatorGUI(tk.Tk):
         for key, var in self.vars.items():
             if key in data:
                 var.set(data[key])
+        if "battery_code" in data:
+            self.battery_volt_var.set(battery_code_to_volt_label(int(data["battery_code"])))
 
     def _save_config(self):
         path = filedialog.asksaveasfilename(defaultextension=".yaml",
@@ -243,10 +294,22 @@ class SimulatorGUI(tk.Tk):
                                       width=5, state="disabled")
         self.case_spin.pack(side="left", padx=4)
 
+        self.test_desc_var = tk.StringVar(value=TEST_DEFS["0"]["desc"])
+        ttk.Label(row, textvariable=self.test_desc_var, foreground="gray").pack(side="left", padx=(16, 0))
+
+    def _update_test_start_btn_state(self):
+        if self.serial_conn is None:
+            self.test_start_btn.configure(state="disabled")
+            return
+        test_id = self.test_var.get().split(" | ")[0]
+        self.test_start_btn.configure(state="disabled" if test_id == "0" else "normal")
+
     def _on_test_selected(self, event=None):
         test_id = self.test_var.get().split(" | ")[0]
         needs_case = TEST_DEFS[test_id]["needs_case"]
         self.case_spin.configure(state="normal" if needs_case else "disabled")
+        self.test_desc_var.set(TEST_DEFS[test_id]["desc"])
+        self._update_test_start_btn_state()
 
     # ----------------------------------------------------------
     # 3) 포트 연결 영역 (항상 먼저 수행)
@@ -277,6 +340,9 @@ class SimulatorGUI(tk.Tk):
     
         self.log_browse_btn = ttk.Button(frame, text="찾아보기", command=self._browse_log_path)
         self.log_browse_btn.pack(side="left", padx=4)
+
+        self.log_size_var = tk.StringVar(value="")
+        ttk.Label(frame, textvariable=self.log_size_var, foreground="gray").pack(side="left", padx=(10, 0))
     
     def _browse_log_path(self):
         default_name = f"comm_log_{time.strftime('%Y%m%d_%H%M%S')}.csv"
@@ -286,6 +352,14 @@ class SimulatorGUI(tk.Tk):
         )
         if path:
             self.log_save_path.set(path)
+
+    def _format_file_size(self, size_bytes: int) -> str:
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        else:
+            return f"{size_bytes / (1024 * 1024):.2f} MB"
 
     def _on_connect_toggle(self):
         if self.serial_conn is None:
@@ -305,6 +379,8 @@ class SimulatorGUI(tk.Tk):
                 profile.port, profile.baudrate, bytesize=8,
                 parity='N', stopbits=1, timeout=0.05,
             )
+            self.device_profile = profile
+
         except serial.SerialException as e:
             messagebox.showerror("포트 오류", str(e))
             self.serial_conn = None
@@ -353,7 +429,7 @@ class SimulatorGUI(tk.Tk):
         self.connect_btn.configure(text="연결 해제")
         self.conn_status_var.set("● 연결됨")
         self.conn_status_label.configure(foreground="green")
-        self.test_start_btn.configure(state="normal")
+        self._update_test_start_btn_state()
 
     def _on_disconnect(self):
         # 시험이 실행 중이면 먼저 정지 상태(기본 시나리오)로 되돌림
@@ -373,6 +449,8 @@ class SimulatorGUI(tk.Tk):
         if self.comm_logger:
             self.comm_logger.close()
             self.comm_logger = None
+
+        self.log_size_var.set("")   # 로그 종료 시 크기 표시 초기화
         
         self.log_save_check.configure(state="normal")
         self.log_path_entry.configure(state="normal")
@@ -411,6 +489,8 @@ class SimulatorGUI(tk.Tk):
         params = {"case": self.case_var.get()} if test_def["needs_case"] else {}
         scenario = test_def["factory"](params)
 
+        self.meter_value = self.device_profile.initial_meter_value   # 추가: 값 재동기화
+
         with self.scenario_lock:
             self.current_scenario = scenario
         self.req_index = 0
@@ -425,9 +505,15 @@ class SimulatorGUI(tk.Tk):
             self.current_scenario = NormalOnlyScenario()
 
         self.status_var.set("연결됨 - 기본(정상 응답) 상태")
-        self.test_start_btn.configure(state="normal")
+        self._update_test_start_btn_state()
         self.test_stop_btn.configure(state="disabled")
         self.test_combo.configure(state="readonly")
+
+    def _on_clear_log(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        self.counters = {"total": 0, "normal": 0, "error": 0, "no_resp": 0}
+        self.stat_var.set("총 0건 | 정상 0 | 오류 0 | 무응답 0 | 정상응답률 -")
 
     # ----------------------------------------------------------
     # 5) 통신 로그 표
@@ -436,10 +522,14 @@ class SimulatorGUI(tk.Tk):
         frame = ttk.LabelFrame(self, text="DUT 통신 로그")
         frame.pack(fill="both", expand=True, padx=10, pady=6)
 
+        toolbar = ttk.Frame(frame)
+        toolbar.pack(fill="x", padx=6, pady=(4, 0))
+        ttk.Button(toolbar, text="로그 지우기", command=self._on_clear_log).pack(side="right")
+
         columns = ("seq", "time", "req_c", "req_a", "req_valid", "mode", "resp_hex", "note")
         self.tree = ttk.Treeview(frame, columns=columns, show="headings", height=18)
         widths = {"seq": 50, "time": 90, "req_c": 50, "req_a": 50,
-                  "req_valid": 70, "mode": 100, "resp_hex": 320, "note": 150}
+                "req_valid": 70, "mode": 100, "resp_hex": 320, "note": 320}
         headers = {"seq": "No", "time": "시각", "req_c": "요청C", "req_a": "요청A",
                    "req_valid": "요청유효", "mode": "응답모드", "resp_hex": "응답(Hex)", "note": "비고"}
         for col in columns:
@@ -494,6 +584,10 @@ class SimulatorGUI(tk.Tk):
                     else:
                         increment = scenario.value_increment(self.req_index)
                         self.meter_value += increment
+
+                        with self.state_lock:
+                            status_override = dict(self.live_status)
+
                         user_data = build_meter_userdata(profile, self.meter_value, status_override=status_override)
                         resp = build_long_frame(c_field=0x08, address=profile.address, user_data=user_data)
                         if mode != "normal":
@@ -596,6 +690,15 @@ class SimulatorGUI(tk.Tk):
         except queue.Empty:
             pass
         finally:
+            # CSV 로깅 중이면 실시간 파일 크기 갱신
+            if self.comm_logger is not None:
+                try:
+                    size = os.path.getsize(self.comm_logger.log_path)
+                    self.log_size_var.set(f"현재 크기: {self._format_file_size(size)}")
+                except OSError:
+                    pass
+            else:
+                self.log_size_var.set("")
             self.after(100, self._poll_queue)
 
     def _on_close(self):
