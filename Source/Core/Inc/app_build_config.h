@@ -21,13 +21,21 @@ extern "C" {
 /* ================================================================
  *  EPC Test Mode (시험용 빌드 옵션)
  * ================================================================ */
-#define APP_EPC_TEST_MODE_ENABLE                    (APP_FALSE)   /* 1:시험 코드 포함, 0:완전 제거 */
+#define APP_EPC_TEST_MODE_ENABLE                    (APP_TRUE)   /* 1:시험 코드 포함, 0:완전 제거 */
 #define APP_EPC_LOG_TAG                             "EPC"
-#define APP_EPC_TEST_ID_STRING                      "TEST1"
 
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
-#define APP_EPC_ACTIVE_TEST_ID                      (1u)   /* 1:시험1(검침 데이터 수집 신뢰성), 다른 시험 추가 시 값 변경 */
+#define APP_EPC_ACTIVE_TEST_ID                      (2u)   /* 1:시험1, 2:시험2, 다른 시험 추가 시 값 변경 */
+
+#if (APP_EPC_ACTIVE_TEST_ID == 1u)
+#define APP_EPC_TEST_ID_STRING                      "TEST1"
 #define APP_EPC_TEST1_METERING_PERIOD_SEC           (10u)  /* 시험1 전용 검침 주기(초) */
+
+#elif (APP_EPC_ACTIVE_TEST_ID == 2u)
+#define APP_EPC_TEST_ID_STRING                      "TEST2"
+#define APP_EPC_TEST2_METERING_PERIOD_SEC           (10u)  /* 시험2 전용 검침 주기(초): 정상500+오류500=1000회를 짧게 반복 */
+
+#endif
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
