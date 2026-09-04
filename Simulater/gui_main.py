@@ -504,11 +504,12 @@ class SimulatorGUI(tk.Tk):
         params = {"case": self.case_var.get()} if test_def["needs_case"] else {}
         scenario = test_def["factory"](params)
 
-        self.meter_value = self.device_profile.initial_meter_value   # 추가: 값 재동기화
+        self.meter_value = self.device_profile.initial_meter_value   # 값 재동기화
 
         with self.scenario_lock:
             self.current_scenario = scenario
         self.req_index = 0
+        self.counters = {"total": 0, "normal": 0, "error": 0, "no_resp": 0}   # 시험 시작 시 카운터 초기화
 
         self.status_var.set(f"실행 중 - {test_def['label']}")
         self.test_start_btn.configure(state="disabled")
@@ -529,6 +530,45 @@ class SimulatorGUI(tk.Tk):
             self.tree.delete(item)
         self.counters = {"total": 0, "normal": 0, "error": 0, "no_resp": 0}
         self.stat_var.set("총 0건 | 정상 0 | 오류 0 | 무응답 0 | 정상응답률 -")
+
+    def _show_test_complete_dialog(self, test_label: str):
+        """시험 지정 횟수 도달 시 완료 안내 팝업을 띄운다."""
+        total = self.counters["total"]
+        normal = self.counters["normal"]
+        error = self.counters["error"]
+        no_resp = self.counters["no_resp"]
+        rate = (normal / total * 100) if total else 0.0
+    
+        win = tk.Toplevel(self)
+        win.title("시험 완료")
+        win.resizable(False, False)
+        win.transient(self)
+        win.grab_set()
+    
+        msg = (
+            f"{test_label} 이(가) 완료되었습니다.\n\n"
+            f"총 요청 수   : {total}회\n"
+            f"정상 응답    : {normal}회\n"
+            f"오류 응답    : {error}회\n"
+            f"무응답       : {no_resp}회\n"
+            f"정상 응답율  : {rate:.1f}%\n\n"
+            f"시뮬레이터는 기본(정상 응답) 상태로 전환되었습니다."
+        )
+        ttk.Label(win, text=msg, justify="left", padding=16).pack()
+    
+        btn_row = ttk.Frame(win)
+        btn_row.pack(pady=(0, 12))
+        ttk.Button(btn_row, text="확인", command=win.destroy).pack(side="left", padx=6)
+        ttk.Button(
+            btn_row, text="로그 비교 열기",
+            command=lambda: (win.destroy(), self._on_open_log_compare())
+        ).pack(side="left", padx=6)
+    
+        win.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() - win.winfo_width()) // 2
+        y = self.winfo_y() + (self.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f"+{x}+{y}")
+        win.focus_force()
 
     # ----------------------------------------------------------
     # 5) 통신 로그 표
@@ -676,8 +716,13 @@ class SimulatorGUI(tk.Tk):
                     messagebox.showerror("통신 오류", item["error"])
                     continue
                 if "scenario_complete" in item:
-                    self.status_var.set("시험 완료 - 1,000회 도달 (기본 상태로 전환)")
+                    with self.scenario_lock:
+                        completed_test_id = self.current_scenario.test_id
+                    test_label = TEST_DEFS.get(completed_test_id, {}).get("label", f"시험 {completed_test_id}")
+                
+                    self.status_var.set(f"시험 완료 - {test_label} (기본 상태로 전환)")
                     self._on_test_stop()
+                    self._show_test_complete_dialog(test_label)
                     continue
                 if "phase_update" in item:
                     self.status_var.set(f"실행 중 - {item['phase_update']}")

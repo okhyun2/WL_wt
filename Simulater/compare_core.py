@@ -16,7 +16,8 @@ LOG_LINE_RE = re.compile(
     r'\[(?P<tick>[\d.]+)\]\[(?P<level>\w+)\]\[(?P<tag>\w+)\]\s*(?P<msg>.*)$'
 )
 EPC_MSG_RE = re.compile(
-    r'test=(?P<test>\w+),seq=(?P<seq>\d+),res=(?P<res>\w+),id=(?P<id>\w+),val=(?P<val>\d+)'
+    r'test=(?P<test>\w+),seq=(?P<seq>\d+),res=(?P<res>[\w-]+),'
+    r'id=(?P<id>[\w-]+),val=(?P<val>[\w-]+)'
 )
 ALARM_METER_RE = re.compile(
     r'\[\[AlarmA\(meter\)\]\]\s*set\s*(?P<time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})'
@@ -68,13 +69,15 @@ def parse_dut_log(path, test_name_filter=None, seq_offset=0):
                 if m.group('tag') == 'EPC':
                     em = EPC_MSG_RE.search(msg)
                     if em and (test_name_filter is None or em.group('test') == test_name_filter):
+                        val_str = em.group('val')
+                        dut_val = int(val_str) if val_str.isdigit() else None
                         epc_records.append({
                             'seq': int(em.group('seq')) - seq_offset,
                             'ts': wall,
                             'test': em.group('test'),
                             'res': em.group('res'),
                             'id': em.group('id'),
-                            'dut_value': int(em.group('val')),
+                            'dut_value': dut_val,
                         })
                 am = ALARM_METER_RE.search(msg)
                 if am:
@@ -95,7 +98,6 @@ def check_alarm_intervals(alarm_times, expected, tol):
         if abs(d - expected) > tol:
             issues.append(f"{prev} -> {cur} : {d:.1f}s (기대 {expected:.1f}±{tol:.1f}s 벗어남)")
     return intervals, issues
-
 
 def run_compare(sim_csv_path, dut_log_path, sim_test_id="1", dut_test_name="TEST1",
                  seq_offset=0, interval=10.0, interval_tol=1.0, time_tol=3.0,
@@ -118,22 +120,61 @@ def run_compare(sim_csv_path, dut_log_path, sim_test_id="1", dut_test_name="TEST
 
     sim_by_seq = {r['seq']: r for r in sim_records}
     dut_by_seq = {r['seq']: r for r in dut_records}
-    all_seqs = sorted(set(sim_by_seq) | set(dut_by_seq))
+
+    # 비교 범위는 "시험이 계획한 총 건수"(=SIM CSV의 seq 최대값)까지로 제한한다.
+    # DUT 로그에 그 범위를 벗어난 잉여/중복 라인이 있어도 비교·판정에서는 제외한다.
+    max_seq = max(sim_by_seq.keys()) if sim_by_seq else (max(dut_by_seq.keys()) if dut_by_seq else 0)
+    ignored_dut_seqs = sorted(s for s in dut_by_seq.keys() if s > max_seq)
+    all_seqs = sorted(s for s in (set(sim_by_seq) | set(dut_by_seq)) if s <= max_seq)
+    dut_records_in_range = [r for r in dut_records if r['seq'] <= max_seq]
 
     rows = []
-    value_mismatches = missing_in_dut = missing_in_sim = 0
+    value_mismatches = missing_in_dut = missing_in_sim = rejected_ok = dut_error = 0
+    injected_ok = injected_miss = injected_no_log = 0
+    no_response_ok = unexpected_response = 0
     time_deltas = []
     interval_issues = []
     prev_dut_ts = None
-
+    
     for seq in all_seqs:
         s, d = sim_by_seq.get(seq), dut_by_seq.get(seq)
         sim_value = s['sim_value'] if s else None
         dut_value = d['dut_value'] if d else None
         value_match, delta_sec, interval_sec = '', '', ''
         status = 'OK'
-
-        if s is None:
+    
+        injected_error_modes = {"single_bit", "multi_bit", "checksum_only"}
+    
+        if s and s.get('mode') in injected_error_modes:
+            if d is not None and dut_value is None and str(d.get('res', '')).upper().startswith('ERR'):
+                status = 'INJECTED_OK'
+                note = f"의도된 오류({s['mode']}) 프레임 -> DUT 정상 거부"
+                injected_ok += 1
+            elif d is not None and dut_value is not None:
+                status = 'INJECTED_MISS'
+                note = f"의도된 오류({s['mode']}) 프레임인데 DUT가 값을 통과시킴(결함 의심)"
+                injected_miss += 1
+            else:
+                status = 'INJECTED_NO_LOG'
+                note = f"의도된 오류({s['mode']}) 프레임 -> DUT 로그에 해당 seq 없음(확인 필요)"
+                injected_no_log += 1
+            if d is not None and prev_dut_ts is not None:
+                iv = (d['ts'] - prev_dut_ts).total_seconds()
+                interval_sec = round(iv, 3)
+            if d is not None:
+                prev_dut_ts = d['ts']
+    
+        elif s and s.get('mode') == 'no_response':
+            if d is None:
+                status = 'NO_RESPONSE_BY_DESIGN'
+                note = '의도된 무응답(정상)'
+                no_response_ok += 1
+            else:
+                status = 'UNEXPECTED_RESPONSE'
+                note = '무응답이어야 하는데 DUT 응답이 존재함(확인 필요)'
+                unexpected_response += 1
+    
+        elif s is None:
             missing_in_sim += 1
             status = 'MISSING_SIM'
             note = '시뮬레이터 로그에 없음(DUT만 존재)'
@@ -153,8 +194,8 @@ def run_compare(sim_csv_path, dut_log_path, sim_test_id="1", dut_test_name="TEST
                 status = 'TIME_DELTA' if status == 'OK' else status
                 note = f'송수신 시각차 {delta:.2f}s 초과'
             else:
-                note = 'OK' if status == 'OK' else note if status != 'OK' else 'OK'
-
+                note = 'OK' if status == 'OK' else note
+    
             if prev_dut_ts is not None:
                 iv = (d['ts'] - prev_dut_ts).total_seconds()
                 interval_sec = round(iv, 3)
@@ -163,7 +204,7 @@ def run_compare(sim_csv_path, dut_log_path, sim_test_id="1", dut_test_name="TEST
                         f"seq={seq}: EPC 로그 기준 주기 {iv:.2f}s (기대 {interval}±{interval_tol}s 벗어남)"
                     )
             prev_dut_ts = d['ts']
-
+    
         rows.append({
             'seq': seq, 'sim_value': sim_value, 'dut_value': dut_value,
             'value_match': value_match, 'delta_sec': delta_sec,
@@ -172,9 +213,11 @@ def run_compare(sim_csv_path, dut_log_path, sim_test_id="1", dut_test_name="TEST
 
     alarm_intervals, alarm_issues = check_alarm_intervals(alarm_times, interval, interval_tol)
 
+    # 오류 프레임을 정상 거부한 것(rejected_ok)은 실패 조건에서 제외한다.
     overall_ok = (value_mismatches == 0 and missing_in_dut == 0 and missing_in_sim == 0
-                  and not alarm_issues and not interval_issues)
-
+              and injected_miss == 0 and unexpected_response == 0
+              and not alarm_issues and not interval_issues)
+    
     summary = {
         'sim_count': len(sim_records),
         'dut_count': len(dut_records),
@@ -184,14 +227,22 @@ def run_compare(sim_csv_path, dut_log_path, sim_test_id="1", dut_test_name="TEST
         'value_mismatches': value_mismatches,
         'missing_in_dut': missing_in_dut,
         'missing_in_sim': missing_in_sim,
+        'rejected_ok': rejected_ok,
+        'dut_error': dut_error,
         'time_delta_avg': mean(time_deltas) if time_deltas else None,
         'time_delta_max': max(time_deltas, key=abs) if time_deltas else None,
         'alarm_interval_avg': mean(alarm_intervals) if alarm_intervals else None,
         'alarm_interval_std': pstdev(alarm_intervals) if len(alarm_intervals) > 1 else None,
         'alarm_issues': alarm_issues,
         'interval_issues': interval_issues,
+        'injected_ok': injected_ok,
+        'injected_miss': injected_miss,
+        'injected_no_log': injected_no_log,
+        'no_response_ok': no_response_ok,
+        'unexpected_response': unexpected_response,
         'overall_ok': overall_ok,
     }
+        
     return rows, summary
 
 def save_report_csv(rows, path):

@@ -154,7 +154,15 @@ class CompareWindow(tk.Toplevel):
         self.tree.tag_configure("mismatch", background="#ffd6d6")
         self.tree.tag_configure("missing", background="#ffe9b3")
         self.tree.tag_configure("timedelta", background="#fff3b0")
+        self.tree.tag_configure("rejected_ok", background="#dff5e1")   # 옅은 초록 - 의도된 정상 거부
+        self.tree.tag_configure("dut_error", background="#ff8a8a")     # 진한 빨강 - 진짜 이상
         self.tree.tag_configure("ok", background="#ffffff")
+        self.tree.tag_configure("injected_ok", background="#dff5e1")     # 연한 초록: 의도된 오류, 정상 거부
+        self.tree.tag_configure("injected_miss", background="#ff4d4d")   # 진한 빨강: 오류 미검출 의심(결함 가능성)
+        self.tree.tag_configure("no_response_ok", background="#e6e6e6")  # 회색: 의도된 무응답
+        self.tree.tag_configure("injected_no_log", background="#ffe9b3")
+        self.tree.tag_configure("no_response_ok", background="#e6e6e6")
+        self.tree.tag_configure("unexpected", background="#ff4d4d")
 
         bottom = ttk.Frame(self); bottom.pack(fill="x", padx=8, pady=(0, 8))
         ttk.Button(bottom, text="리포트 CSV로 저장", command=self._on_save_report).pack(side="right")
@@ -239,6 +247,23 @@ class CompareWindow(tk.Toplevel):
         for item in self.tree.get_children():
             self.tree.delete(item)
 
+        STATUS_LABELS = {
+            'OK': 'OK',
+            'MISMATCH': '값불일치',
+            'MISSING_DUT': 'DUT 누락(의심)',
+            'MISSING_SIM': 'SIM 누락',
+            'REJECTED_OK': '정상 거부(정답)',
+            'TIME_DELTA': '시각차 초과',
+        }
+        STATUS_LABEL_KR = {
+            'OK': 'OK',
+            'MISMATCH': '값 불일치',
+            'MISSING_DUT': 'DUT 누락(의심)',
+            'MISSING_SIM': 'SIM 누락',
+            'TIME_DELTA': '시각차 초과',
+            'REJECTED_OK': '정상 거부(정답)',
+            'DUT_ERROR': 'DUT 오류응답(확인필요)',
+        }
         for r in rows:
             tag = "ok"
             if r["status"] == "MISMATCH":
@@ -247,22 +272,45 @@ class CompareWindow(tk.Toplevel):
                 tag = "missing"
             elif r["status"] == "TIME_DELTA":
                 tag = "timedelta"
+            elif r["status"] == "INJECTED_OK":
+                tag = "injected_ok"
+            elif r["status"] in ("INJECTED_MISS", "UNEXPECTED_RESPONSE"):
+                tag = "injected_miss"
+            elif r["status"] == "INJECTED_NO_LOG":
+                tag = "injected_no_log"
+            elif r["status"] == "NO_RESPONSE_BY_DESIGN":
+                tag = "no_response_ok"
+
             self.tree.insert("", "end", values=(
                 r["seq"], r["sim_value"], r["dut_value"], r["value_match"],
-                r["delta_sec"], r["interval_sec"], r["status"], r["note"],
+                r["delta_sec"], r["interval_sec"],
+                STATUS_LABEL_KR.get(r["status"], r["status"]),   # 상태를 한글로 표시
+                r["note"],
             ), tags=(tag,))
-
+        
         parts = [
             f"SIM {summary['sim_count']}건 / DUT {summary['dut_count']}건",
             f"값불일치 {summary['value_mismatches']}",
-            f"DUT누락 {summary['missing_in_dut']}",
+            f"DUT누락(의심) {summary['missing_in_dut']}",
             f"SIM누락 {summary['missing_in_sim']}",
         ]
+        if summary.get('rejected_ok'):
+            parts.append(f"오류프레임 정상거부(정답) {summary['rejected_ok']}건")
+        if summary.get('dut_error'):
+            parts.append(f"⚠DUT오류응답(확인필요) {summary['dut_error']}건")
+        if summary.get('rejected_ok'):
+            parts.append(f"오류 프레임 정상 거부 {summary['rejected_ok']}건(정답)")
+        if summary.get('ignored_dut_count'):
+            parts.append(
+                f"총 건수 초과로 비교 제외(DUT) {summary['ignored_dut_count']}건 "
+                f"(seq={summary['ignored_dut_seqs']})"
+            )
         if summary.get('excluded_count'):
             parts.append(
                 f"부팅 검침 제외 {summary['excluded_count']}건 "
                 f"(sim seq={summary['excluded_sim_seqs']}, dut seq={summary['excluded_dut_seqs']})"
             )
+
         if summary['alarm_interval_avg'] is not None:
             parts.append(f"AlarmA 평균주기 {summary['alarm_interval_avg']:.2f}s")
 
