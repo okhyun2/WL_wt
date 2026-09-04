@@ -20,7 +20,7 @@ class CompareWindow(tk.Toplevel):
     def __init__(self, master, default_sim_csv="", default_test_id="1"):
         super().__init__(master)
         self.title("시뮬레이터-DUT 로그 비교")
-        self.geometry("1080x620")
+        self.geometry("1080x640")
         self.result_queue = queue.Queue()
         self._worker = None
         self._last_rows = []
@@ -81,25 +81,31 @@ class CompareWindow(tk.Toplevel):
         self.test_desc_var = tk.StringVar(value="")
         ttk.Label(top_row, textvariable=self.test_desc_var, foreground="gray").pack(side="left", padx=(12, 0))
     
-        row = ttk.Frame(frame); row.pack(fill="x", padx=6, pady=4)
-    
-        def add_field(label, var, width=8):
-            ttk.Label(row, text=label).pack(side="left", padx=(10, 2))
-            ttk.Entry(row, textvariable=var, width=width).pack(side="left")
-    
-        add_field("시험ID(sim)", self.sim_test_id_var, 6)
-        add_field("시험명(DUT)", self.dut_test_name_var, 10)
-        add_field("seq 오프셋", self.seq_offset_var, 6)
-        add_field("최초 제외 건수", self.exclude_first_n_var, 6)
-        add_field("주기(s)", self.interval_var, 6)
-        add_field("주기허용오차(s)", self.interval_tol_var, 6)
-        add_field("시각차허용(s)", self.time_tol_var, 6)
-    
-        self.run_btn = ttk.Button(row, text="비교 실행", command=self._on_run)
+
+        row1 = ttk.Frame(frame); row1.pack(fill="x", padx=6, pady=(4, 0))
+        row2 = ttk.Frame(frame); row2.pack(fill="x", padx=6, pady=4)
+        
+        def add_field(parent, label_text, var, width, readonly=False):
+            ttk.Label(parent, text=label_text).pack(side="left", padx=(10, 0))
+            entry = ttk.Entry(parent, textvariable=var, width=width,
+                               state="readonly" if readonly else "normal")
+            entry.pack(side="left", padx=4)
+            return entry
+        
+        add_field(row1, "시험ID(sim, 자동)", self.sim_test_id_var, 6, readonly=True)
+        add_field(row1, "시험명(DUT, 자동)", self.dut_test_name_var, 10, readonly=True)
+        add_field(row1, "seq 오프셋", self.seq_offset_var, 6)
+        add_field(row1, "최초 제외 건수", self.exclude_first_n_var, 6)
+        
+        add_field(row2, "주기(s)", self.interval_var, 6)
+        add_field(row2, "주기허용오차(s)", self.interval_tol_var, 6)
+        add_field(row2, "시각차허용(s)", self.time_tol_var, 6)
+        
+        self.run_btn = ttk.Button(row2, text="비교 실행", command=self._on_run)
         self.run_btn.pack(side="left", padx=16)
-        self.progress = ttk.Progressbar(row, mode="indeterminate", length=120)
+        self.progress = ttk.Progressbar(row2, mode="indeterminate", length=120)
         self.progress.pack(side="left", padx=4)
-    
+
         summary_row = ttk.Frame(frame); summary_row.pack(fill="x", padx=6, pady=(0, 4))
         self.summary_label = ttk.Label(summary_row, textvariable=self.summary_var,
                                         anchor="w", foreground="#333333")

@@ -2,6 +2,12 @@
 import random
 from abc import ABC, abstractmethod
 
+# scenarios.py
+from test_defs import (
+    TEST1_PHASE1_COUNT, TEST1_PHASE2_COUNT,
+    TEST1_PHASE1_DELAY_SEC, TEST1_PHASE2_DELAY_RANGE,
+    TEST2_DEFAULT_TOTAL_NORMAL, TEST2_DEFAULT_TOTAL_ERROR)
+
 
 class BaseScenario(ABC):
     test_id: str = ""
@@ -44,12 +50,24 @@ class NormalOnlyScenario(BaseScenario):
 
 class Test1NormalCollection(BaseScenario):
     test_id = "1"
-    description = "검침 데이터 수집 신뢰성 (1차 고정지연 500회 + 2차 지터지연 500회)"
 
-    PHASE1_COUNT = 500
-    PHASE2_COUNT = 500
-    PHASE1_DELAY_SEC = 0.030              # 고정 30ms (스펙 20~50ms 중간값)
-    PHASE2_DELAY_RANGE = (0.020, 0.050)   # 지터: 스펙 하한~상한 내 매회 무작위
+    PHASE1_COUNT = TEST1_PHASE1_COUNT
+    PHASE2_COUNT = TEST1_PHASE2_COUNT
+    PHASE1_DELAY_SEC = TEST1_PHASE1_DELAY_SEC
+    PHASE2_DELAY_RANGE = TEST1_PHASE2_DELAY_RANGE
+
+    @property
+    def description(self):
+        lo, hi = self.PHASE2_DELAY_RANGE
+        return (f"검침 데이터 수집 신뢰성 "
+                f"(1차 고정지연 {self.PHASE1_DELAY_SEC*1000:.0f}ms {self.PHASE1_COUNT}회 + "
+                f"2차 지터지연 {lo*1000:.0f}~{hi*1000:.0f}ms {self.PHASE2_COUNT}회)")
+
+    def __init__(self, phase1_count: int = None, phase2_count: int = None):
+        if phase1_count is not None:
+            self.PHASE1_COUNT = phase1_count
+        if phase2_count is not None:
+            self.PHASE2_COUNT = phase2_count        
 
     def decide(self, request_index: int) -> str:
         return "normal"
@@ -80,9 +98,15 @@ class Test1NormalCollection(BaseScenario):
 
 class Test2ChecksumError(BaseScenario):
     test_id = "2"
-    description = "체크섬 오류 검출 성능 (정상 500 + 오류 500, 유형 균등 배분)"
 
-    def __init__(self, total_error: int = 500, total_normal: int = 500):
+    DEFAULT_TOTAL_NORMAL = TEST2_DEFAULT_TOTAL_NORMAL
+    DEFAULT_TOTAL_ERROR = TEST2_DEFAULT_TOTAL_ERROR
+
+    def __init__(self, total_error: int = None, total_normal: int = None):
+        total_error = self.DEFAULT_TOTAL_ERROR if total_error is None else total_error
+        total_normal = self.DEFAULT_TOTAL_NORMAL if total_normal is None else total_normal
+        self.total_error = total_error
+        self.total_normal = total_normal
         pool = ["normal"] * total_normal
         error_types = ["single_bit", "multi_bit", "checksum_only"]
         for i in range(total_error):
@@ -103,6 +127,11 @@ class Test2ChecksumError(BaseScenario):
         mode = self._pool[(request_index - 1) % len(self._pool)]
         kind = "정상" if mode == "normal" else f"오류주입({mode})"
         return f"{kind} 프레임 - {request_index}/{len(self._pool)}회"
+
+    @property
+    def description(self):
+        return (f"체크섬 오류 검출 성능 (정상 {self.total_normal}회 + "
+                f"오류 {self.total_error}회(단일비트/다중비트/체크섬) 균등 배분)")
 
 class Test3SelfDiagnosisCase(BaseScenario):
     """시험3 Case별 재현. case 번호로 동작을 분기."""
