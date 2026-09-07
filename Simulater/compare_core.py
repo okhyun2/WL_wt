@@ -12,8 +12,11 @@ SIM_NOTE_RE = re.compile(
     r'phase=(?P<phase>\d+);delay_ms=(?P<delay>[\d.]+);meter_value=(?P<val>\d+)'
 )
 LOG_LINE_RE = re.compile(
-    r'^\[(?P<wall>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s*'
-    r'\[(?P<tick>[\d.]+)\]\[(?P<level>\w+)\]\[(?P<tag>\w+)\]\s*(?P<msg>.*)$'
+    r'^\[(?P<wall>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}\.\d+'
+    r'|\d{2}:\d{2}:\d{2}\.\d+'
+    r'|\d{6}\.\d+)\]\s*'
+    r'(?:\[(?P<tick>[\d.]+)\]\s*)?'
+    r'\[(?P<level>\w+)\]\[(?P<tag>\w+)\]\s*(?P<msg>.*)$'
 )
 EPC_MSG_RE = re.compile(
     r'test=(?P<test>\w+),seq=(?P<seq>\d+),res=(?P<res>[\w-]+),'
@@ -55,6 +58,22 @@ def parse_sim_csv(path, test_id_filter=None):
     records.sort(key=lambda r: r['seq'])
     return records
 
+def _parse_wall_time(wall_str):
+    """DUT 로그의 타임스탬프 문자열을 datetime으로 변환.
+    - 'YYYY-MM-DD HH:MM:SS.mmm' : 완전한 포맷(권장, 날짜 경계를 넘는 장시간 시험에 필요)
+    - 'HH:MM:SS.mmm'            : 날짜 없음 -> 오늘 날짜로 보정
+    - 'hhmmss.mmm'              : 현재 펌웨어가 실제로 찍는 압축 포맷 -> 오늘 날짜로 보정
+    주의: 날짜 정보가 없는 두 포맷은 자정을 넘기는 장시간 시험에서 날짜가 밀리지 않으므로,
+          다일(multi-day) 시험에는 펌웨어 쪽에 날짜 출력을 추가하는 것을 권장한다.
+    """
+    if '-' in wall_str:
+        return datetime.strptime(wall_str, '%Y-%m-%d %H:%M:%S.%f')
+    today = datetime.now().strftime('%Y-%m-%d')
+    if ':' in wall_str:
+        return datetime.strptime(f"{today} {wall_str}", '%Y-%m-%d %H:%M:%S.%f')
+    hh, mm, rest = wall_str[0:2], wall_str[2:4], wall_str[4:]   # rest = "ss.mmm"
+    return datetime.strptime(f"{today} {hh}:{mm}:{rest}", '%Y-%m-%d %H:%M:%S.%f')
+
 
 def parse_dut_log(path, test_name_filter=None, seq_offset=0):
     epc_records, alarm_times = [], []
@@ -64,7 +83,7 @@ def parse_dut_log(path, test_name_filter=None, seq_offset=0):
                 m = LOG_LINE_RE.match(line.rstrip('\n'))
                 if not m:
                     continue
-                wall = datetime.strptime(m.group('wall'), '%Y-%m-%d %H:%M:%S.%f')
+                wall = _parse_wall_time(m.group('wall'))
                 msg = m.group('msg')
                 if m.group('tag') == 'EPC':
                     em = EPC_MSG_RE.search(msg)
