@@ -5,6 +5,7 @@ import time
 import random
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from self_diagnosis_gui import SelfDiagnosisWindow
 
 import serial
 import serial.tools.list_ports
@@ -102,6 +103,7 @@ class SimulatorGUI(tk.Tk):
 
         self._compare_win = None                 # 팝업 중복 방지용 참조
 
+        self._build_menu_bar()
         self._build_device_frame()
         self._build_log_save_frame()
         self._build_connection_frame()
@@ -114,17 +116,24 @@ class SimulatorGUI(tk.Tk):
 
         self._compare_win = None                       # 비교 팝업 중복 방지용 참조
         self._last_completed_log_path = None            # 마지막으로 저장 완료된 CSV 경로
+        self._selfdiag_win = None
 
     # ----------------------------------------------------------
     # 0) 메뉴바 (도구 -> 로그 비교)
     # ----------------------------------------------------------
     def _build_menu_bar(self):
         menu_bar = tk.Menu(self)
-        tools_menu = tk.Menu(menu_bar, tearoff=0)
-        tools_menu.add_command(label="시뮬레이터-DUT 로그 비교...", command=self._on_open_log_compare)
-        menu_bar.add_cascade(label="도구", menu=tools_menu)
+        menu_bar.add_command(label="시뮬레이터 비교", command=self._on_open_log_compare)
+        menu_bar.add_command(label="자가진단", command=self._on_open_selfdiag)
         self.config(menu=menu_bar)
-
+    
+    def _on_open_selfdiag(self):
+        if self._selfdiag_win is not None and self._selfdiag_win.winfo_exists():
+            self._selfdiag_win.lift()
+            self._selfdiag_win.focus_force()
+            return
+        self._selfdiag_win = SelfDiagnosisWindow(self)
+        
     def _on_open_log_compare(self):
         if self.comm_logger is not None:
             default_sim_csv = self.comm_logger.log_path
@@ -580,9 +589,6 @@ class SimulatorGUI(tk.Tk):
         toolbar = ttk.Frame(frame)
         toolbar.pack(fill="x", padx=6, pady=(4, 0))
         ttk.Button(toolbar, text="로그 지우기", command=self._on_clear_log).pack(side="left")
-        self.compare_btn = ttk.Button(toolbar, text="시뮬레이터-DUT 로그 비교",
-                                       command=self._on_open_log_compare)
-        self.compare_btn.pack(side="right")
 
         columns = ("seq", "time", "req_c", "req_a", "req_valid", "mode", "resp_hex", "note")
         self.tree = ttk.Treeview(frame, columns=columns, show="headings", height=18)

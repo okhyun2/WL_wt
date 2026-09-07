@@ -258,12 +258,19 @@ class CompareWindow(tk.Toplevel):
         STATUS_LABEL_KR = {
             'OK': 'OK',
             'MISMATCH': '값 불일치',
-            'MISSING_DUT': 'DUT 누락(의심)',
+            'MISSING_DUT': 'DUT 누락(응답)',
             'MISSING_SIM': 'SIM 누락',
             'TIME_DELTA': '시각차 초과',
-            'REJECTED_OK': '정상 거부(정답)',
+            'REJECTED_OK': '오류 거부(정상)',
             'DUT_ERROR': 'DUT 오류응답(확인필요)',
+            # ↓ 새로 추가
+            'INJECTED_OK': '의도된 오류 → 정상 거부',
+            'INJECTED_MISS': '오류 미검출(결함 의심)',
+            'INJECTED_NO_LOG': '주입 오류 응답 로그 없음',
+            'NO_RESPONSE_BY_DESIGN': '의도된 무응답(정상)',
+            'UNEXPECTED_RESPONSE': '무응답 예상인데 응답 존재',
         }
+
         for r in rows:
             tag = "ok"
             if r["status"] == "MISMATCH":
