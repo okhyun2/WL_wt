@@ -1,4 +1,5 @@
 import os
+import re
 import threading
 import queue
 import time
@@ -99,6 +100,7 @@ class SimulatorGUI(tk.Tk):
         self.comm_logger: CommLogger | None = None
         self.log_save_enabled = tk.BooleanVar(value=False)
         self.log_save_path = tk.StringVar(value="")
+        self.dut_log_path_var = tk.StringVar(value="")  # 시험 시작 전 test= 검증용 DUT 로그 파일(선택)
         self.counters = {"total": 0, "normal": 0, "error": 0, "no_resp": 0}
 
         self._compare_win = None                 # 팝업 중복 방지용 참조
@@ -319,6 +321,13 @@ class SimulatorGUI(tk.Tk):
         self.test_desc_var = tk.StringVar(value=TEST_DEFS["0"]["desc"])
         ttk.Label(row, textvariable=self.test_desc_var, foreground="gray").pack(side="left", padx=(16, 0))
 
+        # ---- 시험 시작 전 검증용 DUT 로그 파일 (선택) ----
+        row2 = ttk.Frame(frame); row2.pack(fill="x", padx=6, pady=(0, 4))
+        ttk.Label(row2, text="DUT 로그 파일(선택, test= 검증)", foreground="gray").pack(side="left")
+        ttk.Entry(row2, textvariable=self.dut_log_path_var, width=50, state="readonly").pack(side="left", padx=4)
+        ttk.Button(row2, text="찾아보기", command=self._browse_dut_log_path).pack(side="left", padx=4)
+        ttk.Button(row2, text="지정 해제", command=lambda: self.dut_log_path_var.set("")).pack(side="left", padx=4)
+
     def _update_test_start_btn_state(self):
         if self.serial_conn is None:
             self.test_start_btn.configure(state="disabled")
@@ -374,6 +383,76 @@ class SimulatorGUI(tk.Tk):
         )
         if path:
             self.log_save_path.set(path)
+
+    def _browse_dut_log_path(self):
+        """TeraTerm 등으로 실시간 캡처 중인 DUT 로그 파일을 지정한다.
+        지정해두면 시험 시작 시 test= 필드를 읽어 GUI 선택값과 자동으로 대조한다."""
+        path = filedialog.askopenfilename(
+            filetypes=[("Log/Text", "*.log *.txt"), ("All files", "*.*")]
+        )
+        if path:
+            self.dut_log_path_var.set(path)
+
+    def _extract_last_test_id_from_dut_log(self, path, tail_bytes=8192):
+        """DUT 로그 파일 끝부분에서 가장 마지막 test=XXXX 값을 추출.
+        파일이 크면 뒤쪽 tail_bytes만 읽어 성능 저하 없이 최근 로그만 확인한다.
+        못 찾으면 None을 반환."""
+        try:
+            size = os.path.getsize(path)
+            with open(path, "rb") as f:
+                if size > tail_bytes:
+                    f.seek(size - tail_bytes)
+                data = f.read()
+            text = data.decode("utf-8", errors="ignore")
+        except OSError:
+            return None
+    
+        matches = re.findall(r"test=(\w+)", text)
+        return matches[-1] if matches else None
+
+    def _confirm_dut_test_match(self, test_id, test_def) -> bool:
+        """선택한 시험 항목과 DUT 로그에 실제로 찍히는 test= 값이 일치하는지 확인.
+        DUT 로그 파일을 지정하지 않았으면 검증 없이 그대로 진행시킨다(True 반환).
+        불일치/확인불가 상황에는 사용자에게 계속 진행할지 물어본다."""
+        dut_log_path = self.dut_log_path_var.get().strip()
+        expected = test_def.get("dut_test_name")
+    
+        if not dut_log_path:
+            return True
+    
+        if not os.path.isfile(dut_log_path):
+            return messagebox.askyesno(
+                "DUT 로그 확인 불가",
+                f"지정한 DUT 로그 파일을 찾을 수 없습니다:\n{dut_log_path}\n\n"
+                "APP_EPC_ACTIVE_TEST_ID 일치 확인 없이 계속 진행하시겠습니까?"
+            )
+    
+        found = self._extract_last_test_id_from_dut_log(dut_log_path)
+    
+        if found is None:
+            return messagebox.askyesno(
+                "DUT 로그 확인 불가",
+                "DUT 로그에서 시험 항목(test=) 정보를 찾지 못했습니다.\n"
+                "(아직 로그가 쌓이지 않았거나 형식이 다를 수 있습니다)\n\n"
+                "확인 없이 계속 진행하시겠습니까?"
+            )
+    
+        if expected is None:
+            # 시험0(기본/정상 응답만)처럼 실제 DUT 시험 코드와 무관한 항목은 대조하지 않음
+            return True
+    
+        if found != expected:
+            return messagebox.askyesno(
+                "시험 항목 불일치 경고",
+                f"DUT 로그에는 test={found} 로 기록되어 있으나,\n"
+                f"시뮬레이터에서 선택한 시험은 '{test_def['label']}' (test={expected}) 입니다.\n\n"
+                "이 상태로 진행하면 이후 로그 비교/자가진단 분석에서\n"
+                "결과가 전부 'missing_in_dut'로 표시될 수 있습니다.\n"
+                "펌웨어의 APP_EPC_ACTIVE_TEST_ID 값을 확인해 주세요.\n\n"
+                "그래도 계속 진행하시겠습니까?"
+            )
+    
+        return True
 
     def _format_file_size(self, size_bytes: int) -> str:
         if size_bytes < 1024:
@@ -510,8 +589,23 @@ class SimulatorGUI(tk.Tk):
     def _on_test_start(self):
         test_id = self.test_var.get().split(" | ")[0]
         test_def = TEST_DEFS[test_id]
+    
+        if not self._confirm_dut_test_match(test_id, test_def):
+            return   # 사용자가 '아니오'를 선택하면 시험 시작을 취소
+    
         params = {"case": self.case_var.get()} if test_def["needs_case"] else {}
         scenario = test_def["factory"](params)
+    
+        self.meter_value = self.device_profile.initial_meter_value
+        with self.scenario_lock:
+            self.current_scenario = scenario
+        self.req_index = 0
+        self.counters = {"total": 0, "normal": 0, "error": 0, "no_resp": 0}
+    
+        self.status_var.set(f"시작 중 - {test_def['label']}")
+        self.test_start_btn.configure(state="disabled")
+        self.test_stop_btn.configure(state="normal")
+        self.test_combo.configure(state="disabled")
 
         self.meter_value = self.device_profile.initial_meter_value   # 값 재동기화
 
