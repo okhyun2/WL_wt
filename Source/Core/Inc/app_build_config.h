@@ -22,22 +22,28 @@ extern "C" {
  *  EPC Test Mode (시험용 빌드 옵션)
  * ================================================================ */
 #define APP_EPC_TEST_MODE_ENABLE                    (APP_TRUE)   /* 1:시험 코드 포함, 0:완전 제거 */
+
 #define APP_EPC_LOG_TAG                             "EPC"
+#define APP_SELFDIAG_LOG_TAG                        "SELFDIAG"   /* 신규: TEST3 자가진단 전용 로그 태그 */
 
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
-#define APP_EPC_ACTIVE_TEST_ID                      (2u)   /* 1:시험1, 2:시험2, 다른 시험 추가 시 값 변경 */
+#define APP_EPC_ACTIVE_TEST_ID                      (3u)   /* 1:시험1, 2:시험2, 3:시험3(자가진단) */
 
 #if (APP_EPC_ACTIVE_TEST_ID == 1u)
 #define APP_EPC_TEST_ID_STRING                      "TEST1"
-#define APP_EPC_TEST1_METERING_PERIOD_SEC           (10u)  /* 시험1 전용 검침 주기(초) */
+#define APP_EPC_TEST1_METERING_PERIOD_SEC           (10u)
 
 #elif (APP_EPC_ACTIVE_TEST_ID == 2u)
 #define APP_EPC_TEST_ID_STRING                      "TEST2"
-#define APP_EPC_TEST2_METERING_PERIOD_SEC           (10u)  /* 시험2 전용 검침 주기(초): 정상500+오류500=1000회를 짧게 반복 */
+#define APP_EPC_TEST2_METERING_PERIOD_SEC           (10u)
+
+#elif (APP_EPC_ACTIVE_TEST_ID == 3u)                              /* 신규 */
+#define APP_EPC_TEST_ID_STRING                      "TEST3"
+#define APP_EPC_TEST3_SELFDIAG_PERIOD_SEC           (10u)  /* 자가진단 반복 주기(초) */
+#define APP_EPC_TEST3_DUT_LABEL                     "SAMPLE-01"  /* 시료 식별 라벨: 보드마다 값 변경 */
 
 #endif
 #endif
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /* 128KB dual-boot flash layout */

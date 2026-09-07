@@ -20,6 +20,79 @@
 static AppSelfTestContext_t g_appSelfTestContext;
 static uint8_t g_appSelfTestNbiotExecuted;
 
+static const char *App_SelfTestItemToString(AppSelfTestItem_t item);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
+/** @brief TEST3 자가진단 반복 실행 횟수(부팅 후 누적, seq 필드로 사용). */
+static uint32_t g_epcSelfDiagAttemptSeq = 0u;
+
+/**
+ * @brief 현재까지 기록된 self-test 항목 결과를 모아
+ *        [SELFDIAG] test=TEST3,seq=...,dut=...,fault=...,judge=... 한 줄을 출력한다.
+ *
+ * @note METER_UART 항목만 실패하면 judge=METER_FAULT, 그 외 항목이 하나라도
+ *       실패하면 judge=TERMINAL_FAULT, 모두 통과하면 judge=NORMAL,fault=NONE.
+ */
+static void App_SelfTestReportTest3Result(void)
+{
+    char faultBuf[96] = {0};
+    uint8_t faultCount = 0u;
+    uint8_t anyFault = APP_FALSE;
+    uint8_t onlyMeterFault = APP_TRUE;
+    uint32_t idx;
+    const char *p_judge;
+
+    g_epcSelfDiagAttemptSeq++;
+
+    for (idx = 0u; idx < (uint32_t)APP_SELFTEST_ITEM_COUNT; idx++)
+    {
+        AppSelfTestItem_t item = (AppSelfTestItem_t)idx;
+        const AppSelfTestItemResult_t *p_result = &g_appSelfTestContext.items[item];
+
+        if ((p_result->executed == APP_TRUE) && (p_result->passed != APP_TRUE))
+        {
+            const char *p_code = App_SelfTestItemToString(item);
+
+            if (faultCount > 0u)
+            {
+                (void)strncat(faultBuf, "+", sizeof(faultBuf) - strlen(faultBuf) - 1u);
+            }
+            (void)strncat(faultBuf, p_code, sizeof(faultBuf) - strlen(faultBuf) - 1u);
+            faultCount++;
+            anyFault = APP_TRUE;
+
+            if (item != APP_SELFTEST_ITEM_METER_UART)
+            {
+                onlyMeterFault = APP_FALSE;
+            }
+        }
+    }
+
+    if (anyFault != APP_TRUE)
+    {
+        (void)strncpy(faultBuf, "NONE", sizeof(faultBuf) - 1u);
+        p_judge = "NORMAL";
+    }
+    else if (onlyMeterFault == APP_TRUE)
+    {
+        p_judge = "METER_FAULT";
+    }
+    else
+    {
+        p_judge = "TERMINAL_FAULT";
+    }
+
+    SELFDIAG_LOGI("test=%s,seq=%lu,dut=%s,fault=%s,judge=%s",
+                  APP_EPC_TEST_ID_STRING,
+                  (unsigned long)g_epcSelfDiagAttemptSeq,
+                  APP_EPC_TEST3_DUT_LABEL,
+                  faultBuf,
+                  p_judge);
+}
+#endif /* APP_EPC_TEST_MODE_ENABLE && APP_EPC_ACTIVE_TEST_ID == 3u */
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 typedef struct
 {
     UART_HandleTypeDef *p_huart;
@@ -641,6 +714,10 @@ AppStatus_t App_SelfTestRunBootSequence(void)
                                  (unsigned long)g_appSelfTestContext.passCount,
                                  (unsigned long)g_appSelfTestContext.failCount);
 
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
+    App_SelfTestReportTest3Result();   /* 신규: TEST3 자가진단 로그 출력 */
+#endif
+
     return g_appSelfTestContext.lastSequenceStatus;
 }
 
@@ -674,6 +751,10 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
     APP_LOGN("SELF", "Operational data collection done: pass=%lu fail=%lu",
                                  (unsigned long)g_appSelfTestContext.passCount,
                                  (unsigned long)g_appSelfTestContext.failCount);
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
+    App_SelfTestReportTest3Result();   /* 신규: TEST3 자가진단 로그 출력 */
+#endif
 
     return g_appSelfTestContext.lastSequenceStatus;
 }
