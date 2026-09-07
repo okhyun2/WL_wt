@@ -62,21 +62,24 @@ class SelfDiagnosisWindow(tk.Toplevel):
 
     # ---------- 결함 체크박스 ----------
     def _build_fault_frame(self):
-        frame = ttk.LabelFrame(self, text="이번 시료에 실제로 주입된 결함(체크)")
+        frame = ttk.LabelFrame(self, text="이번 시험에서 실제 주입된 고장 항목(수동)")
         frame.pack(fill="x", padx=8, pady=6)
-
-        row = ttk.Frame(frame); row.pack(fill="x", padx=6, pady=4)
-        for module in sorted(FAULT_MODULES_ALL):
-            ttk.Checkbutton(
-                row, text=FAULT_LABEL_KR.get(module, module),
-                variable=self.fault_vars[module],
-            ).pack(side="left", padx=6)
-
+    
+        modules = sorted(FAULT_MODULES_ALL)
+        per_row = 5   # 신규: 10개 항목을 5개씩 두 줄로 나눠 배치 (창 폭 초과 방지)
+        for start in range(0, len(modules), per_row):
+            row = ttk.Frame(frame); row.pack(fill="x", padx=6, pady=2)
+            for module in modules[start:start + per_row]:
+                ttk.Checkbutton(
+                    row, text=FAULT_LABEL_KR.get(module, module),
+                    variable=self.fault_vars[module],
+                ).pack(side="left", padx=6)
+    
         btn_row = ttk.Frame(frame); btn_row.pack(fill="x", padx=6, pady=(0, 4))
         ttk.Button(btn_row, text="분석 실행", command=self._on_run).pack(side="left")
         ttk.Button(btn_row, text="결과 CSV 저장", command=self._on_save_report).pack(side="left", padx=6)
         ttk.Label(btn_row, textvariable=self.summary_var, foreground="#333333").pack(side="left", padx=16)
-
+        
     # ---------- 결과 테이블 ----------
     def _build_result_frame(self):
         frame = ttk.LabelFrame(self, text="회차별 결과 (seq 오름차순)")

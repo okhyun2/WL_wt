@@ -9,10 +9,12 @@ import re
 from datetime import datetime
 
 # ---------------- 로그 형식 ----------------
-# 예: [2026-09-04 12:07:33.123][45.678][INFO][SELFDIAG] test=TEST3,seq=1,dut=A,fault=BATTERY+METER_RESP,judge=TERMINAL_FAULT
 LOG_LINE_RE = re.compile(
-    r'^\[(?P<wall>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s*'
-    r'\[(?P<tick>[\d.]+)\]\[(?P<level>\w+)\]\[(?P<tag>\w+)\]\s*(?P<msg>.*)$'
+    r'^\[(?P<wall>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}\.\d+'
+    r'|\d{2}:\d{2}:\d{2}\.\d+'
+    r'|\d{6}\.\d+)\]\s*'
+    r'(?:\[(?P<tick>[\d.]+)\]\s*)?'
+    r'\[(?P<level>\w+)\]\[(?P<tag>\w+)\]\s*(?P<msg>.*)$'
 )
 SELFDIAG_MSG_RE = re.compile(
     r'test=(?P<test>\w+),seq=(?P<seq>\d+),dut=(?P<dut>\w+),'
@@ -21,23 +23,26 @@ SELFDIAG_MSG_RE = re.compile(
 
 # ---------------- 결함 모듈 분류 ----------------
 FAULT_MODULES_ALL = {
-    "BATTERY", "METER_RESP", "HUMIDITY", "METER_IF",
-    "NBIOT", "NFC", "GPIO", "WATCHDOG",
+    "BUZZ", "CRC", "ADC", "DBG", "METER",
+    "NBIOT", "NFC", "TEMP", "EWDT", "GPIO",
 }
-TERMINAL_MODULES = {"BATTERY", "HUMIDITY", "METER_IF", "NBIOT", "NFC", "GPIO", "WATCHDOG"}
-METER_MODULES = {"METER_RESP"}
+# METER(계량기 UART 응답)만 계량기측 고장으로 분류, 나머지는 모두 단말(DUT) 고장
+METER_MODULES = {"METER"}
+TERMINAL_MODULES = FAULT_MODULES_ALL - METER_MODULES
 
 FAULT_LABEL_KR = {
-    "BATTERY": "배터리 응답 이상",
-    "METER_RESP": "계량기 응답 이상",
-    "HUMIDITY": "온습도 응답 이상",
-    "METER_IF": "계량기 인터페이스 응답 이상",
-    "NBIOT": "NB-IoT 모듈 응답 이상",
-    "NFC": "NFC 모듈 응답 이상",
-    "GPIO": "GPIO 응답 이상",
-    "WATCHDOG": "외부 워치독 응답 이상",
-    "NONE": "결함 없음",
-}
+    "BUZZ": "부저 이상",
+    "CRC": "CRC 연산 이상",
+    "ADC": "배터리 전압(ADC) 이상",
+    "DBG": "디버그 UART 이상",
+    "METER": "계량기 응답 이상",
+    "NBIOT": "NB-IoT 모듈 이상",
+    "NFC": "NFC 모듈 이상",
+    "TEMP": "온습도(AUX I2C) 센서 이상",
+    "EWDT": "외부 감시타이머 이상",
+    "GPIO": "GPIO 입력 이상",
+    "NONE": "고장 없음",
+}    
 JUDGE_LABEL_KR = {
     "NORMAL": "정상",
     "TERMINAL_FAULT": "단말기 자체 불량",
@@ -60,6 +65,15 @@ def expected_judge(injected_faults: set) -> str:
         return "METER_FAULT"
     return "NORMAL"
 
+def _parse_wall_time(wall_str):
+    """DUT 로그 타임스탬프 문자열을 datetime으로 변환. 날짜가 없으면 오늘 날짜로 보정."""
+    if '-' in wall_str:
+        return datetime.strptime(wall_str, '%Y-%m-%d %H:%M:%S.%f')
+    today = datetime.now().strftime('%Y-%m-%d')
+    if ':' in wall_str:
+        return datetime.strptime(f"{today} {wall_str}", '%Y-%m-%d %H:%M:%S.%f')
+    hh, mm, rest = wall_str[0:2], wall_str[2:4], wall_str[4:]
+    return datetime.strptime(f"{today} {hh}:{mm}:{rest}", '%Y-%m-%d %H:%M:%S.%f')
 
 def parse_selfdiag_log(path, test_name_filter=None, dut_label_filter=None):
     """DUT 자가진단 로그 파일을 파싱해서 레코드 리스트로 반환한다."""
@@ -80,7 +94,7 @@ def parse_selfdiag_log(path, test_name_filter=None, dut_label_filter=None):
                 dut_label = sm.group('dut')
                 if dut_label_filter and dut_label != dut_label_filter:
                     continue
-                wall = datetime.strptime(m.group('wall'), '%Y-%m-%d %H:%M:%S.%f')
+                wall = _parse_wall_time(m.group('wall'))
                 fault_str = sm.group('fault')
                 fault_set = set() if fault_str.upper() == 'NONE' else set(fault_str.split('+'))
                 unknown = fault_set - FAULT_MODULES_ALL
