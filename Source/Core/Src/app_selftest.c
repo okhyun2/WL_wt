@@ -212,6 +212,9 @@ static const char *App_SelfTestItemToString(AppSelfTestItem_t item)
         case APP_SELFTEST_ITEM_DEBUG_UART:
             return "DBG";
 
+        case APP_SELFTEST_ITEM_METER_UART_LINE:
+            return "METER_LINE";
+
         case APP_SELFTEST_ITEM_METER_UART:
             return "METER";
 
@@ -371,6 +374,66 @@ static AppStatus_t App_SelfTestCheckDebugUart(void)
 /**
  * @brief Meter UART pseudo connectivity probe.
  *
+ * @return APP_STATUS_OK on success, error code otherwise.
+ */
+static AppStatus_t App_SelfTestCheckMeterUartLine(void)
+{
+    APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
+
+    AppStatus_t status = APP_STATUS_OK;
+    const uint8_t meterCheckFrame[] = {0x10, 0x5B, 0x01, 0x5C, 0x16};
+    uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {
+        0,
+    };
+    int i;
+    //const uint8_t SYNC_START = 0x68;
+    //const uint8_t SYNC_STOP = 0x16;
+
+    APP_LOGI("SELF", "Meter UART Line real probe start");
+    App_GpioLpConfigOutput(Meter_UART_Loop_GPIO_Port, Meter_UART_Loop_Pin, GPIO_PIN_SET);
+    HAL_Delay(50);
+
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
+    HAL_Delay(50); //>= meter spec. 50ms
+    APP_RETURN_IF_FALSE(App_SelfTestReinitMeterUart((g_appSelfTestNbiotExecuted == APP_TRUE) ?
+                                                    APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS :
+                                                    APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS) == APP_STATUS_OK,
+                        APP_STATUS_UART_RX_FAILED);
+
+    APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_METER_HANDLE,
+                                              (uint8_t *)meterCheckFrame,
+                                              (uint16_t)sizeof(meterCheckFrame),
+                                              APP_SELFTEST_UART_TIMEOUT_MS),
+                            APP_STATUS_SELFTEST_DEVICE_NOT_READY);
+    status = App_SelfTestUartReceiveIt(APP_UART_METER_HANDLE,
+                                       meterReply,
+                                       APP_SELFTEST_UART_METER_LOOP_EXPECTED_RX_MIN_LEN,
+                                       APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS);
+    APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
+
+    HAL_Delay(100); //>= meter spec. 100ms
+    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+    HAL_Delay(100); //>= meter spec. 100ms
+    App_GpioLpConfigOutput(Meter_UART_Loop_GPIO_Port, Meter_UART_Loop_Pin, GPIO_PIN_RESET);
+    App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_LOOP_EXPECTED_RX_MIN_LEN);
+    APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
+
+    for(i = 0; i < APP_SELFTEST_UART_METER_LOOP_EXPECTED_RX_MIN_LEN; i++)
+    {
+        if(meterReply[i] != meterCheckFrame[i])
+        {
+            status = APP_STATUS_UART_RX_ERROR;
+            break;
+        }
+    }
+
+    return (status);
+}
+
+
+/**
+ * @brief Meter UART pseudo connectivity probe.
+ *
  * @note Real protocol wake-up / request / response parsing should be added when
  *       meter command frames and timeout policy are finalized.
  *
@@ -381,7 +444,7 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
 
     AppStatus_t status = APP_STATUS_OK;
-    static const uint8_t meterWakeFrame[] = {0x10, 0x5B, 0x01, 0x5C, 0x16};
+    const uint8_t meterWakeFrame[] = {0x10, 0x5B, 0x01, 0x5C, 0x16};
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {
         0,
     };
@@ -697,6 +760,7 @@ AppStatus_t App_SelfTestRunBootSequence(void)
 #ifndef SUPPORT_SELFTEST_SENDNBIOT
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiot);
 #endif // SUPPORT_SELFTEST_SENDNBIOT
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine);
 #if defined(SUPPORT_METER_NORMAL)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
 #elif defined(SUPPORT_METER_SC1xxx)
@@ -735,6 +799,7 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
     APP_LOGN("SELF", "Operational data collection start");
 
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine, APP_FALSE);
 #if defined(SUPPORT_METER_NORMAL)
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart, APP_FALSE);
 #elif defined(SUPPORT_METER_SC1xxx)

@@ -273,6 +273,7 @@ int main(void)
            (unsigned)APP_FW_VERSION_MAJOR,
            (unsigned)APP_FW_VERSION_MINOR,
            APP_SLOT_NAME);
+  EPC_LOGI("test=%s,seq=0,event=BOOT", APP_EPC_TEST_ID_STRING);
   #endif
 
 
@@ -852,6 +853,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(WD_FEED_GPIO_Port, WD_FEED_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(Meter_UART_Loop_GPIO_Port, Meter_UART_Loop_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pins : NBIoT_EN_Pin NBIoT_RST_Pin */
   GPIO_InitStruct.Pin = NBIoT_EN_Pin|NBIoT_RST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -885,6 +889,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(Charge_BOOT0_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : Meter_UART_Loop_Pin */
+  GPIO_InitStruct.Pin = Meter_UART_Loop_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(Meter_UART_Loop_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

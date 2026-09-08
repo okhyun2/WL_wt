@@ -679,13 +679,18 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
     //Piezo pin
     {
         //App_GpioLpConfigAnalogNoPull(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin);
-        //kiki0000. recommend by han
+        //recommend by han
         App_GpioLpConfigOutput(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
     }
 
     //WD_Feed pin
     {
         App_GpioLpConfigAnalogNoPull(WD_FEED_GPIO_Port, WD_FEED_Pin);
+    }
+
+    //Meter uart loop pin
+    {
+        App_GpioLpConfigOutput(Meter_UART_Loop_GPIO_Port, Meter_UART_Loop_Pin, GPIO_PIN_RESET);
     }
 
     if(g_appGpioLpContext.nbiotPowered == 0u)

@@ -38,6 +38,10 @@
    정상 500회 + 오류 500회 = 1000회를 짧은 시간에 반복 수행. */
 #define APP_DEBUG_METER_PERIOD_MS      (APP_EPC_TEST2_METERING_PERIOD_SEC * 1000u)
 
+#elif (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
+/* [[EPC TEST3]] 검침 주기를 10초로 단축 */
+#define APP_DEBUG_METER_PERIOD_MS      (APP_EPC_TEST3_SELFDIAG_PERIOD_SEC * 1000u)
+
 #endif
 ///////////////////////////////////////////////////////////////////////////////////
 
