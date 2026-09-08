@@ -60,10 +60,10 @@ typedef struct {
 } NFC_CMD_Packet_t;
 
 typedef struct {
-    uint8_t status;
-    uint8_t op_status;
-    uint8_t payload_len;
-    uint8_t reserved;
+    uint8_t status0;
+    uint8_t status1;
+    uint8_t status2;
+    uint8_t status3;
 } NFC_CMD_StatusPacket_t;
 
 typedef struct {

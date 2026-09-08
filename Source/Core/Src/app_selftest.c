@@ -381,7 +381,7 @@ static AppStatus_t App_SelfTestCheckMeterUartLine(void)
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
 
     AppStatus_t status = APP_STATUS_OK;
-    const uint8_t meterCheckFrame[] = {0x10, 0x5B, 0x01, 0x5C, 0x16};
+    const uint8_t meterCheckFrame[10] = {1, 0, 1, 0, 1, 1, 0, 0, 1, 0};
     uint8_t meterReply[APP_SELFTEST_UART_RX_BUFFER_SIZE] = {
         0,
     };
@@ -392,33 +392,23 @@ static AppStatus_t App_SelfTestCheckMeterUartLine(void)
     APP_LOGI("SELF", "Meter UART Line real probe start");
     App_GpioLpConfigOutput(Meter_UART_Loop_GPIO_Port, Meter_UART_Loop_Pin, GPIO_PIN_SET);
     HAL_Delay(50);
+    App_GpioLpConfigInput(Meter_RX_GPIO_Port, Meter_RX_Pin);
+    HAL_Delay(50);
 
-    App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
-    HAL_Delay(50); //>= meter spec. 50ms
-    APP_RETURN_IF_FALSE(App_SelfTestReinitMeterUart((g_appSelfTestNbiotExecuted == APP_TRUE) ?
-                                                    APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS :
-                                                    APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS) == APP_STATUS_OK,
-                        APP_STATUS_UART_RX_FAILED);
+    for(i = 0; i < 10; i++)
+    {
+        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, (meterCheckFrame[i] > 0) ? GPIO_PIN_SET:GPIO_PIN_RESET);
+        meterReply[i] = App_GpioLpReadInputIsSet(Meter_RX_GPIO_Port, Meter_RX_Pin);
+    }
 
-    APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_METER_HANDLE,
-                                              (uint8_t *)meterCheckFrame,
-                                              (uint16_t)sizeof(meterCheckFrame),
-                                              APP_SELFTEST_UART_TIMEOUT_MS),
-                            APP_STATUS_SELFTEST_DEVICE_NOT_READY);
-    status = App_SelfTestUartReceiveIt(APP_UART_METER_HANDLE,
-                                       meterReply,
-                                       APP_SELFTEST_UART_METER_LOOP_EXPECTED_RX_MIN_LEN,
-                                       APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS);
-    APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
-
+    HAL_Delay(100); //>= meter spec. 100ms
+    App_GpioLpConfigAnalogNoPull(Meter_TX_GPIO_Port, Meter_RX_Pin);
     HAL_Delay(100); //>= meter spec. 100ms
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
     HAL_Delay(100); //>= meter spec. 100ms
     App_GpioLpConfigOutput(Meter_UART_Loop_GPIO_Port, Meter_UART_Loop_Pin, GPIO_PIN_RESET);
-    App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_LOOP_EXPECTED_RX_MIN_LEN);
-    APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
 
-    for(i = 0; i < APP_SELFTEST_UART_METER_LOOP_EXPECTED_RX_MIN_LEN; i++)
+    for(i = 0; i < 10; i++)
     {
         if(meterReply[i] != meterCheckFrame[i])
         {
@@ -824,6 +814,57 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
     return g_appSelfTestContext.lastSequenceStatus;
 }
 
+AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatus)
+{
+    APP_RETURN_IF_FALSE(g_appSelfTestContext.initialized == APP_TRUE, APP_STATUS_NOT_INITIALIZED);
+    APP_RETURN_IF_FALSE(App_LogGetContext()->initialized == APP_TRUE, APP_STATUS_LOG_INIT_FAILED);
+
+    g_appSelfTestContext.running = APP_TRUE;
+    g_appSelfTestContext.lastRunTickMs = HAL_GetTick();
+    g_appSelfTestContext.passCount = 0u;
+    g_appSelfTestContext.failCount = 0u;
+    (void)memset(g_appSelfTestContext.items, 0, sizeof(g_appSelfTestContext.items));
+
+    APP_LOGN("SELF", "Periodic meter-wake self-test start");
+
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine, APP_FALSE);
+
+    /* METER_UART 항목: 이미 App_FsmMeterProbeAndStore()가 수행한 실제 검침
+       결과를 그대로 기록한다. 계량기 UART 트랜잭션을 이 자리에서 다시
+       수행하지 않는다(동일 사이클 내 이중 통신/충돌 방지). */
+    App_SelfTestRecordResult(APP_SELFTEST_ITEM_METER_UART, meterProbeStatus);
+    if (meterProbeStatus == APP_STATUS_OK)
+    {
+        APP_LOGI("SELF", "%s PASS", App_SelfTestItemToString(APP_SELFTEST_ITEM_METER_UART));
+    }
+    else
+    {
+        APP_LOGE("SELF", "%s FAIL status=%lu",
+                 App_SelfTestItemToString(APP_SELFTEST_ITEM_METER_UART),
+                 (unsigned long)meterProbeStatus);
+    }
+
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c, APP_FALSE);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c, APP_FALSE);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog, APP_FALSE);
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_GPIO_INPUTS, App_SelfTestCheckInputLines, APP_FALSE);
+
+    g_appSelfTestContext.running = APP_FALSE;
+    g_appSelfTestContext.lastSequenceStatus =
+        (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
+
+    APP_LOGN("SELF", "Periodic meter-wake self-test done: pass=%lu fail=%lu",
+             (unsigned long)g_appSelfTestContext.passCount,
+             (unsigned long)g_appSelfTestContext.failCount);
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
+    App_SelfTestReportTest3Result();   /* 신규: 매 검침 사이클마다 SELFDIAG 로그 출력 */
+#endif
+
+    return g_appSelfTestContext.lastSequenceStatus;
+}
+
 AppStatus_t App_SelfTestSignalErrorBuzzer(void)
 {
     return App_SelfTestPlayBuzzerPattern(APP_SELFTEST_BUZZER_ERROR_BEEP_COUNT,
@@ -887,3 +928,11 @@ const AppSelfTestContext_t *App_SelfTestGetContext(void)
 }
 
 #endif // SUPPORT_SELFTEST
+
+#if !(defined(SUPPORT_SELFTEST) || (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE))
+AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatus)
+{
+    (void)meterProbeStatus;
+    return APP_STATUS_OK;
+}
+#endif

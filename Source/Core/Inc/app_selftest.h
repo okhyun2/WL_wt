@@ -76,6 +76,8 @@ AppStatus_t App_SelfTestRunBootSequence(void);
 void App_SelfTestSetNbiotExecutedHint(uint8_t executed);
 AppStatus_t App_SelfTestRunDataCollectionSequence(void);
 
+AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatus);
+
 /**
  * @brief Play the error buzzer pattern.
  *

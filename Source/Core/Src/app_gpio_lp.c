@@ -119,6 +119,30 @@ void App_GpioLpConfigOutput(GPIO_TypeDef *gpioPort, uint32_t pinMask, GPIO_PinSt
 }
 
 /**
+ * @brief Configure selected pins as inputs.
+ *
+ * @param gpioPort GPIO port.
+ * @param pinMask Pin mask.
+ */
+void App_GpioLpConfigInput(GPIO_TypeDef *gpioPort, uint32_t pinMask)
+{
+    GPIO_InitTypeDef gpioInit;
+
+    (void)memset(&gpioInit, 0, sizeof(gpioInit));
+    gpioInit.Pin = pinMask;
+    gpioInit.Mode = GPIO_MODE_INPUT;
+    gpioInit.Pull = GPIO_NOPULL;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
+
+    HAL_GPIO_Init(gpioPort, &gpioInit);
+}
+
+uint8_t App_GpioLpReadInputIsSet(GPIO_TypeDef *gpioPort, uint32_t pinMask)
+{
+    return (HAL_GPIO_ReadPin(gpioPort, pinMask) == GPIO_PIN_SET) ? APP_TRUE : APP_FALSE;
+}
+
+/**
  * @brief Configure selected pins as rising-edge wake/event inputs.
  *
  * @param gpioPort GPIO port.

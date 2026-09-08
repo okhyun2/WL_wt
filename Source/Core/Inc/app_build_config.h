@@ -21,7 +21,7 @@ extern "C" {
 /* ================================================================
  *  EPC Test Mode (시험용 빌드 옵션)
  * ================================================================ */
-#define APP_EPC_TEST_MODE_ENABLE                    (APP_TRUE)   /* 1:시험 코드 포함, 0:완전 제거 */
+#define APP_EPC_TEST_MODE_ENABLE                    (APP_FALSE)   /* 1:시험 코드 포함, 0:완전 제거 */
 
 #define APP_EPC_LOG_TAG                             "EPC"
 #define APP_SELFDIAG_LOG_TAG                        "SELFDIAG"   /* 신규: TEST3 자가진단 전용 로그 태그 */
@@ -214,9 +214,9 @@ extern "C" {
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
 #define APP_RTC_LSI_ASYNC_PREDIV                    (127u)
 #define APP_RTC_LSI_SYNC_PREDIV                     (288u)
-#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) // test/debug/fallback only
+//#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) // test/debug/fallback only
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (10*60*1000u) // test/debug/fallback only
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (60*1000u) // test/debug/fallback only
+#define APP_RTC_WAKEUP_PERIOD_MS                    (20*1000u) // test/debug/fallback only
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) // test/debug/fallback only
 #define APP_RTC_WAKEUP_PERIOD_TEST_FALLBACK_ONLY    (APP_TRUE)
 #define APP_RTC_ALARM_COLLISION_TX_DELAY_SEC        (60u)

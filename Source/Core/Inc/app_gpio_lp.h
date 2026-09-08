@@ -63,6 +63,8 @@ typedef struct
 
 void App_GpioLpConfigAnalogNoPull(GPIO_TypeDef *gpioPort, uint32_t pinMask);
 void App_GpioLpConfigOutput(GPIO_TypeDef *gpioPort, uint32_t pinMask, GPIO_PinState pinState);
+void App_GpioLpConfigInput(GPIO_TypeDef *gpioPort, uint32_t pinMask);
+uint8_t App_GpioLpReadInputIsSet(GPIO_TypeDef *gpioPort, uint32_t pinMask);
 void App_GpioLpRestoreMeterUartPins(void);
 
 /**

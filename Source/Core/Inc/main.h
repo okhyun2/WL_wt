@@ -98,7 +98,7 @@ void APP_WWDGFeed(void);
 #define Charge_BOOT0_Pin GPIO_PIN_8
 #define Charge_BOOT0_GPIO_Port GPIOB
 #define Meter_UART_Loop_GPIO_Port GPIOA
-#define Meter_UART_Loop_Pin GPIO_PIN_14
+#define Meter_UART_Loop_Pin GPIO_PIN_0
 
 /* USER CODE BEGIN Private defines */
 

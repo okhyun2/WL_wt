@@ -21,6 +21,7 @@
 #include "app_meter_server_format.h"
 #include "app_aux.h"
 #include "app_clock.h"
+#include "app_selftest.h"
 
 #if 0 //debug
 #define APP_DEBUG_METER_PERIOD_MS      (1u * 60000u)   /* 1 min */
@@ -3083,11 +3084,19 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_METER_PARSE_REPLY:
         {
             AppStatus_t meterStatus;
+            AppStatus_t periodicSelfTestStatus;
 
             meterStatus = App_FsmMeterProbeAndStore();
             if (meterStatus != APP_STATUS_OK)
             {
                 APP_LOGW("FSM", "[[MeterWake]] scheduled meter probe failed status=%ld", (long)meterStatus);
+            }
+
+            periodicSelfTestStatus = App_SelfTestRunPeriodicMeterWakeSequence(meterStatus);
+            if (periodicSelfTestStatus != APP_STATUS_OK)
+            {
+                APP_LOGW("FSM", "[[MeterWake]] periodic self-test reported fault(s) status=%ld",
+                         (long)periodicSelfTestStatus);
             }
 
             g_appFsmRtcMeterWakePending = APP_FALSE;
