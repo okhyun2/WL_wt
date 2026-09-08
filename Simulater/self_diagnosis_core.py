@@ -24,11 +24,11 @@ SELFDIAG_MSG_RE = re.compile(
 
 # ---------------- 결함 모듈 분류 ----------------
 FAULT_MODULES_ALL = {
-    "BUZZ", "CRC", "ADC", "DBG", "METER",
+    "BUZZ", "CRC", "ADC", "DBG", "METER_LINE", "METER",
     "NBIOT", "NFC", "TEMP", "EWDT", "GPIO",
 }
-# METER(계량기 UART 응답)만 계량기측 고장으로 분류, 나머지는 모두 단말(DUT) 고장
-METER_MODULES = {"METER"}
+# METER(계량기 응답), METER_LINE(계량기 UART 배선/포트)을 모두 계량기측 고장으로 분류
+METER_MODULES = {"METER", "METER_LINE"}
 TERMINAL_MODULES = FAULT_MODULES_ALL - METER_MODULES
 
 FAULT_LABEL_KR = {
@@ -36,6 +36,7 @@ FAULT_LABEL_KR = {
     "CRC": "CRC 연산 이상",
     "ADC": "배터리 전압(ADC) 이상",
     "DBG": "디버그 UART 이상",
+    "METER_LINE": "계량기 UART 배선/라인 이상",   # 신규
     "METER": "계량기 응답 이상",
     "NBIOT": "NB-IoT 모듈 이상",
     "NFC": "NFC 모듈 이상",
@@ -44,6 +45,7 @@ FAULT_LABEL_KR = {
     "GPIO": "GPIO 입력 이상",
     "NONE": "고장 없음",
 }
+
 JUDGE_LABEL_KR = {
     "NORMAL": "정상",
     "TERMINAL_FAULT": "단말기 자체 불량",
