@@ -17,7 +17,7 @@ LOG_LINE_RE = re.compile(
     r'\[(?P<level>\w+)\]\[(?P<tag>\w+)\]\s*(?P<msg>.*)$'
 )
 SELFDIAG_MSG_RE = re.compile(
-    r'test=(?P<test>\w+),seq=(?P<seq>\d+),dut=(?P<dut>\w+),'
+    r'test=(?P<test>\w+),seq=(?P<seq>\d+),dut=(?P<dut>[^,]+),'
     r'fault=(?P<fault>[\w+]+),judge=(?P<judge>\w+)'
 )
 
@@ -114,6 +114,7 @@ def parse_selfdiag_log(path, test_name_filter=None, dut_label_filter=None):
     except Exception as e:
         raise SelfDiagError(f"DUT 로그 파싱 오류: {e}")
     records.sort(key=lambda r: r['seq'])
+    records = [r for r in records if r.get('seq', 0) > 0]
     return records
 
 

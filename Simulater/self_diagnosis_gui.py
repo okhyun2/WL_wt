@@ -100,9 +100,9 @@ class SelfDiagnosisWindow(tk.Toplevel):
         self.tree.pack(side="left", fill="both", expand=True)
         vsb.pack(side="left", fill="y")
 
-        self.tree.tag_configure("match_ok", background="#dff5e1")
-        self.tree.tag_configure("miss", background="#ff4d4d")
-        self.tree.tag_configure("falsepos", background="#ffe9b3")
+        self.tree.tag_configure("match_ok", background="#dff5e1")     # 완전 일치 (판정 O, 세부항목 O)
+        self.tree.tag_configure("judge_bad", background="#ff4d4d")    # 판정 자체가 비정상(불일치) → 빨간색
+        self.tree.tag_configure("detail_diff", background="#ffe9b3")  # 판정은 맞으나 세부 누락/오탐 존재 → 노란색
 
     # ---------- 실행 ----------
     def _on_run(self):
@@ -138,7 +138,14 @@ class SelfDiagnosisWindow(tk.Toplevel):
             self.tree.delete(item)
 
         for r in rows:
-            tag = "match_ok" if r['exact_match'] else ("miss" if r['missed'] else ("falsepos" if r['false_positive'] else ""))
+            if r['exact_match']:
+                tag = "match_ok"          # 판정 O, 세부 항목까지 완전 일치 → 초록
+            elif not r['judge_ok']:
+                tag = "judge_bad"         # 판정 자체가 틀린 경우만 → 빨간색
+            elif r['missed'] or r['false_positive']:
+                tag = "detail_diff"       # 판정은 맞지만 세부 검출 항목만 다른 경우 → 주황/노랑
+            else:
+                tag = ""
             self.tree.insert("", "end", values=(
                 r['seq'],
                 '+'.join(sorted(r['fault_set'])) or 'NONE',
@@ -147,7 +154,7 @@ class SelfDiagnosisWindow(tk.Toplevel):
                 '+'.join(r['false_positive']) or '-',
                 'O' if r['exact_match'] else 'X',
             ), tags=(tag,))
-
+            
         verdict = "PASS" if summary['overall_ok'] else "FAIL"
         color = "#1a7f37" if summary['overall_ok'] else "#c62828"
         self.summary_var.set(

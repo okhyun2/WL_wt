@@ -56,6 +56,7 @@ def parse_sim_csv(path, test_id_filter=None):
     except Exception as e:
         raise CompareError(f"시뮬레이터 CSV 파싱 오류: {e}")
     records.sort(key=lambda r: r['seq'])
+    records = [r for r in records if r.get('seq', 0) > 0]
     return records
 
 def _parse_wall_time(wall_str):
