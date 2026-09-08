@@ -130,12 +130,16 @@ class SimulatorGUI(tk.Tk):
         self.config(menu=menu_bar)
     
     def _on_open_selfdiag(self):
+        current_log_path = self.dut_log_path_var.get().strip() or None
+
         if self._selfdiag_win is not None and self._selfdiag_win.winfo_exists():
+            self._selfdiag_win.refresh_with_log_path(current_log_path)
             self._selfdiag_win.lift()
             self._selfdiag_win.focus_force()
             return
-        self._selfdiag_win = SelfDiagnosisWindow(self)
-        
+
+        self._selfdiag_win = SelfDiagnosisWindow(self, initial_log_path=current_log_path)
+
     def _on_open_log_compare(self):
         if self.comm_logger is not None:
             default_sim_csv = self.comm_logger.log_path
