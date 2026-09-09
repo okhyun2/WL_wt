@@ -59,6 +59,13 @@ TEST_DEFS = {
     "11": {**TEST_META["11"], "factory": lambda p: Test11EnduranceCycle()},
 }
 
+# ------------------------------------------------------------------
+# [한시적 조치] 시험3(자가진단)은 별도 시료로 수동 시험 예정이라
+# 시뮬레이터 화면에서만 임시로 숨김. 원복 시 아래 플래그만 False로.
+# TEST_DEFS/TEST_META의 "3" 항목 자체는 삭제하지 않았음.
+# ------------------------------------------------------------------
+HIDE_TEST3_SELFDIAG = True
+
 def inject_error(long_frame: bytes, error_type: str) -> bytes:
     frame = bytearray(long_frame)
     core_start, core_end = 4, len(frame) - 2
@@ -308,19 +315,26 @@ class SimulatorGUI(tk.Tk):
         ttk.Label(row, text="시험 항목").pack(side="left")
 
         self.test_var = tk.StringVar(value="0")
+        visible_test_defs = {
+            k: v for k, v in TEST_DEFS.items()
+            if not (HIDE_TEST3_SELFDIAG and k == "3")
+        }
         self.test_combo = ttk.Combobox(
             row, textvariable=self.test_var, width=45, state="readonly",
-            values=[f"{k} | {v['label']}" for k, v in TEST_DEFS.items()],
+            values=[f"{k} | {v['label']}" for k, v in visible_test_defs.items()],
         )
         self.test_combo.current(0)
         self.test_combo.pack(side="left", padx=4)
         self.test_combo.bind("<<ComboboxSelected>>", self._on_test_selected)
 
-        ttk.Label(row, text="Case (시험3 전용)").pack(side="left", padx=(20, 0))
         self.case_var = tk.IntVar(value=1)
-        self.case_spin = ttk.Spinbox(row, from_=1, to=9, textvariable=self.case_var,
-                                      width=5, state="disabled")
-        self.case_spin.pack(side="left", padx=4)
+        if not HIDE_TEST3_SELFDIAG:
+            ttk.Label(row, text="Case (시험3 전용)").pack(side="left", padx=(20, 0))
+            self.case_spin = ttk.Spinbox(row, from_=1, to=9, textvariable=self.case_var,
+                                         width=5, state="disabled")
+            self.case_spin.pack(side="left", padx=4)
+        else:
+            self.case_spin = None  # 숨김 상태: UI는 만들지 않되 참조만 안전하게 유지
 
         self.test_desc_var = tk.StringVar(value=TEST_DEFS["0"]["desc"])
         ttk.Label(row, textvariable=self.test_desc_var, foreground="gray").pack(side="left", padx=(16, 0))
@@ -342,7 +356,8 @@ class SimulatorGUI(tk.Tk):
     def _on_test_selected(self, event=None):
         test_id = self.test_var.get().split(" | ")[0]
         needs_case = TEST_DEFS[test_id]["needs_case"]
-        self.case_spin.configure(state="normal" if needs_case else "disabled")
+        if self.case_spin is not None:
+            self.case_spin.configure(state="normal" if needs_case else "disabled")
         self.test_desc_var.set(TEST_DEFS[test_id]["desc"])
         self._update_test_start_btn_state()
 
