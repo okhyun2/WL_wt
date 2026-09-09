@@ -3084,7 +3084,12 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_METER_PARSE_REPLY:
         {
             AppStatus_t meterStatus;
-            AppStatus_t periodicSelfTestStatus;
+            AppStatus_t periodicSelfTestStatus = APP_STATUS_OK;
+#if (APP_SELFDIAG_PERIODIC_ON_METER_WAKE_ENABLE == APP_TRUE)
+            static uint32_t s_selfDiagLastRunDateKey = 0u;
+            AppDateTime_t selfDiagNow;
+            uint32_t selfDiagCurrentDateKey;
+#endif
 
             meterStatus = App_FsmMeterProbeAndStore();
             if (meterStatus != APP_STATUS_OK)
@@ -3092,12 +3097,44 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 APP_LOGW("FSM", "[[MeterWake]] scheduled meter probe failed status=%ld", (long)meterStatus);
             }
 
-            periodicSelfTestStatus = App_SelfTestRunPeriodicMeterWakeSequence(meterStatus);
-            if (periodicSelfTestStatus != APP_STATUS_OK)
+#if (APP_SELFDIAG_PERIODIC_ON_METER_WAKE_ENABLE == APP_TRUE)
+            if (RTC_GetTime(&selfDiagNow) == APP_STATUS_OK)
             {
-                APP_LOGW("FSM", "[[MeterWake]] periodic self-test reported fault(s) status=%ld",
-                         (long)periodicSelfTestStatus);
+                selfDiagCurrentDateKey = ((uint32_t)selfDiagNow.year * 10000u)
+                                        + ((uint32_t)selfDiagNow.month * 100u)
+                                        + (uint32_t)selfDiagNow.day;
+
+                if (selfDiagCurrentDateKey != s_selfDiagLastRunDateKey)
+                {
+                    s_selfDiagLastRunDateKey = selfDiagCurrentDateKey;
+
+                    periodicSelfTestStatus = App_SelfTestRunPeriodicMeterWakeSequence(meterStatus);
+                    if (periodicSelfTestStatus != APP_STATUS_OK)
+                    {
+                        APP_LOGW("FSM", "[[MeterWake]] periodic self-test reported fault(s) status=%ld",
+                                 (long)periodicSelfTestStatus);
+                    }
+                }
+                else
+                {
+                    APP_LOGI("FSM", "[[MeterWake]] periodic self-test skipped (already run today, dateKey=%lu)",
+                             (unsigned long)selfDiagCurrentDateKey);
+                }
             }
+            else
+            {
+                /* RTC 시각을 신뢰할 수 없는 예외 상황(미동기화 등)에서는 안전 측으로 자가진단을 실행 */
+                APP_LOGW("FSM", "[[MeterWake]] RTC_GetTime failed, forcing periodic self-test as fallback");
+                periodicSelfTestStatus = App_SelfTestRunPeriodicMeterWakeSequence(meterStatus);
+                if (periodicSelfTestStatus != APP_STATUS_OK)
+                {
+                    APP_LOGW("FSM", "[[MeterWake]] periodic self-test reported fault(s) status=%ld",
+                             (long)periodicSelfTestStatus);
+                }
+            }
+#else
+            (void)periodicSelfTestStatus; /* self-diag 상시 모니터링 비활성화 빌드에서 미사용 경고 방지 */
+#endif
 
             g_appFsmRtcMeterWakePending = APP_FALSE;
             App_FsmMarkComponent(APP_FSM_COMPONENT_METER,
@@ -3108,7 +3145,6 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
         }
-
         case APP_FSM_STATE_NFC_INIT:
             App_SystemPrepareNfcStandbyForStop();
 

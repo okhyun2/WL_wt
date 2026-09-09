@@ -210,13 +210,17 @@ extern "C" {
 #define APP_FSM_WATCHDOG_PERIOD_MS                  (1000u)
 #define APP_FSM_STORAGE_PERIOD_MS                   (500u)
 
+/* ================================================================
+ *  Periodic Self-Diagnostics on Meter Wake (운영 모드 상시 자가진단)
+ * ================================================================ */
+#define APP_SELFDIAG_PERIODIC_ON_METER_WAKE_ENABLE   (APP_TRUE)   /* 1:검침 웨이크업 시 주기적 자가진단 활성화, 0:완전 비활성화 */
+#define APP_SELFDIAG_PERIODIC_WAKE_INTERVAL_HOURS    (24u)        /* 최소 실행 간격(시간). 24=하루 1회 (문서화 용도) */
+
 #define APP_RTC_LSE_ASYNC_PREDIV                    (127u)
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
 #define APP_RTC_LSI_ASYNC_PREDIV                    (127u)
 #define APP_RTC_LSI_SYNC_PREDIV                     (288u)
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) // test/debug/fallback only
-//#define APP_RTC_WAKEUP_PERIOD_MS                    (10*60*1000u) // test/debug/fallback only
-#define APP_RTC_WAKEUP_PERIOD_MS                    (20*1000u) // test/debug/fallback only
+#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u)
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) // test/debug/fallback only
 #define APP_RTC_WAKEUP_PERIOD_TEST_FALLBACK_ONLY    (APP_TRUE)
 #define APP_RTC_ALARM_COLLISION_TX_DELAY_SEC        (60u)
