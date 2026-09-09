@@ -556,6 +556,23 @@ static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
     uint32_t jitterSeed;
     uint32_t jitterSeconds;
 
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
+    /* [[EPC TEST3]] RTC 시각이 무효(NB-IoT 미동작으로 네트워크 시각 동기화 실패)해도
+     * 고정 10초 폴백 주기를 강제 적용한다. 이렇게 해야 NB-IoT가 붙지 않는 상황에서도
+     * WUT 단독 웨이크가 매 10초마다 발생하여 자기진단(self-diag)이 매 웨이크마다
+     * 수행된다는 TEST3 요건을 만족시킬 수 있다.
+     * 시험 재현성을 위해 device offset/jitter는 적용하지 않는다. */
+    wakeupSeconds = (APP_EPC_TEST3_SELFDIAG_PERIOD_SEC * 1000u + 999u) / 1000u;
+    if (wakeupSeconds == 0u)
+    {
+        wakeupSeconds = 1u;
+    }
+
+    APP_LOGW("RTC", "[[EPC TEST3]] RTC-invalid-tolerant WUT fallback forced: period=%lus (uidHash offset/jitter skipped)",
+             (unsigned long)wakeupSeconds);
+
+    return App_SystemRtcConfigureWakeupTimerSeconds(wakeupSeconds, pWakeupSeconds);
+#else
     wakeupSeconds = (APP_RTC_WAKEUP_PERIOD_MS + 999u) / 1000u;
     if (wakeupSeconds == 0u)
     {
@@ -564,7 +581,6 @@ static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
 
     deviceHash = App_ClockGetDeviceUidHash();
 
-    /* 매 사이클 값이 바뀌도록 RTC subsecond를 섞어 지터 시드 생성 */
     jitterSeed = deviceHash ^ HAL_GetTick() ^ (RTC->SSR);
     jitterSeconds = jitterSeed % (APP_NBIOT_XMIT_JITTER_MAX_SEC + 1u);
 
@@ -581,6 +597,7 @@ static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
     wakeupSeconds += jitterSeconds;
 
     return App_SystemRtcConfigureWakeupTimerSeconds(wakeupSeconds, pWakeupSeconds);
+#endif
 }
 
 static AppStatus_t App_SystemRtcConfigureAlarmInternal(const AppDateTime_t *p_dueTime,
@@ -1681,6 +1698,33 @@ AppStatus_t App_SystemInit(void)
     App_MeterInit();
     App_NfcInit();
 
+#if defined(SUPPORT_SELFTEST) || (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3) 
+    /* [[EPC TEST3 관련 수정]]
+     * 기존에는 App_SelfTestInit()이 App_SystemRunBootSelfTest()/
+     * App_SystemRunWakeDataCollection() 내부에서만 호출되었고, 이 두 함수는
+     * FSM이 APP_FSM_STATE_NBIOT_EXCHANGE_AT까지 도달해야만(=NB-IoT 부팅 배너/AT
+     * 응답 성공) 호출된다. NB-IoT가 의도적으로 응답하지 않는 시나리오(TEST3 등)에서는
+     * EXCHANGE_AT에 영원히 도달하지 못해 App_SelfTestInit()이 실행되지 않고,
+     * g_appSelfTestContext.initialized == FALSE 상태가 계속되어 매 wake마다 강제
+     * 실행되는 주기 자가진단(App_SelfTestRunPeriodicMeterWakeSequence)이
+     * APP_STATUS_NOT_INITIALIZED(=2)로 조기 반환되어 [SELFDIAG] 로그가 전혀
+     * 출력되지 않는 문제가 있었다.
+     * NB-IoT 연결 성공 여부와 무관하게 자가진단 컨텍스트를 부팅 시점에 선(先) 초기화하여
+     * 해결한다. */
+    status = App_SelfTestInit();
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("SELF", "Early App_SelfTestInit() failed at boot: status=%lu", (unsigned long)status);
+        /* 자가진단 초기화 실패는 부팅을 중단시킬 만큼 치명적이지 않으므로 계속 진행 */
+    }
+    else
+    {
+        APP_LOGI("SELF", "Self-test context pre-initialized at boot (NB-IoT independent)");
+    }
+#endif
+#endif
+
     status = App_SystemInitFsm();
     if (status != APP_STATUS_OK)
     {
@@ -1700,6 +1744,11 @@ AppStatus_t App_SystemInit(void)
 
 
     return APP_STATUS_OK;
+}
+
+AppBootResetCause_t App_SystemGetBootResetCause(void)
+{
+    return g_appSystemContext.bootResetCause;
 }
 
 void App_SystemProcess(void)
@@ -1915,24 +1964,57 @@ static void Print_BootInfo(BootInfo_t *pBootInfo)
     APP_LOGI("BOOT", "  BKP4R = 0x%08lX", (unsigned long)pBootInfo->bkp4);
 
     /* BKP0R 의미 해석 */
-    switch (pBootInfo->bkp0)
+    if(pBootInfo->bkp0 == WWDG_RESET_MAGIC)
     {
-        case WWDG_RESET_MAGIC:
             APP_LOGI("BOOT", "  --> Abnormal termination by WWDG!");
-            break;
-        case NORMAL_BOOT_MAGIC:
+    }
+    else if(pBootInfo->bkp0 == NORMAL_BOOT_MAGIC)
+    {
             APP_LOGI("BOOT", "  --> Reset from previous normal operation");
-            break;
-        case 0x00000000:
+    }
+    else if(pBootInfo->bkp0 == 0)
+    {
+        if((pBootInfo->bkp1 == 0) && (pBootInfo->bkp2 != EXT_WATCHDOG_TEST_ARM_MAGIC))
+        {
             APP_LOGI("BOOT", "  --> Backup domain cleared (POR or VBAT lost)");
-            break;
-        default:
-            APP_LOGI("BOOT", "  --> Unknown value");
-            break;
+        }
+    }
+    else
+    {
+        APP_LOGI("BOOT", "  --> Unknown value");
     }
 
     APP_LOGI("BOOT", "  BKP1R = 0x%08lX  --> Emergency saved data",
            (unsigned long)pBootInfo->bkp1);
+
+    /* 외부 워치독(EWDT) 리셋 판별.
+       내부 워치독(WWDG/IWDG), 파워온(POR), 소프트웨어 리셋(SFT) 플래그가
+       전혀 없이 NRST 핀 리셋만 단독으로 세팅되어 있고, 동시에 BKP2R에
+       테스트 전용 마커가 남아있다면 "의도적 무피드로 인한 외부
+       워치독 리셋"으로 확정한다. */
+    if (((pBootInfo->reset_flags & (RCC_CSR_PORRSTF | RCC_CSR_WWDGRSTF |
+                                     RCC_CSR_IWDGRSTF | RCC_CSR_SFTRSTF)) == 0u) &&
+        ((pBootInfo->reset_flags & RCC_CSR_PINRSTF) != 0u) &&
+        (pBootInfo->bkp2 == EXT_WATCHDOG_TEST_ARM_MAGIC))
+    {
+        APP_LOGI("BOOT", "[EWDT Diagnosis]");
+        APP_LOGI("BOOT", "  --> External Watchdog(EWDT) Reset CONFIRMED (feed intentionally stopped)");
+        g_appSystemContext.bootResetCause = APP_BOOT_RESET_EXT_WATCHDOG_CONFIRMED;
+    }
+    else if (((pBootInfo->reset_flags & RCC_CSR_PORRSTF) == 0u) &&
+             ((pBootInfo->reset_flags & RCC_CSR_PINRSTF) != 0u))
+    {
+        APP_LOGI("BOOT", "  --> NRST-only reset (external watchdog / manual / debugger - unconfirmed)");
+        g_appSystemContext.bootResetCause = APP_BOOT_RESET_NRST_UNKNOWN;
+    }
+    else if ((pBootInfo->reset_flags & RCC_CSR_PORRSTF) != 0u)
+    {
+        g_appSystemContext.bootResetCause = APP_BOOT_RESET_POWER_ON;
+    }
+    else
+    {
+        g_appSystemContext.bootResetCause = APP_BOOT_RESET_OTHER;
+    }
 
     /* --- Additional WWDG diagnosis --- */
     if ((pBootInfo->reset_flags & RCC_CSR_WWDGRSTF) &&
@@ -1951,5 +2033,16 @@ static void Print_BootInfo(BootInfo_t *pBootInfo)
     }
 
     APP_LOGI("BOOT", "========================================");
+
+    #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && \
+        (APP_EPC_ACTIVE_TEST_ID == 3u) && (APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED == APP_TRUE)
+        SELFDIAG_LOGI("test=%s,seq=%lu,dut=%s,resetCause=%s,fault=%s,judge=%s",
+         APP_EPC_TEST_ID_STRING, 0,
+         APP_EPC_TEST3_DUT_LABEL,
+         App_SelfTestResetCauseToString(),
+         (g_appSystemContext.bootResetCause == APP_BOOT_RESET_POWER_ON) ? "NONE":"EWDT",
+         (g_appSystemContext.bootResetCause == APP_BOOT_RESET_POWER_ON) ? "NORMAL":"TERMINAL_FAULT");
+    #endif
+
 }
 

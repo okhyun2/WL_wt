@@ -274,6 +274,28 @@ int main(void)
            (unsigned)APP_FW_VERSION_MINOR,
            APP_SLOT_NAME);
   EPC_LOGI("test=%s,seq=0,event=BOOT", APP_EPC_TEST_ID_STRING);
+
+  #if (APP_EPC_ACTIVE_TEST_ID == 3u) && (APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED == APP_TRUE)
+  {
+    int waitSec = 0;
+    uint8_t  markerWritten = APP_FALSE;
+    while(1)
+    {
+        if (markerWritten == APP_FALSE)
+        {
+            /* 피드를 처음으로 건너뛰는 순간에만 마커를 기록한다.
+               (이미 SystemInit 단계에서 PWR_CR_DBP가 열려있으므로
+                여기서 별도 backup domain unlock은 필요 없음) */
+            RTC->BKP2R = EXT_WATCHDOG_TEST_ARM_MAGIC;
+            markerWritten = APP_TRUE;
+        }
+      EPC_LOGI("test=%s, wait watchdog(%dm:%ds)", APP_EPC_TEST_ID_STRING, waitSec/60, waitSec%60);
+      HAL_Delay(5000);
+      waitSec += 5;
+    }
+  }
+  #endif
+
   #endif
 
 

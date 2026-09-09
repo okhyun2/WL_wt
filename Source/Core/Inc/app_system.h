@@ -82,6 +82,7 @@ extern wakeup_context_t g_wakeup_ctx;
 /* 리셋 원인 식별용 매직 넘버 */
 #define WWDG_RESET_MAGIC    0xDEADBEEF
 #define NORMAL_BOOT_MAGIC   0x12345678
+#define EXT_WATCHDOG_TEST_ARM_MAGIC   0xE4D7E57Au
 /* EWI 최대 허용 횟수: X × 65.54ms */
 #define EWI_MAX_COUNT   10    // 약 9.8초
 /* 리셋 원인 문자열 변환용 */
@@ -127,9 +128,20 @@ typedef enum
     APP_SYSTEM_WAKE_SRC_UNKNOWN      = 0x80000000u
 } AppSystemWakeSource_t;
 
+typedef enum
+{
+    APP_BOOT_RESET_UNKNOWN = 0,
+    APP_BOOT_RESET_POWER_ON,
+    APP_BOOT_RESET_WWDG_INTERNAL,
+    APP_BOOT_RESET_EXT_WATCHDOG_CONFIRMED,
+    APP_BOOT_RESET_NRST_UNKNOWN,
+    APP_BOOT_RESET_OTHER
+} AppBootResetCause_t;
+
 typedef struct
 {
     uint8_t initialized;
+    AppBootResetCause_t bootResetCause;
     uint8_t debugReady;
     uint8_t logReady;
     uint8_t selfTestCompleted;
@@ -180,6 +192,7 @@ LPTIM_PRESCALER_DIV128
 extern BootInfo_t g_boot_info;
 
 AppStatus_t App_SystemInit(void);
+AppBootResetCause_t App_SystemGetBootResetCause(void);
 void App_SystemProcess(void);
 AppStatus_t App_SystemOnBeforeStopEnter(void);
 AppStatus_t App_SystemOnAfterStopExit(void);

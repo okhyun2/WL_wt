@@ -27,7 +27,7 @@ extern "C" {
 #define APP_SELFDIAG_LOG_TAG                        "SELFDIAG"   /* 신규: TEST3 자가진단 전용 로그 태그 */
 
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
-#define APP_EPC_ACTIVE_TEST_ID                      (3u)   /* 1:시험1, 2:시험2, 3:시험3(자가진단) */
+#define APP_EPC_ACTIVE_TEST_ID                      (3u)   /* 1:시험1, 2:시험2, 3:시험3(자가진단)  */
 
 #if (APP_EPC_ACTIVE_TEST_ID == 1u)
 #define APP_EPC_TEST_ID_STRING                      "TEST1"
@@ -37,10 +37,11 @@ extern "C" {
 #define APP_EPC_TEST_ID_STRING                      "TEST2"
 #define APP_EPC_TEST2_METERING_PERIOD_SEC           (10u)
 
-#elif (APP_EPC_ACTIVE_TEST_ID == 3u)                              /* 신규 */
+#elif (APP_EPC_ACTIVE_TEST_ID == 3u)                              
 #define APP_EPC_TEST_ID_STRING                      "TEST3"
 #define APP_EPC_TEST3_SELFDIAG_PERIOD_SEC           (10u)  /* 자가진단 반복 주기(초) */
 #define APP_EPC_TEST3_DUT_LABEL                     "SAMPLE-01"  /* 시료 식별 라벨: 보드마다 값 변경 */
+#define APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED (APP_TRUE) /* 외부 watchdog test . APP_TRUE:watchdog no feed*/
 
 #endif
 #endif
@@ -177,9 +178,6 @@ extern "C" {
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x54u)
 #define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x70u)
 
-#ifdef SUPPORT_SELFTEST
-#define SUPPORT_SELFTEST_SENDNBIOT                  //after selftest, send nbiot server
-#endif // SUPPORT_SELFTEST
 #endif /* SUPPORT_SELFTEST || APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 
 /* NFC production hardening */

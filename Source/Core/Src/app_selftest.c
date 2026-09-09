@@ -9,6 +9,19 @@
 #include "app_aux.h"
 #include "app_nbiot.h"
 #include "app_log.h"
+#include "app_system.h"
+
+const char *App_SelfTestResetCauseToString(void)
+{
+    switch (App_SystemGetBootResetCause())
+    {
+        case APP_BOOT_RESET_POWER_ON:               return "POWER_ON";
+        case APP_BOOT_RESET_WWDG_INTERNAL:           return "WWDG_INTERNAL";
+        case APP_BOOT_RESET_EXT_WATCHDOG_CONFIRMED:  return "EXT_WATCHDOG";
+        case APP_BOOT_RESET_NRST_UNKNOWN:            return "NRST_UNKNOWN";
+        default:                                     return "OTHER";
+    }
+}
 
 #if defined(SUPPORT_SELFTEST) || (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
 /**
@@ -83,12 +96,13 @@ static void App_SelfTestReportTest3Result(void)
         p_judge = "TERMINAL_FAULT";
     }
 
-    SELFDIAG_LOGI("test=%s,seq=%lu,dut=%s,fault=%s,judge=%s",
-                  APP_EPC_TEST_ID_STRING,
-                  (unsigned long)g_epcSelfDiagAttemptSeq,
-                  APP_EPC_TEST3_DUT_LABEL,
-                  faultBuf,
-                  p_judge);
+    SELFDIAG_LOGI("test=%s,seq=%lu,dut=%s,resetCause=%s,fault=%s,judge=%s",
+         APP_EPC_TEST_ID_STRING,
+         (unsigned long)g_epcSelfDiagAttemptSeq,
+         APP_EPC_TEST3_DUT_LABEL,
+         App_SelfTestResetCauseToString(),
+         faultBuf,
+         p_judge);
 }
 #endif /* APP_EPC_TEST_MODE_ENABLE && APP_EPC_ACTIVE_TEST_ID == 3u */
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -528,7 +542,35 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
     return (status);
 }
 
-#ifndef SUPPORT_SELFTEST_SENDNBIOT
+/* 
+ * NB-IoT 모듈이 실제로 UART로 응답하는지만 가볍게 확인한다.
+ * App_Bc95AtWaitUntilReady()와 달리 부팅 배너 대기(최대 10s)나
+ * 21회 AT 재시도, 소켓 정리, CFUN=0 절차를 전혀 수행하지 않는다.
+ * FSM이 이번 사이클에 이미 NB-IoT를 사용 중(NBIOT_POWER_ON 이후)이면
+ * 같은 UART를 동시에 건드려 충돌할 위험이 있으므로 호출자가
+ * 그 여부를 판단해서 건너뛰도록(App_FsmIsComponentBusy 등) 해야 한다. */
+static AppStatus_t App_SelfTestCheckNbiotUart(void)
+{
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
+
+    APP_LOGI("SELF", "NB-IoT UART probe start");
+
+    APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+    APP_WWDGFeed();
+    HAL_Delay(APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS);
+
+    /* 짧은 타임아웃으로 1회만 확인 (예: 500ms~1s, 정확한 값은 실측 필요) */
+    status = App_Bc95AtPing(APP_BC95_BOOT_PING_TIMEOUT_MS);
+
+    APP_WWDGFeed();
+    (void)App_GpioLpSetNbiotPowered(APP_FALSE);
+    HAL_Delay(APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS);
+
+    return status;
+}
+
 /**
  * @brief NB-IoT pseudo connectivity probe.
  *
@@ -537,12 +579,12 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
-static AppStatus_t App_SelfTestCheckNbiot(void)
+static AppStatus_t App_SelfTestCheckNbiotAttach(void)
 {
     AppStatus_t status = APP_STATUS_OK;
     APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
 
-    APP_LOGI("SELF", "NB-IoT real probe start");
+    APP_LOGI("SELF", "NB-IoT Attach real probe start");
     g_appSelfTestNbiotExecuted = APP_TRUE;
 
     APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
@@ -568,7 +610,6 @@ cleanup:
     HAL_Delay(APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS);
     return status;
 }
-#endif // SUPPORT_SELFTEST_SENDNBIOT
 
 /**
  * @brief Shared I2C pseudo/real ready check.
@@ -747,15 +788,13 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_CRC, App_SelfTestCheckCrc);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_DEBUG_UART, App_SelfTestCheckDebugUart);
-#ifndef SUPPORT_SELFTEST_SENDNBIOT
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiot);
-#endif // SUPPORT_SELFTEST_SENDNBIOT
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine);
 #if defined(SUPPORT_METER_NORMAL)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
 #elif defined(SUPPORT_METER_SC1xxx)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
 #endif
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiotUart);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);
@@ -795,6 +834,7 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
 #elif defined(SUPPORT_METER_SC1xxx)
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart, APP_FALSE);
 #endif
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiotUart, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog, APP_FALSE);
@@ -845,6 +885,7 @@ AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatu
                  (unsigned long)meterProbeStatus);
     }
 
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiotUart, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog, APP_FALSE);

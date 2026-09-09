@@ -3460,6 +3460,26 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             }
             else if (g_appFsmWakeCollectionPending != APP_TRUE)
             {
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
+                /*
+                 * [[EPC TEST3]] NB-IoT가 의도적으로 오동작하는 시나리오에서도
+                 * 매 웨이크업마다 자가진단 결과가 필요하다. RTC가 무효해 Alarm A/B가
+                 * 걸리지 않는 순수 WUT 웨이크업이라도, Alarm A(검침)와 동일하게
+                 * METER_WAIT_TRIGGER를 큐에 넣어 METER_PARSE_REPLY 안의 강제
+                 * 자가진단(App_SelfTestRunPeriodicMeterWakeSequence)이 반드시
+                 * 실행되도록 라우팅을 추가한다.
+                 *
+                 * 주의: App_FsmMeterScheduleConsumeDueNow()는 호출하지 않는다.
+                 * 이 함수는 App_FsmMeterScheduleEnsureInitialized() 내부에서
+                 * IsUpdatedRTC()가 FALSE면 즉시 APP_STATUS_NOT_INITIALIZED를 반환하고
+                 * 아무 것도 갱신하지 않으므로(스케줄 오염 없음) 굳이 호출할 필요가 없고,
+                 * 여기서는 오직 METER 상태 큐잉만으로 자가진단 트리거 역할을 한다.
+                 */
+                g_appFsmRtcMeterWakePending = APP_TRUE;
+                APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
+                App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, APP_FALSE, APP_STATUS_OK);
+                APP_LOGI("FSM", "[[EPC TEST3]] WUT-only wake -> force METER_WAIT_TRIGGER for periodic self-test");
+#endif
                 g_appFsmWakeCollectionPending = APP_TRUE;
                 APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
                 App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, APP_FALSE, APP_STATUS_OK);

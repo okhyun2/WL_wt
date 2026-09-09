@@ -56,6 +56,8 @@ typedef struct
     AppSelfTestItemResult_t items[APP_SELFTEST_ITEM_COUNT];
 } AppSelfTestContext_t;
 
+const char *App_SelfTestResetCauseToString(void);
+
 /**
  * @brief Initialize self-test runtime context.
  *

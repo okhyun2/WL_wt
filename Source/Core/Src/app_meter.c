@@ -297,7 +297,7 @@ static AppStatus_t App_MeterBuildSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxF
     record.caliberDecimal = (uint8_t)((APP_METER_STORAGE_CALIBER_UNKNOWN << 4) | 0x03u);
     *p_record = record;
 
-    if(timeValid == APP_FALSE)
+    if(timeValid == APP_TRUE)
     {
         return APP_STATUS_OK;
     }
