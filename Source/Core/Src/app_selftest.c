@@ -672,7 +672,7 @@ static AppStatus_t App_SelfTestCheckInputLines(void)
 
     APP_LOGI("SELF", "GPIO inputs NFC_ED=%u", (unsigned int)nfcEventState);
 
-    return APP_STATUS_OK;
+    return (((unsigned int)nfcEventState > 0) ? APP_STATUS_OK: APP_STATUS_FATAL);
 }
 
 /**

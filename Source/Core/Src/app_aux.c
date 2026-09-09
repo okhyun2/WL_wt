@@ -132,6 +132,10 @@ HAL_StatusTypeDef Battery_ReadVoltage_Averaged_mV(uint32_t *adc_vref, uint32_t *
     if(adc_vbat) *adc_vbat = avg_pa1;
 
     ADC->CCR &= ~ADC_CCR_VREFEN;
+
+    //invalid value
+    if(*vbat_mv <= 2000) return(HAL_ERROR);
+
     return HAL_OK;
 }
 

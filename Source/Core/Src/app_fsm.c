@@ -3089,6 +3089,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             static uint32_t s_selfDiagLastRunDateKey = 0u;
             AppDateTime_t selfDiagNow;
             uint32_t selfDiagCurrentDateKey;
+            uint8_t selfDiagForceEveryWake;
 #endif
 
             meterStatus = App_FsmMeterProbeAndStore();
@@ -3098,7 +3099,33 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             }
 
 #if (APP_SELFDIAG_PERIODIC_ON_METER_WAKE_ENABLE == APP_TRUE)
-            if (RTC_GetTime(&selfDiagNow) == APP_STATUS_OK)
+            /* [[EPC TEST3]] 자가진단 고장 재현 시험 중에는 하루 1회 제한을 우회하여
+               매 웨이크업마다 즉시 결과를 확인할 수 있도록 한다. */
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
+            selfDiagForceEveryWake = APP_TRUE;
+#else
+            selfDiagForceEveryWake = APP_FALSE;
+#endif
+
+            if ((selfDiagForceEveryWake == APP_TRUE) || (RTC_GetTime(&selfDiagNow) != APP_STATUS_OK))
+            {
+                if (selfDiagForceEveryWake == APP_TRUE)
+                {
+                    APP_LOGI("FSM", "[[MeterWake]] periodic self-test forced every wake (TEST3 mode)");
+                }
+                else
+                {
+                    APP_LOGW("FSM", "[[MeterWake]] RTC_GetTime failed, forcing periodic self-test as fallback");
+                }
+
+                periodicSelfTestStatus = App_SelfTestRunPeriodicMeterWakeSequence(meterStatus);
+                if (periodicSelfTestStatus != APP_STATUS_OK)
+                {
+                    APP_LOGW("FSM", "[[MeterWake]] periodic self-test reported fault(s) status=%ld",
+                             (long)periodicSelfTestStatus);
+                }
+            }
+            else
             {
                 selfDiagCurrentDateKey = ((uint32_t)selfDiagNow.year * 10000u)
                                         + ((uint32_t)selfDiagNow.month * 100u)
@@ -3121,17 +3148,6 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                              (unsigned long)selfDiagCurrentDateKey);
                 }
             }
-            else
-            {
-                /* RTC 시각을 신뢰할 수 없는 예외 상황(미동기화 등)에서는 안전 측으로 자가진단을 실행 */
-                APP_LOGW("FSM", "[[MeterWake]] RTC_GetTime failed, forcing periodic self-test as fallback");
-                periodicSelfTestStatus = App_SelfTestRunPeriodicMeterWakeSequence(meterStatus);
-                if (periodicSelfTestStatus != APP_STATUS_OK)
-                {
-                    APP_LOGW("FSM", "[[MeterWake]] periodic self-test reported fault(s) status=%ld",
-                             (long)periodicSelfTestStatus);
-                }
-            }
 #else
             (void)periodicSelfTestStatus; /* self-diag 상시 모니터링 비활성화 빌드에서 미사용 경고 방지 */
 #endif
@@ -3145,6 +3161,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
         }
+
         case APP_FSM_STATE_NFC_INIT:
             App_SystemPrepareNfcStandbyForStop();
 
