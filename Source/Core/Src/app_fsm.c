@@ -22,6 +22,7 @@
 #include "app_aux.h"
 #include "app_clock.h"
 #include "app_selftest.h"
+#include "app_comm_param.h"
 
 #if 0 //debug
 #define APP_DEBUG_METER_PERIOD_MS      (1u * 60000u)   /* 1 min */
@@ -2473,6 +2474,27 @@ static AppStatus_t App_FsmTxScheduleCheckDueCommon(AppFsmTxScheduleContext_t *p_
     return APP_STATUS_OK;
 }
 
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+static uint8_t App_FsmTxScheduleApplyNightOnlyGate(void)
+{
+    AppMeterServerFormatOptions_t opt;
+    AppDateTime_t now;
+
+    if (App_MeterServerOptionsLoad(&opt) == APP_STATUS_INVALID_PARAM) { return APP_TRUE; }
+    if (opt.nightOnly != APP_TRUE) { return APP_TRUE; }
+    if (RTC_GetTime(&now) != APP_STATUS_OK) { return APP_TRUE; }
+
+    if ((now.hour >= opt.nightStartHour) && (now.hour < opt.nightEndHour))
+    {
+        return APP_TRUE;
+    }
+
+    APP_LOGN("FSM", "[[ServiceTxSchedule]] night-only gate: hour=%u out of [%u,%u) -> skip this wake",
+             (unsigned)now.hour, (unsigned)opt.nightStartHour, (unsigned)opt.nightEndHour);
+    return APP_FALSE;
+}
+#endif
+
 static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
 {
     AppStatus_t status;
@@ -2487,7 +2509,7 @@ static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
     }
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    return App_FsmTxScheduleCheckDueCommon(&g_appFsmTxSchedule,
+    status = App_FsmTxScheduleCheckDueCommon(&g_appFsmTxSchedule,
                                          p_due,
                                          "[[ServiceTxSchedule]]",
 #ifdef APP_DEBUG_TX_PERIOD_MS
@@ -2496,6 +2518,15 @@ static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
                                          0u
 #endif
                                          );
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+    if (*p_due == APP_TRUE)
+    {
+        *p_due = App_FsmTxScheduleApplyNightOnlyGate();
+    }
+#endif
+    return APP_STATUS_OK;
 }
 
 static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due)

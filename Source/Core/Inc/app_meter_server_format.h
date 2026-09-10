@@ -45,6 +45,9 @@ typedef struct
     uint8_t ackTimeoutSec;                  /* 1..255 sec */
     uint8_t ackPoll100Ms;                   /* 100ms unit, 1..255 */
     uint8_t deleteAfterSend;                /* 0:mark sent only, 1:delete after success */
+    uint8_t nightOnly;        /* 0=상시, 1=야간전용 전송 */
+    uint8_t nightStartHour;   /* 0~23 */
+    uint8_t nightEndHour;     /* 0~23, exclusive */
 } AppMeterServerFormatOptions_t;
 
 typedef struct
@@ -126,6 +129,10 @@ void App_MeterServerOptionsSetPolicy(AppMeterServerFormatOptions_t *p_options,
                                      uint8_t ackTimeoutSec,
                                      uint8_t ackPoll100Ms,
                                      uint8_t deleteAfterSend);
+void App_MeterServerOptionsSetNightOnly(AppMeterServerFormatOptions_t *p_options,
+                                        uint8_t nightOnly,
+                                        uint8_t nightStartHour,
+                                        uint8_t nightEndHour);
 uint32_t App_MeterServerOptionsGetReportingSpreadMs(const AppMeterServerFormatOptions_t *p_options);
 uint32_t App_MeterServerOptionsGetAckTimeoutMs(const AppMeterServerFormatOptions_t *p_options);
 uint32_t App_MeterServerOptionsGetAckPollMs(const AppMeterServerFormatOptions_t *p_options);

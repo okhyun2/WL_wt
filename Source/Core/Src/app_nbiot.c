@@ -12,6 +12,7 @@
 #include "app_fsm.h"
 #include "app_meter_storage.h"
 #include "app_meter_server_format.h"
+#include "app_comm_param.h"
 
 #define APP_BC95_AT_CMD_PING          "AT\r\n"
 #define APP_BC95_AT_CMD_IMEI          "AT+CGSN=1\r\n"
@@ -90,7 +91,7 @@
 #define APP_BC95_PLATFORM_STATUS_POLL_MS     (1000u)
 #define APP_BC95_PLATFORM_FAST_PATH_TIMEOUT_MS (2500u)
 #define APP_BC95_PLATFORM_REGISTER_RETRY_MAX  (2u)
-#define APP_BC95_PLATFORM_SEND_RETRY_MAX      (2u)
+#define APP_BC95_PLATFORM_SEND_RETRY_MAX      (3u)
 #define APP_BC95_PLATFORM_RETRY_BACKOFF_MS    (1000u)
 #define APP_BC95_POST_PROVISION_SETTLE_MS     (1000u)
 #define APP_BC95_POST_PROVISION_SERVICE_READY_TIMEOUT_MS (12000u)
@@ -3050,10 +3051,16 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
     APP_LOGN("NBIOT", "[[ServicePlatformWake]] start (fast-path only)");
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+    App_CommSignalMeasureAndUpdate(App_Bc95AtGetQuality());
+#endif
     (void)App_NBIoTSyncTime();
     (void)App_NbiotRunPlatformPreflight();
 
     status = App_NBIoTTransmitPlatformInternal("[[ServiceTx]]", deleteStorage, APP_TRUE, NULL);
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+    App_CommParamRecompose();
+#endif
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     return APP_STATUS_OK;
 }
@@ -3446,6 +3453,9 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
             status = App_Bc95AtPlatformSendAndConfirm(packet, buildResult.packetLength, seqNum);
             if (status == APP_STATUS_OK)
             {
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+                App_CommSuccessUpdate((uint8_t)(sendAttempt - 1u), APP_FALSE);
+#endif
                 break;
             }
             APP_LOGW("NBIOT", "%s platform send failed on attempt %lu/%lu (status=%d)",
@@ -3460,6 +3470,12 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
             App_Bc95AtDelayWithFeed(APP_BC95_PLATFORM_RETRY_BACKOFF_MS);
         }
     }
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+    if (status != APP_STATUS_OK)
+    {
+        App_CommSuccessUpdate(APP_BC95_PLATFORM_SEND_RETRY_MAX, APP_TRUE); /* 전체 실패 */
+    }
+#endif
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     if (buildResult.recordCount != 0u)

@@ -23,6 +23,7 @@ uint8_t App_MeterServerOptionsIsPeriodSupported(uint8_t hours)
         case 8u:
         case 12u:
         case 24u:
+        case 72u:
             return APP_TRUE;
         default:
             return APP_FALSE;
@@ -254,6 +255,9 @@ void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options)
     p_options->ackTimeoutSec = (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_TIMEOUT_SEC;
     p_options->ackPoll100Ms = (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS;
     p_options->deleteAfterSend = (uint8_t)APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS;
+    p_options->nightOnly      = APP_FALSE;
+    p_options->nightStartHour = (uint8_t)APP_COMM_NIGHT_START_HOUR;
+    p_options->nightEndHour   = (uint8_t)APP_COMM_NIGHT_END_HOUR;
     (void)App_MeterServerOptionsValidate(p_options);
 }
 
@@ -793,6 +797,8 @@ void App_MeterServerOptionsDump(const AppMeterServerFormatOptions_t *p_options)
     APP_LOGI("OPT", "  slot(idx=%u, seq=%u)",
              (unsigned)g_appMeterServerOptionsRegion.latestSlotIndex,
              (unsigned)g_appMeterServerOptionsRegion.latestSeq);
+    APP_LOGI("OPT", "  nightOnly      : %u (window %02u:00~%02u:00)",
+             (unsigned)p_options->nightOnly, (unsigned)p_options->nightStartHour, (unsigned)p_options->nightEndHour);
 }
 
 /* ================================================================
@@ -912,6 +918,16 @@ void App_MeterServerOptionsSetPolicy(AppMeterServerFormatOptions_t *p_options,
     p_options->ackTimeoutSec = ackTimeoutSec;
     p_options->ackPoll100Ms = ackPoll100Ms;
     p_options->deleteAfterSend = deleteAfterSend;
+    (void)App_MeterServerOptionsValidate(p_options);
+}
+
+void App_MeterServerOptionsSetNightOnly(AppMeterServerFormatOptions_t *p_options,
+                                        uint8_t nightOnly, uint8_t nightStartHour, uint8_t nightEndHour)
+{
+    if (p_options == NULL) { return; }
+    p_options->nightOnly      = nightOnly;
+    p_options->nightStartHour = nightStartHour;
+    p_options->nightEndHour   = nightEndHour;
     (void)App_MeterServerOptionsValidate(p_options);
 }
 

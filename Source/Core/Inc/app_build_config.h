@@ -266,6 +266,24 @@ extern "C" {
 #define APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS     (0u) /* 0: legacy fixed spread fallback */
 #define APP_POLICY_REPORT_SPREAD_FALLBACK_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
 
+/* ================================================================
+ *  Comm Parameter Auto-Tuning (무선환경 기반 통신 파라미터 자동설정)
+ * ================================================================ */
+#define APP_COMM_PARAM_AUTOTUNE_ENABLE          (APP_TRUE)
+
+#define APP_COMM_RSSI_ENTER_WEAK_DBM            (-100)
+#define APP_COMM_RSSI_EXIT_WEAK_DBM             (-95)
+#define APP_COMM_RSRP_ENTER_WEAK_DBM            (-110)
+#define APP_COMM_RSRP_EXIT_WEAK_DBM             (-105)
+
+#define APP_COMM_SUCCESS_STREAK_NEEDED          (2u)
+#define APP_COMM_GOOD_MAX_ATTEMPT_IDX           (2u)   /* 0,1,2 = 1~3차 성공 -> HIGH */
+
+#define APP_COMM_PERIOD_WEAK_HOURS              (72u)  /* 약전계 시 3일 주기 */
+
+#define APP_COMM_NIGHT_START_HOUR               (1u)   /* 01:00 */
+#define APP_COMM_NIGHT_END_HOUR                 (2u)   /* 02:00 (exclusive) */
+
 #define APP_MSGQ_DEPTH                              (16u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)
 
