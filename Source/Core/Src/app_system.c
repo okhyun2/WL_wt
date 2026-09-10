@@ -2037,7 +2037,7 @@ static void Print_BootInfo(BootInfo_t *pBootInfo)
     #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && \
         (APP_EPC_ACTIVE_TEST_ID == 3u) && (APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED == APP_TRUE)
         SELFDIAG_LOGI("test=%s,seq=%lu,dut=%s,resetCause=%s,fault=%s,judge=%s",
-         APP_EPC_TEST_ID_STRING, 0,
+         APP_EPC_TEST_ID_STRING, 1,
          APP_EPC_TEST3_DUT_LABEL,
          App_SelfTestResetCauseToString(),
          (g_appSystemContext.bootResetCause == APP_BOOT_RESET_POWER_ON) ? "NONE":"EWDT",
