@@ -254,6 +254,35 @@ static void App_HwNbiotPowerCycle(void)
 }
 
 /* ============================================================
+ *  PowerOff Fast-Bail: 모듈 무응답 연속 감지
+ * ============================================================ */
+/* [ADD] 파일 상단, static 헬퍼 선언들 근처에 추가 */
+static uint8_t s_nbiotDetachNoRespStreak = 0u;
+
+#ifndef APP_NBIOT_DETACH_NORESP_BAIL_THRESHOLD
+#define APP_NBIOT_DETACH_NORESP_BAIL_THRESHOLD   (3u)
+#endif
+
+static void App_NBIoTDetachNoteOutcome(AppStatus_t st)
+{
+    if ((st == APP_STATUS_UART_TIMEOUT) ||
+        (st == APP_STATUS_UART_RX_FAILED) ||
+        (st == APP_STATUS_UART_TX_FAILED))
+    {
+        if (s_nbiotDetachNoRespStreak < 0xFFu) s_nbiotDetachNoRespStreak++;
+    }
+    else
+    {
+        s_nbiotDetachNoRespStreak = 0u;
+    }
+}
+
+static uint8_t App_NBIoTDetachModuleDead(void)
+{
+    return (s_nbiotDetachNoRespStreak >= APP_NBIOT_DETACH_NORESP_BAIL_THRESHOLD) ? APP_TRUE : APP_FALSE;
+}
+
+/* ============================================================
  *  유틸: WDT-feed 분할 지연
  * ============================================================ */
 static void App_Bc95AtDelayWithFeed(uint32_t ms)
@@ -4682,6 +4711,17 @@ void App_Bc95AtCloseAllSockets(void)
         {
             otherFailCount++;
         }
+
+        App_NBIoTDetachNoteOutcome(closeStatus);
+        if (App_NBIoTDetachModuleDead() == APP_TRUE)
+        {
+            APP_LOGW("NBIOT",
+                     "Module unresponsive during socket cleanup (streak=%u) - abort remaining sockets %d..%d",
+                     s_nbiotDetachNoRespStreak, sid + 1, APP_BC95_UDP_SOCKET_ID_MAX);
+            otherFailCount += (uint32_t)(APP_BC95_UDP_SOCKET_ID_MAX - sid);
+            break;
+        }
+
         APP_WWDGFeed();
     }
 
@@ -5692,6 +5732,8 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
     AppStatus_t detachWaitStatus = APP_STATUS_OK;
     AppStatus_t cfunMinStatus = APP_STATUS_OK;
 
+    s_nbiotDetachNoRespStreak = 0u;   /* 이번 PowerOff 시도 시작 시 스트릭 초기화 */
+
     g_appNbiotCarrierContext.lastPowerOffCfun0Status = APP_STATUS_OK;
     g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_DETACH_REQ;
     g_appNbiotCarrierContext.lastDetachTick = HAL_GetTick();
@@ -5699,7 +5741,19 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
     APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
              " mandatory start (close sockets + AT+CGATT=0 + wait CEREG:0 + AT+CFUN=0)");
 
-    App_Bc95AtCloseAllSockets();
+    App_Bc95AtCloseAllSockets();   /* 소켓 정리 루프 내부에서 스트릭을 이미 갱신함 */
+
+    /* 소켓 정리 도중 모듈이 죽은 것으로 판정되면 CGATT/CFUN 을 건너뛰고 바로 강제 종료 */
+    if (App_NBIoTDetachModuleDead() == APP_TRUE)
+    {
+        APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
+                 " module unresponsive (streak=%u) during socket cleanup -> skip CGATT/CFUN, force power cutoff",
+                 s_nbiotDetachNoRespStreak);
+        detachWaitStatus = APP_STATUS_UART_TIMEOUT;
+        cfunMinStatus     = APP_STATUS_UART_TIMEOUT;
+        g_appNbiotCarrierContext.lastResetType = APP_NBIOT_CARRIER_RESET_HW;   /* 다음 부팅에 HW리셋 경로 유도 */
+        goto force_power_off;
+    }
 
     if (g_appBc95AtInitialized == APP_TRUE)
     {
@@ -5709,10 +5763,25 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
                                                    APP_BC95_AT_RX_TIMEOUT_MS,
                                                    "AT+CGATT=0",
                                                    APP_NBIOT_REPORT_LOG_DETACH);
+            App_NBIoTDetachNoteOutcome(status);
+
+            /* CGATT=0 자체에서 무응답이 임계값에 도달하면 즉시 이탈 */
+            if (App_NBIoTDetachModuleDead() == APP_TRUE)
+            {
+                APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
+                         " module unresponsive (streak=%u) at CGATT=0 -> skip wait/CFUN, force power cutoff",
+                         s_nbiotDetachNoRespStreak);
+                detachWaitStatus = status;
+                cfunMinStatus     = status;
+                g_appNbiotCarrierContext.lastResetType = APP_NBIOT_CARRIER_RESET_HW;
+                goto force_power_off;
+            }
+
             if (status == APP_STATUS_OK)
             {
                 g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_WAIT_CEREG0;
                 detachWaitStatus = App_NbiotCarrierWaitForCereg0(APP_NBIOT_DETACH_WAIT_CEREG0_MS);
+                App_NBIoTDetachNoteOutcome(detachWaitStatus);
                 if (detachWaitStatus != APP_STATUS_OK)
                 {
                     APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " incomplete -> force power off (status=%d)", (int)detachWaitStatus);
@@ -5731,10 +5800,22 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
                      App_NbiotCarrierAttachStateString(g_appNbiotCarrierContext.attachState));
         }
 
+        /* CGATT/CEREG 단계에서 이미 무응답 판정났으면 CFUN=0 자체도 건너뛴다 */
+        if (App_NBIoTDetachModuleDead() == APP_TRUE)
+        {
+            APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
+                     " module unresponsive (streak=%u) before CFUN=0 -> skip CFUN, force power cutoff",
+                     s_nbiotDetachNoRespStreak);
+            cfunMinStatus = detachWaitStatus;
+            g_appNbiotCarrierContext.lastResetType = APP_NBIOT_CARRIER_RESET_HW;
+            goto force_power_off;
+        }
+
         cfunMinStatus = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CFUN_SET_MIN,
                                                       APP_BC95_AT_RX_TIMEOUT_MS,
                                                       "AT+CFUN=0",
                                                       APP_NBIOT_REPORT_LOG_POWEROFF);
+        App_NBIoTDetachNoteOutcome(cfunMinStatus);
         if (cfunMinStatus != APP_STATUS_OK)
         {
             APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
@@ -5747,6 +5828,7 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
                  " AT context not initialized, direct power off");
     }
 
+force_power_off:   /* 라벨 */
     g_appNbiotCarrierContext.powerOffState = APP_NBIOT_POWEROFF_STATE_FORCE_OFF;
     status = App_GpioLpSetNbiotPowered(APP_FALSE);
     if (status != APP_STATUS_OK)

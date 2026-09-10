@@ -544,31 +544,33 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
     return (status);
 }
 
-/* 
- * NB-IoT 모듈이 실제로 UART로 응답하는지만 가볍게 확인한다.
- * App_Bc95AtWaitUntilReady()와 달리 부팅 배너 대기(최대 10s)나
- * 21회 AT 재시도, 소켓 정리, CFUN=0 절차를 전혀 수행하지 않는다.
- * FSM이 이번 사이클에 이미 NB-IoT를 사용 중(NBIOT_POWER_ON 이후)이면
- * 같은 UART를 동시에 건드려 충돌할 위험이 있으므로 호출자가
- * 그 여부를 판단해서 건너뛰도록(App_FsmIsComponentBusy 등) 해야 한다. */
 static AppStatus_t App_SelfTestCheckNbiotUart(void)
 {
     AppStatus_t status;
+    uint8_t wasPowered;
 
     APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
 
     APP_LOGI("SELF", "NB-IoT UART probe start");
 
-    APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-    APP_WWDGFeed();
-    HAL_Delay(APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS);
+    /* 검사 시작 전 현재 전원 상태를 저장해, 검사 종료 후 원래 상태로 복원한다. */
+    wasPowered = App_GpioLpGetContext()->nbiotPowered;
 
-    /* 짧은 타임아웃으로 1회만 확인 (예: 500ms~1s, 정확한 값은 실측 필요) */
+    if (wasPowered != APP_TRUE)
+    {
+        APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
+        APP_WWDGFeed();
+        HAL_Delay(APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS);
+    }
+
     status = App_Bc95AtPing(APP_BC95_BOOT_PING_TIMEOUT_MS);
-
     APP_WWDGFeed();
-    (void)App_GpioLpSetNbiotPowered(APP_FALSE);
-    HAL_Delay(APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS);
+
+    if (wasPowered != APP_TRUE)
+    {
+        (void)App_GpioLpSetNbiotPowered(APP_FALSE);
+        HAL_Delay(APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS);
+    }
 
     return status;
 }

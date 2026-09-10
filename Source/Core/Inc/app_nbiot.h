@@ -319,6 +319,9 @@ typedef enum
     APP_NBIOT_POWEROFF_STATE_DONE
 } AppNbiotCarrierPowerOffState_t;
 
+/* 모듈 무응답 감지 - Fast-Bail 임계값 */
+#define APP_NBIOT_POWEROFF_NORESP_BAIL_THRESHOLD   (3u)
+
 typedef enum
 {
     APP_NBIOT_CARRIER_RESET_NONE = 0,
@@ -340,6 +343,7 @@ typedef struct
     uint8_t swResetCount;
     uint8_t hwResetCount;
     uint8_t attachAttemptCount;
+    uint8_t lastPowerOffForcedByUnresponsive;   /* fast-bail 로 종료됐는지 */
     AppBc95NetStatus_t lastNetStatus;
 } AppNbiotCarrierContext_t;
 
