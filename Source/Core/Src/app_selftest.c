@@ -422,6 +422,8 @@ static AppStatus_t App_SelfTestCheckMeterUartLine(void)
     HAL_Delay(100); //>= meter spec. 100ms
     App_GpioLpConfigOutput(Meter_UART_Loop_GPIO_Port, Meter_UART_Loop_Pin, GPIO_PIN_RESET);
 
+    App_GpioLpRestoreMeterUartPins();   /* 검사 후 UART 모드로 원복 */
+
     for(i = 0; i < 10; i++)
     {
         if(meterReply[i] != meterCheckFrame[i])
@@ -788,12 +790,16 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_CRC, App_SelfTestCheckCrc);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_DEBUG_UART, App_SelfTestCheckDebugUart);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine);
 #if defined(SUPPORT_METER_NORMAL)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
 #elif defined(SUPPORT_METER_SC1xxx)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
 #endif
+    /* METER 검사가 실패했을 때만 라인(하드웨어 루프백) 진단을 추가로 수행 */
+    if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed != APP_TRUE)
+    {
+        App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine);
+    }
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiotUart);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
@@ -828,12 +834,15 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
     APP_LOGN("SELF", "Operational data collection start");
 
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine, APP_FALSE);
 #if defined(SUPPORT_METER_NORMAL)
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart, APP_FALSE);
 #elif defined(SUPPORT_METER_SC1xxx)
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart, APP_FALSE);
 #endif
+    if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed != APP_TRUE)
+    {
+        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine, APP_FALSE);
+    }
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiotUart, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c, APP_FALSE);
@@ -868,7 +877,6 @@ AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatu
     APP_LOGN("SELF", "Periodic meter-wake self-test start");
 
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine, APP_FALSE);
 
     /* METER_UART 항목: 이미 App_FsmMeterProbeAndStore()가 수행한 실제 검침
        결과를 그대로 기록한다. 계량기 UART 트랜잭션을 이 자리에서 다시
@@ -885,6 +893,11 @@ AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatu
                  (unsigned long)meterProbeStatus);
     }
 
+    /* METER 검사가 실패했을 때만 라인(하드웨어 루프백) 진단을 추가로 수행 */
+    if (meterProbeStatus != APP_STATUS_OK)
+    {
+        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine, APP_FALSE);
+    }
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiotUart, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c, APP_FALSE);
