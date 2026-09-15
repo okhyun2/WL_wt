@@ -19,9 +19,9 @@ LOG_LINE_RE = re.compile(
 )
 SELFDIAG_MSG_RE = re.compile(
     r'test=(?P<test>\w+),seq=(?P<seq>\d+),dut=(?P<dut>[^,]+),'
+    r'(?:resetCause=(?P<resetCause>\w+),)?'
     r'fault=(?P<fault>[\w+]+),judge=(?P<judge>\w+)'
 )
-
 # ---------------- 결함 모듈 분류 ----------------
 FAULT_MODULES_ALL = {
     "BUZZ", "CRC", "ADC", "DBG", "METER_LINE", "METER",
@@ -41,7 +41,7 @@ FAULT_LABEL_KR = {
     "NBIOT": "NB-IoT 모듈 이상",
     "NFC": "NFC 모듈 이상",
     "TEMP": "온습도(AUX I2C) 센서 이상",
-    "EWDT": "외부 감시타이머 이상",
+    "EWDT": "외부 Watchdog 동작",
     "GPIO": "GPIO 입력 이상",
     "NONE": "고장 없음",
 }
