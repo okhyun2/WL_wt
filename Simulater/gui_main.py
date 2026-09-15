@@ -7,6 +7,7 @@ import random
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from self_diagnosis_gui import SelfDiagnosisWindow
+from comm_param_log_analysis_gui import CommParamLogAnalysisWindow
 
 import serial
 import serial.tools.list_ports
@@ -126,6 +127,8 @@ class SimulatorGUI(tk.Tk):
         self._compare_win = None                       # 비교 팝업 중복 방지용 참조
         self._last_completed_log_path = None            # 마지막으로 저장 완료된 CSV 경로
         self._selfdiag_win = None
+        self._comm_param_win = None
+
 
     # ----------------------------------------------------------
     # 0) 메뉴바 (도구 -> 로그 비교)
@@ -134,8 +137,20 @@ class SimulatorGUI(tk.Tk):
         menu_bar = tk.Menu(self)
         menu_bar.add_command(label="시뮬레이터 비교", command=self._on_open_log_compare)
         menu_bar.add_command(label="자가진단", command=self._on_open_selfdiag)
+        menu_bar.add_command(label="통신 파라미터", command=self._on_open_comm_param_analysis)
         self.config(menu=menu_bar)
+
+    def _on_open_comm_param_analysis(self):
+        current_log_path = self.dut_log_path_var.get().strip() or None
+
+        if self._comm_param_win is not None and self._comm_param_win.winfo_exists():
+            self._comm_param_win.refresh_with_log_path(current_log_path)
+            self._comm_param_win.lift()
+            self._comm_param_win.focus_force()
+            return
     
+        self._comm_param_win = CommParamLogAnalysisWindow(self, initial_log_path=current_log_path)
+
     def _on_open_selfdiag(self):
         current_log_path = self.dut_log_path_var.get().strip() or None
 
