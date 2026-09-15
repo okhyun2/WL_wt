@@ -30,6 +30,26 @@ LOG_LINE_RE = re.compile(
 )
 
 # ---------------- 통신 파라미터 자동설정(TEST7) 구조화 포맷 (App_CommTest7RunCycle 실제 출력) ----------------
+# ---------------- 통신 파라미터 자동설정(TEST7) 구조화 포맷 ----------------
+# 실제 DUT는 버퍼 오버플로우 방지를 위해 한 사이클을 두 줄로 나눠 출력한다.
+#  1줄째: case/rssi/rsrp/attemptIdx/allFailed/signal/success/periodH/nightOnly
+#  2줄째: expSignal/expSuccess/expPeriodH/expNightOnly/result(,mismatch)
+COMM_PARAM_LINE1_RE = re.compile(
+    r'test=TEST7,seq=(?P<seq>\d+),case=(?P<case>\w+),'
+    r'rssi=(?P<rssi>-?\d+),rsrp=(?P<rsrp>-?\d+),'
+    r'attemptIdx=(?P<attemptIdx>\d+),allFailed=(?P<allFailed>[01]),'
+    r'signal=(?P<signal>\w+),success=(?P<success>\w+),'
+    r'periodH=(?P<periodH>\d+),nightOnly=(?P<nightOnly>[01])$'
+)
+
+COMM_PARAM_LINE2_RE = re.compile(
+    r'test=TEST7,seq=(?P<seq>\d+),'
+    r'expSignal=(?P<expSignal>\w+),expSuccess=(?P<expSuccess>\w+),'
+    r'expPeriodH=(?P<expPeriodH>\d+),expNightOnly=(?P<expNightOnly>[01]),'
+    r'result=(?P<result>PASS|FAIL)(?:,mismatch=(?P<mismatch>.+))?$'
+)
+
+# 구버전(한 줄) 포맷과의 호환을 위해 기존 통합 패턴도 남겨둔다.
 COMM_PARAM_MSG_RE = re.compile(
     r'test=TEST7,seq=(?P<seq>\d+),case=(?P<case>\w+),'
     r'rssi=(?P<rssi>-?\d+),rsrp=(?P<rsrp>-?\d+),'
@@ -40,7 +60,7 @@ COMM_PARAM_MSG_RE = re.compile(
     r'expPeriodH=(?P<expPeriodH>\d+),expNightOnly=(?P<expNightOnly>[01]),'
     r'result=(?P<result>PASS|FAIL)(?:,mismatch=(?P<mismatch>.+))?$'
 )
-
+    
 COMM_PARAM_SUMMARY_RE = re.compile(
     r'test=TEST7,summary=ALL_COMPLETE,total=(?P<total>\d+),'
     r'pass=(?P<pass>\d+),fail=(?P<fail>\d+)'
@@ -80,15 +100,10 @@ def _parse_mismatch_items(mismatch_str):
         })
     return items
 
-
 def parse_comm_param_log(path):
-    """
-    DUT 로그 파일을 파싱해서 (records, summary_line) 튜플로 반환한다.
-    records: 케이스별 실행 결과 리스트
-    summary_line: {'total':, 'pass':, 'fail':} 또는 None (ALL_COMPLETE 라인이 없으면)
-    """
     records = []
     summary_line = None
+    pending = {}   # seq -> 1줄째에서 수집한 필드 dict (2줄째를 기다리는 중)
 
     try:
         with open(path, encoding='utf-8', errors='replace') as f:
@@ -110,31 +125,50 @@ def parse_comm_param_log(path):
                     }
                     continue
 
+                # (1) 구버전 한 줄 포맷: 그대로 완결된 레코드로 처리
                 cm = COMM_PARAM_MSG_RE.search(msg)
-                if not cm:
+                if cm:
+                    records.append(_build_record(cm, wall))
                     continue
 
-                mismatch_raw = cm.group('mismatch') or ''
-                records.append({
-                    'seq': int(cm.group('seq')),
-                    'ts': wall,
-                    'case': cm.group('case'),
-                    'rssi': int(cm.group('rssi')),
-                    'rsrp': int(cm.group('rsrp')),
-                    'attemptIdx': int(cm.group('attemptIdx')),
-                    'allFailed': cm.group('allFailed') == '1',
-                    'signal': cm.group('signal'),
-                    'success': cm.group('success'),
-                    'periodH': int(cm.group('periodH')),
-                    'nightOnly': cm.group('nightOnly') == '1',
-                    'expSignal': cm.group('expSignal'),
-                    'expSuccess': cm.group('expSuccess'),
-                    'expPeriodH': int(cm.group('expPeriodH')),
-                    'expNightOnly': cm.group('expNightOnly') == '1',
-                    'result': cm.group('result'),
-                    'mismatch': mismatch_raw,
-                    'mismatch_items': _parse_mismatch_items(mismatch_raw),
-                })
+                # (2) 신버전 두 줄 포맷: 1줄째
+                m1 = COMM_PARAM_LINE1_RE.search(msg)
+                if m1:
+                    seq = int(m1.group('seq'))
+                    pending[seq] = {
+                        'seq': seq, 'ts': wall,
+                        'case': m1.group('case'),
+                        'rssi': int(m1.group('rssi')),
+                        'rsrp': int(m1.group('rsrp')),
+                        'attemptIdx': int(m1.group('attemptIdx')),
+                        'allFailed': m1.group('allFailed') == '1',
+                        'signal': m1.group('signal'),
+                        'success': m1.group('success'),
+                        'periodH': int(m1.group('periodH')),
+                        'nightOnly': m1.group('nightOnly') == '1',
+                    }
+                    continue
+
+                # (3) 신버전 두 줄 포맷: 2줄째 -> pending과 병합해서 완성
+                m2 = COMM_PARAM_LINE2_RE.search(msg)
+                if m2:
+                    seq = int(m2.group('seq'))
+                    base = pending.pop(seq, None)
+                    if base is None:
+                        # 1줄째를 못 받은 채 2줄째만 들어온 비정상 케이스는 건너뛴다
+                        continue
+                    mismatch_raw = m2.group('mismatch') or ''
+                    base.update({
+                        'expSignal': m2.group('expSignal'),
+                        'expSuccess': m2.group('expSuccess'),
+                        'expPeriodH': int(m2.group('expPeriodH')),
+                        'expNightOnly': m2.group('expNightOnly') == '1',
+                        'result': m2.group('result'),
+                        'mismatch': mismatch_raw,
+                        'mismatch_items': _parse_mismatch_items(mismatch_raw),
+                    })
+                    records.append(base)
+                    continue
     except FileNotFoundError:
         raise CommParamLogError(f"DUT 로그 파일을 찾을 수 없습니다: {path}")
     except CommParamLogError:
@@ -144,6 +178,31 @@ def parse_comm_param_log(path):
 
     records.sort(key=lambda r: r['seq'])
     return records, summary_line
+
+
+def _build_record(cm, wall):
+    """구버전 한 줄 포맷 매치 결과를 레코드 dict로 변환한다."""
+    mismatch_raw = cm.group('mismatch') or ''
+    return {
+        'seq': int(cm.group('seq')),
+        'ts': wall,
+        'case': cm.group('case'),
+        'rssi': int(cm.group('rssi')),
+        'rsrp': int(cm.group('rsrp')),
+        'attemptIdx': int(cm.group('attemptIdx')),
+        'allFailed': cm.group('allFailed') == '1',
+        'signal': cm.group('signal'),
+        'success': cm.group('success'),
+        'periodH': int(cm.group('periodH')),
+        'nightOnly': cm.group('nightOnly') == '1',
+        'expSignal': cm.group('expSignal'),
+        'expSuccess': cm.group('expSuccess'),
+        'expPeriodH': int(cm.group('expPeriodH')),
+        'expNightOnly': cm.group('expNightOnly') == '1',
+        'result': cm.group('result'),
+        'mismatch': mismatch_raw,
+        'mismatch_items': _parse_mismatch_items(mismatch_raw),
+    }
 
 
 def summarize_comm_param(records, summary_line=None):

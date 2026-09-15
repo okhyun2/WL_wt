@@ -69,13 +69,13 @@ class CommParamLogAnalysisWindow(tk.Toplevel):
         cols = ("seq", "case", "rssi", "rsrp", "attemptIdx", "allFailed",
                 "signal", "success", "periodH", "nightOnly", "result", "mismatch")
         self.tree = ttk.Treeview(frame, columns=cols, show="headings", height=14)
-        widths = {"seq": 45, "case": 110, "rssi": 60, "rsrp": 60, "attemptIdx": 80,
-                  "allFailed": 75, "signal": 80, "success": 80, "periodH": 65,
+        widths = {"seq": 45, "case": 110, "rssi": 60, "rsrp": 60, "attemptIdx": 85,
+                  "allFailed": 85, "signal": 80, "success": 80, "periodH": 70,
                   "nightOnly": 80, "result": 70, "mismatch": 220}
         headers = {"seq": "SEQ", "case": "케이스", "rssi": "RSSI", "rsrp": "RSRP",
-                   "attemptIdx": "attemptIdx", "allFailed": "allFailed",
-                   "signal": "신호상태", "success": "성공상태", "periodH": "주기(h)",
-                   "nightOnly": "야간전용", "result": "결과", "mismatch": "불일치 내역"}
+                   "attemptIdx": "전송실패횟수", "allFailed": "서버전송실패",
+                   "signal": "신호상태", "success": "성공상태", "periodH": "전송주기(h)",
+                   "nightOnly": "야간전송", "result": "결과", "mismatch": "불일치 내역"}
         for c in cols:
             self.tree.heading(c, text=headers[c])
             self.tree.column(c, width=widths[c],
@@ -88,6 +88,7 @@ class CommParamLogAnalysisWindow(tk.Toplevel):
 
         self.tree.tag_configure("pass", background="#dff5e1")
         self.tree.tag_configure("fail", background="#ff8a8a")
+        self.tree.tag_configure("fail_first", background="#ffb74d")   # 1회차 FAIL: 주황색
 
     # ---------- 케이스/필드 통계 ----------
     def _build_stats_frame(self):
@@ -148,28 +149,38 @@ class CommParamLogAnalysisWindow(tk.Toplevel):
     def _render_result(self, records, stats):
         self._last_records = records
         self._last_stats = stats
-
+    
+        case_run_count = {}   # 케이스명별 등장 횟수(반복 회차) 추적용
         for r in records:
-            tag = "pass" if r['result'] == 'PASS' else "fail"
+            case_run_count[r['case']] = case_run_count.get(r['case'], 0) + 1
+            run_idx = case_run_count[r['case']]
+    
+            if r['result'] == 'PASS':
+                tag = "pass"
+            elif run_idx == 1:
+                tag = "fail_first"   # 같은 케이스의 첫 번째(1회차) 실행에서 FAIL -> 주황색
+            else:
+                tag = "fail"         # 2회차 이후에도 FAIL -> 기존 빨간색 유지 (이상 신호)
+    
             self.tree.insert("", "end", values=(
                 r['seq'], r['case'], r['rssi'], r['rsrp'], r['attemptIdx'], r['allFailed'],
                 r['signal'], r['success'], r['periodH'], r['nightOnly'],
                 r['result'], r['mismatch'],
             ), tags=(tag,))
-
+    
         for case, c in stats['per_case'].items():
             self.ctree.insert("", "end", values=(case, c['pass'], c['fail']))
-
+    
         for field, cnt in sorted(stats['mismatch_field_counts'].items(), key=lambda x: -x[1]):
             self.mtree.insert("", "end", values=(field, cnt))
-
+    
         verdict = "PASS" if stats['overall_ok'] else "FAIL"
         color = "#1a7f37" if stats['overall_ok'] else "#c62828"
         self.summary_var.set(
             f"전체 {stats['total_runs']}건 | PASS {stats['pass_count']}건 "
             f"({stats['pass_pct']}%) | FAIL {stats['fail_count']}건  =>  판정: {verdict}"
         )
-
+        
     def refresh_with_log_path(self, log_path=None):
         self._clear_result()
         if log_path:
