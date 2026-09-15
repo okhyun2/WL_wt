@@ -136,6 +136,22 @@ static uint32_t s_appTest7Seq         = 0u;
 static uint16_t s_appTest7PassCount   = 0u;
 static uint16_t s_appTest7FailCount   = 0u;
 
+/* 케이스 진입 시 success streak를 목표 패턴으로 선반영(워밍업)하여
+   HIGH<->LOW 전환 디바운스(APP_COMM_SUCCESS_STREAK_NEEDED)로 인한
+   1회차 오탐(FAIL)을 방지한다. 실제 카운트/로그에는 포함되지 않는다. */
+static void App_Test7WarmupSuccessStreak(const AppTest7Case_t *pCase)
+{
+    uint8_t warmupCount = (APP_COMM_SUCCESS_STREAK_NEEDED > 0u)
+                          ? (uint8_t)(APP_COMM_SUCCESS_STREAK_NEEDED - 1u)
+                          : 0u;
+    uint8_t i;
+
+    for (i = 0u; i < warmupCount; i++)
+    {
+        App_CommSuccessUpdate(pCase->attemptIdx, pCase->allFailed);
+    }
+}
+
 void App_CommTest7RunCycle(void)
 {
     const AppTest7Case_t   *pCase;
@@ -166,7 +182,13 @@ void App_CommTest7RunCycle(void)
 
     App_CommSignalMeasureAndUpdate(&fakeQuality);
 
-    /* 2) 가짜 전송 결과 주입 */
+    /* 1.5) 새 케이스로 진입하는 시점(첫 반복)에만 streak 워밍업 수행 */
+    if (s_appTest7RepeatIndex == 0u)
+    {
+        App_Test7WarmupSuccessStreak(pCase);
+    }
+
+    /* 2) 가짜 전송 결과 주입 (실제 판정용 카운트 호출) */
     App_CommSuccessUpdate(pCase->attemptIdx, pCase->allFailed);
 
     /* 3) 파라미터 재계산 및 적용값 로드 */
