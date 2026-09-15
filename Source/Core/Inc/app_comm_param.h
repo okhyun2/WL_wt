@@ -13,4 +13,8 @@ AppCommSignalState_t  App_CommGetSignalState(void);
 AppCommSuccessState_t App_CommGetSuccessState(void);
 void App_CommParamRecompose(void);
 
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
+void App_CommTest7RunCycle(void);
+#endif
+
 #endif

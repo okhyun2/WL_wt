@@ -44,6 +44,10 @@
 /* [[EPC TEST3]] 검침 주기를 10초로 단축 */
 #define APP_DEBUG_METER_PERIOD_MS      (APP_EPC_TEST3_SELFDIAG_PERIOD_SEC * 1000u)
 
+#elif (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
+#define APP_DEBUG_TX_PERIOD_MS      (APP_EPC_TEST7_TX_PERIOD_MIN * 60000u)
+#define APP_DEBUG_MGMT_TX_PERIOD_MS (APP_EPC_TEST7_TX_PERIOD_MIN * 60000u)
+
 #endif
 ///////////////////////////////////////////////////////////////////////////////////
 

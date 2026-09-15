@@ -56,7 +56,7 @@ extern "C" {
 #define APP_DEBUG_TX_PERIOD_MS                       (APP_EPC_TEST7_TX_PERIOD_MIN * 60000u)   /* service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS                  (APP_EPC_TEST7_TX_PERIOD_MIN * 60000u)   /* management TX */
 
-#define APP_EPC_TEST7_METERING_PERIOD_MIN (3u)  /* 검침 주기 5분 */
+#define APP_EPC_TEST7_METERING_PERIOD_MIN (3u)  /* 검침 주기(분) */
 #define APP_DEBUG_METER_PERIOD_MS   (APP_EPC_TEST7_METERING_PERIOD_MIN * 60000u)
 
 #endif

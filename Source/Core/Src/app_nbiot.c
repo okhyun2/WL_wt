@@ -3078,20 +3078,31 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
     AppStatus_t status;
 
     APP_LOGN("NBIOT", "[[ServicePlatformWake]] start (fast-path only)");
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
+    /* 시험 7 전용: 실제 모뎀 측정/시간동기/플랫폼 전송을 전부 건너뛰고 시나리오만 진행 */
+    App_CommTest7RunCycle();
+    return APP_STATUS_OK;
+#else
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
+
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
     App_CommSignalMeasureAndUpdate(App_Bc95AtGetQuality());
 #endif
+
     (void)App_NBIoTSyncTime();
     (void)App_NbiotRunPlatformPreflight();
 
     status = App_NBIoTTransmitPlatformInternal("[[ServiceTx]]", deleteStorage, APP_TRUE, NULL);
+
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
     App_CommParamRecompose();
 #endif
+
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     return APP_STATUS_OK;
+#endif
 }
 
 AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage)

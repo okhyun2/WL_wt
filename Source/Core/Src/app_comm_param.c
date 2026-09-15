@@ -1,3 +1,5 @@
+#include <stdio.h>
+#include <string.h>
 #include "app_log.h"
 #include "app_comm_param.h"
 #include "app_build_config.h"
@@ -100,3 +102,166 @@ void App_CommParamRecompose(void)
     APP_LOGN("COMM", "param applied: reportPeriod=%uh nightOnly=%u window=%02u~%02u",
          opt.reportingPeriodHours, opt.nightOnly, opt.nightStartHour, opt.nightEndHour);
 }
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
+typedef struct
+{
+    const char *name;
+    int16_t     rssiDbm;
+    int16_t     rsrpDbm;
+    uint8_t     attemptIdx;
+    uint8_t     allFailed;
+    uint8_t     repeatCount;
+    uint8_t     expWeak;         /* 1=WEAK 기대, 0=STRONG 기대 */
+    uint8_t     expLow;          /* 1=LOW 기대,  0=HIGH 기대 */
+    uint8_t     expPeriodHours;
+    uint8_t     expNightOnly;
+} AppTest7Case_t;
+
+#define APP_TEST7_CASE_COUNT (5u)
+
+static const AppTest7Case_t g_appTest7CaseTable[APP_TEST7_CASE_COUNT] =
+{
+    /* name              rssi  rsrp  attemptIdx allFailed repeat expWeak expLow expPeriodH expNightOnly */
+    { "A_normal",         -70,  -75,  0,         APP_FALSE, 2,    APP_FALSE, APP_FALSE, APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS, APP_FALSE },
+    { "B_weakSignal",    -102, -112,  0,         APP_FALSE, 2,    APP_TRUE,  APP_FALSE, APP_COMM_PERIOD_WEAK_HOURS,                APP_FALSE },
+    { "C_lowSuccess",     -70,  -75,  3,         APP_TRUE,  2,    APP_FALSE, APP_TRUE,  APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS, APP_TRUE  },
+    { "D_combo_weak_low",-102, -112,  3,         APP_TRUE,  2,    APP_TRUE,  APP_TRUE,  APP_COMM_PERIOD_WEAK_HOURS,                APP_TRUE  },
+    { "E_restoreToA",     -70,  -75,  0,         APP_FALSE, 2,    APP_FALSE, APP_FALSE, APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS, APP_FALSE },
+};
+
+static uint8_t  s_appTest7CaseIndex   = 0u;
+static uint8_t  s_appTest7RepeatIndex = 0u;
+static uint32_t s_appTest7Seq         = 0u;
+static uint16_t s_appTest7PassCount   = 0u;
+static uint16_t s_appTest7FailCount   = 0u;
+
+void App_CommTest7RunCycle(void)
+{
+    const AppTest7Case_t   *pCase;
+    AppBc95Quality_t        fakeQuality;
+    AppMeterServerFormatOptions_t opt;
+    uint8_t  actualWeak, actualLow;
+    uint8_t  pass;
+    char     mismatchBuf[96];
+    uint32_t mismatchOffset = 0u;
+
+    if (s_appTest7CaseIndex >= APP_TEST7_CASE_COUNT)
+    {
+        APP_LOGN("TEST7", "test=TEST7,summary=ALL_COMPLETE,total=%u,pass=%u,fail=%u",
+                 (unsigned)s_appTest7Seq,
+                 (unsigned)s_appTest7PassCount,
+                 (unsigned)s_appTest7FailCount);
+        return;
+    }
+
+    pCase = &g_appTest7CaseTable[s_appTest7CaseIndex];
+    s_appTest7Seq++;
+
+    /* 1) 가짜 품질값 주입 */
+    (void)memset(&fakeQuality, 0, sizeof(fakeQuality));
+    fakeQuality.valid   = APP_TRUE;
+    fakeQuality.rssiDbm = pCase->rssiDbm;
+    fakeQuality.rsrpDbm = pCase->rsrpDbm;
+
+    App_CommSignalMeasureAndUpdate(&fakeQuality);
+
+    /* 2) 가짜 전송 결과 주입 */
+    App_CommSuccessUpdate(pCase->attemptIdx, pCase->allFailed);
+
+    /* 3) 파라미터 재계산 및 적용값 로드 */
+    App_CommParamRecompose();
+    (void)memset(&opt, 0, sizeof(opt));
+    (void)App_MeterServerOptionsLoad(&opt);
+
+    /* 4) 판정 */
+    actualWeak = (g_appCommSignalState  == APP_COMM_SIGNAL_WEAK)  ? APP_TRUE : APP_FALSE;
+    actualLow  = (g_appCommSuccessState == APP_COMM_SUCCESS_LOW)  ? APP_TRUE : APP_FALSE;
+
+    mismatchBuf[0] = '\0';
+    pass = APP_TRUE;
+
+    if (actualWeak != pCase->expWeak)
+    {
+        pass = APP_FALSE;
+        mismatchOffset += (uint32_t)snprintf(&mismatchBuf[mismatchOffset],
+                                              sizeof(mismatchBuf) - mismatchOffset,
+                                              "signal(exp=%s,act=%s);",
+                                              pCase->expWeak ? "WEAK" : "STRONG",
+                                              actualWeak     ? "WEAK" : "STRONG");
+    }
+    if (actualLow != pCase->expLow)
+    {
+        pass = APP_FALSE;
+        mismatchOffset += (uint32_t)snprintf(&mismatchBuf[mismatchOffset],
+                                              sizeof(mismatchBuf) - mismatchOffset,
+                                              "success(exp=%s,act=%s);",
+                                              pCase->expLow ? "LOW" : "HIGH",
+                                              actualLow     ? "LOW" : "HIGH");
+    }
+    if (opt.reportingPeriodHours != pCase->expPeriodHours)
+    {
+        pass = APP_FALSE;
+        mismatchOffset += (uint32_t)snprintf(&mismatchBuf[mismatchOffset],
+                                              sizeof(mismatchBuf) - mismatchOffset,
+                                              "periodH(exp=%u,act=%u);",
+                                              (unsigned)pCase->expPeriodHours,
+                                              (unsigned)opt.reportingPeriodHours);
+    }
+    if (opt.nightOnly != pCase->expNightOnly)
+    {
+        pass = APP_FALSE;
+        mismatchOffset += (uint32_t)snprintf(&mismatchBuf[mismatchOffset],
+                                              sizeof(mismatchBuf) - mismatchOffset,
+                                              "nightOnly(exp=%u,act=%u);",
+                                              (unsigned)pCase->expNightOnly,
+                                              (unsigned)opt.nightOnly);
+    }
+
+    if (pass == APP_TRUE) { s_appTest7PassCount++; } else { s_appTest7FailCount++; }
+
+    /* 5) key=value 로그를 2줄로 분할 출력 (버퍼 오버런 방지) */
+    APP_LOGN("TEST7",
+        "test=TEST7,seq=%lu,case=%s,rssi=%d,rsrp=%d,attemptIdx=%u,allFailed=%u,"
+        "signal=%s,success=%s,periodH=%u,nightOnly=%u",
+        (unsigned long)s_appTest7Seq,
+        pCase->name,
+        (int)pCase->rssiDbm,
+        (int)pCase->rsrpDbm,
+        (unsigned)pCase->attemptIdx,
+        (unsigned)pCase->allFailed,
+        actualWeak ? "WEAK" : "STRONG",
+        actualLow  ? "LOW"  : "HIGH",
+        (unsigned)opt.reportingPeriodHours,
+        (unsigned)opt.nightOnly);
+
+    APP_LOGN("TEST7",
+        "test=TEST7,seq=%lu,expSignal=%s,expSuccess=%s,expPeriodH=%u,expNightOnly=%u,"
+        "result=%s%s%s",
+        (unsigned long)s_appTest7Seq,
+        pCase->expWeak ? "WEAK" : "STRONG",
+        pCase->expLow  ? "LOW"  : "HIGH",
+        (unsigned)pCase->expPeriodHours,
+        (unsigned)pCase->expNightOnly,
+        pass ? "PASS" : "FAIL",
+        pass ? "" : ",mismatch=",
+        pass ? "" : mismatchBuf);
+
+    /* 6) 다음 회차/케이스 인덱스 진행 */
+    s_appTest7RepeatIndex++;
+    if (s_appTest7RepeatIndex >= pCase->repeatCount)
+    {
+        s_appTest7RepeatIndex = 0u;
+        s_appTest7CaseIndex++;
+
+        if (s_appTest7CaseIndex >= APP_TEST7_CASE_COUNT)
+        {
+            APP_LOGN("TEST7", "test=TEST7,summary=ALL_COMPLETE,total=%lu,pass=%u,fail=%u",
+                     (unsigned long)s_appTest7Seq,
+                     (unsigned)s_appTest7PassCount,
+                     (unsigned)s_appTest7FailCount);
+        }
+    }
+}
+
+#endif /* APP_EPC_TEST_MODE_ENABLE && APP_EPC_ACTIVE_TEST_ID == 7 */
