@@ -560,7 +560,7 @@ static AppStatus_t App_SelfTestCheckNbiotUart(void)
     {
         APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
         APP_WWDGFeed();
-        HAL_Delay(APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS);
+        status = App_Bc95AtWaitUntilReady(APP_BC95_BOOT_WAIT_BANNER_MS + APP_BC95_USIM_READY_TIMEOUT_MS);
     }
 
     status = App_Bc95AtPing(APP_BC95_BOOT_PING_TIMEOUT_MS);

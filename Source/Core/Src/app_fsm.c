@@ -2475,7 +2475,7 @@ static AppStatus_t App_FsmTxScheduleCheckDueCommon(AppFsmTxScheduleContext_t *p_
 }
 
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
-static uint8_t App_FsmTxScheduleApplyNightOnlyGate(void)
+static uint8_t App_FsmTxScheduleApplyNightOnlyGate(const char *p_tag)
 {
     AppMeterServerFormatOptions_t opt;
     AppDateTime_t now;
@@ -2489,9 +2489,41 @@ static uint8_t App_FsmTxScheduleApplyNightOnlyGate(void)
         return APP_TRUE;
     }
 
-    APP_LOGN("FSM", "[[ServiceTxSchedule]] night-only gate: hour=%u out of [%u,%u) -> skip this wake",
+    APP_LOGN("FSM", "%s night-only gate: hour=%u out of [%u,%u) -> pull-in next due",
+             (p_tag != NULL) ? p_tag : "[[TxSchedule]]",
              (unsigned)now.hour, (unsigned)opt.nightStartHour, (unsigned)opt.nightEndHour);
     return APP_FALSE;
+}
+
+static AppStatus_t App_FsmTxScheduleRecomputeNextNightStart(uint32_t *p_dateKey, uint32_t *p_msOfDay)
+{
+    AppMeterServerFormatOptions_t opt;
+    AppDateTime_t now;
+    AppStatus_t status;
+
+    APP_RETURN_IF_FALSE((p_dateKey != NULL) && (p_msOfDay != NULL), APP_STATUS_INVALID_PARAM);
+
+    status = App_MeterServerOptionsLoad(&opt);
+    APP_RETURN_IF_FALSE(status != APP_STATUS_INVALID_PARAM, APP_STATUS_FATAL);
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    /* 오늘의 야간 윈도우가 이미 끝났다면 다음날로 롤오버,
+       아직 시작 전이라면 오늘 날짜를 그대로 사용 */
+    if (now.hour >= opt.nightEndHour)
+    {
+        App_FsmMeterScheduleAddOneDay(&now);
+    }
+
+    now.hour   = opt.nightStartHour;
+    now.minute = 0u;
+    now.second = 0u;
+
+    *p_dateKey = App_FsmMeterScheduleDateKey(&now);
+    *p_msOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+    return APP_STATUS_OK;
 }
 #endif
 
@@ -2523,9 +2555,31 @@ static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
     if (*p_due == APP_TRUE)
     {
-        *p_due = App_FsmTxScheduleApplyNightOnlyGate();
+        *p_due = App_FsmTxScheduleApplyNightOnlyGate("[[ServiceTxSchedule]]");
+
+        if (*p_due == APP_FALSE)
+        {
+            uint32_t nightDateKey;
+            uint32_t nightMsOfDay;
+
+            if (App_FsmTxScheduleRecomputeNextNightStart(&nightDateKey, &nightMsOfDay) == APP_STATUS_OK)
+            {
+                APP_LOGN("FSM",
+                         "[[ServiceTxSchedule]] night-only gate: pull-in next due %lu %02lu:%02lu -> %lu %02lu:%02lu",
+                         (unsigned long)g_appFsmTxSchedule.nextDueDateKey,
+                         (unsigned long)(g_appFsmTxSchedule.nextDueMsOfDay / 3600000u),
+                         (unsigned long)((g_appFsmTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+                         (unsigned long)nightDateKey,
+                         (unsigned long)(nightMsOfDay / 3600000u),
+                         (unsigned long)((nightMsOfDay % 3600000u) / 60000u));
+
+                g_appFsmTxSchedule.nextDueDateKey = nightDateKey;
+                g_appFsmTxSchedule.nextDueMsOfDay  = nightMsOfDay;
+            }
+        }
     }
 #endif
+
     return APP_STATUS_OK;
 }
 
@@ -2564,15 +2618,18 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNowCommon(AppFsmTxScheduleContext_
     uint32_t nowDateKey;
     uint32_t nowMsOfDay;
 
+    /* 1. Parameter Validation */
     APP_RETURN_IF_FALSE((p_schedule != NULL) && (p_consumed != NULL), APP_STATUS_INVALID_PARAM);
     *p_consumed = APP_FALSE;
 
+    /* 2. Get Current Time */
     status = RTC_GetTime(&now);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     nowDateKey = App_FsmMeterScheduleDateKey(&now);
     nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
 
+    /* 3. Check if the current time has reached the scheduled due time */
     if ((nowDateKey < p_schedule->nextDueDateKey) ||
         ((nowDateKey == p_schedule->nextDueDateKey) &&
          (nowMsOfDay < p_schedule->nextDueMsOfDay)))
@@ -2580,16 +2637,19 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNowCommon(AppFsmTxScheduleContext_
         return APP_STATUS_MSGQ_EMPTY;
     }
 
+    /* 4. Prevent duplicate dispatch for the same due time */
     if ((p_schedule->lastDispatchedDateKey == p_schedule->nextDueDateKey) &&
         (p_schedule->lastDispatchedMsOfDay == p_schedule->nextDueMsOfDay))
     {
         return APP_STATUS_OK;
     }
 
+    /* 5. Mark as consumed and update dispatch history */
     *p_consumed = APP_TRUE;
     p_schedule->lastDispatchedDateKey = p_schedule->nextDueDateKey;
     p_schedule->lastDispatchedMsOfDay = p_schedule->nextDueMsOfDay;
 
+    /* 6. Advance the schedule to the next period */
     status = App_FsmTxScheduleAdvanceFromDue(p_schedule,
                                              p_schedule->lastDispatchedDateKey,
                                              p_schedule->lastDispatchedMsOfDay,
@@ -2599,6 +2659,35 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNowCommon(AppFsmTxScheduleContext_
                                              &p_schedule->currentJitterMs);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
+    /* [[신규]] 6.5. night-only 게이트: 방금 계산된 next 시각이 야간 윈도우 밖이면
+     * 01:00(nightStartHour) 시각으로 당겨온다.
+     * App_FsmTxScheduleCheckDue()에서만 쓰이던 게이트를,
+     * 실제 RTC-알람 소비 경로(ConsumeDueNow)에도 동일하게 적용한다. */
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+    if (App_FsmTxScheduleApplyNightOnlyGate(p_tag) == APP_FALSE)
+    {
+        uint32_t nightDateKey;
+        uint32_t nightMsOfDay;
+
+        if (App_FsmTxScheduleRecomputeNextNightStart(&nightDateKey, &nightMsOfDay) == APP_STATUS_OK)
+        {
+            APP_LOGN("FSM",
+                     "%s night-only gate: pull-in next due %lu %02lu:%02lu -> %lu %02lu:%02lu",
+                     p_tag,
+                     (unsigned long)p_schedule->nextDueDateKey,
+                     (unsigned long)(p_schedule->nextDueMsOfDay / 3600000u),
+                     (unsigned long)((p_schedule->nextDueMsOfDay % 3600000u) / 60000u),
+                     (unsigned long)nightDateKey,
+                     (unsigned long)(nightMsOfDay / 3600000u),
+                     (unsigned long)((nightMsOfDay % 3600000u) / 60000u));
+
+            p_schedule->nextDueDateKey = nightDateKey;
+            p_schedule->nextDueMsOfDay  = nightMsOfDay;
+        }
+    }
+#endif
+
+    /* 7. Log the consumption and the next scheduled time */
     APP_LOGN("FSM", "%s alarm consume %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=period-offset",
              p_tag,
              (unsigned long)p_schedule->lastDispatchedDateKey,
@@ -2610,6 +2699,7 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNowCommon(AppFsmTxScheduleContext_
              (unsigned long)((p_schedule->nextDueMsOfDay % 3600000u) / 60000u),
              (unsigned long)((p_schedule->nextDueMsOfDay % 60000u) / 1000u),
              (unsigned)p_schedule->periodHours);
+
     return APP_STATUS_OK;
 }
 

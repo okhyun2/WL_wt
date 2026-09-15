@@ -21,13 +21,13 @@ extern "C" {
 /* ================================================================
  *  EPC Test Mode (시험용 빌드 옵션)
  * ================================================================ */
-#define APP_EPC_TEST_MODE_ENABLE                    (APP_FALSE)   /* 1:시험 코드 포함, 0:완전 제거 */
+#define APP_EPC_TEST_MODE_ENABLE                    (APP_TRUE)   /* 1:시험 코드 포함, 0:완전 제거 */
 
 #define APP_EPC_LOG_TAG                             "EPC"
 #define APP_SELFDIAG_LOG_TAG                        "SELFDIAG"   /* 신규: TEST3 자가진단 전용 로그 태그 */
 
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
-#define APP_EPC_ACTIVE_TEST_ID                      (3u)   /* 1:시험1, 2:시험2, 3:시험3(자가진단)  */
+#define APP_EPC_ACTIVE_TEST_ID                      (7u)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(무선환경 기반 통신 파라미터 자동설정)  */
 
 #if (APP_EPC_ACTIVE_TEST_ID == 1u)
 #define APP_EPC_TEST_ID_STRING                      "TEST1"
@@ -42,6 +42,22 @@ extern "C" {
 #define APP_EPC_TEST3_SELFDIAG_PERIOD_SEC           (10u)  /* 자가진단 반복 주기(초) */
 #define APP_EPC_TEST3_DUT_LABEL                     "SAMPLE-01"  /* 시료 식별 라벨: 보드마다 값 변경 */
 #define APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED (APP_TRUE) /* 외부 watchdog test . APP_TRUE:watchdog no feed*/
+
+#elif (APP_EPC_ACTIVE_TEST_ID == 7u)
+#define APP_EPC_TEST_ID_STRING                      "TEST7"
+
+/* ----------------------------------------------------------------
+ *  TEST7: 시험 조건 전송 주기 단축 (서비스/관리 전송: 1시간 -> 10분)
+ *  App_FsmTxScheduleCheckDue / EnsureInitialized / ConsumeDueNow 에서
+ *  #ifdef 로 참조하는 디버그 오버라이드 매크로. periodHours(EEPROM)보다
+ *  우선 적용되어 다음 due 시각 계산까지 그대로 반영된다.
+ * ---------------------------------------------------------------- */
+#define APP_EPC_TEST7_TX_PERIOD_MIN                 (5u)   /* 시험 조건 전송 주기(분) */
+#define APP_DEBUG_TX_PERIOD_MS                       (APP_EPC_TEST7_TX_PERIOD_MIN * 60000u)   /* service TX */
+#define APP_DEBUG_MGMT_TX_PERIOD_MS                  (APP_EPC_TEST7_TX_PERIOD_MIN * 60000u)   /* management TX */
+
+#define APP_EPC_TEST7_METERING_PERIOD_MIN (3u)  /* 검침 주기 5분 */
+#define APP_DEBUG_METER_PERIOD_MS   (APP_EPC_TEST7_METERING_PERIOD_MIN * 60000u)
 
 #endif
 #endif
@@ -282,7 +298,7 @@ extern "C" {
 #define APP_COMM_PERIOD_WEAK_HOURS              (72u)  /* 약전계 시 3일 주기 */
 
 #define APP_COMM_NIGHT_START_HOUR               (1u)   /* 01:00 */
-#define APP_COMM_NIGHT_END_HOUR                 (2u)   /* 02:00 (exclusive) */
+#define APP_COMM_NIGHT_END_HOUR                 (4u)   /* 04:00 */
 
 #define APP_MSGQ_DEPTH                              (16u)
 #define APP_MSGQ_CAPACITY                           (APP_MSGQ_DEPTH)

@@ -1,4 +1,4 @@
-/* app_comm_param.c */
+#include "app_log.h"
 #include "app_comm_param.h"
 #include "app_build_config.h"
 #include "app_meter_server_format.h"
@@ -10,7 +10,11 @@ static uint8_t g_appCommBadStreak  = 0u;
 
 void App_CommSignalMeasureAndUpdate(const AppBc95Quality_t *p_quality)
 {
+    AppCommSignalState_t prevState;
+
     if ((p_quality == NULL) || (p_quality->valid != APP_TRUE)) { return; }
+
+    prevState = g_appCommSignalState;
 
     if ((p_quality->rssiDbm <= APP_COMM_RSSI_ENTER_WEAK_DBM) ||
         (p_quality->rsrpDbm <= APP_COMM_RSRP_ENTER_WEAK_DBM))
@@ -23,6 +27,11 @@ void App_CommSignalMeasureAndUpdate(const AppBc95Quality_t *p_quality)
         g_appCommSignalState = APP_COMM_SIGNAL_STRONG;
     }
     /* 데드존이면 이전 상태 유지 (분기 없음) */
+
+    APP_LOGN("COMM", "signal state %s -> %s (RSSI=%d RSRP=%d)",
+         (prevState == APP_COMM_SIGNAL_STRONG) ? "STRONG" : "WEAK",
+         (g_appCommSignalState == APP_COMM_SIGNAL_STRONG) ? "STRONG" : "WEAK",
+         p_quality->rssiDbm, p_quality->rsrpDbm);
 }
 
 void App_CommSuccessUpdate(uint8_t attemptUsedIdx, uint8_t allFailed)
@@ -32,7 +41,7 @@ void App_CommSuccessUpdate(uint8_t attemptUsedIdx, uint8_t allFailed)
 
     if (isGood == APP_TRUE)
     {
-        g_appCommGoodStreak++;
+        g_appCommGoodStreak = (g_appCommGoodStreak < 0xFFu) ? (g_appCommGoodStreak + 1u) : 0xFFu;
         g_appCommBadStreak = 0u;
         if (g_appCommGoodStreak >= APP_COMM_SUCCESS_STREAK_NEEDED)
         {
@@ -41,13 +50,17 @@ void App_CommSuccessUpdate(uint8_t attemptUsedIdx, uint8_t allFailed)
     }
     else
     {
-        g_appCommBadStreak++;
+        g_appCommBadStreak = (g_appCommBadStreak < 0xFFu) ? (g_appCommBadStreak + 1u) : 0xFFu;
         g_appCommGoodStreak = 0u;
         if (g_appCommBadStreak >= APP_COMM_SUCCESS_STREAK_NEEDED)
         {
             g_appCommSuccessState = APP_COMM_SUCCESS_LOW;
         }
     }
+
+    APP_LOGN("COMM", "success update: attemptIdx=%u allFailed=%u goodStreak=%u/%u badStreak=%u/%u",
+         attemptUsedIdx, allFailed, g_appCommGoodStreak, APP_COMM_SUCCESS_STREAK_NEEDED,
+         g_appCommBadStreak, APP_COMM_SUCCESS_STREAK_NEEDED);
 }
 
 AppCommSignalState_t  App_CommGetSignalState(void)  { return g_appCommSignalState; }
@@ -83,4 +96,7 @@ void App_CommParamRecompose(void)
                                            (uint8_t)APP_COMM_NIGHT_END_HOUR);
         (void)App_MeterServerOptionsUpdate(&opt);
     }
+
+    APP_LOGN("COMM", "param applied: reportPeriod=%uh nightOnly=%u window=%02u~%02u",
+         opt.reportingPeriodHours, opt.nightOnly, opt.nightStartHour, opt.nightEndHour);
 }
