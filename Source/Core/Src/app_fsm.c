@@ -2481,6 +2481,18 @@ static AppStatus_t App_FsmTxScheduleCheckDueCommon(AppFsmTxScheduleContext_t *p_
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
 static uint8_t App_FsmTxScheduleApplyNightOnlyGate(const char *p_tag)
 {
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
+    /* [TEST7 전용] night-only 절전 게이트 완전 우회.
+     * EEPROM에 남아있는 과거 세션의 opt.nightOnly=1 값 때문에
+     * 주간(01:00~04:00 이외 시간)에 5분 주기 TEST7 사이클이
+     * 야간 윈도우까지 지연되는 문제를 막기 위해,
+     * TEST7 빌드에서는 항상 due 판정을 그대로 통과시킨다.
+     * 운영(양산) 빌드에서는 이 #if 블록이 컴파일되지 않으므로
+     * night-only 절전 기능은 그대로 유지된다. */
+    APP_LOGN("FSM", "%s night-only gate bypassed (TEST7 debug mode)",
+             (p_tag != NULL) ? p_tag : "[[TxSchedule]]");
+    return APP_TRUE;
+#else
     AppMeterServerFormatOptions_t opt;
     AppDateTime_t now;
 
@@ -2497,6 +2509,7 @@ static uint8_t App_FsmTxScheduleApplyNightOnlyGate(const char *p_tag)
              (p_tag != NULL) ? p_tag : "[[TxSchedule]]",
              (unsigned)now.hour, (unsigned)opt.nightStartHour, (unsigned)opt.nightEndHour);
     return APP_FALSE;
+#endif
 }
 
 static AppStatus_t App_FsmTxScheduleRecomputeNextNightStart(uint32_t *p_dateKey, uint32_t *p_msOfDay)
