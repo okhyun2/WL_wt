@@ -135,6 +135,7 @@ static uint8_t  s_appTest7RepeatIndex = 0u;
 static uint32_t s_appTest7Seq         = 0u;
 static uint16_t s_appTest7PassCount   = 0u;
 static uint16_t s_appTest7FailCount   = 0u;
+static uint32_t s_appTest7LapCount    = 1u; 
 
 /* 케이스 진입 시 success streak를 목표 패턴으로 선반영(워밍업)하여
    HIGH<->LOW 전환 디바운스(APP_COMM_SUCCESS_STREAK_NEEDED)로 인한
@@ -278,10 +279,16 @@ void App_CommTest7RunCycle(void)
 
         if (s_appTest7CaseIndex >= APP_TEST7_CASE_COUNT)
         {
-            APP_LOGN("TEST7", "test=TEST7,summary=ALL_COMPLETE,total=%lu,pass=%u,fail=%u",
+            APP_LOGN("TEST7",
+                     "test=TEST7,summary=LAP_COMPLETE,lap=%lu,total=%lu,pass=%u,fail=%u",
+                     (unsigned long)s_appTest7LapCount,
                      (unsigned long)s_appTest7Seq,
                      (unsigned)s_appTest7PassCount,
                      (unsigned)s_appTest7FailCount);
+
+            /* E_restoreToA 이후에도 계속 순환: A_normal부터 다시 시작 */
+            s_appTest7CaseIndex = 0u;
+            s_appTest7LapCount++;
         }
     }
 }

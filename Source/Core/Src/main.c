@@ -31,6 +31,7 @@
 #include <string.h>
 #include "app_log.h"
 #include "app_meter.h"
+#include "app_meter_storage.h"
 
 /* USER CODE END Includes */
 
@@ -251,6 +252,9 @@ int main(void)
   /* NBIoT 다수 장치 동시 접속 방지: 부팅 시 장치별 고정 오프셋 지연.
    워치독(MX_WWDG_Init)이 아직 시작되지 않았고, FSM/메인루프도
    아직 진입 전이므로 이 지점에서는 단순 HAL_Delay 사용이 안전함. */
+  /* NBIoT 다수 장치 동시 접속 방지: 부팅 시 장치별 고정 오프셋 지연.
+     TEST12는 NB-IoT 접속 전에 정지하므로 이 지연이 불필요 -> 건너뛴다. */
+#if !((APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 12u))
   {
     uint32_t deviceHash = App_ClockGetDeviceUidHash();
     uint32_t offsetSec = (APP_NBIOT_BOOT_OFFSET_MAX_SEC == 0u)
@@ -264,6 +268,7 @@ int main(void)
 
     HAL_Delay(offsetMs);
   }
+#endif
 
   #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
   /* EPC 시험 세션 시작 마커 - APP_EPC_TEST_MODE_ENABLE=0 이면 이 블록 전체가
@@ -295,6 +300,72 @@ int main(void)
     }
   }
   #endif
+
+  /* ------------------------------------------------------------
+   *  TEST12: 전원 이상 및 복구 신뢰성
+   *  카운터 읽기/증가/저장 및 판정 로그만 출력하고, 아래 MX_WWDG_Init()
+   *  호출 지점까지 도달하지 않도록 여기서 정지한다.
+   * ------------------------------------------------------------ */
+  #if (APP_EPC_ACTIVE_TEST_ID == 12u)
+  {
+    AppDeviceConfig_t cfg;
+    AppStatus_t loadStatus;
+    AppStatus_t saveStatus;
+    uint8_t     chkOk;
+
+    (void)memset(&cfg, 0, sizeof(cfg));
+    loadStatus = App_DeviceConfigLoad(&cfg);
+
+    if (loadStatus == APP_STATUS_OK)
+    {
+      /* 이전 슬롯 정상 로드 */
+      chkOk = APP_TRUE;
+    }
+    else if (loadStatus == APP_STATUS_NOT_INITIALIZED)
+    {
+      /* 최초 부팅: 유효 슬롯 없음 -> 손상이 아니라 정상 초기 상태 */
+      App_DeviceConfigSetDefaults(&cfg);
+      chkOk = APP_TRUE;
+    }
+    else
+    {
+      /* 그 외 오류(슬롯 CRC 불일치 등) -> 손상으로 취급, 기본값 복구 */
+      App_DeviceConfigSetDefaults(&cfg);
+      chkOk = APP_FALSE;
+    }
+
+    cfg.bootCount++;
+    cfg.bootCountValid = 1u;
+
+    saveStatus = App_DeviceConfigSave(&cfg);
+
+    if (saveStatus != APP_STATUS_OK)
+    {
+      /* 저장 자체가 실패 -> 이번 사이클은 "미증가"로 남는다 */
+      EPC_LOGI("test=%s,COUNTER=%05lu,CHK=SAVE_FAIL",
+               APP_EPC_TEST_ID_STRING, (unsigned long)cfg.bootCount);
+    }
+    else
+    {
+      EPC_LOGI("test=%s,COUNTER=%05lu,CHK=%s",
+               APP_EPC_TEST_ID_STRING, (unsigned long)cfg.bootCount,
+               (chkOk == APP_TRUE) ? "OK" : "RECOVERED");
+    }
+
+    /* UART 로그가 물리적으로 다 나갈 시간 확보 후 정지 마커 출력 */
+    HAL_Delay(APP_EPC_TEST12_UART_FLUSH_DELAY_MS);
+    EPC_LOGI("test=%s,halt=1", APP_EPC_TEST_ID_STRING);
+    HAL_Delay(20u);
+
+    /* 워치독(MX_WWDG_Init) 호출 이전이므로 WWDG 미기동 상태.
+       여기서 멈추면 이후 리셋은 오직 외부 전원 재인가로만 발생한다. */
+    __disable_irq();
+    while (1)
+    {
+      /* intentionally halted for TEST12 */
+    }
+  }
+  #endif /* APP_EPC_ACTIVE_TEST_ID == 12u */
 
   #endif
 

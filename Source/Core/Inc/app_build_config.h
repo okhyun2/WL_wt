@@ -27,7 +27,7 @@ extern "C" {
 #define APP_SELFDIAG_LOG_TAG                        "SELFDIAG"   /* 신규: TEST3 자가진단 전용 로그 태그 */
 
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
-#define APP_EPC_ACTIVE_TEST_ID                      (7u)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(무선환경 기반 통신 파라미터 자동설정)  */
+#define APP_EPC_ACTIVE_TEST_ID                      (12u)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(통신파라미터), 12:시험12(전원이상/복구) */
 
 #if (APP_EPC_ACTIVE_TEST_ID == 1u)
 #define APP_EPC_TEST_ID_STRING                      "TEST1"
@@ -58,6 +58,17 @@ extern "C" {
 
 #define APP_EPC_TEST7_METERING_PERIOD_MIN (3u)  /* 검침 주기(분) */
 #define APP_DEBUG_METER_PERIOD_MS   (APP_EPC_TEST7_METERING_PERIOD_MIN * 60000u)
+
+#elif (APP_EPC_ACTIVE_TEST_ID == 12u)
+#define APP_EPC_TEST_ID_STRING                      "TEST12"
+
+/* ----------------------------------------------------------------
+ *  TEST12: 전원 이상 및 복구 신뢰성
+ *  부팅 카운터(EEPROM) 읽기 -> +1 증가 -> 저장 -> 판정 로그 출력까지만
+ *  수행하고, MX_WWDG_Init() 호출 이전에 정지한다(워치독 미기동 상태).
+ *  -> 이후 전원 재인가(리셋)만이 다음 사이클을 유발하는 유일한 트리거.
+ * ---------------------------------------------------------------- */
+#define APP_EPC_TEST12_UART_FLUSH_DELAY_MS           (50u)
 
 #endif
 #endif
