@@ -57,8 +57,8 @@ TEST_DEFS = {
     "0":  {**TEST_META["0"],  "factory": lambda p: NormalOnlyScenario()},
     "1":  {**TEST_META["1"],  "factory": lambda p: Test1NormalCollection()},
     "2":  {**TEST_META["2"],  "factory": lambda p: Test2ChecksumError()},
-    "3":  {**TEST_META["3"],  "factory": lambda p: Test3SelfDiagnosisCase(case=p["case"])},
-    "11": {**TEST_META["11"], "factory": lambda p: Test11EnduranceCycle()},
+#    "3":  {**TEST_META["3"],  "factory": lambda p: Test3SelfDiagnosisCase(case=p["case"])},
+#    "11": {**TEST_META["11"], "factory": lambda p: Test11EnduranceCycle()},
 }
 
 # ------------------------------------------------------------------

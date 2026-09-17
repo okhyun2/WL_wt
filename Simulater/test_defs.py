@@ -6,14 +6,14 @@ scenarios.py가 이 파일의 상수를 가져다 쓰는 방향으로만 참조�
 """
 
 # ---------------- 시험1 파라미터 ----------------
-TEST1_PHASE1_COUNT = 10
-TEST1_PHASE2_COUNT = 10
+TEST1_PHASE1_COUNT = 50
+TEST1_PHASE2_COUNT = 50
 TEST1_PHASE1_DELAY_SEC = 0.030
 TEST1_PHASE2_DELAY_RANGE = (0.020, 0.050)
 
 # ---------------- 시험2 파라미터 ----------------
-TEST2_DEFAULT_TOTAL_NORMAL = 10
-TEST2_DEFAULT_TOTAL_ERROR = 5
+TEST2_DEFAULT_TOTAL_NORMAL = 100
+TEST2_DEFAULT_TOTAL_ERROR = 50
 
 
 def _test1_desc():
