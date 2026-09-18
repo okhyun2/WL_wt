@@ -295,6 +295,9 @@ extern "C" {
 #define APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS   (APP_POLICY_SERVER_ACK_POLL_MS / 100u)
 #define APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS     (0u) /* 0: legacy fixed spread fallback */
 #define APP_POLICY_REPORT_SPREAD_FALLBACK_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
+//TODO change serial number -> serial_bcd 5
+#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
+
 
 /* ================================================================
  *  Comm Parameter Auto-Tuning (무선환경 기반 통신 파라미터 자동설정)

@@ -3493,6 +3493,58 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 APP_RETURN_IF_FALSE(App_SystemRunWakeDataCollection() == APP_STATUS_OK, APP_STATUS_FATAL);
 #endif /* APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 #endif /* SUPPORT_SELFTEST */
+
+                /* [[BootLiveTx]] 첫 부팅 강제 1회 전송 (mgmt 서버 전용).
+                 * App_NBIoTColdBootResetTrack() 안에서 이미 attach가 완료된 상태이므로
+                 * 별도 attach 호출 없이 바로 전송한다.
+                 * App_NBIoTTransmitMgmtLiveRecord()는 storage를 건드리지 않고
+                 * 정기 관제 전송(App_NBIoTTransmitMgmtUdp)과 동일한 서버/포트로 보낸다.
+                 * 계량기 프로브나 전송이 실패해도 부팅 시퀀스는 계속 진행한다(FATAL 아님).
+                 */
+                {
+                    AppMeterStorageRecord_t bootLiveRecord;
+                    AppStatus_t liveProbeStatus;
+                    AppStatus_t mgmtTxStatus;
+
+                    //Update DUT battery
+                    {
+                        uint32_t adc_vref = 0, adc_vbat = 0, vbat_mv = 0, vdda_mv = 0;
+
+                        APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
+                        APP_RETURN_IF_HAL_ERROR(Battery_ReadVoltage_Averaged_mV(&adc_vref, &adc_vbat, &vdda_mv, &vbat_mv), APP_STATUS_SELFTEST_FAILED);
+
+                        APP_LOGN("FSM", "ADC(vref:%lu, vbat:%lu) Volt(vdda:%lumV, vbat:%lumV)",
+                                 (unsigned long)adc_vref,
+                                 (unsigned long)adc_vbat,
+                                 (unsigned long)vdda_mv,
+                                 (unsigned long)vbat_mv);
+
+                        {
+                            uint8_t voltX10 = (uint8_t)((vbat_mv + 50u) / 100u);
+                            App_UpdateBatteryToOptions(voltX10, 0u);
+                        }
+                    }
+
+                    (void)memset(&bootLiveRecord, 0, sizeof(bootLiveRecord));
+                    liveProbeStatus = App_FsmMeterProbeNoStore(&bootLiveRecord);
+
+                    if (liveProbeStatus == APP_STATUS_OK)
+                    {
+                        APP_LOGN("FSM", "[[BootLiveTx]] force first boot send (mgmt only)");
+
+                        mgmtTxStatus = App_NBIoTTransmitMgmtLiveRecord(&bootLiveRecord);
+                        if (mgmtTxStatus != APP_STATUS_OK)
+                        {
+                            APP_LOGW("FSM", "[[BootLiveTx]] mgmt send failed status=%d",
+                                     (int)mgmtTxStatus);
+                        }
+                    }
+                    else
+                    {
+                        APP_LOGW("FSM", "[[BootLiveTx]] live meter probe failed status=%d, skip forced first send",
+                                 (int)liveProbeStatus);
+                    }
+                }
             }
             else
             {
@@ -3716,8 +3768,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 do something;
                 APP_RETURN_IF_FALSE(App_RtcApplySync() == APP_STATUS_OK, APP_STATUS_FATAL);
             */
-            //APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_STORAGE_XXXXX, 0u, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
-            //Clear eventPending
+            APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_STORAGE_RELEASE, APP_TRUE, APP_FALSE) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL); //eventPending
             App_FsmMarkComponent(APP_FSM_COMPONENT_STORAGE, APP_FSM_STATE_STORAGE_RELEASE, APP_FALSE, APP_FALSE, APP_STATUS_OK);
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;

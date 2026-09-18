@@ -983,10 +983,33 @@ AppStatus_t App_SystemRunWakeDataCollection(void)
     if (status == APP_STATUS_OK)
     {
         APP_LOGI("SELF", "------ Wake data collection finished without failures");
+        // Confirm Buzzer
+        {
+            uint8_t index;
+
+            for (index = 0u; index < 1; index++)
+            {
+                HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_SET);
+                HAL_Delay(80);
+                HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
+            }
+        }
+
         return APP_STATUS_OK;
     }
 
     APP_LOGW("SELF", "!!!!!! Wake data collection completed with one or more failures");
+    // Confirm Buzzer
+    {
+        uint8_t index;
+
+        for (index = 0u; index < 3; index++)
+        {
+            HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_SET);
+            HAL_Delay(80);
+            HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
+        }
+    }
 
     if (APP_SELFTEST_FAIL_STOPS_BOOT == APP_TRUE)
     {

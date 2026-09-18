@@ -239,7 +239,7 @@ void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options)
 
     p_options->wirelessQuality[0] = 0;
     p_options->mobileIdBcd[0] = 0;
-    p_options->deviceSerialBcd[0] = 0;
+    memcpy(p_options->deviceSerialBcd, APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD, 5);
 
     p_options->firmwareVersion[0] = (uint8_t)APP_FW_VERSION_MAJOR;
     p_options->firmwareVersion[1] = (uint8_t)APP_FW_VERSION_MINOR;
