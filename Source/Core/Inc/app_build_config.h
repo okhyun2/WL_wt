@@ -21,13 +21,13 @@ extern "C" {
 /* ================================================================
  *  EPC Test Mode (시험용 빌드 옵션)
  * ================================================================ */
-#define APP_EPC_TEST_MODE_ENABLE                    (APP_TRUE)   /* 1:시험 코드 포함, 0:완전 제거 */
+#define APP_EPC_TEST_MODE_ENABLE                    (APP_FALSF)   /* 1:시험 코드 포함, 0:완전 제거 */
 
 #define APP_EPC_LOG_TAG                             "EPC"
 #define APP_SELFDIAG_LOG_TAG                        "SELFDIAG"   /* 신규: TEST3 자가진단 전용 로그 태그 */
 
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
-#define APP_EPC_ACTIVE_TEST_ID                      (12u)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(통신파라미터), 12:시험12(전원이상/복구) */
+#define APP_EPC_ACTIVE_TEST_ID                      (7)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(통신파라미터), 12:시험12(전원이상/복구) */
 
 #if (APP_EPC_ACTIVE_TEST_ID == 1u)
 #define APP_EPC_TEST_ID_STRING                      "TEST1"
@@ -40,8 +40,8 @@ extern "C" {
 #elif (APP_EPC_ACTIVE_TEST_ID == 3u)                              
 #define APP_EPC_TEST_ID_STRING                      "TEST3"
 #define APP_EPC_TEST3_SELFDIAG_PERIOD_SEC           (10u)  /* 자가진단 반복 주기(초) */
-#define APP_EPC_TEST3_DUT_LABEL                     "SAMPLE-01"  /* 시료 식별 라벨: 보드마다 값 변경 */
-#define APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED (APP_TRUE) /* 외부 watchdog test . APP_TRUE:watchdog no feed*/
+#define APP_EPC_TEST3_DUT_LABEL                     "SAMPLE-03"  /* SAMPLE-01:DUT-C, SAMPLE-02:DUT-B, SAMPLE-03:DUT-A 시료 식별 라벨: 보드마다 값 변경 */
+#define APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED (APP_FALSE) /* DUT-C 외부 watchdog test . APP_TRUE:watchdog no feed*/
 
 #elif (APP_EPC_ACTIVE_TEST_ID == 7u)
 #define APP_EPC_TEST_ID_STRING                      "TEST7"
@@ -102,6 +102,7 @@ extern "C" {
 #define NBIOT_SUPPORT_DNS
 #ifdef NBIOT_SUPPORT_DNS
 #define MY_SERVER_DOMAIN              "acorp2.iptime.org"
+//#define MY_SERVER_DOMAIN              "dev-aro.com"
 #define WARMUPDNS_SERVER_DOMAIN       "www.google.com"
 #define APP_MGMT_SERVER_DOMAIN        MY_SERVER_DOMAIN
 #else
@@ -110,6 +111,8 @@ extern "C" {
 #endif // NBIOT_SUPPORT_DNS
 #define APP_SERVICE_SERVER_PORT                 (6001u)
 #define APP_MGMT_SERVER_PORT                    (6001u)
+//#define APP_SERVICE_SERVER_PORT                 (41001u)
+//#define APP_MGMT_SERVER_PORT                    (41001u)
 
 /* BC95-GV board-aligned platform provisioning defaults */
 #define APP_BC95_PLATFORM_SERVER_IP_STRING      "106.103.233.155"
@@ -245,7 +248,7 @@ extern "C" {
 #define APP_RTC_LSE_SYNC_PREDIV                     (255u)
 #define APP_RTC_LSI_ASYNC_PREDIV                    (127u)
 #define APP_RTC_LSI_SYNC_PREDIV                     (288u)
-#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u)
+#define APP_RTC_WAKEUP_PERIOD_MS                    (60*60*1000u) //1h
 //#define APP_RTC_WAKEUP_PERIOD_MS                    (0u) // test/debug/fallback only
 #define APP_RTC_WAKEUP_PERIOD_TEST_FALLBACK_ONLY    (APP_TRUE)
 #define APP_RTC_ALARM_COLLISION_TX_DELAY_SEC        (60u)
