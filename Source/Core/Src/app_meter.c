@@ -251,7 +251,7 @@ static AppStatus_t App_MeterBuildDigitalRecord(const App_MeterUnion_t *pRxFrame,
         APP_LOGW("METER", "RTC time invalid. Store record without TIME_VALID flag.");
     }
 
-    return APP_STATUS_FATAL;
+    return APP_STATUS_OK;
 }
 
 void App_MeterSetStorageEnabled(uint8_t enabled)
@@ -303,7 +303,7 @@ static AppStatus_t App_MeterBuildSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxF
         APP_LOGW("METER", "RTC time invalid. Store record without TIME_VALID flag.");
     }
 
-    return APP_STATUS_FATAL;
+    return APP_STATUS_OK;
 }
 
 #if 0 //optimize for del
