@@ -1005,6 +1005,7 @@ AppStatus_t App_SystemRunWakeDataCollection(void)
 
         for (index = 0u; index < 3; index++)
         {
+            HAL_Delay(80);
             HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_SET);
             HAL_Delay(80);
             HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);

@@ -3478,6 +3478,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
             if (isBootResetTrack == APP_TRUE)
             {
+                //start cold-boot reset/provision flow
                 trackStatus = App_NBIoTColdBootResetTrack();
                 if (trackStatus != APP_STATUS_OK)
                 {

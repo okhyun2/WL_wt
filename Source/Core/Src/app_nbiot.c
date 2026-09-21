@@ -3063,6 +3063,7 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
     status = App_NbiotRunBoardAttachVerificationSequence();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
+#if (APP_POLICY_NBIOT_BOOTTRACK_COLD_PROVISION == APP_TRUE)
     status = App_NbiotRunBoardProvisioningSequence();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
@@ -3070,6 +3071,7 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     APP_LOGN("NBIOT", "[[BootTrack]] done (board-aligned provisioning flow)");
+#endif
     return APP_STATUS_OK;
 }
 

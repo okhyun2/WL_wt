@@ -297,12 +297,13 @@ extern "C" {
 #define APP_POLICY_REPORT_SPREAD_FALLBACK_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
 //TODO change serial number -> serial_bcd 5
 #define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
+#define APP_POLICY_NBIOT_BOOTTRACK_COLD_PROVISION  (APP_FALSE) //default: TRUE
 
 
 /* ================================================================
  *  Comm Parameter Auto-Tuning (무선환경 기반 통신 파라미터 자동설정)
  * ================================================================ */
-#define APP_COMM_PARAM_AUTOTUNE_ENABLE          (APP_TRUE)
+#define APP_COMM_PARAM_AUTOTUNE_ENABLE          (APP_FALSE) //default:TRUE
 
 #define APP_COMM_RSSI_ENTER_WEAK_DBM            (-100)
 #define APP_COMM_RSSI_EXIT_WEAK_DBM             (-95)
