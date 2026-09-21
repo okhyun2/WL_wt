@@ -53,6 +53,14 @@
 
 #define APP_FSM_MGMT_TX_BUSY_DEFER_MS  (30u * 1000u)
 
+#if defined(SUPPORT_METER_NORMAL)
+#define APP_FSM_BOOT_METER_SRC_TYPE   APP_METER_STORAGE_SRC_DIGITAL_UART
+#define APP_FSM_BOOT_METER_TYPE       APP_METER_STORAGE_METER_TYPE_DIGITAL_UART
+#elif defined(SUPPORT_METER_SC1xxx)
+#define APP_FSM_BOOT_METER_SRC_TYPE   APP_METER_STORAGE_SRC_SC1XXX
+#define APP_FSM_BOOT_METER_TYPE       APP_METER_STORAGE_METER_TYPE_SC1XXX
+#endif
+
 #if 0 //debug
 #define APP_FSM_TX_SERVICE_SLOT_OFFSET_MS     (15u * 1000u)
 #define APP_FSM_TX_MGMT_SLOT_OFFSET_MS        (40u * 1000u)
@@ -272,14 +280,22 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     if (status != APP_STATUS_OK)
     {
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
-        return status;
+        APP_LOGW("FSM", "[[MeterWake]] uart reinit failed status=%ld -> store placeholder record",
+                 (long)status);
+        (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
+        return APP_STATUS_OK;
     }
 
-    APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_METER_HANDLE,
-                                              (uint8_t *)meterWakeFrame,
-                                              (uint16_t)sizeof(meterWakeFrame),
-                                              APP_SELFTEST_UART_TIMEOUT_MS),
-                            APP_STATUS_UART_TX_FAILED);
+    if (HAL_UART_Transmit(APP_UART_METER_HANDLE,
+                          (uint8_t *)meterWakeFrame,
+                          (uint16_t)sizeof(meterWakeFrame),
+                          APP_SELFTEST_UART_TIMEOUT_MS) != HAL_OK)
+    {
+        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+        APP_LOGW("FSM", "[[MeterWake]] uart tx failed -> store placeholder record");
+        (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
+        return APP_STATUS_OK;
+    }
 
     status = App_FsmMeterReceiveBlocking(meterReply,
                                          APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
@@ -287,7 +303,13 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
 
     HAL_Delay(100u);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("FSM", "[[MeterWake]] uart rx failed/timeout status=%ld -> store placeholder record",
+                 (long)status);
+        (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
+        return APP_STATUS_OK;
+    }
 
     App_LogHexDump(APP_LOG_LEVEL_INFO,
                    "FSM",
@@ -299,7 +321,13 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     status = App_MeterProcessReceivedData((const uint8_t *)meterReply,
                                           APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
     App_MeterSetStorageEnabled(storageEnabledPrev);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    if (status != APP_STATUS_OK)
+    {
+        /* App_MeterProcessReceivedData 내부에서 파싱 실패 시 이미 치환 레코드를
+         * 저장하므로 여기서는 로그만 남기고 정상 흐름으로 리턴한다. */
+        APP_LOGW("FSM", "[[MeterWake]] process received data reported status=%ld", (long)status);
+        return APP_STATUS_OK;
+    }
 
     APP_LOGN("FSM", "[[MeterWake]] scheduled meter record stored");
     return APP_STATUS_OK;
@@ -326,7 +354,10 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     status = App_FsmMeterReinitUart(APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS);
     if (status != APP_STATUS_OK)
     {
-        return status;
+        APP_LOGW("FSM", "[[MeterWake]] uart reinit failed status=%ld -> store placeholder record",
+                 (long)status);
+        (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
+        return APP_STATUS_OK;
     }
 
     status = App_FsmMeterReceiveBlocking(meterReply,
@@ -334,7 +365,13 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
                                          APP_SELFTEST_UART_REPLY_METER_SC1xxx_TIMEOUT_MS);
     HAL_Delay(100u);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("FSM", "[[MeterWake]] uart rx failed/timeout status=%ld -> store placeholder record",
+                 (long)status);
+        (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
+        return APP_STATUS_OK;
+    }
 
     App_LogHexDump(APP_LOG_LEVEL_INFO,
                    "FSM",
@@ -346,7 +383,11 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     status = App_MeterSC1xxxProcessReceivedData((const uint8_t *)meterReply,
                                                 APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
     App_MeterSetStorageEnabled(storageEnabledPrev);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("FSM", "[[MeterWake]] process received data reported status=%ld", (long)status);
+        return APP_STATUS_OK;
+    }
 
     APP_LOGN("FSM", "[[MeterWake]] scheduled SC1xxx meter record stored");
     return APP_STATUS_OK;
@@ -375,14 +416,20 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
     if (status != APP_STATUS_OK)
     {
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
-        return status;
+        APP_LOGW("FSM", "[[BootLiveTx]] uart reinit failed status=%ld -> build placeholder live record",
+                 (long)status);
+        return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
     }
 
-    APP_RETURN_IF_HAL_ERROR(HAL_UART_Transmit(APP_UART_METER_HANDLE,
-                                              (uint8_t *)meterWakeFrame,
-                                              (uint16_t)sizeof(meterWakeFrame),
-                                              APP_SELFTEST_UART_TIMEOUT_MS),
-                            APP_STATUS_UART_TX_FAILED);
+    if (HAL_UART_Transmit(APP_UART_METER_HANDLE,
+                          (uint8_t *)meterWakeFrame,
+                          (uint16_t)sizeof(meterWakeFrame),
+                          APP_SELFTEST_UART_TIMEOUT_MS) != HAL_OK)
+    {
+        App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
+        APP_LOGW("FSM", "[[BootLiveTx]] uart tx failed -> build placeholder live record");
+        return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
+    }
 
     status = App_FsmMeterReceiveBlocking(meterReply,
                                          APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
@@ -390,7 +437,12 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
 
     HAL_Delay(100u);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("FSM", "[[BootLiveTx]] uart rx failed/timeout status=%ld -> build placeholder live record",
+                 (long)status);
+        return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
+    }
 
     App_LogHexDump(APP_LOG_LEVEL_INFO,
                    "FSM",
@@ -400,7 +452,12 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
     status = App_MeterBuildLiveRecordFromReceivedData((const uint8_t *)meterReply,
                                                       APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
                                                       p_liveRecord);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("FSM", "[[BootLiveTx]] build live record failed status=%ld -> build placeholder live record",
+                 (long)status);
+        return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
+    }
     APP_LOGN("FSM", "[[BootLiveTx]] first meter record prepared for service+mgmt send (not stored)");
     return APP_STATUS_OK;
 #elif defined(SUPPORT_METER_SC1xxx)
@@ -427,7 +484,9 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
     status = App_FsmMeterReinitUart(APP_SELFTEST_UART_METER_REINIT_SETTLE_DELAY_MS);
     if (status != APP_STATUS_OK)
     {
-        return status;
+        APP_LOGW("FSM", "[[BootLiveTx]] uart reinit failed status=%ld -> build placeholder live record",
+                 (long)status);
+        return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
     }
 
     status = App_FsmMeterReceiveBlocking(meterReply,
@@ -435,7 +494,12 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
                                          APP_SELFTEST_UART_REPLY_METER_SC1xxx_TIMEOUT_MS);
     HAL_Delay(100u);
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("FSM", "[[BootLiveTx]] uart rx failed/timeout status=%ld -> build placeholder live record",
+                 (long)status);
+        return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
+    }
 
     App_LogHexDump(APP_LOG_LEVEL_INFO,
                    "FSM",
@@ -445,12 +509,19 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
     status = App_MeterSC1xxxBuildLiveRecordFromReceivedData((const uint8_t *)meterReply,
                                                             APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN,
                                                             p_liveRecord);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("FSM", "[[BootLiveTx]] build live record failed status=%ld -> build placeholder live record",
+                 (long)status);
+        return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
+    }
     APP_LOGN("FSM", "[[BootLiveTx]] first SC1xxx meter record prepared for service+mgmt send (not stored)");
     return APP_STATUS_OK;
 #else
     APP_RETURN_IF_FALSE(p_liveRecord != NULL, APP_STATUS_INVALID_PARAM);
-    return APP_STATUS_INVALID_PARAM;
+    return App_MeterBuildPlaceholderRecord(p_liveRecord,
+                                            APP_METER_STORAGE_SRC_DIGITAL_UART,
+                                            APP_METER_STORAGE_METER_TYPE_DIGITAL_UART);
 #endif
 }
 
@@ -3529,21 +3600,22 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                     (void)memset(&bootLiveRecord, 0, sizeof(bootLiveRecord));
                     liveProbeStatus = App_FsmMeterProbeNoStore(&bootLiveRecord);
 
-                    if (liveProbeStatus == APP_STATUS_OK)
+                    if (liveProbeStatus != APP_STATUS_OK)
                     {
-                        APP_LOGN("FSM", "[[BootLiveTx]] force first boot send (mgmt only)");
-
-                        mgmtTxStatus = App_NBIoTTransmitMgmtLiveRecord(&bootLiveRecord);
-                        if (mgmtTxStatus != APP_STATUS_OK)
-                        {
-                            APP_LOGW("FSM", "[[BootLiveTx]] mgmt send failed status=%d",
-                                     (int)mgmtTxStatus);
-                        }
-                    }
-                    else
-                    {
-                        APP_LOGW("FSM", "[[BootLiveTx]] live meter probe failed status=%d, skip forced first send",
+                        APP_LOGW("FSM", "[[BootLiveTx]] live meter probe failed status=%d, fallback to placeholder to force first send",
                                  (int)liveProbeStatus);
+                        (void)App_MeterBuildPlaceholderRecord(&bootLiveRecord,
+                                                              APP_FSM_BOOT_METER_SRC_TYPE,
+                                                              APP_FSM_BOOT_METER_TYPE);
+                    }
+
+                    APP_LOGN("FSM", "[[BootLiveTx]] force first boot send (mgmt only)");
+
+                    mgmtTxStatus = App_NBIoTTransmitMgmtLiveRecord(&bootLiveRecord);
+                    if (mgmtTxStatus != APP_STATUS_OK)
+                    {
+                        APP_LOGW("FSM", "[[BootLiveTx]] mgmt send failed status=%d",
+                                 (int)mgmtTxStatus);
                     }
                 }
             }

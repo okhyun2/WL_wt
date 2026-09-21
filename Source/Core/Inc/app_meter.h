@@ -69,6 +69,12 @@ AppStatus_t App_MeterBuildLiveRecordFromReceivedData(const uint8_t *pRxBuf,
                                                      AppMeterStorageRecord_t *p_record);
 void App_MeterPrintUnionDetailed(const App_MeterUnion_t *pRxFrame);
 
+/* [[PlaceholderRecord]] 검침 실패(무응답/파싱오류) 시 치환 데이터 생성/저장 API.
+ * srcType 은 AppMeterStorageSource_t, meterType 은 APP_METER_STORAGE_METER_TYPE_* 값을 사용한다. */
+AppStatus_t App_MeterBuildPlaceholderRecord(AppMeterStorageRecord_t *p_record,
+                                             uint8_t srcType,
+                                             uint8_t meterType);
+AppStatus_t App_MeterStorePlaceholderRecord(uint8_t srcType, uint8_t meterType);
 ///////////////////////////////////////////////////////////////////////////////////////
 /* SC1xxx */
 /* User Data 구조체 (10 bytes) */

@@ -17,6 +17,9 @@ extern "C" {
 #define APP_METER_STORAGE_FLAG_SENT             (1u << 1)
 #define APP_METER_STORAGE_FLAG_TIME_VALID       (1u << 2)
 #define APP_METER_STORAGE_FLAG_READING_VALID    (1u << 3)
+/* [[PlaceholderRecord]] 검침 실패(무응답/파싱오류) 시 치환 레코드임을 표시하는 플래그.
+ * 이 플래그가 세팅된 레코드는 meterId/readingScaled/meterBattery 가 sentinel 값이다. */
+#define APP_METER_STORAGE_FLAG_READ_FAILED      (1u << 4)
 
 #define APP_METER_STORAGE_STATUS_OVERFLOW       (1u << 7)
 #define APP_METER_STORAGE_STATUS_REVERSE_FLOW   (1u << 6)
@@ -26,6 +29,12 @@ extern "C" {
 #define APP_METER_STORAGE_METER_TYPE_DIGITAL_UART   (0x01u)
 #define APP_METER_STORAGE_METER_TYPE_SC1XXX         (0x02u)
 #define APP_METER_STORAGE_CALIBER_UNKNOWN           (0x0Fu)
+
+/* [[PlaceholderRecord]] 검침 실패 시 채우는 sentinel 값.
+ * 서버/관제 프로토콜에서 "측정 불가"를 나타내는 값으로 합의되면 이 값들만 교체하면 된다. */
+#define APP_METER_STORAGE_METERID_INVALID       (0xFFFFFFFFu)
+#define APP_METER_STORAGE_READING_INVALID       (0xFFFFFFFFu)
+#define APP_METER_STORAGE_BATTERY_INVALID        (0xFFu)
 
 #if defined(__GNUC__)
 #define APP_METER_STORAGE_PACKED __attribute__((packed))

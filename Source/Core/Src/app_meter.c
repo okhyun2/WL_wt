@@ -243,13 +243,12 @@ static AppStatus_t App_MeterBuildDigitalRecord(const App_MeterUnion_t *pRxFrame,
     App_MeterStoragePrintRecord(&record);
     *p_record = record;
 
-    if(timeValid == APP_TRUE)
+    /* [[PlaceholderRecord]] RTC 시각이 아직 유효하지 않아도 계량 데이터 자체는 정상
+     * 수신되었으므로 레코드를 폐기하지 않고 그대로 저장/전송 대상으로 삼는다.
+     * 이 경우 TIME_VALID 플래그만 세팅되지 않은 채로 남는다. */
+    if (timeValid != APP_TRUE)
     {
-        return APP_STATUS_OK;
-    }
-    else
-    {
-        APP_LOGW("METER", "Skip saving. Invalid datetime");
+        APP_LOGW("METER", "RTC time invalid. Store record without TIME_VALID flag.");
     }
 
     return APP_STATUS_FATAL;
@@ -297,13 +296,11 @@ static AppStatus_t App_MeterBuildSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxF
     record.caliberDecimal = (uint8_t)((APP_METER_STORAGE_CALIBER_UNKNOWN << 4) | 0x03u);
     *p_record = record;
 
-    if(timeValid == APP_TRUE)
+    /* [[PlaceholderRecord]] RTC 시각이 아직 유효하지 않아도 계량 데이터 자체는 정상
+     * 수신되었으므로 레코드를 폐기하지 않고 그대로 저장/전송 대상으로 삼는다. */
+    if (timeValid != APP_TRUE)
     {
-        return APP_STATUS_OK;
-    }
-    else
-    {
-        APP_LOGW("METER", "Skip saving. Invalid datetime");
+        APP_LOGW("METER", "RTC time invalid. Store record without TIME_VALID flag.");
     }
 
     return APP_STATUS_FATAL;
@@ -320,6 +317,73 @@ static AppStatus_t App_MeterSaveSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxFr
     return(App_MeterStoragePush(&record));
 }
 #endif
+
+/* ================================================
+ * [[PlaceholderRecord]] 검침 실패(무응답/파싱오류) 시 치환 레코드 생성
+ * - meterId/readingScaled/meterBattery 는 규격상 정의된 sentinel 값으로 채운다.
+ * - flags 에 READ_FAILED 를 세팅하여 서버/관제에서 실패 이력을 구분 가능하게 한다.
+ * - RTC 가 유효하면 timestamp 는 실제 시각을 채우고 TIME_VALID 플래그도 세팅한다.
+ * ================================================ */
+AppStatus_t App_MeterBuildPlaceholderRecord(AppMeterStorageRecord_t *p_record,
+                                             uint8_t srcType,
+                                             uint8_t meterType)
+{
+    AppMeterStorageRecord_t record;
+    uint8_t timeValid;
+
+    APP_RETURN_IF_FALSE(p_record != NULL, APP_STATUS_INVALID_PARAM);
+
+    (void)memset(&record, 0, sizeof(record));
+    App_MeterGetTimestamp(record.ts, &timeValid);
+
+    record.srcType = srcType;
+    record.flags = APP_METER_STORAGE_FLAG_READ_FAILED;
+    if (timeValid == APP_TRUE)
+    {
+        record.flags |= APP_METER_STORAGE_FLAG_TIME_VALID;
+    }
+    record.meterId = APP_METER_STORAGE_METERID_INVALID;
+    record.readingScaled = APP_METER_STORAGE_READING_INVALID;
+    record.meterStatus = 0u;
+    record.meterBattery = APP_METER_STORAGE_BATTERY_INVALID;
+    record.meterType = meterType;
+    record.caliberDecimal = (uint8_t)((APP_METER_STORAGE_CALIBER_UNKNOWN << 4) | 0x0Fu);
+
+    APP_LOGW("METER", "Build placeholder record (read failed) srcType=%u meterType=%u timeValid=%u",
+             (unsigned int)srcType, (unsigned int)meterType, (unsigned int)timeValid);
+    App_MeterStoragePrintRecord(&record);
+
+    *p_record = record;
+    return APP_STATUS_OK;
+}
+
+/* ================================================
+ * [[PlaceholderRecord]] 검침 실패 시 치환 레코드를 저장소에 push 하고
+ * NFC 갱신까지 정상 검침 성공 경로와 동일하게 수행한다.
+ * ================================================ */
+AppStatus_t App_MeterStorePlaceholderRecord(uint8_t srcType, uint8_t meterType)
+{
+    AppMeterStorageRecord_t record = {0};
+    AppStatus_t status;
+    uint8_t storageEnabled;
+
+    status = App_MeterBuildPlaceholderRecord(&record, srcType, meterType);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    storageEnabled = App_MeterIsStorageEnabled();
+    if (storageEnabled == APP_TRUE)
+    {
+        APP_RETURN_IF_FALSE(App_MeterStoragePush(&record) == APP_STATUS_OK, APP_STATUS_FATAL);
+    }
+
+    APP_LOGI("NFC", "Update nfc meter info (placeholder/read-failed).");
+    status = (storageEnabled == APP_TRUE)
+             ? App_NfcSeoulNotifyStorageChanged()
+             : App_NfcSeoulNotifyLiveMeterRecord(&record);
+    (void)status;
+
+    return APP_STATUS_OK;
+}
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -460,7 +524,11 @@ AppStatus_t App_MeterProcessReceivedData(const uint8_t *pRxBuf, const uint8_t le
                  (int)result);
 #endif
 
-        return(APP_STATUS_FATAL);
+        /* [[PlaceholderRecord]] 파싱 실패 시에도 데이터를 폐기하지 않고
+         * 치환(placeholder) 레코드로 저장/전송 대상에 반드시 포함시킨다. */
+        APP_LOGW("METER", "Store placeholder record due to parse failure.");
+        return App_MeterStorePlaceholderRecord(APP_METER_STORAGE_SRC_DIGITAL_UART,
+                                                APP_METER_STORAGE_METER_TYPE_DIGITAL_UART);
     }
 }
 
@@ -478,7 +546,13 @@ AppStatus_t App_MeterBuildLiveRecordFromReceivedData(const uint8_t *pRxBuf,
     if (result != APP_METER_OK)
     {
         APP_LOGE("METER", "Fail Meter parsing(%d)", result);
-        return APP_STATUS_FATAL;
+
+        /* [[PlaceholderRecord]] 최초 부팅 등 저장 없이 즉시 전송하는 경로에서도
+         * 파싱 실패 시 치환 레코드를 만들어 반드시 전송 대상이 되게 한다. */
+        APP_LOGW("METER", "Build placeholder live record (no storage) due to parse failure.");
+        return App_MeterBuildPlaceholderRecord(p_record,
+                                                APP_METER_STORAGE_SRC_DIGITAL_UART,
+                                                APP_METER_STORAGE_METER_TYPE_DIGITAL_UART);
     }
 
     APP_LOGD("METER", "Success Meter parsing (live/no-store).");
@@ -615,8 +689,13 @@ AppStatus_t App_MeterSC1xxxProcessReceivedData(const uint8_t *pRxBuf, const uint
         return(APP_STATUS_OK);
         
     } else {
-        APP_LOGE("METER", "Fail MeterSC1xxx parsing(%d)", result);
-        return(APP_STATUS_FATAL);
+        APP_LOGE("METER", "Fail MeterSC1xxx parsing(%d) -> substitute placeholder record", result);
+
+        /* [[PlaceholderRecord]] 파싱 실패 시에도 데이터를 폐기하지 않고
+         * 치환(placeholder) 레코드로 저장/전송 대상에 반드시 포함시킨다. */
+        APP_LOGW("METER", "Store placeholder record due to parse failure.");
+        return App_MeterStorePlaceholderRecord(APP_METER_STORAGE_SRC_SC1XXX,
+                                                APP_METER_STORAGE_METER_TYPE_SC1XXX);
     }
 }
 
@@ -634,7 +713,13 @@ AppStatus_t App_MeterSC1xxxBuildLiveRecordFromReceivedData(const uint8_t *pRxBuf
     if (result != APP_METER_OK)
     {
         APP_LOGE("METER", "Fail MeterSC1xxx parsing(%d)", result);
-        return APP_STATUS_FATAL;
+
+        /* [[PlaceholderRecord]] 최초 부팅 등 저장 없이 즉시 전송하는 경로에서도
+         * 파싱 실패 시 치환 레코드를 만들어 반드시 전송 대상이 되게 한다. */
+        APP_LOGW("METER", "Build placeholder live record (no storage) due to parse failure.");
+        return App_MeterBuildPlaceholderRecord(p_record,
+                                                APP_METER_STORAGE_SRC_SC1XXX,
+                                                APP_METER_STORAGE_METER_TYPE_SC1XXX);
     }
 
     APP_LOGI("METER", "Success MeterSC1xxx parsing (live/no-store).");
