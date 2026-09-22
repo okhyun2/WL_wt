@@ -295,7 +295,7 @@ AppStatus_t App_MeterStoragePush(const AppMeterStorageRecord_t *p_record)
     AppMeterStorageRecord_t temp;
     uint8_t writeIndex;
 
-    APP_LOGI("MSTOR", "Record current saved count=%u/%u(%s)", App_MeterStorageCount(), APP_METER_STORAGE_MAX_RECORDS,
+    APP_LOGD("MSTOR", "Record current saved count=%u/%u(%s)", App_MeterStorageCount(), APP_METER_STORAGE_MAX_RECORDS,
         (App_MeterStorageCount() == APP_METER_STORAGE_MAX_RECORDS) ? "rolling":"static");
 
     if (App_MeterStorageIsInitialized() != APP_TRUE)

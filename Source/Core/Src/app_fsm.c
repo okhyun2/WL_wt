@@ -26,8 +26,8 @@
 
 #if 0 //debug
 #define APP_DEBUG_METER_PERIOD_MS      (1u * 60000u)   /* 1 min */
-#define APP_DEBUG_TX_PERIOD_MS         (4u * 60000u)   /* 5 min : service TX */
-#define APP_DEBUG_MGMT_TX_PERIOD_MS    (20u * 60000u)   /* 10 min : management TX */
+#define APP_DEBUG_TX_PERIOD_MS         (1u * 60000u)   /* 5 min : service TX */
+#define APP_DEBUG_MGMT_TX_PERIOD_MS    (1u * 60000u)   /* 10 min : management TX */
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -170,6 +170,14 @@ static uint8_t g_appFsmRtcMeterWakePending = APP_FALSE;
 static uint8_t g_appFsmRtcTxWakePending = APP_FALSE;
 static uint8_t g_appFsmRtcServiceTxWakePending = APP_FALSE;
 static uint8_t g_appFsmRtcMgmtTxWakePending = APP_FALSE;
+
+#define APP_FSM_MGMT_TX_GUARD_SHIFT_MAX      (2u)
+#define APP_FSM_MGMT_TX_MAX_STARVATION_MS    (180000u) /* 3 min */
+static uint8_t  g_appFsmMgmtTxGuardShiftStreak = 0u;
+static uint32_t g_appFsmMgmtTxLastGuardAnchorDateKey = 0u;
+static uint32_t g_appFsmMgmtTxLastGuardAnchorMsOfDay = 0u;
+static void App_FsmMgmtTxGuardShiftReset(const char *p_reason);
+static AppStatus_t App_FsmRunTxWakeTracks(uint8_t deleteOnServiceTx);
 
 static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTES;
 
@@ -523,6 +531,54 @@ static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecor
                                             APP_METER_STORAGE_SRC_DIGITAL_UART,
                                             APP_METER_STORAGE_METER_TYPE_DIGITAL_UART);
 #endif
+}
+
+static void App_FsmMgmtTxGuardShiftReset(const char *p_reason)
+{
+    if ((g_appFsmMgmtTxGuardShiftStreak != 0u) ||
+        (g_appFsmMgmtTxLastGuardAnchorDateKey != 0u) ||
+        (g_appFsmMgmtTxLastGuardAnchorMsOfDay != 0u))
+    {
+        APP_LOGN("FSM",
+                 "[[MgmtTxSchedule]] guard streak reset reason=%s streak=%u anchor=%lu %02lu:%02lu:%02lu",
+                 (p_reason != NULL) ? p_reason : "unknown",
+                 (unsigned)g_appFsmMgmtTxGuardShiftStreak,
+                 (unsigned long)g_appFsmMgmtTxLastGuardAnchorDateKey,
+                 (unsigned long)(g_appFsmMgmtTxLastGuardAnchorMsOfDay / 3600000u),
+                 (unsigned long)((g_appFsmMgmtTxLastGuardAnchorMsOfDay % 3600000u) / 60000u),
+                 (unsigned long)((g_appFsmMgmtTxLastGuardAnchorMsOfDay % 60000u) / 1000u));
+    }
+
+    g_appFsmMgmtTxGuardShiftStreak = 0u;
+    g_appFsmMgmtTxLastGuardAnchorDateKey = 0u;
+    g_appFsmMgmtTxLastGuardAnchorMsOfDay = 0u;
+}
+
+static AppStatus_t App_FsmRunTxWakeTracks(uint8_t deleteOnServiceTx)
+{
+    if ((g_appFsmRtcServiceTxWakePending == APP_TRUE) &&
+        (g_appFsmRtcMgmtTxWakePending == APP_TRUE))
+    {
+        APP_LOGW("FSM", "[[WakeTrack]] service+mgmt due together -> run mgmt first to avoid starvation");
+    }
+
+    if (g_appFsmRtcMgmtTxWakePending == APP_TRUE)
+    {
+        (void)App_NBIoTMgmtSocketWakeTrack(APP_TRUE);
+    }
+
+    if (g_appFsmRtcServiceTxWakePending == APP_TRUE)
+    {
+        (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx);
+    }
+
+    if ((g_appFsmRtcServiceTxWakePending != APP_TRUE) &&
+        (g_appFsmRtcMgmtTxWakePending != APP_TRUE))
+    {
+        (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx);
+    }
+
+    return APP_STATUS_OK;
 }
 
 AppStatus_t App_MeterInit(void)
@@ -2172,6 +2228,7 @@ static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void)
     AppStatus_t status;
     uint8_t needShift = APP_FALSE;
     uint8_t haveServiceAnchor = APP_FALSE;
+    uint8_t newAnchorShift = APP_FALSE;
     uint32_t prevDateKey;
     uint32_t prevMsOfDay;
     uint32_t serviceAnchorDateKey = 0u;
@@ -2180,6 +2237,7 @@ static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void)
     if ((g_appFsmTxSchedule.enabled != APP_TRUE) ||
         (g_appFsmMgmtTxSchedule.enabled != APP_TRUE))
     {
+        App_FsmMgmtTxGuardShiftReset("schedule disabled");
         return APP_STATUS_OK;
     }
 
@@ -2205,27 +2263,29 @@ static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void)
         needShift = APP_TRUE;
     }
 
-    if (needShift == APP_TRUE)
+    /*
+     * 중요:
+     * needShift가 FALSE라고 해서 streak를 리셋하지 않는다.
+     * 지금까지의 로그에서 streak=1만 반복된 원인이 바로 여기서의 조기 리셋 가능성이 높다.
+     * streak는 mgmt가 실제 consume되거나 schedule이 꺼질 때만 reset한다.
+     */
+    if (needShift != APP_TRUE)
     {
-        prevDateKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
-        prevMsOfDay = g_appFsmMgmtTxSchedule.nextDueMsOfDay;
+        return APP_STATUS_OK;
+    }
 
-        status = App_FsmScheduleAddMs(serviceAnchorDateKey,
-                                      serviceAnchorMsOfDay,
-                                      APP_FSM_TX_SERVICE_MGMT_GAP_MS,
-                                      &g_appFsmMgmtTxSchedule.nextDueDateKey,
-                                      &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
-        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    if ((g_appFsmMgmtTxLastGuardAnchorDateKey != serviceAnchorDateKey) ||
+        (g_appFsmMgmtTxLastGuardAnchorMsOfDay != serviceAnchorMsOfDay))
+    {
+        newAnchorShift = APP_TRUE;
+    }
 
-        status = App_FsmTxScheduleApplyMeterProximityGuard(&g_appFsmMgmtTxSchedule.nextDueDateKey,
-                                                           &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
-        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-        APP_LOGN("FSM", "[[MgmtTxSchedule]] service-gap guard shift %lu %02lu:%02lu:%02lu -> %lu %02lu:%02lu:%02lu (service_anchor=%lu %02lu:%02lu:%02lu, gap=%lu)",
-                 (unsigned long)prevDateKey,
-                 (unsigned long)(prevMsOfDay / 3600000u),
-                 (unsigned long)((prevMsOfDay % 3600000u) / 60000u),
-                 (unsigned long)((prevMsOfDay % 60000u) / 1000u),
+    if ((newAnchorShift == APP_TRUE) &&
+        (g_appFsmMgmtTxGuardShiftStreak >= APP_FSM_MGMT_TX_GUARD_SHIFT_MAX))
+    {
+        APP_LOGW("FSM",
+                 "[[MgmtTxSchedule]] service-gap guard bypass after repeated shifts streak=%u due=%lu %02lu:%02lu:%02lu anchor=%lu %02lu:%02lu:%02lu",
+                 (unsigned)g_appFsmMgmtTxGuardShiftStreak,
                  (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
                  (unsigned long)(g_appFsmMgmtTxSchedule.nextDueMsOfDay / 3600000u),
                  (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
@@ -2233,9 +2293,48 @@ static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void)
                  (unsigned long)serviceAnchorDateKey,
                  (unsigned long)(serviceAnchorMsOfDay / 3600000u),
                  (unsigned long)((serviceAnchorMsOfDay % 3600000u) / 60000u),
-                 (unsigned long)((serviceAnchorMsOfDay % 60000u) / 1000u),
-                 (unsigned long)APP_FSM_TX_SERVICE_MGMT_GAP_MS);
+                 (unsigned long)((serviceAnchorMsOfDay % 60000u) / 1000u));
+        return APP_STATUS_OK;
     }
+
+    prevDateKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
+    prevMsOfDay = g_appFsmMgmtTxSchedule.nextDueMsOfDay;
+
+    status = App_FsmScheduleAddMs(serviceAnchorDateKey,
+                                  serviceAnchorMsOfDay,
+                                  APP_FSM_TX_SERVICE_MGMT_GAP_MS,
+                                  &g_appFsmMgmtTxSchedule.nextDueDateKey,
+                                  &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    status = App_FsmTxScheduleApplyMeterProximityGuard(&g_appFsmMgmtTxSchedule.nextDueDateKey,
+                                                       &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if (newAnchorShift == APP_TRUE)
+    {
+        g_appFsmMgmtTxGuardShiftStreak++;
+        g_appFsmMgmtTxLastGuardAnchorDateKey = serviceAnchorDateKey;
+        g_appFsmMgmtTxLastGuardAnchorMsOfDay = serviceAnchorMsOfDay;
+    }
+
+    APP_LOGN("FSM",
+             "[[MgmtTxSchedule]] service-gap guard shift %lu %02lu:%02lu:%02lu -> %lu %02lu:%02lu:%02lu (service_anchor=%lu %02lu:%02lu:%02lu, gap=%lu, streak=%u, newAnchor=%u)",
+             (unsigned long)prevDateKey,
+             (unsigned long)(prevMsOfDay / 3600000u),
+             (unsigned long)((prevMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((prevMsOfDay % 60000u) / 1000u),
+             (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
+             (unsigned long)(g_appFsmMgmtTxSchedule.nextDueMsOfDay / 3600000u),
+             (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
+             (unsigned long)serviceAnchorDateKey,
+             (unsigned long)(serviceAnchorMsOfDay / 3600000u),
+             (unsigned long)((serviceAnchorMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((serviceAnchorMsOfDay % 60000u) / 1000u),
+             (unsigned long)APP_FSM_TX_SERVICE_MGMT_GAP_MS,
+             (unsigned)g_appFsmMgmtTxGuardShiftStreak,
+             (unsigned)newAnchorShift);
 
     return APP_STATUS_OK;
 }
@@ -2674,6 +2773,11 @@ static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
 static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due)
 {
     AppStatus_t status;
+    AppDateTime_t now;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
+    uint32_t starvationDateKey;
+    uint32_t starvationMsOfDay;
 
     APP_RETURN_IF_FALSE(p_due != NULL, APP_STATUS_INVALID_PARAM);
     *p_due = APP_FALSE;
@@ -2681,19 +2785,59 @@ static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due)
     status = App_FsmMgmtTxScheduleEnsureInitialized();
     if (status == APP_STATUS_NOT_INITIALIZED)
     {
+        App_FsmMgmtTxGuardShiftReset("schedule not initialized");
         return APP_STATUS_OK;
     }
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    return App_FsmTxScheduleCheckDueCommon(&g_appFsmMgmtTxSchedule,
-                                         p_due,
-                                         "[[MgmtTxSchedule]]",
+    status = App_FsmTxScheduleCheckDueCommon(&g_appFsmMgmtTxSchedule,
+                                             p_due,
+                                             "[[MgmtTxSchedule]]",
 #ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
-                                         APP_DEBUG_MGMT_TX_PERIOD_MS
+                                             APP_DEBUG_MGMT_TX_PERIOD_MS
 #else
-                                         0u
+                                             0u
 #endif
-                                         );
+                                             );
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if (*p_due == APP_TRUE)
+    {
+        return APP_STATUS_OK;
+    }
+
+    if ((g_appFsmTxSchedule.lastDispatchedDateKey == 0u) &&
+        (g_appFsmTxSchedule.lastDispatchedMsOfDay == 0u))
+    {
+        return APP_STATUS_OK;
+    }
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    nowDateKey = App_FsmMeterScheduleDateKey(&now);
+    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+    status = App_FsmScheduleAddMs(g_appFsmTxSchedule.lastDispatchedDateKey,
+                                  g_appFsmTxSchedule.lastDispatchedMsOfDay,
+                                  APP_FSM_MGMT_TX_MAX_STARVATION_MS,
+                                  &starvationDateKey,
+                                  &starvationMsOfDay);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if (App_FsmScheduleIsDueOrPast(starvationDateKey,
+                                   starvationMsOfDay,
+                                   nowDateKey,
+                                   nowMsOfDay) == APP_TRUE)
+    {
+        *p_due = APP_TRUE;
+        APP_LOGW("FSM",
+                 "[[MgmtTxSchedule]] starvation escape due=1 after service anchor timeout (%lu ms, guardShiftStreak=%u)",
+                 (unsigned long)APP_FSM_MGMT_TX_MAX_STARVATION_MS,
+                 (unsigned)g_appFsmMgmtTxGuardShiftStreak);
+    }
+
+    return APP_STATUS_OK;
 }
 
 static AppStatus_t App_FsmTxScheduleConsumeDueNowCommon(AppFsmTxScheduleContext_t *p_schedule,
@@ -2823,20 +2967,30 @@ static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed)
     *p_consumed = APP_FALSE;
 
     status = App_FsmMgmtTxScheduleEnsureInitialized();
-    if (status != APP_STATUS_OK)
+    if (status == APP_STATUS_NOT_INITIALIZED)
     {
-        return status;
+        App_FsmMgmtTxGuardShiftReset("consume while not initialized");
+        return APP_STATUS_OK;
+    }
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    status = App_FsmTxScheduleConsumeDueNowCommon(&g_appFsmMgmtTxSchedule,
+                                                  p_consumed,
+                                                  "[[MgmtTxSchedule]]",
+#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
+                                                  APP_DEBUG_MGMT_TX_PERIOD_MS
+#else
+                                                  0u
+#endif
+                                                  );
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if (*p_consumed == APP_TRUE)
+    {
+        App_FsmMgmtTxGuardShiftReset("mgmt due consumed");
     }
 
-    return App_FsmTxScheduleConsumeDueNowCommon(&g_appFsmMgmtTxSchedule,
-                                              p_consumed,
-                                              "[[MgmtTxSchedule]]",
-#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
-                                              APP_DEBUG_MGMT_TX_PERIOD_MS
-#else
-                                              0u
-#endif
-                                              );
+    return APP_STATUS_OK;
 }
 
 static AppStatus_t App_FsmTxScheduleDelayHoursFromNowCommon(AppFsmTxScheduleContext_t *p_schedule,
@@ -3627,23 +3781,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                     return App_FsmHandleWakeupLowPower("attach fail", trackStatus);
                 }
 
-                if ((g_appFsmRtcServiceTxWakePending == APP_TRUE) && (g_appFsmRtcMgmtTxWakePending == APP_TRUE))
-                {
-                    APP_LOGW("FSM", "[[WakeTrack]] service+mgmt due together -> process sequentially in one attach session");
-                }
-
-                if (g_appFsmRtcServiceTxWakePending == APP_TRUE)
-                {
-                    (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx);
-                }
-                if (g_appFsmRtcMgmtTxWakePending == APP_TRUE)
-                {
-                    (void)App_NBIoTMgmtSocketWakeTrack(APP_TRUE);
-                }
-                if ((g_appFsmRtcServiceTxWakePending != APP_TRUE) && (g_appFsmRtcMgmtTxWakePending != APP_TRUE))
-                {
-                    (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx);
-                }
+                (void)App_FsmRunTxWakeTracks(deleteOnServiceTx);
             }
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierPowerOffMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
