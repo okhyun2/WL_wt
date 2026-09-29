@@ -235,6 +235,12 @@ static void App_Bc95AtBytesToHex(const uint8_t *p_in, uint32_t inLen, char *p_ou
 static uint8_t App_Bc95AtNextUdpSeq(void);
 static AppStatus_t App_Bc95AtPreAttachNetResetOnWake(void);
 
+#define APP_BC95_SERVICE_READY_CPIN_STABLE_DELAY_MS   (200u)
+#define APP_BC95_SERVICE_READY_POST_RECOVER_POLL_MS   (1200u)
+#define APP_BC95_WAKE_FIRST_ATTACH_TIMEOUT_MS         (30000u)
+
+static uint8_t g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
+
 static uint8_t App_NbiotResolveDeleteAfterSend(uint8_t requestedDeleteStorage,
                                                const AppMeterServerFormatOptions_t *p_options)
 {
@@ -1237,7 +1243,6 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
 
     /*
      * 1차 게이트: CPIN READY 확인
-     * wake 이후에는 CIMI보다 CPIN이 더 직접적인 readiness 지표다.
      */
     status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_CPIN_QUERY,
                                    g_appBc95AtRxBuf,
@@ -1274,6 +1279,64 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
         p_probe->lastCmeError = 0;
         APP_LOGW("NBIOT", "[[ReadyProbe]] CPIN response is OK but READY not yet visible");
         return APP_STATUS_UART_TIMEOUT;
+    }
+
+    /*
+     * wake fast-path 또는 recoverable-CME recovery 직후에는
+     * CPIN READY를 한 번 더 확인해서 READY 흔들림을 줄인다.
+     */
+    if ((g_appBc95ServiceReadyFastPath == APP_TRUE) ||
+        (g_appBc95ServiceReadyRecoveryActive == APP_TRUE))
+    {
+        App_Bc95AtDelayWithFeed(APP_BC95_SERVICE_READY_CPIN_STABLE_DELAY_MS);
+
+        status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_CPIN_QUERY,
+                                       g_appBc95AtRxBuf,
+                                       (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                       APP_BC95_AT_RX_TIMEOUT_MS,
+                                       &rxLen);
+        p_probe->lastStatus = status;
+        if (status != APP_STATUS_OK)
+        {
+            APP_LOGE("NBIOT", "[[ReadyProbe]] CPIN re-check UART issue after READY (status=%d)", (int)status);
+            return status;
+        }
+
+        atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
+        if (atStatus == APP_BC95_AT_ERR_CME_ERROR)
+        {
+            p_probe->lastCmeError = cmeErr;
+            p_probe->lastStatus = APP_STATUS_UART_TIMEOUT;
+            APP_LOGW("NBIOT", "[[ReadyProbe]] CPIN READY unstable after wake/recovery (CME=%ld)",
+                     (long)cmeErr);
+            return APP_STATUS_UART_TIMEOUT;
+        }
+        if (atStatus != APP_BC95_AT_OK)
+        {
+            p_probe->lastStatus = APP_STATUS_FATAL;
+            APP_LOGE("NBIOT", "[[ReadyProbe]] CPIN re-check parse fail (status=%s)",
+                     App_Bc95AtGetStatusString(atStatus));
+            return APP_STATUS_FATAL;
+        }
+        if (App_Bc95AtResponseHasCpinReady((const char *)g_appBc95AtRxBuf) != APP_TRUE)
+        {
+            p_probe->lastStatus = APP_STATUS_UART_TIMEOUT;
+            p_probe->lastCmeError = 0;
+            APP_LOGW("NBIOT", "[[ReadyProbe]] CPIN READY not stable on re-check");
+            return APP_STATUS_UART_TIMEOUT;
+        }
+    }
+
+    /*
+     * recoverable-CME recovery 직후에는 SIM path를 한 번 더 깨워준다.
+     * 실패해도 fatal로 보지 않고 best-effort로만 수행한다.
+     */
+    if (g_appBc95ServiceReadyRecoveryActive == APP_TRUE)
+    {
+        (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NCCID_QUERY,
+                                            APP_BC95_AT_RX_TIMEOUT_MS,
+                                            "AT+NCCID?",
+                                            "[[ReadyProbe]]");
     }
 
     /*
@@ -1326,6 +1389,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
     uint32_t elapsedMs;
     uint32_t remainingMs;
     uint32_t settleMs;
+    uint32_t pollMs;
     uint8_t recoverableCmeCount = 0u;
     uint8_t recoverableCmeThreshold;
     uint8_t requiredReadyStreak;
@@ -1335,23 +1399,36 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
 
     APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
 
-    settleMs = (g_appBc95ServiceReadyFastPath == APP_TRUE)
-             ? APP_BC95_SERVICE_READY_WAKE_SETTLE_MS
-             : APP_BC95_SERVICE_READY_SETTLE_MS;
-
-    recoverableCmeThreshold = (g_appBc95ServiceReadyFastPath == APP_TRUE)
-                            ? APP_BC95_SERVICE_READY_WAKE_CME_THRESHOLD
-                            : APP_BC95_SERVICE_READY_RECOVERABLE_CME_THRESHOLD;
-
-    requiredReadyStreak = (g_appBc95ServiceReadyFastPath == APP_TRUE)
-                        ? APP_BC95_SERVICE_READY_WAKE_READY_STREAK
-                        : 1u;
+    if (g_appBc95ServiceReadyRecoveryActive == APP_TRUE)
+    {
+        settleMs = APP_BC95_SERVICE_READY_POST_CFUN_SETTLE_MS;
+        pollMs = APP_BC95_SERVICE_READY_POST_RECOVER_POLL_MS;
+        recoverableCmeThreshold = 1u;
+        requiredReadyStreak = APP_BC95_SERVICE_READY_WAKE_READY_STREAK;
+    }
+    else if (g_appBc95ServiceReadyFastPath == APP_TRUE)
+    {
+        settleMs = APP_BC95_SERVICE_READY_WAKE_SETTLE_MS;
+        pollMs = APP_BC95_USIM_READY_POLL_MS;
+        recoverableCmeThreshold = APP_BC95_SERVICE_READY_WAKE_CME_THRESHOLD;
+        requiredReadyStreak = APP_BC95_SERVICE_READY_WAKE_READY_STREAK;
+    }
+    else
+    {
+        settleMs = APP_BC95_SERVICE_READY_SETTLE_MS;
+        pollMs = APP_BC95_USIM_READY_POLL_MS;
+        recoverableCmeThreshold = APP_BC95_SERVICE_READY_RECOVERABLE_CME_THRESHOLD;
+        requiredReadyStreak = 1u;
+    }
 
     startTick = HAL_GetTick();
-    APP_LOGI("NBIOT", "Wait for service ready after boot banner (timeout=%lums, settle=%lums, fastPath=%u, cmeThreshold=%u, readyStreak=%u)...",
+    APP_LOGI("NBIOT",
+             "Wait for service ready after boot banner (timeout=%lums, settle=%lums, poll=%lums, fastPath=%u, postRecover=%u, cmeThreshold=%u, readyStreak=%u)...",
              (unsigned long)totalTimeoutMs,
              (unsigned long)settleMs,
+             (unsigned long)pollMs,
              (unsigned)g_appBc95ServiceReadyFastPath,
+             (unsigned)g_appBc95ServiceReadyRecoveryActive,
              (unsigned)recoverableCmeThreshold,
              (unsigned)requiredReadyStreak);
 
@@ -1382,9 +1459,11 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
 
             if (readyStreak < requiredReadyStreak)
             {
-                App_Bc95AtDelayWithFeed(APP_BC95_USIM_READY_POLL_MS);
+                App_Bc95AtDelayWithFeed(pollMs);
                 continue;
             }
+
+            g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
 
             APP_LOGI("NBIOT", "Service ready confirmed (elapsed=%lums)",
                      (unsigned long)(HAL_GetTick() - startTick));
@@ -1432,20 +1511,14 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
                     recoverableCme = -1;
                     readyStreak = 0u;
 
-                    /*
-                     * recovery 이후에는 더 보수적으로 확인:
-                     * 추가 settle + 최소 2회 연속 성공 확인
-                     */
-                    if (requiredReadyStreak < APP_BC95_SERVICE_READY_WAKE_READY_STREAK)
-                    {
-                        requiredReadyStreak = APP_BC95_SERVICE_READY_WAKE_READY_STREAK;
-                    }
+                    g_appBc95ServiceReadyRecoveryActive = APP_TRUE;
 
                     App_Bc95AtDelayWithFeed(APP_BC95_SERVICE_READY_POST_CFUN_SETTLE_MS);
                     continue;
                 }
 
-                APP_LOGW("NBIOT", "Service ready recoverable-CME recovery failed (status=%d, cme=%ld) -> hand over to attach recovery",
+                APP_LOGW("NBIOT",
+                         "Service ready recoverable-CME recovery failed (status=%d, cme=%ld) -> hand over to attach recovery",
                          (int)recoverStatus,
                          (long)recoverableCme);
                 return APP_STATUS_UART_TIMEOUT;
@@ -1462,7 +1535,8 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
         {
             if (App_Bc95AtIsRecoverableServiceReadyCme(probe.lastCmeError) == APP_TRUE)
             {
-                APP_LOGW("NBIOT", "Service ready timeout after recoverable CME=%ld streak (elapsed=%lums) -> hand over to attach recovery",
+                APP_LOGW("NBIOT",
+                         "Service ready timeout after recoverable CME=%ld streak (elapsed=%lums) -> hand over to attach recovery",
                          (long)probe.lastCmeError,
                          (unsigned long)elapsedMs);
                 return APP_STATUS_UART_TIMEOUT;
@@ -1477,9 +1551,9 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
         }
 
         remainingMs = totalTimeoutMs - elapsedMs;
-        if (remainingMs > APP_BC95_USIM_READY_POLL_MS)
+        if (remainingMs > pollMs)
         {
-            App_Bc95AtDelayWithFeed(APP_BC95_USIM_READY_POLL_MS);
+            App_Bc95AtDelayWithFeed(pollMs);
         }
         else
         {
@@ -2891,6 +2965,14 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
              (long)funVal,
              (long)cmeErr);
 
+    /*
+     * recoverable CME를 한 번 밟은 wake 세션은 이후 probe/attach를
+     * 더 보수적으로 처리하도록 플래그를 먼저 세운다.
+     */
+    g_appBc95ServiceReadyRecoveryActive = APP_TRUE;
+    g_appBc95WakeNeedsPreAttachNetReset = APP_TRUE;
+    g_appBc95ServiceReadyFastPath = APP_TRUE;
+
     if (funVal == 0)
     {
         status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CFUN_SET_FULL,
@@ -2899,17 +2981,23 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
                                                "[[ReadyProbe]]");
         if (status == APP_STATUS_OK)
         {
-            g_appBc95WakeNeedsPreAttachNetReset = APP_TRUE;
-            APP_LOGW("NBIOT", "[[ReadyProbe]] recoverable-CME CFUN recovery command accepted -> mark wake pre-attach net reset");
+            APP_LOGW("NBIOT",
+                     "[[ReadyProbe]] recoverable-CME CFUN recovery accepted -> conservative wake policy armed");
+        }
+        else
+        {
+            APP_LOGW("NBIOT",
+                     "[[ReadyProbe]] recoverable-CME CFUN recovery send failed (status=%d) -> attach stage keeps conservative wake policy",
+                     (int)status);
         }
         return status;
     }
 
-    APP_LOGW("NBIOT", "[[ReadyProbe]] CFUN already active (%ld) for recoverable CME=%ld -> escalate to attach recovery",
+    APP_LOGW("NBIOT",
+             "[[ReadyProbe]] CFUN already active (%ld) for recoverable CME=%ld -> keep conservative wake policy and escalate to attach recovery",
              (long)funVal,
              (long)cmeErr);
 
-    g_appBc95WakeNeedsPreAttachNetReset = APP_TRUE;
     return APP_STATUS_UART_TIMEOUT;
 }
 
@@ -5649,6 +5737,8 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
     AppStatus_t status;
     AppStatus_t recoverStatus;
     AppBc95NetStatus_t netStatus;
+    uint8_t specialWakePolicy;
+    uint32_t attachWindowMs;
 
     if (g_appBc95AtInitialized != APP_TRUE)
     {
@@ -5671,6 +5761,9 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
 
     while (1)
     {
+        specialWakePolicy = APP_FALSE;
+        attachWindowMs = APP_NBIOT_ATTACH_TIMEOUT_MS;
+
         (void)memset(&netStatus, 0, sizeof(netStatus));
         g_appNbiotCarrierContext.attachAttemptCount++;
         g_appNbiotCarrierContext.lastAttemptTick = HAL_GetTick();
@@ -5692,13 +5785,19 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
              */
             if (g_appBc95WakeNeedsPreAttachNetReset == APP_TRUE)
             {
+                specialWakePolicy = APP_TRUE;
+
                 APP_LOGW("NBIOT", "[[Attach]] special wake policy enabled -> run pre-attach net reset");
                 (void)App_Bc95AtPreAttachNetResetOnWake();
                 g_appBc95WakeNeedsPreAttachNetReset = APP_FALSE;
+
+                attachWindowMs = APP_BC95_WAKE_FIRST_ATTACH_TIMEOUT_MS;
+                APP_LOGW("NBIOT", "[[Attach]] first wake attach timeout shortcut=%lums",
+                         (unsigned long)attachWindowMs);
             }
 
             g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_NETWORK_WAIT;
-            status = App_Bc95AtWaitForNetwork(APP_NBIOT_ATTACH_TIMEOUT_MS, &netStatus);
+            status = App_Bc95AtWaitForNetwork(attachWindowMs, &netStatus);
             g_appNbiotCarrierContext.lastNetStatus = netStatus;
         }
 
@@ -5706,29 +5805,33 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
 
         if (status == APP_STATUS_OK)
         {
+            g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
             g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_READY;
+
             (void)App_Bc95AtEnableAutoTimezone();
             (void)App_NBIoTSyncTime();
 #ifdef NBIOT_SUPPORT_DNS
             (void)App_Bc95AtWarmupDns(WARMUPDNS_SERVER_DOMAIN);
 #endif // NBIOT_SUPPORT_DNS
             APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
-                     " success attempt=%u elapsed=%lums phase=%s ip=%s",
+                     " success attempt=%u elapsed=%lums phase=%s ip=%s specialWake=%u",
                      (unsigned)g_appNbiotCarrierContext.attachAttemptCount,
                      (unsigned long)(HAL_GetTick() - g_appNbiotCarrierContext.attachStartTick),
                      App_Bc95AtGetNetPhaseString(netStatus.phase),
-                     netStatus.ipAddr);
+                     netStatus.ipAddr,
+                     (unsigned)specialWakePolicy);
             return APP_STATUS_OK;
         }
 
         APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
-                 " fail attempt=%u status=%d phase=%s CEREG=%s CGATT=%u ip=%s",
+                 " fail attempt=%u status=%d phase=%s CEREG=%s CGATT=%u ip=%s specialWake=%u",
                  (unsigned)g_appNbiotCarrierContext.attachAttemptCount,
                  (int)status,
                  App_Bc95AtGetNetPhaseString(netStatus.phase),
                  App_Bc95AtGetCeregStatString(netStatus.ceregStat),
                  (unsigned)netStatus.cgattState,
-                 netStatus.ipAddr);
+                 netStatus.ipAddr,
+                 (unsigned)specialWakePolicy);
 
         recoverStatus = App_NbiotCarrierRecoverAfterAttachFailure(status);
         if (recoverStatus != APP_STATUS_OK)
