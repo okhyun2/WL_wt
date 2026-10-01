@@ -27,7 +27,7 @@ extern "C" {
 #define APP_SELFDIAG_LOG_TAG                        "SELFDIAG"   /* 신규: TEST3 자가진단 전용 로그 태그 */
 
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
-#define APP_EPC_ACTIVE_TEST_ID                      (2)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(통신파라미터), 12:시험12(전원이상/복구) */
+#define APP_EPC_ACTIVE_TEST_ID                      (3)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(통신파라미터), 12:시험12(전원이상/복구) */
 
 #if (APP_EPC_ACTIVE_TEST_ID == 1u)
 #define APP_EPC_TEST_ID_STRING                      "TEST1"

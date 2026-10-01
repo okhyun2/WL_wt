@@ -291,7 +291,9 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
         APP_LOGW("FSM", "[[MeterWake]] uart reinit failed status=%ld -> store placeholder record",
                  (long)status);
         (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
-        return APP_STATUS_OK;
+        /* FSM 사이클은 계속 진행하되, 자가진단/컴포넌트 상태에는 실제 실패
+         * 원인을 전달해야 하므로 성공으로 덮어쓰지 않는다. */
+        return status;
     }
 
     if (HAL_UART_Transmit(APP_UART_METER_HANDLE,
@@ -302,7 +304,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
         APP_LOGW("FSM", "[[MeterWake]] uart tx failed -> store placeholder record");
         (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
-        return APP_STATUS_OK;
+        return APP_STATUS_UART_TX_FAILED;
     }
 
     status = App_FsmMeterReceiveBlocking(meterReply,
@@ -316,7 +318,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
         APP_LOGW("FSM", "[[MeterWake]] uart rx failed/timeout status=%ld -> store placeholder record",
                  (long)status);
         (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
-        return APP_STATUS_OK;
+        return status;
     }
 
     App_LogHexDump(APP_LOG_LEVEL_INFO,
@@ -334,7 +336,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
         /* App_MeterProcessReceivedData 내부에서 파싱 실패 시 이미 치환 레코드를
          * 저장하므로 여기서는 로그만 남기고 정상 흐름으로 리턴한다. */
         APP_LOGW("FSM", "[[MeterWake]] process received data reported status=%ld", (long)status);
-        return APP_STATUS_OK;
+        return status;
     }
 
     APP_LOGN("FSM", "[[MeterWake]] scheduled meter record stored");
@@ -365,7 +367,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
         APP_LOGW("FSM", "[[MeterWake]] uart reinit failed status=%ld -> store placeholder record",
                  (long)status);
         (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
-        return APP_STATUS_OK;
+        return status;
     }
 
     status = App_FsmMeterReceiveBlocking(meterReply,
@@ -378,7 +380,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
         APP_LOGW("FSM", "[[MeterWake]] uart rx failed/timeout status=%ld -> store placeholder record",
                  (long)status);
         (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
-        return APP_STATUS_OK;
+        return status;
     }
 
     App_LogHexDump(APP_LOG_LEVEL_INFO,
@@ -394,7 +396,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
     if (status != APP_STATUS_OK)
     {
         APP_LOGW("FSM", "[[MeterWake]] process received data reported status=%ld", (long)status);
-        return APP_STATUS_OK;
+        return status;
     }
 
     APP_LOGN("FSM", "[[MeterWake]] scheduled SC1xxx meter record stored");
