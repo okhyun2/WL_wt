@@ -21,13 +21,13 @@ extern "C" {
 /* ================================================================
  *  EPC Test Mode (시험용 빌드 옵션)
  * ================================================================ */
-#define APP_EPC_TEST_MODE_ENABLE                    (APP_FALSF)   /* 1:시험 코드 포함, 0:완전 제거 */
+#define APP_EPC_TEST_MODE_ENABLE                    (APP_TRUE)   /* 1:시험 코드 포함, 0:완전 제거 */
 
 #define APP_EPC_LOG_TAG                             "EPC"
 #define APP_SELFDIAG_LOG_TAG                        "SELFDIAG"   /* 신규: TEST3 자가진단 전용 로그 태그 */
 
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
-#define APP_EPC_ACTIVE_TEST_ID                      (7)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(통신파라미터), 12:시험12(전원이상/복구) */
+#define APP_EPC_ACTIVE_TEST_ID                      (2)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(통신파라미터), 12:시험12(전원이상/복구) */
 
 #if (APP_EPC_ACTIVE_TEST_ID == 1u)
 #define APP_EPC_TEST_ID_STRING                      "TEST1"
@@ -296,8 +296,8 @@ extern "C" {
 #define APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS     (0u) /* 0: legacy fixed spread fallback */
 #define APP_POLICY_REPORT_SPREAD_FALLBACK_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
 //TODO change serial number -> serial_bcd 5
-//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
-#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x45\x67\x00\x00\x04" 
+#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
+//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x45\x67\x00\x00\x06" 
 #define APP_POLICY_NBIOT_BOOTRACK_REG_SERVPLATFORM (APP_FALSE) //default: TRUE
 
 

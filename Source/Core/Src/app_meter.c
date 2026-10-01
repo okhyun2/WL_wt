@@ -543,20 +543,48 @@ AppStatus_t App_MeterBuildLiveRecordFromReceivedData(const uint8_t *pRxBuf,
     APP_RETURN_IF_FALSE(p_record != NULL, APP_STATUS_INVALID_PARAM);
 
     result = App_MeterParseFrame(&rx_frame, pRxBuf, length);
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
+    /* [[BootLiveTx]] 등 저장 없이 즉시 전송하는 경로도 App_MeterProcessReceivedData()와
+     * 동일한 전역 카운터(g_epcMeterAttemptSeq)를 공유하여 증가시킨다.
+     * 이렇게 해야 시뮬레이터가 세는 "물리적 UART 요청 순번"과 펌웨어가 EPC 로그에 찍는
+     * seq 번호가 1:1로 어긋나지 않는다(기존에는 이 경로가 카운터를 건드리지 않아,
+     * BootLiveTx 1회만큼 두 seq 체계 사이에 오프셋이 발생했다). */
+    g_epcMeterAttemptSeq++;
+#endif
+
     if (result != APP_METER_OK)
     {
         APP_LOGE("METER", "Fail Meter parsing(%d)", result);
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
+        /* 실패 시에도 seq를 남겨 시뮬레이터 로그와 매칭 시 "몇 번째 시도가 빠졌는지" 추적 가능 */
+        EPC_LOGI("test=%s,seq=%lu,res=ERR%d,id=--------,val=--------",
+                 APP_EPC_TEST_ID_STRING,
+                 (unsigned long)g_epcMeterAttemptSeq,
+                 (int)result);
+#endif
 
         /* [[PlaceholderRecord]] 최초 부팅 등 저장 없이 즉시 전송하는 경로에서도
          * 파싱 실패 시 치환 레코드를 만들어 반드시 전송 대상이 되게 한다. */
         APP_LOGW("METER", "Build placeholder live record (no storage) due to parse failure.");
         return App_MeterBuildPlaceholderRecord(p_record,
-                                                APP_METER_STORAGE_SRC_DIGITAL_UART,
-                                                APP_METER_STORAGE_METER_TYPE_DIGITAL_UART);
+                                               APP_METER_STORAGE_SRC_DIGITAL_UART,
+                                               APP_METER_STORAGE_METER_TYPE_DIGITAL_UART);
     }
 
     APP_LOGD("METER", "Success Meter parsing (live/no-store).");
     App_MeterPrintUnionDetailed(&rx_frame);
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
+    /* Test1 파싱용 단일 라인: seq,res,id,val (App_MeterProcessReceivedData()와 동일 포맷) */
+    EPC_LOGI("test=%s,seq=%lu,res=OK,id=%08lu,val=%08lu",
+             APP_EPC_TEST_ID_STRING,
+             (unsigned long)g_epcMeterAttemptSeq,
+             (unsigned long)BCD_To_Decimal(App_MeterGetIdentificationNumber(&rx_frame)),
+             (unsigned long)BCD_To_Decimal(App_MeterGetMeasurementData(&rx_frame)));
+#endif
+
     APP_RETURN_IF_FALSE(App_MeterBuildDigitalRecord(&rx_frame, p_record) == APP_STATUS_OK, APP_STATUS_FATAL);
 
     APP_LOGI("NFC", "Update nfc live meter info (no storage).");
