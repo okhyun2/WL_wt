@@ -21,13 +21,13 @@ extern "C" {
 /* ================================================================
  *  EPC Test Mode (시험용 빌드 옵션)
  * ================================================================ */
-#define APP_EPC_TEST_MODE_ENABLE                    (APP_TRUE)   /* 1:시험 코드 포함, 0:완전 제거 */
+#define APP_EPC_TEST_MODE_ENABLE                    (APP_FALSE)   /* 1:시험 코드 포함, 0:완전 제거 */
 
 #define APP_EPC_LOG_TAG                             "EPC"
 #define APP_SELFDIAG_LOG_TAG                        "SELFDIAG"   /* 신규: TEST3 자가진단 전용 로그 태그 */
 
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
-#define APP_EPC_ACTIVE_TEST_ID                      (3)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(통신파라미터), 12:시험12(전원이상/복구) */
+#define APP_EPC_ACTIVE_TEST_ID                      (7)   /* 1:시험1, 2:시험2, 3:시험3(자가진단), 7:시험7(통신파라미터), 12:시험12(전원이상/복구) */
 
 #if (APP_EPC_ACTIVE_TEST_ID == 1u)
 #define APP_EPC_TEST_ID_STRING                      "TEST1"
@@ -52,11 +52,11 @@ extern "C" {
  *  #ifdef 로 참조하는 디버그 오버라이드 매크로. periodHours(EEPROM)보다
  *  우선 적용되어 다음 due 시각 계산까지 그대로 반영된다.
  * ---------------------------------------------------------------- */
-#define APP_EPC_TEST7_TX_PERIOD_MIN                 (5u)   /* 시험 조건 전송 주기(분) */
+#define APP_EPC_TEST7_TX_PERIOD_MIN                 (2u)   /* 시험 조건 전송 주기(분) */
 #define APP_DEBUG_TX_PERIOD_MS                       (APP_EPC_TEST7_TX_PERIOD_MIN * 60000u)   /* service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS                  (APP_EPC_TEST7_TX_PERIOD_MIN * 60000u)   /* management TX */
 
-#define APP_EPC_TEST7_METERING_PERIOD_MIN (3u)  /* 검침 주기(분) */
+#define APP_EPC_TEST7_METERING_PERIOD_MIN (1u)  /* 검침 주기(분) */
 #define APP_DEBUG_METER_PERIOD_MS   (APP_EPC_TEST7_METERING_PERIOD_MIN * 60000u)
 
 #elif (APP_EPC_ACTIVE_TEST_ID == 12u)
@@ -297,7 +297,7 @@ extern "C" {
 #define APP_POLICY_REPORT_SPREAD_FALLBACK_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
 //TODO change serial number -> serial_bcd 5
 #define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
-//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x45\x67\x00\x00\x06" 
+//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x45\x67\x00\x00\x02" 
 #define APP_POLICY_NBIOT_BOOTRACK_REG_SERVPLATFORM (APP_FALSE) //default: TRUE
 
 

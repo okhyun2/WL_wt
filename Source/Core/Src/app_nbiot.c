@@ -3329,6 +3329,12 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
 
 AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
 {
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
+    /* 시험 7 전용: 실제 모뎀 측정/시간동기/플랫폼 전송을 전부 건너뛰고 시나리오만 진행 */
+    App_CommTest7RunCycle();
+    return APP_STATUS_OK;
+#else
+
 #if (APP_POLICY_NBIOT_BOOTRACK_REG_SERVPLATFORM == APP_FALSE)
     (void)deleteStorage;
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] skipped by policy");
@@ -3338,11 +3344,6 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
 
     APP_LOGN("NBIOT", "[[ServicePlatformWake]] start (fast-path only)");
 
-#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
-    /* 시험 7 전용: 실제 모뎀 측정/시간동기/플랫폼 전송을 전부 건너뛰고 시나리오만 진행 */
-    App_CommTest7RunCycle();
-    return APP_STATUS_OK;
-#else
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
 
