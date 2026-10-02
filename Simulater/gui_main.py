@@ -22,7 +22,7 @@ from comm_logger import CommLogger
 
 from log_compare_gui import CompareWindow
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 # ------------------------------------------------------------------
 # 시험 항목 정의 (GUI에서 파라미터를 받아 시나리오 인스턴스를 생성)
@@ -578,6 +578,7 @@ class SimulatorGUI(tk.Tk):
         self.connect_btn.configure(text="연결 해제")
         self.conn_status_var.set("● 연결됨")
         self.conn_status_label.configure(foreground="green")
+        self.test_combo.configure(state="readonly")   # 연결 시에도 항상 선택 가능 상태 보장
         self._update_test_start_btn_state()
 
     def _on_disconnect(self):
@@ -612,6 +613,7 @@ class SimulatorGUI(tk.Tk):
         self.conn_status_label.configure(foreground="red")
         self.test_start_btn.configure(state="disabled")
         self.test_stop_btn.configure(state="disabled")
+        self.test_combo.configure(state="readonly")   # 시험 중 끊겨도 선택 가능하게 복구
         self.status_var.set("대기 중 (포트 해제)")
 
     # ----------------------------------------------------------
