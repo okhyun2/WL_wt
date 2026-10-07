@@ -102,17 +102,18 @@ extern "C" {
 #define NBIOT_SUPPORT_DNS
 #ifdef NBIOT_SUPPORT_DNS
 #define MY_SERVER_DOMAIN              "acorp2.iptime.org"
+#define APP_SERVICE_SERVER_PORT                 (6001u)
+#define APP_MGMT_SERVER_PORT                    (6001u)
 //#define MY_SERVER_DOMAIN              "dev-aro.com"
+//#define APP_SERVICE_SERVER_PORT                 (41001u)
+//#define APP_MGMT_SERVER_PORT                    (41001u)
+
 #define WARMUPDNS_SERVER_DOMAIN       "www.google.com"
 #define APP_MGMT_SERVER_DOMAIN        MY_SERVER_DOMAIN
 #else
 #define MY_SERVER_IP                    "125.138.79.82"
 #define APP_MGMT_SERVER_IP             MY_SERVER_IP
 #endif // NBIOT_SUPPORT_DNS
-#define APP_SERVICE_SERVER_PORT                 (6001u)
-#define APP_MGMT_SERVER_PORT                    (6001u)
-//#define APP_SERVICE_SERVER_PORT                 (41001u)
-//#define APP_MGMT_SERVER_PORT                    (41001u)
 
 /* BC95-GV board-aligned platform provisioning defaults */
 #define APP_BC95_PLATFORM_SERVER_IP_STRING      "106.103.233.155"
@@ -296,7 +297,8 @@ extern "C" {
 #define APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS     (0u) /* 0: legacy fixed spread fallback */
 #define APP_POLICY_REPORT_SPREAD_FALLBACK_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
 //TODO change serial number -> serial_bcd 5
-#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
+//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
+#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x46\x10\x00\x00\x05" 
 //#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x45\x67\x00\x00\x02" 
 #define APP_POLICY_NBIOT_BOOTRACK_REG_SERVPLATFORM (APP_FALSE) //default: TRUE
 

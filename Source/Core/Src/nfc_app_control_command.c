@@ -219,7 +219,7 @@ static uint8_t nfc_app_ctrl_validate_cmd(const NfcAppCtrlCmd_t *p_cmd)
     switch (p_cmd->yy)
     {
         case NFC_APP_CTRL_GROUP_NB_CONTROL:
-        case NFC_APP_CTRL_GROUP_SELFTEST:
+        case NFC_APP_CTRL_GROUP_DIAGNOSIS:
         case NFC_APP_CTRL_GROUP_PARAMETER:
             return (uint8_t)NFC_CMD_RESULT_OK;
         default:
@@ -569,7 +569,7 @@ static uint8_t nfc_app_ctrl_handle_nb(const NfcAppCtrlCmd_t *p_cmd,
     }
 }
 
-static uint8_t nfc_app_ctrl_handle_selftest(const NfcAppCtrlCmd_t *p_cmd,
+static uint8_t nfc_app_ctrl_handle_diagnosis(const NfcAppCtrlCmd_t *p_cmd,
                                             const NfcAppCtrlReqPayload_u *p_req,
                                             NfcAppCtrlRspPayload_u *p_rsp,
                                             uint8_t *p_rsp_len,
@@ -1088,8 +1088,8 @@ uint8_t NfcAppCtrl_Execute(const NfcAppCtrlCmd_t *p_cmd,
     {
         case NFC_APP_CTRL_GROUP_NB_CONTROL:
             return nfc_app_ctrl_handle_nb(p_cmd, p_req, p_rsp, p_rsp_len, p_op_status);
-        case NFC_APP_CTRL_GROUP_SELFTEST:
-            return nfc_app_ctrl_handle_selftest(p_cmd, p_req, p_rsp, p_rsp_len, p_op_status);
+        case NFC_APP_CTRL_GROUP_DIAGNOSIS:
+            return nfc_app_ctrl_handle_diagnosis(p_cmd, p_req, p_rsp, p_rsp_len, p_op_status);
         case NFC_APP_CTRL_GROUP_PARAMETER:
             return nfc_app_ctrl_handle_param(p_cmd, p_req, p_rsp, p_rsp_len, p_op_status);
         default:

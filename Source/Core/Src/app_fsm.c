@@ -25,9 +25,9 @@
 #include "app_comm_param.h"
 
 #if 0 //debug
-#define APP_DEBUG_METER_PERIOD_MS      (1u * 60000u)   /* 1 min */
-#define APP_DEBUG_TX_PERIOD_MS         (1u * 60000u)   /* 5 min : service TX */
-#define APP_DEBUG_MGMT_TX_PERIOD_MS    (1u * 60000u)   /* 10 min : management TX */
+#define APP_DEBUG_METER_PERIOD_MS      (2u * 60000u)   /* 1 min */
+#define APP_DEBUG_TX_PERIOD_MS         (3u * 60000u)   /* 5 min : service TX */
+#define APP_DEBUG_MGMT_TX_PERIOD_MS    (3u * 60000u)   /* 10 min : management TX */
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -951,7 +951,7 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
         /* CMD: UCMD */
         if ((raw[0] == NFC_APP_CTRL_CMD_CLASS) &&
             ((raw[1] == NFC_APP_CTRL_GROUP_NB_CONTROL) ||
-             (raw[1] == NFC_APP_CTRL_GROUP_SELFTEST) ||
+             (raw[1] == NFC_APP_CTRL_GROUP_DIAGNOSIS) ||
              (raw[1] == NFC_APP_CTRL_GROUP_PARAMETER) ))
         {
             NFC_CMD_Result_t cmdStatus;

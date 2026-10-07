@@ -13,7 +13,8 @@
 #define NFC_CMD_SYNC_WAIT_TIMEOUT_MS    300U
 #define NFC_CMD_SYNC_WAIT_POLL_MS       10U
 #define NFC_CMD_MIN_RESPONSE_BLOCKS     1U
-#define NFC_CMD_FIXED_PAYLOAD_BLOCKS    8U
+#define NFC_CMD_FIXED_PAYLOAD_BLOCKS \
+    (NFC_SRAM_UCMD_PAYLOAD_BLOCK_END - NFC_SRAM_UCMD_PAYLOAD_BLOCK_START + 1U)
 
 static NFC_CMD_Result_t nfc_cmd_write_indicate(NFC_CMD_Handle_t *hcmd,
                                                uint8_t prefix,

@@ -16,7 +16,7 @@ extern "C" {
 typedef enum
 {
     NFC_APP_CTRL_GROUP_NB_CONTROL = 0x01U,
-    NFC_APP_CTRL_GROUP_SELFTEST   = 0x02U,
+    NFC_APP_CTRL_GROUP_DIAGNOSIS   = 0x02U,
     NFC_APP_CTRL_GROUP_PARAMETER  = 0x03U
 } NfcAppCtrlGroup_t;
 

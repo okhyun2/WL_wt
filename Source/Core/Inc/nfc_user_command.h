@@ -16,8 +16,8 @@ extern "C" {
 #include <stdint.h>
 
 #define NFC_CMD_MAGIC_WORD              0xAA55U
-#define NFC_CMD_MAX_PAYLOAD             32U
-#define NFC_CMD_MAX_RESULT              32U
+#define NFC_CMD_MAX_PAYLOAD             64U
+#define NFC_CMD_MAX_RESULT              64U
 #define NFC_CMD_VERSION_STR             "3.1.0"
 
 #define NFC_CMD_IND_NFC_TO_I2C_PREFIX   0xF5U

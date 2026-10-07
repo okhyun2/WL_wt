@@ -12,7 +12,7 @@ extern "C" {
 
 /* UCMD Req/Rsp payload struct */
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define NFC_APP_CTRL_PAYLOAD_SIZE      (32U)
+#define NFC_APP_CTRL_PAYLOAD_SIZE      (64U)
 #define NFC_APP_CTRL_REQ_MAX_LEN       NFC_APP_CTRL_PAYLOAD_SIZE
 #define NFC_APP_CTRL_RSP_MAX_LEN       NFC_APP_CTRL_PAYLOAD_SIZE
 
