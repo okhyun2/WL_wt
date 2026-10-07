@@ -390,6 +390,12 @@ static AppStatus_t App_SelfTestCheckDebugUart(void)
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
+static AppStatus_t App_SelfTestCheckMeterUartLineOk(void)
+{
+    AppStatus_t status = APP_STATUS_OK;
+    return (status);
+}
+
 static AppStatus_t App_SelfTestCheckMeterUartLine(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
@@ -841,7 +847,11 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
 #elif defined(SUPPORT_METER_SC1xxx)
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart, APP_FALSE);
 #endif
-    if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed != APP_TRUE)
+    if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed == APP_TRUE)
+    {
+        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLineOk, APP_FALSE);
+    }
+    else
     {
         App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine, APP_FALSE);
     }
@@ -896,7 +906,11 @@ AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatu
     }
 
     /* METER 검사가 실패했을 때만 라인(하드웨어 루프백) 진단을 추가로 수행 */
-    if (meterProbeStatus != APP_STATUS_OK)
+    if (meterProbeStatus == APP_STATUS_OK)
+    {
+        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLineOk, APP_FALSE);
+    }
+    else
     {
         App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine, APP_FALSE);
     }
