@@ -32,8 +32,13 @@ const char *App_SelfTestResetCauseToString(void)
 /** @brief Internal runtime context. */
 static AppSelfTestContext_t g_appSelfTestContext;
 static uint8_t g_appSelfTestNbiotExecuted;
+static uint8_t g_appSelfTestMeterLastReply[APP_SELFTEST_UART_RX_BUFFER_SIZE];
+static uint16_t g_appSelfTestMeterLastReplyLen;
+static uint8_t g_appSelfTestMeterLastReplyValid;
+static uint8_t g_appSelfTestMeterLastReplyIsSc1xxx;
 
 static const char *App_SelfTestItemToString(AppSelfTestItem_t item);
+static AppStatus_t App_SelfTestCheckMeterCrc(void);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
@@ -75,7 +80,8 @@ static void App_SelfTestReportTest3Result(void)
             faultCount++;
             anyFault = APP_TRUE;
 
-            if (item != APP_SELFTEST_ITEM_METER_UART)
+            if ((item != APP_SELFTEST_ITEM_METER_UART) &&
+                (item != APP_SELFTEST_ITEM_METER_CRC))
             {
                 onlyMeterFault = APP_FALSE;
             }
@@ -231,6 +237,9 @@ static const char *App_SelfTestItemToString(AppSelfTestItem_t item)
 
         case APP_SELFTEST_ITEM_METER_UART:
             return "METER";
+
+        case APP_SELFTEST_ITEM_METER_CRC:
+            return "METER_CRC";
 
         case APP_SELFTEST_ITEM_NBIOT_UART:
             return "NBIOT";
@@ -393,6 +402,7 @@ static AppStatus_t App_SelfTestCheckDebugUart(void)
 static AppStatus_t App_SelfTestCheckMeterUartLineOk(void)
 {
     AppStatus_t status = APP_STATUS_OK;
+    APP_LOGI("SELF", "METER_LINE skipped-as-ok because METER_UART ok");
     return (status);
 }
 
@@ -463,6 +473,10 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
     //const uint8_t SYNC_START = 0x68;
     //const uint8_t SYNC_STOP = 0x16;
 
+    g_appSelfTestMeterLastReplyValid = APP_FALSE;
+    g_appSelfTestMeterLastReplyLen = 0u;
+    g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
+
     APP_LOGI("SELF", "Meter(Normal) UART real probe start");
 
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
@@ -482,6 +496,13 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
                                        APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
                                        APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS);
     APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
+
+    (void)memcpy(g_appSelfTestMeterLastReply,
+                 meterReply,
+                 APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+    g_appSelfTestMeterLastReplyLen = APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN;
+    g_appSelfTestMeterLastReplyValid = APP_TRUE;
+    g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
 
     HAL_Delay(100); //>= meter spec. 100ms
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
@@ -512,6 +533,10 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
     //const uint8_t SYNC_STOP = 0x03;
     //int i = 0; 
 
+    g_appSelfTestMeterLastReplyValid = APP_FALSE;
+    g_appSelfTestMeterLastReplyLen = 0u;
+    g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
+
     APP_LOGI("SELF", "Meter(SC1xxx) UART real probe start");
 
     //Read protocols meter(SC1xxx)
@@ -534,6 +559,13 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
                                            APP_SELFTEST_UART_REPLY_METER_SC1xxx_TIMEOUT_MS);
         APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
 
+        (void)memcpy(g_appSelfTestMeterLastReply,
+                     meterReply,
+                     APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
+        g_appSelfTestMeterLastReplyLen = APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN;
+        g_appSelfTestMeterLastReplyValid = APP_TRUE;
+        g_appSelfTestMeterLastReplyIsSc1xxx = APP_TRUE;
+
         HAL_Delay(100); //>= 100ms
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
         HAL_Delay(100); 
@@ -548,6 +580,53 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
         App_MeterSetStorageEnabled(storageEnabledPrev);
     }
     return (status);
+}
+
+static AppStatus_t App_SelfTestCheckMeterCrc(void)
+{
+    App_MeterResult_t meterResult;
+
+    if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed != APP_TRUE)
+    {
+        APP_LOGI("SELF", "METER_CRC skipped-as-fail because METER_UART failed");
+        return APP_STATUS_SELFTEST_FAILED;
+    }
+
+    APP_RETURN_IF_FALSE((g_appSelfTestMeterLastReplyValid == APP_TRUE), APP_STATUS_SELFTEST_FAILED);
+    APP_RETURN_IF_FALSE((g_appSelfTestMeterLastReplyLen > 0u), APP_STATUS_SELFTEST_FAILED);
+
+#if defined(SUPPORT_METER_SC1xxx)
+    if (g_appSelfTestMeterLastReplyIsSc1xxx == APP_TRUE)
+    {
+        App_MeterSC1xxxUnion_t rxFrame = {0};
+        meterResult = App_MeterSC1xxxParseFrame(&rxFrame,
+                                                g_appSelfTestMeterLastReply,
+                                                g_appSelfTestMeterLastReplyLen);
+        if (meterResult != APP_METER_OK)
+        {
+            APP_LOGE("SELF", "METER_CRC(SC1xxx) FAIL parse=%d", (int)meterResult);
+            return APP_STATUS_SELFTEST_FAILED;
+        }
+
+        APP_LOGI("SELF", "METER_CRC(SC1xxx) PASS");
+        return APP_STATUS_OK;
+    }
+#endif
+
+    {
+        App_MeterUnion_t rxFrame = {0};
+        meterResult = App_MeterParseFrame(&rxFrame,
+                                          g_appSelfTestMeterLastReply,
+                                          g_appSelfTestMeterLastReplyLen);
+        if (meterResult != APP_METER_OK)
+        {
+            APP_LOGE("SELF", "METER_CRC(Normal) FAIL parse=%d", (int)meterResult);
+            return APP_STATUS_SELFTEST_FAILED;
+        }
+    }
+
+    APP_LOGI("SELF", "METER_CRC(Normal) PASS");
+    return APP_STATUS_OK;
 }
 
 static AppStatus_t App_SelfTestCheckNbiotUart(void)
@@ -775,6 +854,11 @@ AppStatus_t App_SelfTestInit(void)
     g_appSelfTestContext.lastSequenceStatus = APP_STATUS_NOT_INITIALIZED;
     g_appSelfTestNbiotExecuted = APP_FALSE;
 
+    g_appSelfTestMeterLastReplyLen = 0u;
+    g_appSelfTestMeterLastReplyValid = APP_FALSE;
+    g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
+    (void)memset(g_appSelfTestMeterLastReply, 0, sizeof(g_appSelfTestMeterLastReply));
+
     return APP_STATUS_OK;
 }
 
@@ -793,6 +877,9 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     g_appSelfTestContext.passCount = 0u;
     g_appSelfTestContext.failCount = 0u;
     (void)memset(g_appSelfTestContext.items, 0, sizeof(g_appSelfTestContext.items));
+    g_appSelfTestMeterLastReplyLen = 0u;
+    g_appSelfTestMeterLastReplyValid = APP_FALSE;
+    g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
 
     App_SelfTestRunItem(APP_SELFTEST_ITEM_BUZZER, App_SelfTestCheckBuzzer);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_CRC, App_SelfTestCheckCrc);
@@ -803,8 +890,14 @@ AppStatus_t App_SelfTestRunBootSequence(void)
 #elif defined(SUPPORT_METER_SC1xxx)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
 #endif
+    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_CRC, App_SelfTestCheckMeterCrc);
+
     /* METER 검사가 실패했을 때만 라인(하드웨어 루프백) 진단을 추가로 수행 */
-    if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed != APP_TRUE)
+    if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed == APP_TRUE)
+    {
+        App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLineOk);
+    }
+    else
     {
         App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine);
     }
@@ -838,6 +931,9 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
     g_appSelfTestContext.passCount = 0u;
     g_appSelfTestContext.failCount = 0u;
     (void)memset(g_appSelfTestContext.items, 0, sizeof(g_appSelfTestContext.items));
+    g_appSelfTestMeterLastReplyLen = 0u;
+    g_appSelfTestMeterLastReplyValid = APP_FALSE;
+    g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
 
     APP_LOGN("SELF", "Operational data collection start");
 
@@ -847,6 +943,8 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
 #elif defined(SUPPORT_METER_SC1xxx)
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart, APP_FALSE);
 #endif
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_CRC, App_SelfTestCheckMeterCrc, APP_FALSE);
+
     if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed == APP_TRUE)
     {
         App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLineOk, APP_FALSE);
@@ -904,6 +1002,8 @@ AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatu
                  App_SelfTestItemToString(APP_SELFTEST_ITEM_METER_UART),
                  (unsigned long)meterProbeStatus);
     }
+
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_CRC, App_SelfTestCheckMeterCrc, APP_FALSE);
 
     /* METER 검사가 실패했을 때만 라인(하드웨어 루프백) 진단을 추가로 수행 */
     if (meterProbeStatus == APP_STATUS_OK)
