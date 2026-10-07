@@ -30,19 +30,19 @@ typedef struct { uint8_t reportingSpreadHours; uint8_t reportingPeriodHours; uin
 typedef struct { uint8_t reserved[32]; } NfcReqNbAckStatusGet_t;
 typedef struct { uint8_t ackWaitEnabled; uint8_t lastAckState; uint8_t pendingTx; uint8_t reserved0; uint8_t reserved[28]; } NfcRspNbAckStatusGet_t;
 
-/* SELFTEST group */
-typedef struct { uint8_t option; uint8_t reserved[31]; } NfcReqSelftestRunQuick_t;
-typedef struct { uint8_t diagSeq; uint8_t diagState; uint8_t failCount; uint8_t reserved0; uint8_t reserved[28]; } NfcRspSelftestRunQuick_t;
-typedef struct { uint8_t option; uint8_t reserved[31]; } NfcReqSelftestRunFull_t;
-typedef NfcRspSelftestRunQuick_t NfcRspSelftestRunFull_t;
-typedef struct { uint8_t reserved[32]; } NfcReqSelftestSummaryGet_t;
-typedef struct { uint8_t diagSeq; uint8_t executedMaskLe[2]; uint8_t passedMaskLe[2]; uint8_t failCount; uint8_t lastStatusLe[2]; uint8_t reserved[24]; } NfcRspSelftestSummaryGet_t;
-typedef struct { uint8_t itemId; uint8_t reserved[31]; } NfcReqSelftestDetailGet_t;
-typedef struct { uint8_t itemId; uint8_t executed; uint8_t passed; uint8_t statusLe[2]; uint8_t tickMsLe[4]; uint8_t reserved[23]; } NfcRspSelftestDetailGet_t;
-typedef struct { uint8_t itemId; uint8_t reserved[31]; } NfcReqSelftestRetryItem_t;
-typedef struct { uint8_t itemId; uint8_t executed; uint8_t passed; uint8_t statusLe[2]; uint8_t reserved[27]; } NfcRspSelftestRetryItem_t;
-typedef struct { uint8_t clearCode; uint8_t reserved[31]; } NfcReqSelftestClear_t;
-typedef struct { uint8_t cleared; uint8_t reserved[31]; } NfcRspSelftestClear_t;
+/* DIAGNOSIS group */
+//typedef struct { uint8_t option; uint8_t reserved[31]; } NfcReqDiagnosisRunQuick_t;
+//typedef struct { uint8_t diagSeq; uint8_t diagState; uint8_t failCount; uint8_t reserved0; uint8_t reserved[28]; } NfcRspDiagnosisRunQuick_t;
+//typedef struct { uint8_t option; uint8_t reserved[31]; } NfcReqDiagnosisRunFull_t;
+//typedef NfcRspDiagnosisRunQuick_t NfcRspDiagnosisRunFull_t;
+typedef struct { uint8_t reserved[32]; } NfcReqDiagnosisRunSummaryGet_t;
+typedef struct { uint8_t diagSeq; uint8_t executedMaskLe[2]; uint8_t passedMaskLe[2]; uint8_t failCount; uint8_t lastStatusLe[2]; uint8_t reserved[24]; } NfcRspDiagnosisRunSummaryGet_t;
+typedef struct { uint8_t itemId; uint8_t reserved[31]; } NfcReqDiagnosisDetailGet_t;
+typedef struct { uint8_t itemId; uint8_t executed; uint8_t passed; uint8_t statusLe[2]; uint8_t tickMsLe[4]; uint8_t reserved[23]; } NfcRspDiagnosisDetailGet_t;
+//typedef struct { uint8_t itemId; uint8_t reserved[31]; } NfcReqDiagnosisRetryItem_t;
+//typedef struct { uint8_t itemId; uint8_t executed; uint8_t passed; uint8_t statusLe[2]; uint8_t reserved[27]; } NfcRspDiagnosisRetryItem_t;
+//typedef struct { uint8_t clearCode; uint8_t reserved[31]; } NfcReqDiagnosisClear_t;
+//typedef struct { uint8_t cleared; uint8_t reserved[31]; } NfcRspDiagnosisClear_t;
 
 /* PARAMETER group */
 typedef struct { uint8_t reserved[32]; } NfcReqParamScheduleGet_t;
@@ -74,12 +74,12 @@ typedef union
     NfcReqNbSpreadSet_t         nbSpreadSet;
     NfcReqNbSpreadGet_t         nbSpreadGet;
     NfcReqNbAckStatusGet_t      nbAckStatusGet;
-    NfcReqSelftestRunQuick_t    selftestRunQuick;
-    NfcReqSelftestRunFull_t     selftestRunFull;
-    NfcReqSelftestSummaryGet_t  selftestSummaryGet;
-    NfcReqSelftestDetailGet_t   selftestDetailGet;
-    NfcReqSelftestRetryItem_t   selftestRetryItem;
-    NfcReqSelftestClear_t       selftestClear;
+    //NfcReqDiagnosisRunQuick_t   diagnosisRunQuick;
+    //NfcReqDiagnosisRunFull_t    diagnosisRunFull;
+    NfcReqDiagnosisRunSummaryGet_t diagnosisRunSummaryGet;
+    NfcReqDiagnosisDetailGet_t  diagnosisDetailGet;
+    //NfcReqDiagnosisRetryItem_t  diagnosisRetryItem;
+    //NfcReqDiagnosisClear_t      diagnosisClear;
     NfcReqParamScheduleGet_t    paramScheduleGet;
     NfcReqParamScheduleSet_t    paramScheduleSet;
     NfcReqParamPolicyGet_t      paramPolicyGet;
@@ -99,12 +99,12 @@ typedef union
     NfcRspNbSpreadSet_t         nbSpreadSet;
     NfcRspNbSpreadGet_t         nbSpreadGet;
     NfcRspNbAckStatusGet_t      nbAckStatusGet;
-    NfcRspSelftestRunQuick_t    selftestRunQuick;
-    NfcRspSelftestRunFull_t     selftestRunFull;
-    NfcRspSelftestSummaryGet_t  selftestSummaryGet;
-    NfcRspSelftestDetailGet_t   selftestDetailGet;
-    NfcRspSelftestRetryItem_t   selftestRetryItem;
-    NfcRspSelftestClear_t       selftestClear;
+    //NfcRspDiagnosisRunQuick_t   diagnosisRunQuick;
+    //NfcRspDiagnosisRunFull_t    diagnosisRunFull;
+    NfcRspDiagnosisRunSummaryGet_t diagnosisRunSummaryGet;
+    NfcRspDiagnosisDetailGet_t  diagnosisDetailGet;
+    //NfcRspDiagnosisRetryItem_t  diagnosisRetryItem;
+    //NfcRspDiagnosisClear_t      diagnosisClear;
     NfcRspParamScheduleGet_t    paramScheduleGet;
     NfcRspParamScheduleSet_t    paramScheduleSet;
     NfcRspParamPolicyGet_t      paramPolicyGet;

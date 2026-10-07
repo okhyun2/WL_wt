@@ -585,30 +585,38 @@ static uint8_t nfc_app_ctrl_handle_diagnosis(const NfcAppCtrlCmd_t *p_cmd,
 
     switch (p_cmd->zz)
     {
-        case NFC_APP_CTRL_SELFTEST_RUN_QUICK:
-        case NFC_APP_CTRL_SELFTEST_RUN_FULL:
+#if 0
+        case NFC_APP_CTRL_DIAGNOSIS_RUN_QUICK:
+        case NFC_APP_CTRL_DIAGNOSIS_RUN_FULL:
             s_appCtrlDiagSeq++;
             if (s_appCtrlDiagSeq == 0U)
             {
                 s_appCtrlDiagSeq = 1U;
             }
             status = App_SelfTestRunDataCollectionSequence();
-            p_rsp->selftestRunQuick.diagSeq = s_appCtrlDiagSeq;
-            p_rsp->selftestRunQuick.diagState = (status == APP_STATUS_OK) ?
+            p_rsp->diagnosisRunQuick.diagSeq = s_appCtrlDiagSeq;
+            p_rsp->diagnosisRunQuick.diagState = (status == APP_STATUS_OK) ?
                                                 (uint8_t)NFC_APP_CTRL_DIAG_STATE_DONE :
                                                 (uint8_t)NFC_APP_CTRL_DIAG_STATE_FAIL;
-            p_rsp->selftestRunQuick.failCount = 0U;
+            p_rsp->diagnosisRunQuick.failCount = 0U;
             p_ctx = App_SelfTestGetContext();
             if (p_ctx != NULL)
             {
-                p_rsp->selftestRunQuick.failCount = (uint8_t)(p_ctx->failCount & 0xFFU);
+                p_rsp->diagnosisRunQuick.failCount = (uint8_t)(p_ctx->failCount & 0xFFU);
             }
-            p_rsp->selftestRunQuick.reserved0 = 0U;
+            p_rsp->diagnosisRunQuick.reserved0 = 0U;
             *p_rsp_len = 4U;
             *p_op_status = nfc_app_ctrl_map_status(status);
             return (uint8_t)NFC_CMD_RESULT_OK;
+#endif
+        case NFC_APP_CTRL_DIAGNOSIS_RUN_SUMMARY_GET:
+            s_appCtrlDiagSeq++;
+            if (s_appCtrlDiagSeq == 0U)
+            {
+                s_appCtrlDiagSeq = 1U;
+            }
+            status = App_SelfTestRunDataCollectionSequence();
 
-        case NFC_APP_CTRL_SELFTEST_SUMMARY_GET:
             p_ctx = App_SelfTestGetContext();
             if (p_ctx == NULL)
             {
@@ -618,17 +626,17 @@ static uint8_t nfc_app_ctrl_handle_diagnosis(const NfcAppCtrlCmd_t *p_cmd,
             }
             executedMask = nfc_app_ctrl_mask_from_context(p_ctx, 0U);
             passedMask = nfc_app_ctrl_mask_from_context(p_ctx, 1U);
-            p_rsp->selftestSummaryGet.diagSeq = s_appCtrlDiagSeq;
-            nfc_app_ctrl_put_u16le(p_rsp->selftestSummaryGet.executedMaskLe, executedMask);
-            nfc_app_ctrl_put_u16le(p_rsp->selftestSummaryGet.passedMaskLe, passedMask);
-            p_rsp->selftestSummaryGet.failCount = (uint8_t)(p_ctx->failCount & 0xFFU);
-            nfc_app_ctrl_put_u16le(p_rsp->selftestSummaryGet.lastStatusLe, (uint16_t)p_ctx->lastSequenceStatus);
+            p_rsp->diagnosisRunSummaryGet.diagSeq = s_appCtrlDiagSeq;
+            nfc_app_ctrl_put_u16le(p_rsp->diagnosisRunSummaryGet.executedMaskLe, executedMask);
+            nfc_app_ctrl_put_u16le(p_rsp->diagnosisRunSummaryGet.passedMaskLe, passedMask);
+            p_rsp->diagnosisRunSummaryGet.failCount = (uint8_t)(p_ctx->failCount & 0xFFU);
+            nfc_app_ctrl_put_u16le(p_rsp->diagnosisRunSummaryGet.lastStatusLe, (uint16_t)p_ctx->lastSequenceStatus);
             *p_rsp_len = 8U;
-            *p_op_status = (uint8_t)NFC_APP_CTRL_OP_OK;
+            *p_op_status = nfc_app_ctrl_map_status(status);
             return (uint8_t)NFC_CMD_RESULT_OK;
 
-        case NFC_APP_CTRL_SELFTEST_DETAIL_GET:
-            itemId = p_req->selftestDetailGet.itemId;
+        case NFC_APP_CTRL_DIAGNOSIS_DETAIL_GET:
+            itemId = p_req->diagnosisDetailGet.itemId;
             if (itemId >= (uint8_t)APP_SELFTEST_ITEM_COUNT)
             {
                 return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
@@ -640,17 +648,18 @@ static uint8_t nfc_app_ctrl_handle_diagnosis(const NfcAppCtrlCmd_t *p_cmd,
                 *p_op_status = (uint8_t)NFC_APP_CTRL_OP_NOT_SUPPORTED;
                 return (uint8_t)NFC_CMD_RESULT_OK;
             }
-            p_rsp->selftestDetailGet.itemId = itemId;
-            p_rsp->selftestDetailGet.executed = p_ctx->items[itemId].executed;
-            p_rsp->selftestDetailGet.passed = p_ctx->items[itemId].passed;
-            nfc_app_ctrl_put_u16le(p_rsp->selftestDetailGet.statusLe, (uint16_t)p_ctx->items[itemId].status);
-            nfc_app_ctrl_put_u32le(p_rsp->selftestDetailGet.tickMsLe, p_ctx->items[itemId].tickMs);
+            p_rsp->diagnosisDetailGet.itemId = itemId;
+            p_rsp->diagnosisDetailGet.executed = p_ctx->items[itemId].executed;
+            p_rsp->diagnosisDetailGet.passed = p_ctx->items[itemId].passed;
+            nfc_app_ctrl_put_u16le(p_rsp->diagnosisDetailGet.statusLe, (uint16_t)p_ctx->items[itemId].status);
+            nfc_app_ctrl_put_u32le(p_rsp->diagnosisDetailGet.tickMsLe, p_ctx->items[itemId].tickMs);
             *p_rsp_len = 9U;
             *p_op_status = (uint8_t)NFC_APP_CTRL_OP_OK;
             return (uint8_t)NFC_CMD_RESULT_OK;
 
-        case NFC_APP_CTRL_SELFTEST_RETRY_ITEM:
-            itemId = p_req->selftestRetryItem.itemId;
+#if 0
+        case NFC_APP_CTRL_DIAGNOSIS_RETRY_ITEM:
+            itemId = p_req->diagnosisRetryItem.itemId;
             if (itemId >= (uint8_t)APP_SELFTEST_ITEM_COUNT)
             {
                 return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
@@ -668,25 +677,25 @@ static uint8_t nfc_app_ctrl_handle_diagnosis(const NfcAppCtrlCmd_t *p_cmd,
                 *p_op_status = (uint8_t)NFC_APP_CTRL_OP_NOT_SUPPORTED;
                 return (uint8_t)NFC_CMD_RESULT_OK;
             }
-            p_rsp->selftestRetryItem.itemId = itemId;
-            p_rsp->selftestRetryItem.executed = p_ctx->items[itemId].executed;
-            p_rsp->selftestRetryItem.passed = p_ctx->items[itemId].passed;
-            nfc_app_ctrl_put_u16le(p_rsp->selftestRetryItem.statusLe, (uint16_t)p_ctx->items[itemId].status);
+            p_rsp->diagnosisRetryItem.itemId = itemId;
+            p_rsp->diagnosisRetryItem.executed = p_ctx->items[itemId].executed;
+            p_rsp->diagnosisRetryItem.passed = p_ctx->items[itemId].passed;
+            nfc_app_ctrl_put_u16le(p_rsp->diagnosisRetryItem.statusLe, (uint16_t)p_ctx->items[itemId].status);
             *p_rsp_len = 5U;
             *p_op_status = nfc_app_ctrl_map_status(status);
             return (uint8_t)NFC_CMD_RESULT_OK;
 
-        case NFC_APP_CTRL_SELFTEST_CLEAR:
-            if (p_req->selftestClear.clearCode != NFC_APP_CTRL_CLEAR_CODE)
+        case NFC_APP_CTRL_DIAGNOSIS_CLEAR:
+            if (p_req->diagnosisClear.clearCode != NFC_APP_CTRL_CLEAR_CODE)
             {
                 return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
             }
             nfc_app_ctrl_clear_selftest_context();
-            p_rsp->selftestClear.cleared = 1U;
+            p_rsp->diagnosisClear.cleared = 1U;
             *p_rsp_len = 1U;
             *p_op_status = (uint8_t)NFC_APP_CTRL_OP_OK;
             return (uint8_t)NFC_CMD_RESULT_OK;
-
+#endif
         default:
             return (uint8_t)NFC_CMD_RESULT_INVALID_CMD;
     }
