@@ -51,6 +51,33 @@
 #endif
 ///////////////////////////////////////////////////////////////////////////////////
 
+static uint32_t App_FsmGetRuntimeMeterPeriodMs(void)
+{
+#ifdef APP_DEBUG_METER_PERIOD_MS
+    return APP_DEBUG_METER_PERIOD_MS;
+#else
+    return App_CommGetMeterPeriodOverrideMs();
+#endif
+}
+
+static uint32_t App_FsmGetRuntimeServiceTxPeriodMs(void)
+{
+#ifdef APP_DEBUG_TX_PERIOD_MS
+    return APP_DEBUG_TX_PERIOD_MS;
+#else
+    return App_CommGetTxPeriodOverrideMs();
+#endif
+}
+
+static uint32_t App_FsmGetRuntimeMgmtTxPeriodMs(void)
+{
+#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
+    return APP_DEBUG_MGMT_TX_PERIOD_MS;
+#else
+    return App_CommGetMgmtTxPeriodOverrideMs();
+#endif
+}
+
 #define APP_FSM_MGMT_TX_BUSY_DEFER_MS  (30u * 1000u)
 
 #if defined(SUPPORT_METER_NORMAL)
@@ -1822,7 +1849,11 @@ static AppStatus_t App_FsmSchedulePlanNextAbsolute(const AppDateTime_t *p_now,
     #ifdef APP_DEBUG_METER_PERIOD_MS 
     periodMs = APP_DEBUG_METER_PERIOD_MS;
     #else
-    periodMs = (uint32_t)periodHours * 3600000u;
+    periodMs = App_FsmGetRuntimeMeterPeriodMs();
+    if (periodMs == 0u)
+    {
+        periodMs = (uint32_t)periodHours * 3600000u;
+    }
     #endif // APP_DEBUG_METER_PERIOD_MS 
     nowMsOfDay = App_FsmMeterScheduleMsOfDay(p_now);
     nextMs = ((nowMsOfDay / periodMs) + 1u) * periodMs;
@@ -1929,7 +1960,11 @@ static AppStatus_t App_FsmTxScheduleApplyMeterProximityGuard(uint32_t *p_dueDate
 #ifdef APP_DEBUG_METER_PERIOD_MS
     meterPeriodMs = APP_DEBUG_METER_PERIOD_MS;
 #else
-    meterPeriodMs = (uint32_t)meterPeriodHours * 3600000u;
+    meterPeriodMs = App_FsmGetRuntimeMeterPeriodMs();
+    if (meterPeriodMs == 0u)
+    {
+        meterPeriodMs = (uint32_t)meterPeriodHours * 3600000u;
+    }
 #endif
     if (meterPeriodMs == 0u)
     {
@@ -2554,7 +2589,7 @@ static AppStatus_t App_FsmTxScheduleEnsureInitialized(void)
 #ifdef APP_DEBUG_TX_PERIOD_MS
                                                     APP_DEBUG_TX_PERIOD_MS
 #else
-                                                    0u
+                                                    App_FsmGetRuntimeServiceTxPeriodMs()
 #endif
                                                     );
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
@@ -2581,7 +2616,7 @@ static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void)
 #ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
                                                     APP_DEBUG_MGMT_TX_PERIOD_MS
 #else
-                                                    0u
+                                                    App_FsmGetRuntimeMgmtTxPeriodMs()
 #endif
                                                     );
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
@@ -2653,20 +2688,15 @@ static AppStatus_t App_FsmTxScheduleCheckDueCommon(AppFsmTxScheduleContext_t *p_
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
 static uint8_t App_FsmTxScheduleApplyNightOnlyGate(const char *p_tag)
 {
-#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
-    /* [TEST7 전용] night-only 절전 게이트 완전 우회.
-     * EEPROM에 남아있는 과거 세션의 opt.nightOnly=1 값 때문에
-     * 주간(01:00~04:00 이외 시간)에 5분 주기 TEST7 사이클이
-     * 야간 윈도우까지 지연되는 문제를 막기 위해,
-     * TEST7 빌드에서는 항상 due 판정을 그대로 통과시킨다.
-     * 운영(양산) 빌드에서는 이 #if 블록이 컴파일되지 않으므로
-     * night-only 절전 기능은 그대로 유지된다. */
-    APP_LOGN("FSM", "%s night-only gate bypassed (TEST7 debug mode)",
-             (p_tag != NULL) ? p_tag : "[[TxSchedule]]");
-    return APP_TRUE;
-#else
     AppMeterServerFormatOptions_t opt;
     AppDateTime_t now;
+
+    if (App_CommShouldBypassNightOnlyGate() == APP_TRUE)
+    {
+        APP_LOGN("FSM", "%s night-only gate bypassed (adaptive policy)",
+                 (p_tag != NULL) ? p_tag : "[[TxSchedule]]");
+        return APP_TRUE;
+    }
 
     if (App_MeterServerOptionsLoad(&opt) == APP_STATUS_INVALID_PARAM) { return APP_TRUE; }
     if (opt.nightOnly != APP_TRUE) { return APP_TRUE; }
@@ -2681,7 +2711,6 @@ static uint8_t App_FsmTxScheduleApplyNightOnlyGate(const char *p_tag)
              (p_tag != NULL) ? p_tag : "[[TxSchedule]]",
              (unsigned)now.hour, (unsigned)opt.nightStartHour, (unsigned)opt.nightEndHour);
     return APP_FALSE;
-#endif
 }
 
 static AppStatus_t App_FsmTxScheduleRecomputeNextNightStart(uint32_t *p_dateKey, uint32_t *p_msOfDay)
@@ -2736,7 +2765,7 @@ static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
 #ifdef APP_DEBUG_TX_PERIOD_MS
                                          APP_DEBUG_TX_PERIOD_MS
 #else
-                                         0u
+                                         App_FsmGetRuntimeServiceTxPeriodMs()
 #endif
                                          );
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
@@ -2798,7 +2827,7 @@ static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due)
 #ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
                                              APP_DEBUG_MGMT_TX_PERIOD_MS
 #else
-                                             0u
+                                             App_FsmGetRuntimeMgmtTxPeriodMs()
 #endif
                                              );
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
@@ -2956,7 +2985,7 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed)
 #ifdef APP_DEBUG_TX_PERIOD_MS
                                               APP_DEBUG_TX_PERIOD_MS
 #else
-                                              0u
+                                              App_FsmGetRuntimeServiceTxPeriodMs()
 #endif
                                               );
 }
@@ -2982,7 +3011,7 @@ static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed)
 #ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
                                                   APP_DEBUG_MGMT_TX_PERIOD_MS
 #else
-                                                  0u
+                                                  App_FsmGetRuntimeMgmtTxPeriodMs()
 #endif
                                                   );
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
@@ -4108,7 +4137,7 @@ AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
 #ifdef APP_DEBUG_TX_PERIOD_MS
                                                      APP_DEBUG_TX_PERIOD_MS,
 #else
-                                                     0u,
+                                                     App_FsmGetRuntimeServiceTxPeriodMs(),
 #endif
                                                      &g_appFsmTxSchedule.nextDueDateKey,
                                                      &g_appFsmTxSchedule.nextDueMsOfDay,

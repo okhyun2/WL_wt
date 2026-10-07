@@ -306,7 +306,7 @@ extern "C" {
 /* ================================================================
  *  Comm Parameter Auto-Tuning (무선환경 기반 통신 파라미터 자동설정)
  * ================================================================ */
-#define APP_COMM_PARAM_AUTOTUNE_ENABLE          (APP_FALSE) //default:TRUE
+#define APP_COMM_PARAM_AUTOTUNE_ENABLE          (APP_TRUE) //default:TRUE
 
 #define APP_COMM_RSSI_ENTER_WEAK_DBM            (-100)
 #define APP_COMM_RSSI_EXIT_WEAK_DBM             (-95)
@@ -316,7 +316,16 @@ extern "C" {
 #define APP_COMM_SUCCESS_STREAK_NEEDED          (2u)
 #define APP_COMM_GOOD_MAX_ATTEMPT_IDX           (2u)   /* 0,1,2 = 1~3차 성공 -> HIGH */
 
-#define APP_COMM_PERIOD_WEAK_HOURS              (72u)  /* 약전계 시 3일 주기 */
+#define APP_COMM_ADAPTIVE_STRONG_REPORT_HOURS       (APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS)
+#define APP_COMM_ADAPTIVE_WEAK_REPORT_HOURS         (4u)   /* 약전계 시 4시간. 사용자 설정. */
+#define APP_COMM_ADAPTIVE_STRONG_TX_PERIOD_MIN      (0u)   /* 0 = hour 기반 정상 스케줄 사용 */
+#define APP_COMM_ADAPTIVE_WEAK_TX_PERIOD_MIN        (0u)
+#define APP_COMM_ADAPTIVE_STRONG_METER_PERIOD_MIN   (0u)
+#define APP_COMM_ADAPTIVE_WEAK_METER_PERIOD_MIN     (0u)
+#define APP_COMM_ADAPTIVE_BYPASS_NIGHT_ONLY_DEFAULT (APP_FALSE)
+
+/* legacy alias */
+#define APP_COMM_PERIOD_WEAK_HOURS              (APP_COMM_ADAPTIVE_WEAK_REPORT_HOURS)
 
 #define APP_COMM_NIGHT_START_HOUR               (1u)   /* 01:00 */
 #define APP_COMM_NIGHT_END_HOUR                 (4u)   /* 04:00 */

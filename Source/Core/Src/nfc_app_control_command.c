@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "app_log.h"
+#include "app_comm_param.h"
 #include "app_meter_server_format.h"
 #include "app_meter_storage.h"
 #include "app_nbiot.h"
@@ -14,8 +15,17 @@
 #define NFC_APP_CTRL_DEVICE_RESERVED_RESET_TRACK_VALID_IDX  2U
 #define NFC_APP_CTRL_DEVICE_RESERVED_RESET_TRACK_BOOT_IDX   3U
 #define NFC_APP_CTRL_DEVICE_RESERVED_RESET_TRACK_REASON_IDX 4U
+#define NFC_APP_CTRL_DEVICE_RESERVED_COMM_MARKER_IDX        5U
+#define NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_REPORT_IDX 6U
+#define NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_REPORT_IDX   7U
+#define NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_TXMIN_IDX  8U
+#define NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_TXMIN_IDX    9U
+#define NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_MMIN_IDX   10U
+#define NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_MMIN_IDX     11U
+#define NFC_APP_CTRL_DEVICE_RESERVED_COMM_FLAGS_IDX         12U
 
 #define NFC_APP_CTRL_RESET_TRACK_VALID_MARKER               0xA5U
+#define NFC_APP_CTRL_COMM_POLICY_VALID_MARKER               0xC7U
 #define NFC_APP_CTRL_CLEAR_CODE                             0xA5U
 #define NFC_APP_CTRL_RESTORE_CODE                           0xA5U
 
@@ -27,6 +37,10 @@
 #define NFC_APP_CTRL_APPLY_ACK_TIMEOUT_BIT                  (1U << 1)
 #define NFC_APP_CTRL_APPLY_ACK_POLL_BIT                     (1U << 2)
 #define NFC_APP_CTRL_APPLY_DELETE_AFTER_SEND_BIT            (1U << 3)
+#define NFC_APP_CTRL_APPLY_ADAPTIVE_REPORTING_BIT           (1U << 4)
+#define NFC_APP_CTRL_APPLY_ADAPTIVE_TX_MIN_BIT              (1U << 5)
+#define NFC_APP_CTRL_APPLY_ADAPTIVE_METER_MIN_BIT           (1U << 6)
+#define NFC_APP_CTRL_APPLY_ADAPTIVE_FLAGS_BIT               (1U << 7)
 #define NFC_APP_CTRL_APPLY_LOG_LEVEL_BIT                    (1U << 0)
 #define NFC_APP_CTRL_APPLY_LINK_TYPE_BIT                    (1U << 1)
 #define NFC_APP_CTRL_APPLY_DIAG_PROFILE_BIT                 (1U << 2)
@@ -288,6 +302,50 @@ static uint8_t nfc_app_ctrl_validate_policy_values(uint8_t ackWaitEnabled,
         return 0U;
     }
     return 1U;
+}
+
+static uint8_t nfc_app_ctrl_validate_adaptive_policy(const AppCommAdaptivePolicy_t *p_policy)
+{
+    if (p_policy == NULL) { return 0U; }
+    if ((p_policy->strongReportingHours == 0U) ||
+        (nfc_app_ctrl_is_supported_period(p_policy->strongReportingHours) == 0U)) { return 0U; }
+    if ((p_policy->weakReportingHours == 0U) ||
+        (nfc_app_ctrl_is_supported_period(p_policy->weakReportingHours) == 0U)) { return 0U; }
+    return 1U;
+}
+
+static void nfc_app_ctrl_get_device_comm_policy(const AppDeviceConfig_t *p_device,
+                                                AppCommAdaptivePolicy_t *p_policy)
+{
+    App_CommAdaptivePolicySetDefaults(p_policy);
+    if ((p_device == NULL) || (p_policy == NULL)) { return; }
+    if (p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_MARKER_IDX] != NFC_APP_CTRL_COMM_POLICY_VALID_MARKER)
+    {
+        return;
+    }
+
+    p_policy->strongReportingHours = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_REPORT_IDX];
+    p_policy->weakReportingHours   = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_REPORT_IDX];
+    p_policy->strongTxPeriodMin    = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_TXMIN_IDX];
+    p_policy->weakTxPeriodMin      = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_TXMIN_IDX];
+    p_policy->strongMeterPeriodMin = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_MMIN_IDX];
+    p_policy->weakMeterPeriodMin   = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_MMIN_IDX];
+    p_policy->flags                = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_FLAGS_IDX];
+}
+
+static void nfc_app_ctrl_set_device_comm_policy(AppDeviceConfig_t *p_device,
+                                                const AppCommAdaptivePolicy_t *p_policy)
+{
+    if ((p_device == NULL) || (p_policy == NULL)) { return; }
+
+    p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_MARKER_IDX]        = NFC_APP_CTRL_COMM_POLICY_VALID_MARKER;
+    p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_REPORT_IDX] = p_policy->strongReportingHours;
+    p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_REPORT_IDX]   = p_policy->weakReportingHours;
+    p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_TXMIN_IDX]  = p_policy->strongTxPeriodMin;
+    p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_TXMIN_IDX]    = p_policy->weakTxPeriodMin;
+    p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_MMIN_IDX]   = p_policy->strongMeterPeriodMin;
+    p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_MMIN_IDX]     = p_policy->weakMeterPeriodMin;
+    p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_FLAGS_IDX]         = p_policy->flags;
 }
 
 static uint8_t nfc_app_ctrl_validate_device_values(uint8_t logLevel,
@@ -957,13 +1015,22 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
             status = nfc_app_ctrl_load_options(&options);
             if (status == APP_STATUS_OK)
             {
+                AppCommAdaptivePolicy_t adaptivePolicy;
+                App_CommAdaptivePolicyGet(&adaptivePolicy);
                 timeout100ms = nfc_app_ctrl_ack_timeout_sec_to_100ms(options.ackTimeoutSec);
                 p_rsp->paramPolicyGet.ackWaitEnabled = options.ackWaitEnabled;
                 p_rsp->paramPolicyGet.ackTimeout100ms = timeout100ms;
                 p_rsp->paramPolicyGet.ackPoll100ms = options.ackPoll100Ms;
                 p_rsp->paramPolicyGet.deleteAfterSend = options.deleteAfterSend;
                 p_rsp->paramPolicyGet.flags = 0U;
-                *p_rsp_len = 5U;
+                p_rsp->paramPolicyGet.strongReportingHours = adaptivePolicy.strongReportingHours;
+                p_rsp->paramPolicyGet.weakReportingHours = adaptivePolicy.weakReportingHours;
+                p_rsp->paramPolicyGet.strongTxPeriodMin = adaptivePolicy.strongTxPeriodMin;
+                p_rsp->paramPolicyGet.weakTxPeriodMin = adaptivePolicy.weakTxPeriodMin;
+                p_rsp->paramPolicyGet.strongMeterPeriodMin = adaptivePolicy.strongMeterPeriodMin;
+                p_rsp->paramPolicyGet.weakMeterPeriodMin = adaptivePolicy.weakMeterPeriodMin;
+                p_rsp->paramPolicyGet.adaptiveFlags = adaptivePolicy.flags;
+                *p_rsp_len = 12U;
             }
             else
             {
@@ -973,6 +1040,11 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
             return (uint8_t)NFC_CMD_RESULT_OK;
 
         case NFC_APP_CTRL_PARAM_POLICY_SET:
+        {
+            AppCommAdaptivePolicy_t adaptivePolicy;
+            AppCommAdaptivePolicy_t verifyAdaptivePolicy;
+            AppStatus_t deviceStatus;
+
             status = nfc_app_ctrl_load_options(&options);
             if (status != APP_STATUS_OK)
             {
@@ -980,11 +1052,38 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
                 *p_op_status = nfc_app_ctrl_map_status(status);
                 return (uint8_t)NFC_CMD_RESULT_OK;
             }
+            deviceStatus = nfc_app_ctrl_load_device(&device);
+            if (deviceStatus != APP_STATUS_OK)
+            {
+                *p_rsp_len = 0U;
+                *p_op_status = nfc_app_ctrl_map_status(deviceStatus);
+                return (uint8_t)NFC_CMD_RESULT_OK;
+            }
+            nfc_app_ctrl_get_device_comm_policy(&device, &adaptivePolicy);
             applyMask = p_req->paramPolicySet.applyMask;
             if ((applyMask & NFC_APP_CTRL_APPLY_ACK_WAIT_BIT) != 0U) { options.ackWaitEnabled = p_req->paramPolicySet.ackWaitEnabled; }
             if ((applyMask & NFC_APP_CTRL_APPLY_ACK_TIMEOUT_BIT) != 0U) { options.ackTimeoutSec = nfc_app_ctrl_ack_timeout_100ms_to_sec(p_req->paramPolicySet.ackTimeout100ms); }
             if ((applyMask & NFC_APP_CTRL_APPLY_ACK_POLL_BIT) != 0U) { options.ackPoll100Ms = p_req->paramPolicySet.ackPoll100ms; }
             if ((applyMask & NFC_APP_CTRL_APPLY_DELETE_AFTER_SEND_BIT) != 0U) { options.deleteAfterSend = p_req->paramPolicySet.deleteAfterSend; }
+            if ((applyMask & NFC_APP_CTRL_APPLY_ADAPTIVE_REPORTING_BIT) != 0U)
+            {
+                adaptivePolicy.strongReportingHours = p_req->paramPolicySet.strongReportingHours;
+                adaptivePolicy.weakReportingHours = p_req->paramPolicySet.weakReportingHours;
+            }
+            if ((applyMask & NFC_APP_CTRL_APPLY_ADAPTIVE_TX_MIN_BIT) != 0U)
+            {
+                adaptivePolicy.strongTxPeriodMin = p_req->paramPolicySet.strongTxPeriodMin;
+                adaptivePolicy.weakTxPeriodMin = p_req->paramPolicySet.weakTxPeriodMin;
+            }
+            if ((applyMask & NFC_APP_CTRL_APPLY_ADAPTIVE_METER_MIN_BIT) != 0U)
+            {
+                adaptivePolicy.strongMeterPeriodMin = p_req->paramPolicySet.strongMeterPeriodMin;
+                adaptivePolicy.weakMeterPeriodMin = p_req->paramPolicySet.weakMeterPeriodMin;
+            }
+            if ((applyMask & NFC_APP_CTRL_APPLY_ADAPTIVE_FLAGS_BIT) != 0U)
+            {
+                adaptivePolicy.flags = p_req->paramPolicySet.adaptiveFlags;
+            }
             if (nfc_app_ctrl_validate_policy_values(options.ackWaitEnabled,
                                                     nfc_app_ctrl_ack_timeout_sec_to_100ms(options.ackTimeoutSec),
                                                     options.ackPoll100Ms,
@@ -992,15 +1091,30 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
             {
                 return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
             }
+            if (nfc_app_ctrl_validate_adaptive_policy(&adaptivePolicy) == 0U)
+            {
+                return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
+            }
             status = App_MeterServerOptionsSave(&options);
+            nfc_app_ctrl_set_device_comm_policy(&device, &adaptivePolicy);
+            deviceStatus = App_DeviceConfigSave(&device);
             verifyResult = 1U;
-            if (status == APP_STATUS_OK)
+            if ((status == APP_STATUS_OK) && (deviceStatus == APP_STATUS_OK))
             {
                 status = App_MeterServerOptionsLoad(&verifyOptions);
-                if (status == APP_STATUS_OK)
+                deviceStatus = App_DeviceConfigLoad(&verifyDevice);
+                if ((status == APP_STATUS_OK) && (deviceStatus == APP_STATUS_OK))
                 {
-                    verifyResult = (uint8_t)(nfc_app_ctrl_compare_policy(&verifyOptions, &options) == 0U ? 0U : 1U);
-                    nfc_app_ctrl_store_shadow_options(&options);
+                    nfc_app_ctrl_get_device_comm_policy(&verifyDevice, &verifyAdaptivePolicy);
+                    verifyResult = (uint8_t)(((nfc_app_ctrl_compare_policy(&verifyOptions, &options) == 0U) &&
+                                              (memcmp(&adaptivePolicy, &verifyAdaptivePolicy, sizeof(adaptivePolicy)) == 0)) ? 0U : 1U);
+                    if (verifyResult == 0U)
+                    {
+                        nfc_app_ctrl_store_shadow_options(&options);
+                        nfc_app_ctrl_store_shadow_device(&device);
+                        App_CommAdaptivePolicySet(&adaptivePolicy);
+                        App_CommParamRecompose();
+                    }
                 }
             }
             p_rsp->paramPolicySet.ackWaitEnabled = options.ackWaitEnabled;
@@ -1008,14 +1122,22 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
             p_rsp->paramPolicySet.ackPoll100ms = options.ackPoll100Ms;
             p_rsp->paramPolicySet.deleteAfterSend = options.deleteAfterSend;
             p_rsp->paramPolicySet.verifyResult = verifyResult;
-            *p_rsp_len = 5U;
+
+            p_rsp->paramPolicySet.strongReportingHours = adaptivePolicy.strongReportingHours;
+            p_rsp->paramPolicySet.weakReportingHours = adaptivePolicy.weakReportingHours;
+            p_rsp->paramPolicySet.strongTxPeriodMin = adaptivePolicy.strongTxPeriodMin;
+            p_rsp->paramPolicySet.weakTxPeriodMin = adaptivePolicy.weakTxPeriodMin;
+            p_rsp->paramPolicySet.strongMeterPeriodMin = adaptivePolicy.strongMeterPeriodMin;
+            p_rsp->paramPolicySet.weakMeterPeriodMin = adaptivePolicy.weakMeterPeriodMin;
+            p_rsp->paramPolicySet.adaptiveFlags = adaptivePolicy.flags;
+            *p_rsp_len = 12U;
             *p_op_status = (verifyResult == 0U) ? (uint8_t)NFC_APP_CTRL_OP_OK : nfc_app_ctrl_map_status(status);
-            if ((verifyResult != 0U) && (status == APP_STATUS_OK))
+            if ((verifyResult != 0U) && (status == APP_STATUS_OK) && (deviceStatus == APP_STATUS_OK))
             {
                 *p_op_status = (uint8_t)NFC_APP_CTRL_OP_VERIFY_FAIL;
             }
             return (uint8_t)NFC_CMD_RESULT_OK;
-
+        }
         case NFC_APP_CTRL_PARAM_DEVICE_GET:
             status = nfc_app_ctrl_load_device(&device);
             if (status == APP_STATUS_OK)
