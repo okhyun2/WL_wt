@@ -61,6 +61,8 @@ typedef struct { uint8_t targetGroup; uint8_t restoreCode; uint8_t reserved[30];
 typedef struct { uint8_t targetGroup; uint8_t verifyResult; uint8_t reserved[30]; } NfcRspParamRestoreDefault_t;
 typedef struct { uint8_t targetGroup; uint8_t reserved[31]; } NfcReqParamReadbackGet_t;
 typedef struct { uint8_t mismatchCount; uint8_t lastError; uint8_t reserved0; uint8_t reserved1; uint8_t reserved[28]; } NfcRspParamReadbackGet_t;
+typedef struct { uint8_t reserved[32]; } NfcReqParamRuntimeInfoGet_t;
+typedef struct { uint8_t imeiBcd[8]; uint8_t rssiDbmLe[2]; uint8_t rsrpDbmLe[2]; uint8_t deviceSerialBcd[5]; uint8_t meteringPeriodHours; uint8_t reportingPeriodHours; uint8_t managementReportingPeriodHours; uint8_t reportingSpreadHours; uint8_t flags; uint8_t reserved[10]; } NfcRspParamRuntimeInfoGet_t;
 #pragma pack(pop)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -88,6 +90,7 @@ typedef union
     NfcReqParamDeviceSet_t      paramDeviceSet;
     NfcReqParamRestoreDefault_t paramRestoreDefault;
     NfcReqParamReadbackGet_t    paramReadbackGet;
+    NfcReqParamRuntimeInfoGet_t paramRuntimeInfoGet;
 } NfcAppCtrlReqPayload_u;
 
 typedef union
@@ -113,6 +116,7 @@ typedef union
     NfcRspParamDeviceSet_t      paramDeviceSet;
     NfcRspParamRestoreDefault_t paramRestoreDefault;
     NfcRspParamReadbackGet_t    paramReadbackGet;
+    NfcRspParamRuntimeInfoGet_t paramRuntimeInfoGet;
 } NfcAppCtrlRspPayload_u;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

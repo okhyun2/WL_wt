@@ -37,6 +37,11 @@
 #define NFC_APP_CTRL_READBACK_GROUP_POLICY                  0x02U
 #define NFC_APP_CTRL_READBACK_GROUP_DEVICE                  0x03U
 
+#define NFC_APP_CTRL_RUNTIME_INFO_FLAG_IMEI_VALID           (1U << 0)
+#define NFC_APP_CTRL_RUNTIME_INFO_FLAG_QUALITY_VALID        (1U << 1)
+#define NFC_APP_CTRL_RUNTIME_INFO_FLAG_SERIAL_VALID         (1U << 2)
+#define NFC_APP_CTRL_RUNTIME_INFO_FLAG_SCHEDULE_VALID       (1U << 3)
+
 #define NFC_APP_CTRL_MAX_LOG_LEVEL                          5U
 #define NFC_APP_CTRL_MAX_DIAG_PROFILE                       3U
 #define NFC_APP_CTRL_LINK_TYPE_LORA                         0U
@@ -62,6 +67,23 @@ static void nfc_app_ctrl_put_u32le(uint8_t out[4], uint32_t value)
     out[1] = (uint8_t)((value >> 8) & 0xFFU);
     out[2] = (uint8_t)((value >> 16) & 0xFFU);
     out[3] = (uint8_t)((value >> 24) & 0xFFU);
+}
+
+static uint8_t nfc_app_ctrl_is_all_zero(const uint8_t *p_data, uint32_t len)
+{
+    uint32_t i;
+    if (p_data == NULL)
+    {
+        return 1U;
+    }
+    for (i = 0U; i < len; ++i)
+    {
+        if (p_data[i] != 0U)
+        {
+            return 0U;
+        }
+    }
+    return 1U;
 }
 
 static AppStatus_t nfc_app_ctrl_load_options(AppMeterServerFormatOptions_t *p_options)
@@ -781,6 +803,71 @@ static uint8_t nfc_app_ctrl_handle_param_readback(const NfcReqParamReadbackGet_t
     return (uint8_t)NFC_CMD_RESULT_OK;
 }
 
+static uint8_t nfc_app_ctrl_handle_param_runtime_info_get(NfcAppCtrlRspPayload_u *p_rsp,
+                                                          uint8_t *p_rsp_len,
+                                                          uint8_t *p_op_status)
+{
+    AppMeterServerFormatOptions_t options;
+    AppStatus_t status;
+    const AppBc95Quality_t *p_quality;
+    const uint8_t *p_imei_cached;
+    uint8_t imeiLocal[APP_BC95_IMEI_BCD_BYTES] = {0,};
+    uint8_t flags = 0U;
+
+    (void)memset(&p_rsp->paramRuntimeInfoGet, 0, sizeof(p_rsp->paramRuntimeInfoGet));
+
+    status = nfc_app_ctrl_load_options(&options);
+    if (status == APP_STATUS_OK)
+    {
+        (void)memcpy(p_rsp->paramRuntimeInfoGet.deviceSerialBcd,
+                     options.deviceSerialBcd,
+                     sizeof(options.deviceSerialBcd));
+
+        p_rsp->paramRuntimeInfoGet.meteringPeriodHours = options.meteringPeriodHours;
+        p_rsp->paramRuntimeInfoGet.reportingPeriodHours = options.reportingPeriodHours;
+        p_rsp->paramRuntimeInfoGet.managementReportingPeriodHours = options.managementReportingPeriodHours;
+        p_rsp->paramRuntimeInfoGet.reportingSpreadHours = options.reportingSpreadHours;
+
+        flags |= NFC_APP_CTRL_RUNTIME_INFO_FLAG_SCHEDULE_VALID;
+        if (nfc_app_ctrl_is_all_zero(options.deviceSerialBcd, sizeof(options.deviceSerialBcd)) == 0U)
+        {
+            flags |= NFC_APP_CTRL_RUNTIME_INFO_FLAG_SERIAL_VALID;
+        }
+    }
+
+    p_imei_cached = App_Bc95AtGetImeiBcd();
+    if ((p_imei_cached != NULL) &&
+        (nfc_app_ctrl_is_all_zero(p_imei_cached, APP_BC95_IMEI_BCD_BYTES) == 0U))
+    {
+        (void)memcpy(p_rsp->paramRuntimeInfoGet.imeiBcd,
+                     p_imei_cached,
+                     APP_BC95_IMEI_BCD_BYTES);
+        flags |= NFC_APP_CTRL_RUNTIME_INFO_FLAG_IMEI_VALID;
+    }
+    else if (App_Bc95AtFetchImeiWithRetry(imeiLocal,
+                                          APP_BC95_IMEI_BCD_BYTES,
+                                          APP_BC95_IMEI_FETCH_RETRY_MAX) == APP_STATUS_OK)
+    {
+        (void)memcpy(p_rsp->paramRuntimeInfoGet.imeiBcd,
+                     imeiLocal,
+                     APP_BC95_IMEI_BCD_BYTES);
+        flags |= NFC_APP_CTRL_RUNTIME_INFO_FLAG_IMEI_VALID;
+    }
+
+    p_quality = App_Bc95AtGetQuality();
+    if ((p_quality != NULL) && (p_quality->valid != 0U))
+    {
+        nfc_app_ctrl_put_u16le(p_rsp->paramRuntimeInfoGet.rssiDbmLe, (uint16_t)p_quality->rssiDbm);
+        nfc_app_ctrl_put_u16le(p_rsp->paramRuntimeInfoGet.rsrpDbmLe, (uint16_t)p_quality->rsrpDbm);
+        flags |= NFC_APP_CTRL_RUNTIME_INFO_FLAG_QUALITY_VALID;
+    }
+
+    p_rsp->paramRuntimeInfoGet.flags = flags;
+    *p_rsp_len = 22U;
+    *p_op_status = (uint8_t)NFC_APP_CTRL_OP_OK;
+    return (uint8_t)NFC_CMD_RESULT_OK;
+}
+
 static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
                                          const NfcAppCtrlReqPayload_u *p_req,
                                          NfcAppCtrlRspPayload_u *p_rsp,
@@ -1052,6 +1139,11 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
                                                       p_rsp,
                                                       p_rsp_len,
                                                       p_op_status);
+
+        case NFC_APP_CTRL_PARAM_RUNTIME_INFO_GET:
+            return nfc_app_ctrl_handle_param_runtime_info_get(p_rsp,
+                                                              p_rsp_len,
+                                                              p_op_status);
 
         default:
             return (uint8_t)NFC_CMD_RESULT_INVALID_CMD;

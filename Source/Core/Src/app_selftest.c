@@ -204,7 +204,7 @@ static AppStatus_t App_SelfTestReinitMeterUart(uint32_t settleDelayMs)
 
     HAL_Delay(settleDelayMs);
 
-    APP_LOGI("SELF", "Meter UART full re-init done (settle=%lu ms)",
+    APP_LOGD("SELF", "Meter UART full re-init done (settle=%lu ms)",
              (unsigned long)settleDelayMs);
 
     return APP_STATUS_OK;
@@ -402,7 +402,7 @@ static AppStatus_t App_SelfTestCheckDebugUart(void)
 static AppStatus_t App_SelfTestCheckMeterUartLineOk(void)
 {
     AppStatus_t status = APP_STATUS_OK;
-    APP_LOGI("SELF", "METER_LINE skipped-as-ok because METER_UART ok");
+    APP_LOGD("SELF", "METER_LINE skipped-as-ok because METER_UART ok");
     return (status);
 }
 
@@ -588,7 +588,7 @@ static AppStatus_t App_SelfTestCheckMeterCrc(void)
 
     if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed != APP_TRUE)
     {
-        APP_LOGI("SELF", "METER_CRC skipped-as-fail because METER_UART failed");
+        APP_LOGD("SELF", "METER_CRC skipped-as-fail because METER_UART failed");
         return APP_STATUS_SELFTEST_FAILED;
     }
 
