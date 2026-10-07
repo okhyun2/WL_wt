@@ -3,8 +3,8 @@ backflow: false
 battery_code: 0
 baudrate: 1200
 diameter_mm: 15
-id_str: 09123456
+id_str: 09123450
 indoor_leak: false
-initial_meter_value: 12345678
-port: COM3
+initial_meter_value: 12345601
+port: COM4
 q3_over: false
