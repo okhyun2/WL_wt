@@ -241,6 +241,16 @@ static AppStatus_t App_Bc95AtPreAttachNetResetOnWake(void);
 
 static uint8_t g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
 
+#if (APP_TEST_SERVER_TX_BUZZER_ENABLE == APP_TRUE)
+static void App_NbiotTestNotifyServerTxBuzzer(void)
+{
+    HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_SET);
+    HAL_Delay(APP_TEST_SERVER_TX_BUZZER_ON_MS);
+    HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
+    HAL_Delay(APP_TEST_SERVER_TX_BUZZER_OFF_MS);
+}
+#endif
+
 static uint8_t App_NbiotResolveDeleteAfterSend(uint8_t requestedDeleteStorage,
                                                const AppMeterServerFormatOptions_t *p_options)
 {
@@ -3775,6 +3785,10 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
                 App_CommSuccessUpdate((uint8_t)(sendAttempt - 1u), APP_FALSE);
 #endif
+#if (APP_TEST_SERVER_TX_BUZZER_ENABLE == APP_TRUE)
+                App_NbiotTestNotifyServerTxBuzzer();
+#endif
+
                 break;
             }
             APP_LOGW("NBIOT", "%s platform send failed on attempt %lu/%lu (status=%d)",
@@ -6052,6 +6066,9 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                  (unsigned)sendResult.sentBytes,
                  (unsigned)sendResult.seqNumber,
                  (unsigned)sendResult.sendConfirmed);
+#if (APP_TEST_SERVER_TX_BUZZER_ENABLE == APP_TRUE)
+                App_NbiotTestNotifyServerTxBuzzer();
+#endif
     }
 
     return status;

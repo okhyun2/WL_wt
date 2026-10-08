@@ -211,6 +211,16 @@ extern "C" {
 
 #endif /* SUPPORT_SELFTEST || APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 
+/* TODO ----------------------------------------------------------------
+ * Test option: buzzer notification on successful server transmit
+ *  - APP_TRUE : service/mgmt server 전송 성공 시 1회 부저
+ *  - APP_FALSE: 비활성
+ * ---------------------------------------------------------------- */
+#define APP_TEST_SERVER_TX_BUZZER_ENABLE            (APP_TRUE)
+#define APP_TEST_SERVER_TX_BUZZER_ON_MS             (80u)
+#define APP_TEST_SERVER_TX_BUZZER_OFF_MS            (40u)
+
+
 /* NFC production hardening */
 #define APP_NFC_MASTER_KEY_BYTES                      { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C }
 #define APP_NFC_TEMP_THRESHOLD_MIN_X10               (-400)
