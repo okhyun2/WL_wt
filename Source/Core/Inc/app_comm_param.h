@@ -13,11 +13,13 @@ typedef struct
 {
     uint8_t strongReportingHours;
     uint8_t weakReportingHours;
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
     uint8_t strongTxPeriodMin;
     uint8_t weakTxPeriodMin;
     uint8_t strongMeterPeriodMin;
     uint8_t weakMeterPeriodMin;
     uint8_t flags;
+#endif
 } AppCommAdaptivePolicy_t;
 
 void App_CommSignalMeasureAndUpdate(const AppBc95Quality_t *p_quality);

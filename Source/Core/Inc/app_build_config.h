@@ -308,21 +308,35 @@ extern "C" {
  * ================================================================ */
 #define APP_COMM_PARAM_AUTOTUNE_ENABLE          (APP_TRUE) //default:TRUE
 
+#define APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE    (APP_FALSE) //Chamber test
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
+#define APP_COMM_RSSI_ENTER_WEAK_DBM            (-90)
+#define APP_COMM_RSSI_EXIT_WEAK_DBM             (-80)
+#define APP_COMM_RSRP_ENTER_WEAK_DBM            (-90)
+#define APP_COMM_RSRP_EXIT_WEAK_DBM             (-80)
+#else 
 #define APP_COMM_RSSI_ENTER_WEAK_DBM            (-100)
 #define APP_COMM_RSSI_EXIT_WEAK_DBM             (-95)
 #define APP_COMM_RSRP_ENTER_WEAK_DBM            (-110)
 #define APP_COMM_RSRP_EXIT_WEAK_DBM             (-105)
+#endif
 
 #define APP_COMM_SUCCESS_STREAK_NEEDED          (2u)
 #define APP_COMM_GOOD_MAX_ATTEMPT_IDX           (2u)   /* 0,1,2 = 1~3차 성공 -> HIGH */
 
 #define APP_COMM_ADAPTIVE_STRONG_REPORT_HOURS       (APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS)
 #define APP_COMM_ADAPTIVE_WEAK_REPORT_HOURS         (4u)   /* 약전계 시 4시간. 사용자 설정. */
+
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
+#define APP_COMM_ADAPTIVE_TEST_OVERRIDE_ENABLE      (APP_TRUE)
 #define APP_COMM_ADAPTIVE_STRONG_TX_PERIOD_MIN      (0u)   /* 0 = hour 기반 정상 스케줄 사용 */
 #define APP_COMM_ADAPTIVE_WEAK_TX_PERIOD_MIN        (0u)
 #define APP_COMM_ADAPTIVE_STRONG_METER_PERIOD_MIN   (0u)
 #define APP_COMM_ADAPTIVE_WEAK_METER_PERIOD_MIN     (0u)
 #define APP_COMM_ADAPTIVE_BYPASS_NIGHT_ONLY_DEFAULT (APP_FALSE)
+#else
+#define APP_COMM_ADAPTIVE_TEST_OVERRIDE_ENABLE      (APP_FALSE)
+#endif
 
 /* legacy alias */
 #define APP_COMM_PERIOD_WEAK_HOURS              (APP_COMM_ADAPTIVE_WEAK_REPORT_HOURS)
