@@ -25,11 +25,12 @@
 #include "app_comm_param.h"
 
 #if 1 //debug
-#if 0
+#if 1
 #define APP_DEBUG_METER_PERIOD_MS      (5u * 60000u)   /* 5 min */
 #define APP_DEBUG_TX_PERIOD_MS         (10u * 60000u)   /* 10 min : service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (10u * 60000u)   /* 10 min : management TX */
 #else
+/* run shot time for immediately test */
 #define APP_DEBUG_METER_PERIOD_MS      (2u * 60000u)   /* 1 min */
 #define APP_DEBUG_TX_PERIOD_MS         (3u * 60000u)   /* 5 min : service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (5u * 60000u)   /* 10 min : management TX */
@@ -194,6 +195,8 @@ NFC_AUTH_Handle_t g_nfcAuthHandle;
 NFC_CMD_Handle_t g_nfcCmdHandle;
 NFC_LP_Handle_t g_nfcLpHandle;
 static volatile uint8_t g_nfcIrqPending;
+static volatile uint8_t g_appFsmNfcStopOriginPending;
+static volatile uint8_t g_appFsmNfcDropAwakeTagPending;
 static volatile NFC_WakeupEvent_t g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
 static volatile uint8_t g_appFsmNfcBusyReplyPending = APP_FALSE;
 static volatile uint8_t g_appFsmNbiotBusyWindow = APP_FALSE;
@@ -666,6 +669,8 @@ AppStatus_t App_NfcInit(void)
 
     g_nfcIrqPending = APP_FALSE;
     g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
+    g_appFsmNfcStopOriginPending = APP_FALSE;
+    g_appFsmNfcDropAwakeTagPending = APP_FALSE;
     g_nfcReady = APP_TRUE;
     APP_LOGI("FSM", "trace nfc module init done ready=%u", (unsigned int)g_nfcReady);
     return APP_STATUS_OK;
@@ -1165,6 +1170,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 {
     AppNfcSeoulProcessResult_t seoulResult;
     uint8_t authSameWakeWait = 0u;
+    uint8_t startedFromStop;
 
     APP_LOGI("FSM",
              "trace nfc process enter irq=%u wake=%s",
@@ -1192,6 +1198,8 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
         g_nfcWakeEvent = NFC_WAKEUP_EVENT_ED_PIN;
     }
 
+    startedFromStop = g_appFsmNfcStopOriginPending;
+
     if (g_nfcIrqPending == APP_TRUE)
     {
         g_nfcIrqPending = APP_FALSE;
@@ -1200,6 +1208,11 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
         {
             return APP_STATUS_FATAL;
         }
+
+        APP_LOGI("FSM",
+                 "trace nfc session origin=%s dropAwake=%u",
+                 (startedFromStop == APP_TRUE) ? "STOP" : "AWAKE",
+                 (unsigned int)g_appFsmNfcDropAwakeTagPending);
     }
 
     if (g_nfcWakeEvent != NFC_WAKEUP_EVENT_ED_PIN)
@@ -1212,6 +1225,21 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     }
 
     g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
+    g_appFsmNfcStopOriginPending = APP_FALSE;
+
+    /* 정책:
+     * STOP에서 시작된 NFC 세션만 허용한다.
+     * 이미 awake(RUN/SLEEP) 상태에서 들어온 ED 태그는
+     * PING / AUTH / SEOUL / UCMD 모두 처리하지 않고 완전히 drop 한다.
+     * 응답도 쓰지 않는다.
+     */
+    if (g_appFsmNfcDropAwakeTagPending == APP_TRUE)
+    {
+        g_appFsmNfcDropAwakeTagPending = APP_FALSE;
+        APP_LOGW("FSM",
+                 "trace nfc hard-block awake-origin tag -> drop without response");
+        return APP_STATUS_OK;
+    }
 
     for (;;)
     {
@@ -1301,14 +1329,29 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 
 void App_FsmNfcEdIrqHandler(void)
 {
+    const AppSystemContext_t *p_sys;
+    uint8_t startedFromStop = APP_FALSE;
+
+    p_sys = App_SystemGetContext();
+    if ((p_sys != NULL) &&
+        (p_sys->lastLowPowerMode == APP_SYSTEM_LP_MODE_STOP))
+    {
+        startedFromStop = APP_TRUE;
+    }
+
     g_nfcIrqPending = APP_TRUE;
     g_nfcWakeEvent = NFC_WAKEUP_EVENT_ED_PIN;   /* backup latch */
+    g_appFsmNfcStopOriginPending = startedFromStop;
+    g_appFsmNfcDropAwakeTagPending = (startedFromStop == APP_TRUE) ? APP_FALSE : APP_TRUE;
     if (App_FsmIsNbiotBusyWindowActive() == APP_TRUE)
     {
         g_appFsmNfcBusyReplyPending = APP_TRUE;
     }
-    APP_LOGI("FSM", "trace nfc ed irq pending=1 wake=%s",
-             App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
+    APP_LOGI("FSM",
+             "trace nfc ed irq pending=1 wake=%s origin=%s dropAwake=%u",
+             App_FsmNfcGetWakeEventName(g_nfcWakeEvent),
+             (startedFromStop == APP_TRUE) ? "STOP" : "AWAKE",
+             (unsigned int)g_appFsmNfcDropAwakeTagPending);
 }
 
 static uint8_t App_FsmIsNbiotBusyWindowActive(void)
