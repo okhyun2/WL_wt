@@ -686,7 +686,7 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         //App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin | Meter_RX_Pin, GPIO_PIN_RESET);
         //kiki0000. recommend by han
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
-        App_GpioLpConfigAnalogNoPull(Meter_TX_GPIO_Port, Meter_RX_Pin);
+        App_GpioLpConfigAnalogNoPull(Meter_RX_GPIO_Port, Meter_RX_Pin);
     }
 
     //NFC SCL/SDA pin

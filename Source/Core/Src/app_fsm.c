@@ -3766,19 +3766,26 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                     //Update DUT battery
                     {
                         uint32_t adc_vref = 0, adc_vbat = 0, vbat_mv = 0, vdda_mv = 0;
+                        HAL_StatusTypeDef adcHalStatus;
 
                         APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
-                        APP_RETURN_IF_HAL_ERROR(Battery_ReadVoltage_Averaged_mV(&adc_vref, &adc_vbat, &vdda_mv, &vbat_mv), APP_STATUS_SELFTEST_FAILED);
-
-                        APP_LOGN("FSM", "ADC(vref:%lu, vbat:%lu) Volt(vdda:%lumV, vbat:%lumV)",
-                                 (unsigned long)adc_vref,
-                                 (unsigned long)adc_vbat,
-                                 (unsigned long)vdda_mv,
-                                 (unsigned long)vbat_mv);
-
+                        adcHalStatus = Battery_ReadVoltage_Averaged_mV(&adc_vref, &adc_vbat, &vdda_mv, &vbat_mv);
+                        if (adcHalStatus == HAL_OK)
                         {
-                            uint8_t voltX10 = (uint8_t)((vbat_mv + 50u) / 100u);
-                            App_UpdateBatteryToOptions(voltX10, 0u);
+                            APP_LOGN("FSM", "ADC(vref:%lu, vbat:%lu) Volt(vdda:%lumV, vbat:%lumV)",
+                                     (unsigned long)adc_vref,
+                                     (unsigned long)adc_vbat,
+                                     (unsigned long)vdda_mv,
+                                     (unsigned long)vbat_mv);
+
+                            {
+                                uint8_t voltX10 = (uint8_t)((vbat_mv + 50u) / 100u);
+                                App_UpdateBatteryToOptions(voltX10, 0u);
+                            }
+                        }
+                        else
+                        {
+                            APP_LOGW("FSM", "[[BootLiveTx]] ADC read failed before mgmt send -> keep previous battery option");
                         }
                     }
 
