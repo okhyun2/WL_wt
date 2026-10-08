@@ -40,13 +40,13 @@ void App_CommAdaptivePolicySetDefaults(AppCommAdaptivePolicy_t *p_policy)
     (void)memset(p_policy, 0, sizeof(*p_policy));
     p_policy->strongReportingHours = (uint8_t)APP_COMM_ADAPTIVE_STRONG_REPORT_HOURS;
     p_policy->weakReportingHours   = (uint8_t)APP_COMM_ADAPTIVE_WEAK_REPORT_HOURS;
+    p_policy->flags                = (uint8_t)(APP_COMM_ADAPTIVE_BYPASS_NIGHT_ONLY_DEFAULT
+                                               ? APP_COMM_ADAPTIVE_FLAG_BYPASS_NIGHT_ONLY : 0u);
 #if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
     p_policy->strongTxPeriodMin    = (uint8_t)APP_COMM_ADAPTIVE_STRONG_TX_PERIOD_MIN;
     p_policy->weakTxPeriodMin      = (uint8_t)APP_COMM_ADAPTIVE_WEAK_TX_PERIOD_MIN;
     p_policy->strongMeterPeriodMin = (uint8_t)APP_COMM_ADAPTIVE_STRONG_METER_PERIOD_MIN;
     p_policy->weakMeterPeriodMin   = (uint8_t)APP_COMM_ADAPTIVE_WEAK_METER_PERIOD_MIN;
-    p_policy->flags                = (uint8_t)(APP_COMM_ADAPTIVE_BYPASS_NIGHT_ONLY_DEFAULT
-                                               ? APP_COMM_ADAPTIVE_FLAG_BYPASS_NIGHT_ONLY : 0u);
 #endif
 }
 
@@ -77,12 +77,12 @@ static void app_comm_adaptive_policy_decode_from_device(const AppDeviceConfig_t 
 
     p_policy->strongReportingHours = p_device->reserved[APP_COMM_DEVICECFG_STRONG_REPORT_IDX];
     p_policy->weakReportingHours   = p_device->reserved[APP_COMM_DEVICECFG_WEAK_REPORT_IDX];
+    p_policy->flags                = p_device->reserved[APP_COMM_DEVICECFG_FLAGS_IDX];
 #if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
     p_policy->strongTxPeriodMin    = p_device->reserved[APP_COMM_DEVICECFG_STRONG_TX_MIN_IDX];
     p_policy->weakTxPeriodMin      = p_device->reserved[APP_COMM_DEVICECFG_WEAK_TX_MIN_IDX];
     p_policy->strongMeterPeriodMin = p_device->reserved[APP_COMM_DEVICECFG_STRONG_METER_MIN_IDX];
     p_policy->weakMeterPeriodMin   = p_device->reserved[APP_COMM_DEVICECFG_WEAK_METER_MIN_IDX];
-    p_policy->flags                = p_device->reserved[APP_COMM_DEVICECFG_FLAGS_IDX];
 #endif
 
     app_comm_adaptive_policy_sanitize(p_policy);
@@ -115,12 +115,33 @@ void App_CommAdaptivePolicyGet(AppCommAdaptivePolicy_t *p_policy)
 
 void App_CommAdaptivePolicySet(const AppCommAdaptivePolicy_t *p_policy)
 {
+    AppDeviceConfig_t cfg;
+    AppStatus_t status;
+
     app_comm_adaptive_policy_ensure_loaded();
     if (p_policy == NULL) { return; }
 
     g_appCommAdaptivePolicy = *p_policy;
     app_comm_adaptive_policy_sanitize(&g_appCommAdaptivePolicy);
     g_appCommAdaptiveLoaded = APP_TRUE;
+
+    status = App_DeviceConfigLoad(&cfg);
+    if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
+    {
+        return;
+    }
+
+    cfg.reserved[APP_COMM_DEVICECFG_MARKER_IDX]        = APP_COMM_DEVICECFG_MARKER_VALUE;
+    cfg.reserved[APP_COMM_DEVICECFG_STRONG_REPORT_IDX] = g_appCommAdaptivePolicy.strongReportingHours;
+    cfg.reserved[APP_COMM_DEVICECFG_WEAK_REPORT_IDX]   = g_appCommAdaptivePolicy.weakReportingHours;
+    cfg.reserved[APP_COMM_DEVICECFG_FLAGS_IDX]         = g_appCommAdaptivePolicy.flags;
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
+    cfg.reserved[APP_COMM_DEVICECFG_STRONG_TX_MIN_IDX]    = g_appCommAdaptivePolicy.strongTxPeriodMin;
+    cfg.reserved[APP_COMM_DEVICECFG_WEAK_TX_MIN_IDX]      = g_appCommAdaptivePolicy.weakTxPeriodMin;
+    cfg.reserved[APP_COMM_DEVICECFG_STRONG_METER_MIN_IDX] = g_appCommAdaptivePolicy.strongMeterPeriodMin;
+    cfg.reserved[APP_COMM_DEVICECFG_WEAK_METER_MIN_IDX]   = g_appCommAdaptivePolicy.weakMeterPeriodMin;
+#endif
+    (void)App_DeviceConfigSave(&cfg);
 }
 
 uint32_t App_CommGetTxPeriodOverrideMs(void)
@@ -164,12 +185,8 @@ uint32_t App_CommGetMeterPeriodOverrideMs(void)
 
 uint8_t App_CommShouldBypassNightOnlyGate(void)
 {
-#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
     app_comm_adaptive_policy_ensure_loaded();
     return (uint8_t)((g_appCommAdaptivePolicy.flags & APP_COMM_ADAPTIVE_FLAG_BYPASS_NIGHT_ONLY) != 0u);
-#else
-    return APP_FALSE;
-#endif
 }
 
 void App_CommSignalMeasureAndUpdate(const AppBc95Quality_t *p_quality)
@@ -247,13 +264,11 @@ void App_CommParamRecompose(void)
                            ? policy.weakReportingHours
                            : policy.strongReportingHours;
 
-#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
     if ((policy.flags & APP_COMM_ADAPTIVE_FLAG_BYPASS_NIGHT_ONLY) != 0u)
     {
         targetNightOnly = APP_FALSE;
     }
     else
-#endif
     {
         targetNightOnly = (g_appCommSuccessState == APP_COMM_SUCCESS_LOW) ? APP_TRUE : APP_FALSE;
     }
