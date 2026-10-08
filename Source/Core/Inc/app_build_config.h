@@ -310,7 +310,7 @@ extern "C" {
 
 #define APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE    (APP_FALSE) 
 
-#if 1 //Chamber test
+#if 1 //TODO Chamber test
 #define APP_COMM_RSSI_WEAK_DBM            (-90)
 #define APP_COMM_RSRP_WEAK_DBM            (-90)
 #else 

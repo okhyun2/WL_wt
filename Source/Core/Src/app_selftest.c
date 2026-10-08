@@ -253,9 +253,6 @@ static const char *App_SelfTestItemToString(AppSelfTestItem_t item)
         case APP_SELFTEST_ITEM_EXT_WATCHDOG:
             return "EWDT";
 
-        case APP_SELFTEST_ITEM_GPIO_INPUTS:
-            return "GPIO";
-
         default:
             return "SELF";
     }
@@ -790,22 +787,6 @@ static AppStatus_t App_SelfTestCheckExternalWatchdog(void)
 }
 
 /**
- * @brief Read wake/interrupt GPIO input states.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
-static AppStatus_t App_SelfTestCheckInputLines(void)
-{
-    GPIO_PinState nfcEventState;
-
-    nfcEventState = App_HwReadNfcEvent();
-
-    APP_LOGI("SELF", "GPIO inputs NFC_ED=%u", (unsigned int)nfcEventState);
-
-    return (((unsigned int)nfcEventState > 0) ? APP_STATUS_OK: APP_STATUS_FATAL);
-}
-
-/**
  * @brief Run one test item, record the result, and beep on failure.
  *
  * @param item Target self-test item.
@@ -905,7 +886,6 @@ AppStatus_t App_SelfTestRunBootSequence(void)
     App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
     App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_GPIO_INPUTS, App_SelfTestCheckInputLines);
 
     g_appSelfTestContext.running = APP_FALSE;
     g_appSelfTestContext.lastSequenceStatus = (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
@@ -957,7 +937,6 @@ AppStatus_t App_SelfTestRunDataCollectionSequence(void)
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog, APP_FALSE);
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_GPIO_INPUTS, App_SelfTestCheckInputLines, APP_FALSE);
 
     g_appSelfTestContext.running = APP_FALSE;
     g_appSelfTestContext.lastSequenceStatus = (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
@@ -1018,7 +997,6 @@ AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatu
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c, APP_FALSE);
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog, APP_FALSE);
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_GPIO_INPUTS, App_SelfTestCheckInputLines, APP_FALSE);
 
     g_appSelfTestContext.running = APP_FALSE;
     g_appSelfTestContext.lastSequenceStatus =
