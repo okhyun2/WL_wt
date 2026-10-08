@@ -13,6 +13,8 @@
 #include "app_meter_storage.h"
 #include "app_meter_server_format.h"
 #include "app_comm_param.h"
+#include "app_selftest.h"
+
 
 #define APP_BC95_AT_CMD_PING          "AT\r\n"
 #define APP_BC95_AT_CMD_IMEI          "AT+CGSN=1\r\n"
@@ -278,6 +280,131 @@ static void App_HwNbiotPowerCycle(void)
      */
     HAL_Delay(200u);
     App_GpioLpSetNbiotPowered(APP_TRUE);  /* on */
+}
+
+static uint8_t App_NbiotSelfTestMaskFromContext(const AppSelfTestContext_t *p_ctx, uint8_t passedOnly)
+{
+    uint8_t i;
+    uint16_t mask = 0u;
+
+    if (p_ctx == NULL)
+    {
+        return 0u;
+    }
+
+    for (i = 0u; i < (uint8_t)APP_SELFTEST_ITEM_COUNT; i++)
+    {
+        if (p_ctx->items[i].executed != 0u)
+        {
+            if ((passedOnly == 0u) || (p_ctx->items[i].passed != 0u))
+            {
+                mask |= (uint16_t)(1u << i);
+            }
+        }
+    }
+
+    return mask;
+}
+
+static void App_NbiotPutU16Le(uint8_t *p_dst, uint16_t value)
+{
+    if (p_dst == NULL) { return; }
+    p_dst[0] = (uint8_t)(value & 0xFFu);
+    p_dst[1] = (uint8_t)((value >> 8) & 0xFFu);
+}
+
+static uint8_t App_NbiotChecksum8(const uint8_t *p_data, uint16_t startIndex, uint16_t endIndex)
+{
+    uint16_t i;
+    uint8_t sum = 0u;
+
+    if (p_data == NULL)
+    {
+        return 0u;
+    }
+
+    for (i = startIndex; i < endIndex; i++)
+    {
+        sum = (uint8_t)(sum + p_data[i]);
+    }
+    return sum;
+}
+
+static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet,
+                                                      uint16_t packetCapacity,
+                                                      AppMeterServerFormatResult_t *p_result)
+{
+#if (APP_MGMT_TX_APPEND_SELFTEST_ENABLE == APP_TRUE)
+    const AppSelfTestContext_t *p_ctx;
+    uint16_t executedMask;
+    uint16_t passedMask;
+    uint16_t cursor;
+    uint8_t diag[APP_MGMT_TX_SELFTEST_PAYLOAD_LEN];
+
+    APP_RETURN_IF_FALSE((p_packet != NULL) && (p_result != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(p_result->packetLength >= 3u, APP_STATUS_INVALID_PARAM);
+
+    /* 기존 checksum 위치부터 다시 덮어쓴다 */
+    cursor = (uint16_t)(p_result->packetLength - 1u);
+
+    /* tag + len + payload(7) + checksum */
+    APP_RETURN_IF_FALSE(((uint32_t)cursor + 2u + APP_MGMT_TX_SELFTEST_PAYLOAD_LEN + 1u) <= packetCapacity,
+                        APP_STATUS_BUFFER_OVERFLOW);
+
+    p_ctx = App_SelfTestGetContext();
+    executedMask = 0u;
+    passedMask   = 0u;
+    (void)memset(diag, 0, sizeof(diag));
+
+    if (p_ctx != NULL)
+    {
+        uint8_t i;
+        for (i = 0u; i < (uint8_t)APP_SELFTEST_ITEM_COUNT; i++)
+        {
+            if (p_ctx->items[i].executed != 0u)
+            {
+                executedMask |= (uint16_t)(1u << i);
+                if (p_ctx->items[i].passed != 0u)
+                {
+                    passedMask |= (uint16_t)(1u << i);
+                }
+            }
+        }
+
+        App_NbiotPutU16Le(&diag[0], executedMask);
+        App_NbiotPutU16Le(&diag[2], passedMask);
+        diag[4] = (uint8_t)(p_ctx->failCount & 0xFFu);
+        App_NbiotPutU16Le(&diag[5], (uint16_t)p_ctx->lastSequenceStatus);
+    }
+
+    p_packet[cursor++] = APP_MGMT_TX_SELFTEST_TAG;
+    p_packet[cursor++] = APP_MGMT_TX_SELFTEST_PAYLOAD_LEN;
+    (void)memcpy(&p_packet[cursor], diag, sizeof(diag));
+    cursor = (uint16_t)(cursor + sizeof(diag));
+
+    /* length = byte[2]부터 checksum 직전까지 */
+    p_packet[1] = (uint8_t)(cursor - 2u);
+    p_result->checksum = App_NbiotChecksum8(p_packet, 2u, cursor);
+    p_packet[cursor++] = p_result->checksum;
+
+    p_result->payloadLength = p_packet[1];
+    p_result->packetLength  = cursor;
+
+    APP_LOGI("NBIOT",
+             "[[MgmtTx]] selftest trailer appended exec=0x%04X pass=0x%04X fail=%u st=%u len=%u",
+             (unsigned int)executedMask,
+             (unsigned int)passedMask,
+             (unsigned int)diag[4],
+             (unsigned int)((uint16_t)diag[5] | ((uint16_t)diag[6] << 8)),
+             (unsigned int)p_result->packetLength);
+
+    return APP_STATUS_OK;
+#else
+    (void)p_packet;
+    (void)packetCapacity;
+    (void)p_result;
+    return APP_STATUS_OK;
+#endif
 }
 
 /* ============================================================
@@ -5946,9 +6073,11 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                                                 uint16_t port,
                                                 uint8_t deleteStorage,
                                                 uint8_t unsentOnly,
-                                                const AppMeterStorageRecord_t *p_liveRecord)
+                                                const AppMeterStorageRecord_t *p_liveRecord,
+                                                uint8_t appendSelfTestToMgmt)
 {
     AppStatus_t status;
+    AppStatus_t diagAppendStatus;
     AppBc95UdpResult_t sendResult;
     AppMeterServerFormatOptions_t opt;
     AppMeterServerFormatResult_t buildResult;
@@ -5972,6 +6101,19 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
     }
     if (status == APP_STATUS_OK)
     {
+        if (appendSelfTestToMgmt == APP_TRUE)
+        {
+            diagAppendStatus = App_NbiotAppendMgmtSelfTestTrailer(packet, sizeof(packet), &buildResult);
+            if (diagAppendStatus != APP_STATUS_OK)
+            {
+                APP_LOGW("NBIOT",
+                         "%s selftest trailer skipped (status=%d, len=%u)",
+                         p_logTag,
+                         (int)diagAppendStatus,
+                         (unsigned int)buildResult.packetLength);
+            }
+        }
+
         status = App_Bc95AtUdpSendOnce(p_logTag, p_host, port, packet, buildResult.packetLength, &sendResult);
         if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u))
         {
@@ -6077,36 +6219,36 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
 AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE);
 #else
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE);
 #endif
 }
 
 AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL, APP_TRUE);
 #else
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL, APP_TRUE);
 #endif
 }
 
 AppStatus_t App_NBIoTTransmitServiceLiveRecord(const AppMeterStorageRecord_t *p_record)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE);
 #else
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE);
 #endif
 }
 
 AppStatus_t App_NBIoTTransmitMgmtLiveRecord(const AppMeterStorageRecord_t *p_record)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_TRUE);
 #else
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_TRUE);
 #endif
 }
 

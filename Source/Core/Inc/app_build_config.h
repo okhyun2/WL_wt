@@ -220,6 +220,13 @@ extern "C" {
 #define APP_TEST_SERVER_TX_BUZZER_ON_MS             (80u)
 #define APP_TEST_SERVER_TX_BUZZER_OFF_MS            (40u)
 
+/* ----------------------------------------------------------------
+ * Management TX only: append self-test summary trailer
+ * ---------------------------------------------------------------- */
+#define APP_MGMT_TX_APPEND_SELFTEST_ENABLE          (APP_TRUE)
+#define APP_MGMT_TX_SELFTEST_TAG                    (0xD1u)
+#define APP_MGMT_TX_SELFTEST_PAYLOAD_LEN            (7u)
+
 
 /* NFC production hardening */
 #define APP_NFC_MASTER_KEY_BYTES                      { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C }
@@ -307,8 +314,8 @@ extern "C" {
 #define APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS     (0u) /* 0: legacy fixed spread fallback */
 #define APP_POLICY_REPORT_SPREAD_FALLBACK_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
 //TODO change serial number -> serial_bcd 5
-#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
-//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x46\x10\x00\x00\x05" 
+//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
+#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x46\x10\x00\x00\x03" 
 //#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x45\x67\x00\x00\x02" 
 #define APP_POLICY_NBIOT_BOOTRACK_REG_SERVPLATFORM (APP_FALSE) //default: TRUE
 
