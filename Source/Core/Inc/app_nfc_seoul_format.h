@@ -24,6 +24,7 @@ extern "C" {
 #define APP_NFC_SEOUL_ACK_UNKNOWN                 (0xFFu)
 #define APP_NFC_SEOUL_COMM_ON                     (0x01u)
 #define APP_NFC_SEOUL_COMM_BUSY                   (0x02u)
+#define APP_NFC_SEOUL_COMM_STALE                  (0x03u)
 #define APP_NFC_SEOUL_COMM_OFF                    (0x0Fu)
 
 #define APP_NFC_SEOUL_CMD_REQ_GROUP               (0xD4u)
