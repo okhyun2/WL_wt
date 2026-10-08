@@ -180,17 +180,15 @@ void App_CommSignalMeasureAndUpdate(const AppBc95Quality_t *p_quality)
 
     prevState = g_appCommSignalState;
 
-    if ((p_quality->rssiDbm <= APP_COMM_RSSI_ENTER_WEAK_DBM) ||
-        (p_quality->rsrpDbm <= APP_COMM_RSRP_ENTER_WEAK_DBM))
+    if ((p_quality->rssiDbm <= APP_COMM_RSSI_WEAK_DBM) ||
+        (p_quality->rsrpDbm <= APP_COMM_RSRP_WEAK_DBM))
     {
         g_appCommSignalState = APP_COMM_SIGNAL_WEAK;
     }
-    else if ((p_quality->rssiDbm >= APP_COMM_RSSI_EXIT_WEAK_DBM) &&
-             (p_quality->rsrpDbm >= APP_COMM_RSRP_EXIT_WEAK_DBM))
+    else
     {
         g_appCommSignalState = APP_COMM_SIGNAL_STRONG;
     }
-    /* 데드존이면 이전 상태 유지 (분기 없음) */
 
     APP_LOGN("COMM", "signal state %s -> %s (RSSI=%d RSRP=%d)",
          (prevState == APP_COMM_SIGNAL_STRONG) ? "STRONG" : "WEAK",

@@ -311,15 +311,11 @@ extern "C" {
 #define APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE    (APP_FALSE) 
 
 #if 1 //Chamber test
-#define APP_COMM_RSSI_ENTER_WEAK_DBM            (-90)
-#define APP_COMM_RSSI_EXIT_WEAK_DBM             (-80)
-#define APP_COMM_RSRP_ENTER_WEAK_DBM            (-90)
-#define APP_COMM_RSRP_EXIT_WEAK_DBM             (-80)
+#define APP_COMM_RSSI_WEAK_DBM            (-90)
+#define APP_COMM_RSRP_WEAK_DBM            (-90)
 #else 
-#define APP_COMM_RSSI_ENTER_WEAK_DBM            (-100)
-#define APP_COMM_RSSI_EXIT_WEAK_DBM             (-95)
-#define APP_COMM_RSRP_ENTER_WEAK_DBM            (-110)
-#define APP_COMM_RSRP_EXIT_WEAK_DBM             (-105)
+#define APP_COMM_RSSI_WEAK_DBM            (-100)
+#define APP_COMM_RSRP_WEAK_DBM            (-110)
 #endif
 
 #define APP_COMM_SUCCESS_STREAK_NEEDED          (2u)

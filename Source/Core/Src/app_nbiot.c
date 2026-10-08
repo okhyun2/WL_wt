@@ -3349,6 +3349,7 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
 
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
     App_CommSignalMeasureAndUpdate(App_Bc95AtGetQuality());
+    App_CommParamRecompose();
 #endif
 
     (void)App_NBIoTSyncTime();
@@ -3382,6 +3383,12 @@ AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage)
     APP_LOGN("NBIOT", "[[MgmtSocketWake]] start");
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
+
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+    App_CommSignalMeasureAndUpdate(App_Bc95AtGetQuality());
+    App_CommParamRecompose();
+#endif
+
     return App_NBIoTTransmitMgmtUdp(deleteStorage);
 }
 
