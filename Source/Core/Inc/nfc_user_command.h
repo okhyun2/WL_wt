@@ -87,6 +87,7 @@ NFC_CMD_Result_t NFC_CMD_Init(NFC_CMD_Handle_t *hcmd,
                               NFC_NTP53321_Handle_t *hntag,
                               NFC_AUTH_Handle_t *hauth);
 NFC_CMD_Result_t NFC_CMD_Process(NFC_CMD_Handle_t *hcmd);
+NFC_CMD_Result_t NFC_CMD_PublishBusyResponse(NFC_CMD_Handle_t *hcmd);
 void             NFC_CMD_PrintStats(NFC_CMD_Handle_t *hcmd);
 
 #ifdef __cplusplus

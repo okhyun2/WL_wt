@@ -23,6 +23,7 @@ extern "C" {
 #define APP_NFC_SEOUL_CARRIER_UNKNOWN             (0xFFu)
 #define APP_NFC_SEOUL_ACK_UNKNOWN                 (0xFFu)
 #define APP_NFC_SEOUL_COMM_ON                     (0x01u)
+#define APP_NFC_SEOUL_COMM_BUSY                   (0x02u)
 #define APP_NFC_SEOUL_COMM_OFF                    (0x0Fu)
 
 #define APP_NFC_SEOUL_CMD_REQ_GROUP               (0xD4u)
@@ -42,6 +43,7 @@ extern "C" {
 #define APP_NFC_SEOUL_NDEF_SRAM_BLOCK             (NFC_SRAM_BASE_ADDR + 1u)
 #define APP_NFC_SEOUL_EEPROM_SETTLE_DELAY_MS      (5u)
 #define APP_NFC_SEOUL_EEPROM_BLOCK_DELAY_MS       (2u)
+#define APP_NFC_SEOUL_RESPONSE_SNAPSHOT_OFFSET    (2u)
 #define APP_NFC_SEOUL_STOR_RES_REPORT_TIME_OFFSET (6u)
 #define APP_NFC_SEOUL_STOR_RES_READING_TIME_OFFSET (12u)
 #define APP_NFC_SEOUL_STOR_RES_RECORD_COUNT_OFFSET (18u)
@@ -109,6 +111,7 @@ typedef struct
 AppStatus_t App_NfcSeoulInit(NFC_NTP53321_Handle_t *p_tag);
 AppStatus_t App_NfcSeoulProcessTag(AppNfcSeoulProcessResult_t *p_result);
 AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t frame_length, AppNfcSeoulProcessResult_t *p_result);
+AppStatus_t App_NfcSeoulProcessCommandFrameBusy(const uint8_t *p_frame, uint8_t frame_length, AppNfcSeoulProcessResult_t *p_result);
 AppStatus_t App_NfcSeoulNotifyStorageChanged(void);
 AppStatus_t App_NfcSeoulNotifyLiveMeterRecord(const AppMeterStorageRecord_t *p_record);
 AppStatus_t App_NfcSeoulRetrySramMirrorOnField(void);

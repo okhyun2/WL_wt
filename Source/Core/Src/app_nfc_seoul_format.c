@@ -1,6 +1,7 @@
 #include "app_nfc_seoul_format.h"
 
 #include <string.h>
+#include <stddef.h>
 
 #include "app_build_config.h"
 #include "app_hw.h"
@@ -551,6 +552,46 @@ static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_pay
 
     *p_payloadLength = cursor;
     return APP_STATUS_OK;
+}
+
+static uint8_t App_NfcSeoulResolveResponseCmd(uint8_t reqCmd2, uint8_t *p_rspCmd2, uint8_t *p_commRequested)
+{
+    if ((p_rspCmd2 == NULL) || (p_commRequested == NULL))
+    {
+        return APP_FALSE;
+    }
+
+    *p_commRequested = APP_FALSE;
+
+    switch (reqCmd2)
+    {
+        case APP_NFC_SEOUL_CMD_STOR_REQ:
+            *p_rspCmd2 = APP_NFC_SEOUL_CMD_STOR_RES;
+            return APP_TRUE;
+
+        case APP_NFC_SEOUL_CMD_MTR_REQ:
+            *p_rspCmd2 = APP_NFC_SEOUL_CMD_MTR_RES;
+            return APP_TRUE;
+
+        case APP_NFC_SEOUL_CMD_AMI_REQ:
+            *p_rspCmd2 = APP_NFC_SEOUL_CMD_AMI_RES;
+            return APP_TRUE;
+
+        case APP_NFC_SEOUL_CMD_RSET_REQ:
+            *p_rspCmd2 = APP_NFC_SEOUL_CMD_RSET_RES;
+            *p_commRequested = APP_TRUE;
+            return APP_TRUE;
+
+        case APP_NFC_SEOUL_CMD_ALL_REQ:
+            *p_rspCmd2 = APP_NFC_SEOUL_CMD_ALL_RES;
+            *p_commRequested = APP_TRUE;
+            return APP_TRUE;
+
+        default:
+            break;
+    }
+
+    return APP_FALSE;
 }
 
 static AppStatus_t App_NfcSeoulBuildNdefMessage(const uint8_t *p_payload,
@@ -1428,33 +1469,10 @@ AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t fram
     p_result->requestCmd1 = p_frame[1];
     p_result->requestCmd2 = p_frame[2];
 
-    switch (p_frame[2])
+    if (App_NfcSeoulResolveResponseCmd(p_frame[2], &cmd2, &p_result->commRequested) != APP_TRUE)
     {
-        case APP_NFC_SEOUL_CMD_STOR_REQ: /* raw STOR_REQ frame uses cmd2=0x00 in the PDF */
-            cmd2 = APP_NFC_SEOUL_CMD_STOR_RES;
-            break;
-
-        case APP_NFC_SEOUL_CMD_MTR_REQ:
-            cmd2 = APP_NFC_SEOUL_CMD_MTR_RES;
-            break;
-
-        case APP_NFC_SEOUL_CMD_AMI_REQ:
-            cmd2 = APP_NFC_SEOUL_CMD_AMI_RES;
-            break;
-
-        case APP_NFC_SEOUL_CMD_RSET_REQ:
-            cmd2 = APP_NFC_SEOUL_CMD_RSET_RES;
-            p_result->commRequested = APP_TRUE;
-            break;
-
-        case APP_NFC_SEOUL_CMD_ALL_REQ:
-            cmd2 = APP_NFC_SEOUL_CMD_ALL_RES;
-            p_result->commRequested = APP_TRUE;
-            break;
-
-        default:
-            APP_LOGI("NFC", "Seoul frame skip: unsupported cmd2=0x%02X", (unsigned int)p_frame[2]);
-            return APP_STATUS_OK;
+        APP_LOGI("NFC", "Seoul frame skip: unsupported cmd2=0x%02X", (unsigned int)p_frame[2]);
+        return APP_STATUS_OK;
     }
 
     status = App_NfcSeoulBuildResponsePayload(cmd2,
@@ -1510,6 +1528,104 @@ AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t fram
              (unsigned int)p_result->responseCmd1,
              (unsigned int)p_result->responseCmd2,
              (unsigned int)p_result->commRequested);
+    return APP_STATUS_OK;
+}
+
+AppStatus_t App_NfcSeoulProcessCommandFrameBusy(const uint8_t *p_frame, uint8_t frame_length, AppNfcSeoulProcessResult_t *p_result)
+{
+    uint8_t response[APP_NFC_SEOUL_NDEF_MAX_BYTES];
+    uint8_t responseLength = 0u;
+    uint16_t responseStartBlock = 0u;
+    uint8_t responseBlockLen = 0u;
+    uint8_t cmd2 = 0u;
+    uint8_t commRequested = APP_FALSE;
+    uint32_t commStateOffset;
+    AppStatus_t status;
+
+    if ((p_frame == NULL) || (p_result == NULL) || (frame_length < 4u))
+    {
+        return APP_STATUS_INVALID_PARAM;
+    }
+
+    (void)memset(p_result, 0, sizeof(*p_result));
+    p_result->requestCmd1 = p_frame[1];
+    p_result->requestCmd2 = p_frame[2];
+
+    if (p_frame[1] != APP_NFC_SEOUL_CMD_REQ_GROUP)
+    {
+        return APP_STATUS_OK;
+    }
+
+    if (App_NfcSeoulResolveResponseCmd(p_frame[2], &cmd2, &commRequested) != APP_TRUE)
+    {
+        APP_LOGI("NFC", "Seoul busy skip: unsupported cmd2=0x%02X", (unsigned int)p_frame[2]);
+        return APP_STATUS_OK;
+    }
+
+    status = App_NfcSeoulBuildResponsePayload(cmd2,
+                                              response,
+                                              (uint8_t)sizeof(response),
+                                              &responseLength);
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    commStateOffset = 2u + offsetof(AppNfcSeoulSnapshot_t, commState);
+    if (commStateOffset < responseLength)
+    {
+        response[commStateOffset] = APP_NFC_SEOUL_COMM_BUSY;
+    }
+
+    status = App_NfcSeoulWritePayloadWithLocation(response,
+                                                  responseLength,
+                                                  &responseStartBlock,
+                                                  &responseBlockLen);
+    if (status != APP_STATUS_OK)
+    {
+        g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
+        return status;
+    }
+
+    status = App_NfcSeoulWriteResponseCmd(cmd2);
+    if (status != APP_STATUS_OK)
+    {
+        g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
+        return status;
+    }
+
+    status = App_NfcSeoulWriteResponseStatus();
+    if (status != APP_STATUS_OK)
+    {
+        g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
+        return status;
+    }
+
+    status = App_NfcSeoulWriteResponseIndicate(responseStartBlock, responseBlockLen);
+    if (status != APP_STATUS_OK)
+    {
+        g_appNfcSeoulDebugInfo.lastStatus = (uint8_t)status;
+        return status;
+    }
+
+    App_NfcSeoulWaitSyncReadAck();
+
+    p_result->handled = APP_TRUE;
+    p_result->commRequested = APP_FALSE;
+    p_result->responseCmd1 = response[0];
+    p_result->responseCmd2 = response[1];
+
+    App_NfcSeoulDebugRecordRequest(p_frame, frame_length, 3u);
+    App_NfcSeoulDebugRecordResponse(response, responseLength, p_result->handled, p_result->commRequested, APP_STATUS_BUSY);
+
+    APP_LOGW("NFC",
+             "Seoul busy response req=%02X%02X rsp=%02X%02X commState=0x%02X",
+             (unsigned int)p_result->requestCmd1,
+             (unsigned int)p_result->requestCmd2,
+             (unsigned int)p_result->responseCmd1,
+             (unsigned int)p_result->responseCmd2,
+             (unsigned int)APP_NFC_SEOUL_COMM_BUSY);
+
     return APP_STATUS_OK;
 }
 

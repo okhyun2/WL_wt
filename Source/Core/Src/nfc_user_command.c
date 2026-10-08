@@ -365,6 +365,34 @@ NFC_CMD_Result_t NFC_CMD_Process(NFC_CMD_Handle_t *hcmd)
     return status;
 }
 
+NFC_CMD_Result_t NFC_CMD_PublishBusyResponse(NFC_CMD_Handle_t *hcmd)
+{
+    uint8_t writtenBlocks = NFC_CMD_MIN_RESPONSE_BLOCKS;
+
+    if ((hcmd == NULL) || (hcmd->initialized != true) || (hcmd->hntag == NULL))
+    {
+        return NFC_CMD_RESULT_INVALID_PARAM;
+    }
+
+    if (nfc_cmd_write_response_payload(hcmd, NULL, 0U, &writtenBlocks) != NFC_CMD_RESULT_OK)
+    {
+        return NFC_CMD_RESULT_I2C_ERROR;
+    }
+
+    if (nfc_cmd_write_status(hcmd, (uint8_t)NFC_APP_CTRL_OP_BUSY, 0U, 0U, 0U) != NFC_CMD_RESULT_OK)
+    {
+        return NFC_CMD_RESULT_I2C_ERROR;
+    }
+
+    if (nfc_cmd_publish_response_indicate(hcmd, writtenBlocks) != NFC_CMD_RESULT_OK)
+    {
+        return NFC_CMD_RESULT_I2C_ERROR;
+    }
+
+    nfc_cmd_wait_sync_read(hcmd);
+    return NFC_CMD_RESULT_OK;
+}
+
 void NFC_CMD_PrintStats(NFC_CMD_Handle_t *hcmd)
 {
     if (hcmd == NULL)

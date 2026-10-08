@@ -25,9 +25,15 @@
 #include "app_comm_param.h"
 
 #if 1 //debug
+#if 0
 #define APP_DEBUG_METER_PERIOD_MS      (5u * 60000u)   /* 5 min */
 #define APP_DEBUG_TX_PERIOD_MS         (10u * 60000u)   /* 10 min : service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (10u * 60000u)   /* 10 min : management TX */
+#else
+#define APP_DEBUG_METER_PERIOD_MS      (2u * 60000u)   /* 1 min */
+#define APP_DEBUG_TX_PERIOD_MS         (3u * 60000u)   /* 5 min : service TX */
+#define APP_DEBUG_MGMT_TX_PERIOD_MS    (5u * 60000u)   /* 10 min : management TX */
+#endif
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -178,8 +184,8 @@ static void App_FsmUsimHoldClear(void);
 static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase);
 static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked);
 static const char *App_FsmNfcGetWakeEventName(NFC_WakeupEvent_t event);
-static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
-                                           uint8_t *p_status1);
+static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0, uint8_t *p_status1);
+static uint8_t App_FsmIsNbiotBusyWindowActive(void);
 static const char *App_FsmNfcGetAuthStateName(NFC_AUTH_State_t state);
 static uint8_t App_FsmNfcIsNonFatalCmdResult(NFC_CMD_Result_t cmdStatus);
 
@@ -189,6 +195,8 @@ NFC_CMD_Handle_t g_nfcCmdHandle;
 NFC_LP_Handle_t g_nfcLpHandle;
 static volatile uint8_t g_nfcIrqPending;
 static volatile NFC_WakeupEvent_t g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
+static volatile uint8_t g_appFsmNfcBusyReplyPending = APP_FALSE;
+static volatile uint8_t g_appFsmNbiotBusyWindow = APP_FALSE;
 static uint8_t g_nfcReady = APP_FALSE;
 static uint8_t g_appFsmInitialBootRoutineQueued = APP_FALSE;
 static uint8_t g_appFsmWakeCollectionPending = APP_FALSE;
@@ -914,6 +922,15 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
              (raw[2] == APP_NFC_SEOUL_CMD_RSET_REQ) ||
              (raw[2] == APP_NFC_SEOUL_CMD_ALL_REQ)))
         {
+            if (g_appFsmNfcBusyReplyPending == APP_TRUE)
+            {
+                g_appFsmNfcBusyReplyPending = APP_FALSE;
+                APP_LOGW("FSM",
+                         "trace nfc busy reply seoul cmd2=0x%02X",
+                         (unsigned int)raw[2]);
+                return App_NfcSeoulProcessCommandFrameBusy(raw, byteCount, p_seoulResult);
+            }
+
             APP_LOGI("FSM", "trace nfc cmd branch=SEOUL frame cmd2=0x%02X", (unsigned int)raw[2]);
             return App_NfcSeoulProcessCommandFrame(raw, byteCount, p_seoulResult);
         }
@@ -982,6 +999,18 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
              (raw[1] == NFC_APP_CTRL_GROUP_PARAMETER) ))
         {
             NFC_CMD_Result_t cmdStatus;
+
+            if (g_appFsmNfcBusyReplyPending == APP_TRUE)
+            {
+                g_appFsmNfcBusyReplyPending = APP_FALSE;
+                APP_LOGW("FSM",
+                         "trace nfc busy reply ucmd group=0x%02X item=0x%02X",
+                         (unsigned int)raw[1],
+                         (unsigned int)raw[2]);
+                cmdStatus = NFC_CMD_PublishBusyResponse(&g_nfcCmdHandle);
+                return (cmdStatus == NFC_CMD_RESULT_OK) ? APP_STATUS_OK : APP_STATUS_FATAL;
+            }
+
             APP_LOGI("FSM", "trace nfc cmd branch=UCMD start=0x%04X len=%u",
                      (unsigned int)startBlock,
                      (unsigned int)ind.block_len);
@@ -1233,8 +1262,35 @@ void App_FsmNfcEdIrqHandler(void)
 {
     g_nfcIrqPending = APP_TRUE;
     g_nfcWakeEvent = NFC_WAKEUP_EVENT_ED_PIN;   /* backup latch */
+    if (App_FsmIsNbiotBusyWindowActive() == APP_TRUE)
+    {
+        g_appFsmNfcBusyReplyPending = APP_TRUE;
+    }
     APP_LOGI("FSM", "trace nfc ed irq pending=1 wake=%s",
              App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
+}
+
+static uint8_t App_FsmIsNbiotBusyWindowActive(void)
+{
+    const AppFsmComponentContext_t *p_nbiot = App_FsmGetComponent(APP_FSM_COMPONENT_NBIOT);
+
+    if (g_appFsmNbiotBusyWindow != APP_TRUE)
+    {
+        return APP_FALSE;
+    }
+
+    if (p_nbiot == NULL)
+    {
+        return APP_FALSE;
+    }
+
+    if ((p_nbiot->busy == APP_TRUE) &&
+        (p_nbiot->state == APP_FSM_STATE_NBIOT_EXCHANGE_AT))
+    {
+        return APP_TRUE;
+    }
+
+    return APP_FALSE;
 }
 
 static const char *App_FsmGetDecisionNameInternal(AppFsmDecision_t decision)
@@ -3803,7 +3859,9 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
                     APP_LOGN("FSM", "[[BootLiveTx]] force first boot send (mgmt only)");
 
+                    g_appFsmNbiotBusyWindow = APP_TRUE;
                     mgmtTxStatus = App_NBIoTTransmitMgmtLiveRecord(&bootLiveRecord);
+                    g_appFsmNbiotBusyWindow = APP_FALSE;
                     if (mgmtTxStatus != APP_STATUS_OK)
                     {
                         APP_LOGW("FSM", "[[BootLiveTx]] mgmt send failed status=%d",
@@ -3819,7 +3877,9 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                     return App_FsmHandleWakeupLowPower("attach fail", trackStatus);
                 }
 
+                g_appFsmNbiotBusyWindow = APP_TRUE;
                 (void)App_FsmRunTxWakeTracks(deleteOnServiceTx);
+                g_appFsmNbiotBusyWindow = APP_FALSE;
             }
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierPowerOffMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
