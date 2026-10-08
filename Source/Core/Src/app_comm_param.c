@@ -249,11 +249,13 @@ void App_CommParamRecompose(void)
                            ? policy.weakReportingHours
                            : policy.strongReportingHours;
 
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
     if ((policy.flags & APP_COMM_ADAPTIVE_FLAG_BYPASS_NIGHT_ONLY) != 0u)
     {
         targetNightOnly = APP_FALSE;
     }
     else
+#endif
     {
         targetNightOnly = (g_appCommSuccessState == APP_COMM_SUCCESS_LOW) ? APP_TRUE : APP_FALSE;
     }

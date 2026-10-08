@@ -308,8 +308,9 @@ extern "C" {
  * ================================================================ */
 #define APP_COMM_PARAM_AUTOTUNE_ENABLE          (APP_TRUE) //default:TRUE
 
-#define APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE    (APP_FALSE) //Chamber test
-#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
+#define APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE    (APP_FALSE) 
+
+#if 1 //Chamber test
 #define APP_COMM_RSSI_ENTER_WEAK_DBM            (-90)
 #define APP_COMM_RSSI_EXIT_WEAK_DBM             (-80)
 #define APP_COMM_RSRP_ENTER_WEAK_DBM            (-90)

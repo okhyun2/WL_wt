@@ -18,11 +18,13 @@
 #define NFC_APP_CTRL_DEVICE_RESERVED_COMM_MARKER_IDX        5U
 #define NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_REPORT_IDX 6U
 #define NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_REPORT_IDX   7U
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
 #define NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_TXMIN_IDX  8U
 #define NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_TXMIN_IDX    9U
 #define NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_MMIN_IDX   10U
 #define NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_MMIN_IDX     11U
 #define NFC_APP_CTRL_DEVICE_RESERVED_COMM_FLAGS_IDX         12U
+#endif
 
 #define NFC_APP_CTRL_RESET_TRACK_VALID_MARKER               0xA5U
 #define NFC_APP_CTRL_COMM_POLICY_VALID_MARKER               0xC7U
@@ -38,9 +40,11 @@
 #define NFC_APP_CTRL_APPLY_ACK_POLL_BIT                     (1U << 2)
 #define NFC_APP_CTRL_APPLY_DELETE_AFTER_SEND_BIT            (1U << 3)
 #define NFC_APP_CTRL_APPLY_ADAPTIVE_REPORTING_BIT           (1U << 4)
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
 #define NFC_APP_CTRL_APPLY_ADAPTIVE_TX_MIN_BIT              (1U << 5)
 #define NFC_APP_CTRL_APPLY_ADAPTIVE_METER_MIN_BIT           (1U << 6)
 #define NFC_APP_CTRL_APPLY_ADAPTIVE_FLAGS_BIT               (1U << 7)
+#endif
 #define NFC_APP_CTRL_APPLY_LOG_LEVEL_BIT                    (1U << 0)
 #define NFC_APP_CTRL_APPLY_LINK_TYPE_BIT                    (1U << 1)
 #define NFC_APP_CTRL_APPLY_DIAG_PROFILE_BIT                 (1U << 2)
@@ -326,11 +330,13 @@ static void nfc_app_ctrl_get_device_comm_policy(const AppDeviceConfig_t *p_devic
 
     p_policy->strongReportingHours = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_REPORT_IDX];
     p_policy->weakReportingHours   = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_REPORT_IDX];
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
     p_policy->strongTxPeriodMin    = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_TXMIN_IDX];
     p_policy->weakTxPeriodMin      = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_TXMIN_IDX];
     p_policy->strongMeterPeriodMin = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_MMIN_IDX];
     p_policy->weakMeterPeriodMin   = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_MMIN_IDX];
     p_policy->flags                = p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_FLAGS_IDX];
+#endif
 }
 
 static void nfc_app_ctrl_set_device_comm_policy(AppDeviceConfig_t *p_device,
@@ -340,12 +346,14 @@ static void nfc_app_ctrl_set_device_comm_policy(AppDeviceConfig_t *p_device,
 
     p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_MARKER_IDX]        = NFC_APP_CTRL_COMM_POLICY_VALID_MARKER;
     p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_REPORT_IDX] = p_policy->strongReportingHours;
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
     p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_REPORT_IDX]   = p_policy->weakReportingHours;
     p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_TXMIN_IDX]  = p_policy->strongTxPeriodMin;
     p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_TXMIN_IDX]    = p_policy->weakTxPeriodMin;
     p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_STRONG_MMIN_IDX]   = p_policy->strongMeterPeriodMin;
     p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_WEAK_MMIN_IDX]     = p_policy->weakMeterPeriodMin;
     p_device->reserved[NFC_APP_CTRL_DEVICE_RESERVED_COMM_FLAGS_IDX]         = p_policy->flags;
+#endif
 }
 
 static uint8_t nfc_app_ctrl_validate_device_values(uint8_t logLevel,
@@ -1025,12 +1033,16 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
                 p_rsp->paramPolicyGet.flags = 0U;
                 p_rsp->paramPolicyGet.strongReportingHours = adaptivePolicy.strongReportingHours;
                 p_rsp->paramPolicyGet.weakReportingHours = adaptivePolicy.weakReportingHours;
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
                 p_rsp->paramPolicyGet.strongTxPeriodMin = adaptivePolicy.strongTxPeriodMin;
                 p_rsp->paramPolicyGet.weakTxPeriodMin = adaptivePolicy.weakTxPeriodMin;
                 p_rsp->paramPolicyGet.strongMeterPeriodMin = adaptivePolicy.strongMeterPeriodMin;
                 p_rsp->paramPolicyGet.weakMeterPeriodMin = adaptivePolicy.weakMeterPeriodMin;
                 p_rsp->paramPolicyGet.adaptiveFlags = adaptivePolicy.flags;
                 *p_rsp_len = 12U;
+#else
+                *p_rsp_len = 7U;
+#endif
             }
             else
             {
@@ -1070,6 +1082,7 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
                 adaptivePolicy.strongReportingHours = p_req->paramPolicySet.strongReportingHours;
                 adaptivePolicy.weakReportingHours = p_req->paramPolicySet.weakReportingHours;
             }
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
             if ((applyMask & NFC_APP_CTRL_APPLY_ADAPTIVE_TX_MIN_BIT) != 0U)
             {
                 adaptivePolicy.strongTxPeriodMin = p_req->paramPolicySet.strongTxPeriodMin;
@@ -1084,6 +1097,7 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
             {
                 adaptivePolicy.flags = p_req->paramPolicySet.adaptiveFlags;
             }
+#endif
             if (nfc_app_ctrl_validate_policy_values(options.ackWaitEnabled,
                                                     nfc_app_ctrl_ack_timeout_sec_to_100ms(options.ackTimeoutSec),
                                                     options.ackPoll100Ms,
@@ -1125,12 +1139,16 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
 
             p_rsp->paramPolicySet.strongReportingHours = adaptivePolicy.strongReportingHours;
             p_rsp->paramPolicySet.weakReportingHours = adaptivePolicy.weakReportingHours;
+#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
             p_rsp->paramPolicySet.strongTxPeriodMin = adaptivePolicy.strongTxPeriodMin;
             p_rsp->paramPolicySet.weakTxPeriodMin = adaptivePolicy.weakTxPeriodMin;
             p_rsp->paramPolicySet.strongMeterPeriodMin = adaptivePolicy.strongMeterPeriodMin;
             p_rsp->paramPolicySet.weakMeterPeriodMin = adaptivePolicy.weakMeterPeriodMin;
             p_rsp->paramPolicySet.adaptiveFlags = adaptivePolicy.flags;
             *p_rsp_len = 12U;
+#else
+            *p_rsp_len = 7U;
+#endif
             *p_op_status = (verifyResult == 0U) ? (uint8_t)NFC_APP_CTRL_OP_OK : nfc_app_ctrl_map_status(status);
             if ((verifyResult != 0U) && (status == APP_STATUS_OK) && (deviceStatus == APP_STATUS_OK))
             {
