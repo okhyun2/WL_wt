@@ -1143,7 +1143,16 @@ static AppStatus_t App_NfcSeoulWriteResponseIndicate(uint16_t startBlock, uint8_
     indicate[2] = 1; //fix
     indicate[3] = NFC_CMD_IND_I2C_TO_NFC_SUFFIX;
 
-    HAL_Delay(5u);
+    APP_LOGI("NFC",
+             "Seoul indicate expA no-delay start=0x%04X bl=%u raw=%02X %02X %02X %02X tick=%lu",
+             (unsigned int)startBlock,
+             (unsigned int)blockLen,
+             (unsigned int)indicate[0],
+             (unsigned int)indicate[1],
+             (unsigned int)indicate[2],
+             (unsigned int)indicate[3],
+             (unsigned long)HAL_GetTick());
+
     ret = NFC_NTP53321_WriteBlock(g_appNfcSeoulTag, NFC_SRAM_UCMD_IND_BLOCK, indicate);
     if (ret != NFC_RESULT_OK)
     {
