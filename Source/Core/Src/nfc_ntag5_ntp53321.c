@@ -18,6 +18,7 @@
 #include "nfc_ntag5_ntp53321.h"
 #include <stdio.h>
 #include "app_log.h"
+#include "app_build_config.h"
 
 /* ============================================================
  * Private prototypes
@@ -850,6 +851,43 @@ void NFC_NTP53321_PrintStats(NFC_NTP53321_Handle_t *hntag)
  * HAL_I2C_Mem_Write/Read → [SL_AD][BL_AD1][BL_AD0][D0..DN]
  * User EEPROM, SRAM, Config Memory 접근에 사용
  * ============================================================ */
+static void nfc_i2c_log_mem_io(const char *p_io,
+                               uint16_t block_addr,
+                               uint16_t len,
+                               uint8_t retry,
+                               HAL_StatusTypeDef hal_ret,
+                               uint32_t hal_err,
+                               uint32_t hal_state,
+                               uint8_t finalFail)
+{
+    if (finalFail == APP_TRUE)
+    {
+        APP_LOGE("NFC",
+                 "%s err addr=0x%04X len=%u retry=%u hal=%d err=0x%08lX state=%lu tick=%lu",
+                 p_io,
+                 (unsigned int)block_addr,
+                 (unsigned int)len,
+                 (unsigned int)retry,
+                 (int)hal_ret,
+                 (unsigned long)hal_err,
+                 (unsigned long)hal_state,
+                 (unsigned long)HAL_GetTick());
+    }
+    else
+    {
+        APP_LOGW("NFC",
+                 "%s retry addr=0x%04X len=%u retry=%u hal=%d err=0x%08lX state=%lu tick=%lu",
+                 p_io,
+                 (unsigned int)block_addr,
+                 (unsigned int)len,
+                 (unsigned int)retry,
+                 (int)hal_ret,
+                 (unsigned long)hal_err,
+                 (unsigned long)hal_state,
+                 (unsigned long)HAL_GetTick());
+    }
+}
+
 static NFC_Result_t nfc_i2c_mem_write(NFC_NTP53321_Handle_t *h,
                                        uint16_t block_addr,
                                        const uint8_t *data, uint16_t len)
@@ -874,23 +912,25 @@ static NFC_Result_t nfc_i2c_mem_write(NFC_NTP53321_Handle_t *h,
         h->stats.i2c_error_count++;
         if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
         {
-            APP_LOGE("NFC", "Mem_Write err addr=0x%04X len=%u retry=%u hal=%d err=0x%08lX state=%lu",
-                     (unsigned int)block_addr,
-                     (unsigned int)len,
-                     (unsigned int)retry,
-                     (int)hal_ret,
-                     (unsigned long)hal_err,
-                     (unsigned long)HAL_I2C_GetState(h->hi2c));
+            nfc_i2c_log_mem_io("Mem_Write",
+                               block_addr,
+                               len,
+                               retry,
+                               hal_ret,
+                               hal_err,
+                               (uint32_t)HAL_I2C_GetState(h->hi2c),
+                               APP_TRUE);
             return NFC_RESULT_ERROR_I2C_RETRY;
         }
 
-        APP_LOGW("NFC", "Mem_Write retry addr=0x%04X len=%u retry=%u hal=%d err=0x%08lX state=%lu",
-                 (unsigned int)block_addr,
-                 (unsigned int)len,
-                 (unsigned int)retry,
-                 (int)hal_ret,
-                 (unsigned long)hal_err,
-                 (unsigned long)HAL_I2C_GetState(h->hi2c));
+        nfc_i2c_log_mem_io("Mem_Write",
+                           block_addr,
+                           len,
+                           retry,
+                           hal_ret,
+                           hal_err,
+                           (uint32_t)HAL_I2C_GetState(h->hi2c), 
+                           APP_TRUE);
 
         HAL_Delay(5U);
         retry++;
@@ -904,6 +944,8 @@ static NFC_Result_t nfc_i2c_mem_read(NFC_NTP53321_Handle_t *h,
                                       uint8_t *data, uint16_t len)
 {
     HAL_StatusTypeDef hal_ret;
+    uint32_t          hal_err;
+    uint32_t          hal_state;
     uint8_t           retry = 0U;
 
     do {
@@ -915,16 +957,30 @@ static NFC_Result_t nfc_i2c_mem_read(NFC_NTP53321_Handle_t *h,
                                    NFC_NTP53321_I2C_TIMEOUT);
         if (hal_ret == HAL_OK) return NFC_RESULT_OK;
 
+        hal_err = HAL_I2C_GetError(h->hi2c);
+        hal_state = (uint32_t)HAL_I2C_GetState(h->hi2c);
         h->stats.i2c_error_count++;
         if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
         {
-            APP_LOGE("NFC", "Mem_Read err addr=0x%04X retry=%u hal=%d",
-                     block_addr, (unsigned int)retry, (int)hal_ret);
+            nfc_i2c_log_mem_io("Mem_Read",
+                               block_addr,
+                               len,
+                               retry,
+                               hal_ret,
+                               hal_err,
+                               hal_state,
+                               APP_TRUE);
             return NFC_RESULT_ERROR_I2C_RETRY;
         }
 
-        APP_LOGW("NFC", "Mem_Read retry addr=0x%04X retry=%u hal=%d",
-                 block_addr, (unsigned int)retry, (int)hal_ret);
+        nfc_i2c_log_mem_io("Mem_Read",
+                           block_addr,
+                           len,
+                           retry,
+                           hal_ret,
+                           hal_err,
+                           hal_state,
+                           APP_FALSE);
 
         HAL_Delay(5U);
         retry++;

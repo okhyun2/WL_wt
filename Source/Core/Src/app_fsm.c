@@ -680,19 +680,31 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
                                            uint8_t *p_status1)
 {
     uint32_t startTick = HAL_GetTick();
+    uint32_t loopCount = 0U;
+    uint32_t status0FailCount = 0U;
+    uint32_t status1FailCount = 0U;
     uint8_t status0 = 0U;
     uint8_t status1 = 0U;
     NFC_Result_t ret;
 
     do
     {
+        loopCount++;
+
         ret = NFC_NTP53321_ReadSessionReg(&g_nfcTagHandle,
                                           NFC_SESSION_STATUS_ADDR,
                                           0U,
                                           &status0);
         if (ret != NFC_RESULT_OK)
         {
-            APP_LOGW("FSM", "trace nfc pt wait: status0 read fail ret=%d", (int)ret);
+            status0FailCount++;
+            APP_LOGW("FSM",
+                     "trace nfc pt wait: status0 read fail ret=%d loop=%lu elapsed=%lums fail0=%lu fail1=%lu",
+                     (int)ret,
+                     (unsigned long)loopCount,
+                     (unsigned long)(HAL_GetTick() - startTick),
+                     (unsigned long)status0FailCount,
+                     (unsigned long)status1FailCount);
             HAL_Delay(APP_FSM_NFC_PT_WAIT_POLL_MS);
             continue;
         }
@@ -703,15 +715,25 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
                                           &status1);
         if (ret != NFC_RESULT_OK)
         {
-            APP_LOGW("FSM", "trace nfc pt wait: status1 read fail ret=%d", (int)ret);
+            status1FailCount++;
+            APP_LOGW("FSM",
+                     "trace nfc pt wait: status1 read fail ret=%d loop=%lu elapsed=%lums fail0=%lu fail1=%lu status0=0x%02X",
+                     (int)ret,
+                     (unsigned long)loopCount,
+                     (unsigned long)(HAL_GetTick() - startTick),
+                     (unsigned long)status0FailCount,
+                     (unsigned long)status1FailCount,
+                     (unsigned int)status0);
             HAL_Delay(APP_FSM_NFC_PT_WAIT_POLL_MS);
             continue;
         }
 
         APP_LOGI("FSM",
-                 "trace nfc pt wait: status0=0x%02X status1=0x%02X",
-                 (unsigned int)status0,
-                 (unsigned int)status1);
+                 "trace nfc pt wait: status0=0x%02X status1=0x%02X loop=%lu elapsed=%lums",
+                  (unsigned int)status0,
+                 (unsigned int)status1,
+                 (unsigned long)loopCount,
+                 (unsigned long)(HAL_GetTick() - startTick));
 
         if ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0U)
         {
@@ -719,8 +741,16 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
             if (p_status1 != NULL) { *p_status1 = status1; }
 
             APP_LOGI("FSM",
-                     "trace nfc pt ready: sync-write observed status0=0x%02X",
-                     (unsigned int)status0);
+                     "trace nfc pt ready: sync-write observed status0=0x%02X status1=0x%02X elapsed=%lums loops=%lu fail0=%lu fail1=%lu field=%u vcc=%u i2c_locked=%u",
+                     (unsigned int)status0,
+                     (unsigned int)status1,
+                     (unsigned long)(HAL_GetTick() - startTick),
+                     (unsigned long)loopCount,
+                     (unsigned long)status0FailCount,
+                     (unsigned long)status1FailCount,
+                     (unsigned int)(((status0 & NFC_STATUS0_NFC_FIELD_OK) != 0U) ? 1U : 0U),
+                     (unsigned int)(((status0 & NFC_STATUS0_VCC_SUPPLY_OK) != 0U) ? 1U : 0U),
+                     (unsigned int)(((status1 & NFC_STATUS1_I2C_IF_LOCKED) != 0U) ? 1U : 0U));
 
             /* clear */
             NFC_NTP53321_WriteSessionReg(&g_nfcTagHandle,
@@ -738,9 +768,20 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
     if (p_status1 != NULL) { *p_status1 = status1; }
 
     APP_LOGW("FSM",
-             "trace nfc pt wait timeout: status0=0x%02X status1=0x%02X",
+             "trace nfc pt wait timeout: status0=0x%02X status1=0x%02X elapsed=%lums loops=%lu fail0=%lu fail1=%lu field=%u vcc=%u sync_wr=%u sync_rd=%u vcc_boot=%u nfc_boot=%u i2c_locked=%u",
              (unsigned int)status0,
-             (unsigned int)status1);
+             (unsigned int)status1,
+             (unsigned long)(HAL_GetTick() - startTick),
+             (unsigned long)loopCount,
+             (unsigned long)status0FailCount,
+             (unsigned long)status1FailCount,
+             (unsigned int)(((status0 & NFC_STATUS0_NFC_FIELD_OK) != 0U) ? 1U : 0U),
+             (unsigned int)(((status0 & NFC_STATUS0_VCC_SUPPLY_OK) != 0U) ? 1U : 0U),
+             (unsigned int)(((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0U) ? 1U : 0U),
+             (unsigned int)(((status0 & NFC_STATUS0_SYNCH_BLOCK_READ) != 0U) ? 1U : 0U),
+             (unsigned int)(((status1 & NFC_STATUS1_VCC_BOOT_OK) != 0U) ? 1U : 0U),
+             (unsigned int)(((status1 & NFC_STATUS1_NFC_BOOT_OK) != 0U) ? 1U : 0U),
+             (unsigned int)(((status1 & NFC_STATUS1_I2C_IF_LOCKED) != 0U) ? 1U : 0U));
 
     return APP_STATUS_FATAL;
 }
