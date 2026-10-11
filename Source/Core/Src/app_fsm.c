@@ -1232,12 +1232,17 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
      * 이미 awake(RUN/SLEEP) 상태에서 들어온 ED 태그는
      * PING / AUTH / SEOUL / UCMD 모두 처리하지 않고 완전히 drop 한다.
      * 응답도 쓰지 않는다.
+     *
+     * 중요:
+     * awake-origin hard-block 시 이전/동시 이벤트에서 남아 있을 수 있는
+     * g_appFsmNfcBusyReplyPending 도 함께 clear 하여,
+     * 다음 STOP-origin 세션에서 stale busy reply 가 소비되지 않도록 한다.
      */
     if (g_appFsmNfcDropAwakeTagPending == APP_TRUE)
     {
-        g_appFsmNfcDropAwakeTagPending = APP_FALSE;
+        g_appFsmNfcBusyReplyPending = APP_FALSE;
         APP_LOGW("FSM",
-                 "trace nfc hard-block awake-origin tag -> drop without response");
+                 "trace nfc hard-block awake-origin tag -> drop without response (busy cleared)");
         return APP_STATUS_OK;
     }
 
@@ -1343,15 +1348,24 @@ void App_FsmNfcEdIrqHandler(void)
     g_nfcWakeEvent = NFC_WAKEUP_EVENT_ED_PIN;   /* backup latch */
     g_appFsmNfcStopOriginPending = startedFromStop;
     g_appFsmNfcDropAwakeTagPending = (startedFromStop == APP_TRUE) ? APP_FALSE : APP_TRUE;
-    if (App_FsmIsNbiotBusyWindowActive() == APP_TRUE)
+
+    /* busy reply 정책:
+     * STOP에서 시작된 NFC 세션에 대해서만 NBIoT busy-window 를 busy-reply 로 매핑한다.
+     * awake-origin 세션은 hard-block/drop 정책이 우선이며,
+     * 이 경로에서 busy pending 을 세팅하면 stale busy 가 다음 세션까지 남을 수 있다.
+     */
+    g_appFsmNfcBusyReplyPending = APP_FALSE;
+    if ((startedFromStop == APP_TRUE) &&
+        (App_FsmIsNbiotBusyWindowActive() == APP_TRUE))
     {
         g_appFsmNfcBusyReplyPending = APP_TRUE;
     }
     APP_LOGI("FSM",
-             "trace nfc ed irq pending=1 wake=%s origin=%s dropAwake=%u",
+             "trace nfc ed irq pending=1 wake=%s origin=%s dropAwake=%u busyReply=%u",
              App_FsmNfcGetWakeEventName(g_nfcWakeEvent),
              (startedFromStop == APP_TRUE) ? "STOP" : "AWAKE",
-             (unsigned int)g_appFsmNfcDropAwakeTagPending);
+             (unsigned int)g_appFsmNfcDropAwakeTagPending,
+             (unsigned int)g_appFsmNfcBusyReplyPending);
 }
 
 static uint8_t App_FsmIsNbiotBusyWindowActive(void)

@@ -88,6 +88,11 @@
 #define APP_BC95_SERVICE_READY_POST_CFUN_SETTLE_MS   (2500u)
 #define APP_BC95_SERVICE_READY_WAKE_READY_STREAK     (2u)
 
+/* CME 524 반복 후 attach 진입 전 추가 안정화 */
+#define APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS    (4000u)
+#define APP_BC95_CME524_ATTACH_READY_RECHECK_MS      (12000u)
+#define APP_BC95_CME524_ATTACH_RECHECK_RETRY_MAX     (2u)
+
 #define APP_BC95_AT_CMD_QLWSREGIND_REGISTER  "AT+QLWSREGIND=0\r\n"
 #define APP_BC95_AT_CMD_QLWULDATASTATUS_QUERY "AT+QLWULDATASTATUS?\r\n"
 #define APP_BC95_AT_QLWEVTIND_PREFIX         "+QLWEVTIND:"
@@ -175,6 +180,10 @@ static uint8_t g_appBc95UsimFatal = APP_FALSE;
 static uint8_t g_appBc95SkipNextAttachBootWait = APP_FALSE;
 static uint8_t g_appBc95RegisteringStuckRecoveryUsed = APP_FALSE;
 static uint8_t g_appBc95WakeNeedsPreAttachNetReset = APP_FALSE;
+static uint8_t g_appBc95WakeNeedsCme524AttachBackoff = APP_FALSE;
+static uint8_t g_appBc95LastRecoverableCmeWas524 = APP_FALSE;
+static uint8_t g_appBc95Cme524AttachRecheckCount = 0u;
+static uint32_t g_appBc95LastRecoverableCmeTick = 0u;
 
 /* UDP seq 단조 증가 카운터 (stale URC 매칭 방지) */
 static uint8_t g_appBc95UdpSeqCounter = 0u;
@@ -3064,6 +3073,7 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
     uint16_t rxLen = 0u;
     int32_t funVal = -1;
     int32_t cfunCmeErr = 0;
+    uint8_t isCme524 = (cmeErr == 524) ? APP_TRUE : APP_FALSE;
 
     APP_LOGW("NBIOT", "[[ReadyProbe]] recoverable CME=%ld streak threshold reached -> query CFUN for recovery",
              (long)cmeErr);
@@ -3109,6 +3119,14 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
     g_appBc95ServiceReadyRecoveryActive = APP_TRUE;
     g_appBc95WakeNeedsPreAttachNetReset = APP_TRUE;
     g_appBc95ServiceReadyFastPath = APP_TRUE;
+    g_appBc95LastRecoverableCmeWas524 = isCme524;
+    g_appBc95LastRecoverableCmeTick = HAL_GetTick();
+
+    if (isCme524 == APP_TRUE)
+    {
+        g_appBc95WakeNeedsCme524AttachBackoff = APP_TRUE;
+        g_appBc95Cme524AttachRecheckCount = 0u;
+    }
 
     if (funVal == 0)
     {
@@ -3119,7 +3137,9 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
         if (status == APP_STATUS_OK)
         {
             APP_LOGW("NBIOT",
-                     "[[ReadyProbe]] recoverable-CME CFUN recovery accepted -> conservative wake policy armed");
+                     "[[ReadyProbe]] recoverable-CME CFUN recovery accepted -> conservative wake policy armed (cme=%ld, attachBackoff=%u)",
+                     (long)cmeErr,
+                     (unsigned)g_appBc95WakeNeedsCme524AttachBackoff);
         }
         else
         {
@@ -3136,6 +3156,54 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
              (long)cmeErr);
 
     return APP_STATUS_UART_TIMEOUT;
+}
+
+static AppStatus_t App_Bc95AtStabilizeBeforeAttachAfterCme524(void)
+{
+    AppStatus_t status = APP_STATUS_UART_TIMEOUT;
+    uint8_t retry = 0u;
+
+    if (g_appBc95WakeNeedsCme524AttachBackoff != APP_TRUE)
+    {
+        return APP_STATUS_OK;
+    }
+
+    APP_LOGW("NBIOT",
+             "[[Attach]] CME=524 stabilize/backoff start delay=%lums sinceRecover=%lums",
+             (unsigned long)APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS,
+             (unsigned long)(HAL_GetTick() - g_appBc95LastRecoverableCmeTick));
+
+    HAL_Delay(APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS);
+
+    for (retry = 0u; retry < APP_BC95_CME524_ATTACH_RECHECK_RETRY_MAX; retry++)
+    {
+        status = App_Bc95AtWaitForServiceReady(APP_BC95_CME524_ATTACH_READY_RECHECK_MS);
+        g_appBc95Cme524AttachRecheckCount++;
+
+        if (status == APP_STATUS_OK)
+        {
+            APP_LOGN("NBIOT",
+                     "[[Attach]] CME=524 stabilize/backoff passed retry=%u recheckCount=%u",
+                     (unsigned)retry,
+                     (unsigned)g_appBc95Cme524AttachRecheckCount);
+
+            g_appBc95WakeNeedsCme524AttachBackoff = APP_FALSE;
+            return APP_STATUS_OK;
+        }
+
+        APP_LOGW("NBIOT",
+                 "[[Attach]] CME=524 stabilize/backoff recheck failed retry=%u status=%d",
+                 (unsigned)retry,
+                 (int)status);
+
+        HAL_Delay(1000u);
+    }
+
+    APP_LOGW("NBIOT",
+             "[[Attach]] CME=524 stabilize/backoff exhausted -> defer attach to outer recovery");
+
+    g_appBc95WakeNeedsCme524AttachBackoff = APP_FALSE;
+    return status;
 }
 
 static AppStatus_t App_Bc95AtSendRebootBestEffort(void)
@@ -5926,12 +5994,31 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
         status = App_NBIoTBringUp();
         if (status == APP_STATUS_OK)
         {
+            AppStatus_t stabilizeStatus = APP_STATUS_OK;
             /*
              * 중요:
              * g_appBc95WakeNeedsPreAttachNetReset 는 App_NBIoTBringUp() 내부의
              * service-ready recovery(CFUN=1) 과정에서 세팅될 수 있으므로,
              * 함수 초반이 아니라 BringUp 성공 직후 여기서 검사해야 한다.
              */
+            if (g_appBc95WakeNeedsCme524AttachBackoff == APP_TRUE)
+            {
+                specialWakePolicy = APP_TRUE;
+                stabilizeStatus = App_Bc95AtStabilizeBeforeAttachAfterCme524();
+                if (stabilizeStatus != APP_STATUS_OK)
+                {
+                    APP_LOGW("NBIOT",
+                             "[[Attach]] CME=524 pre-attach stabilize failed status=%d -> skip attach entry this round",
+                             (int)stabilizeStatus);
+                    status = stabilizeStatus;
+                }
+            }
+
+            if (status != APP_STATUS_OK)
+            {
+                goto attach_finalize;
+            }
+
             if (g_appBc95WakeNeedsPreAttachNetReset == APP_TRUE)
             {
                 specialWakePolicy = APP_TRUE;
@@ -5950,11 +6037,14 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
             g_appNbiotCarrierContext.lastNetStatus = netStatus;
         }
 
+attach_finalize:
+
         g_appNbiotCarrierContext.lastStatus = status;
 
         if (status == APP_STATUS_OK)
         {
             g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
+            g_appBc95LastRecoverableCmeWas524 = APP_FALSE;
             g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_READY;
 
             (void)App_Bc95AtEnableAutoTimezone();

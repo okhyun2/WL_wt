@@ -1181,9 +1181,63 @@ static AppStatus_t App_NfcSeoulWriteResponseStatus(void)
     return APP_STATUS_OK;
 }
 
+#define APP_NFC_SEOUL_INDICATE_DELAY_MS_CMD1   (0u)
+#define APP_NFC_SEOUL_INDICATE_DELAY_MS_OTHER  (1u)
+
+static uint8_t App_NfcSeoulGetIndicateDelayMs(uint16_t startBlock, uint8_t blockLen)
+{
+    if ((startBlock == NFC_SRAM_CMD_BLOCK) && (blockLen == 1u))
+    {
+        return APP_NFC_SEOUL_INDICATE_DELAY_MS_CMD1;
+    }
+
+    return APP_NFC_SEOUL_INDICATE_DELAY_MS_OTHER;
+}
+
+static void App_NfcSeoulLogIndicateContext(const char *p_stage,
+                                           uint16_t startBlock,
+                                           uint8_t blockLen,
+                                           const uint8_t indicate[4])
+{
+    uint8_t status0 = 0u;
+    uint8_t status1 = 0u;
+    NFC_Result_t ret0;
+    NFC_Result_t ret1;
+
+    ret0 = NFC_NTP53321_ReadSessionReg(g_appNfcSeoulTag,
+                                       NFC_SESSION_STATUS_ADDR,
+                                       0u,
+                                       &status0);
+    ret1 = NFC_NTP53321_ReadSessionReg(g_appNfcSeoulTag,
+                                       NFC_SESSION_STATUS_ADDR,
+                                       1u,
+                                       &status1);
+
+    APP_LOGI("NFC",
+             "Seoul indicate ctx stage=%s start=0x%04X bl=%u raw=%02X %02X %02X %02X "
+             "ret0=%d st0=0x%02X ret1=%d st1=0x%02X sync_wr=%u sync_rd=%u field=%u i2c_locked=%u tick=%lu",
+             (p_stage != NULL) ? p_stage : "?",
+             (unsigned int)startBlock,
+             (unsigned int)blockLen,
+             (unsigned int)indicate[0],
+             (unsigned int)indicate[1],
+             (unsigned int)indicate[2],
+             (unsigned int)indicate[3],
+             (int)ret0,
+             (unsigned int)status0,
+             (int)ret1,
+             (unsigned int)status1,
+             ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0u) ? 1u : 0u,
+             ((status0 & NFC_STATUS0_SYNCH_BLOCK_READ) != 0u) ? 1u : 0u,
+             ((status0 & NFC_STATUS0_NFC_FIELD_OK) != 0u) ? 1u : 0u,
+             ((status1 & NFC_STATUS1_I2C_IF_LOCKED) != 0u) ? 1u : 0u,
+             (unsigned long)HAL_GetTick());
+}
+
 static AppStatus_t App_NfcSeoulWriteResponseIndicate(uint16_t startBlock, uint8_t blockLen)
 {
     uint8_t indicate[4];
+    uint8_t delayMs;
     NFC_Result_t ret;
 
     if ((g_appNfcSeoulAttached != APP_TRUE) || (g_appNfcSeoulTag == NULL))
@@ -1203,30 +1257,23 @@ static AppStatus_t App_NfcSeoulWriteResponseIndicate(uint16_t startBlock, uint8_
     indicate[2] = 1; //fix
     indicate[3] = NFC_CMD_IND_I2C_TO_NFC_SUFFIX;
 
-    APP_LOGI("NFC",
-             "Seoul indicate expA no-delay start=0x%04X bl=%u raw=%02X %02X %02X %02X tick=%lu",
-             (unsigned int)startBlock,
-             (unsigned int)blockLen,
-             (unsigned int)indicate[0],
-             (unsigned int)indicate[1],
-             (unsigned int)indicate[2],
-             (unsigned int)indicate[3],
-             (unsigned long)HAL_GetTick());
+    delayMs = App_NfcSeoulGetIndicateDelayMs(startBlock, blockLen);
+
+    App_NfcSeoulLogIndicateContext("before-write", startBlock, blockLen, indicate);
+
+    if (delayMs != 0u)
+    {
+        HAL_Delay(delayMs);
+    }
 
     ret = NFC_NTP53321_WriteBlock(g_appNfcSeoulTag, NFC_SRAM_UCMD_IND_BLOCK, indicate);
     if (ret != NFC_RESULT_OK)
     {
-        APP_LOGE("NFC", "Seoul indicate rsp write fail blk=0x%04X ret=%d",
-                 (unsigned int)NFC_SRAM_UCMD_IND_BLOCK,
-                 (int)ret);
+        App_NfcSeoulLogIndicateContext("write-fail", startBlock, blockLen, indicate);
         return APP_STATUS_INIT_FAILED;
     }
 
-    APP_LOGI("NFC", "Seoul indicate rsp raw=%02X %02X %02X %02X",
-             (unsigned int)indicate[0],
-             (unsigned int)indicate[1],
-             (unsigned int)indicate[2],
-             (unsigned int)indicate[3]);
+    App_NfcSeoulLogIndicateContext("write-ok", startBlock, blockLen, indicate);
     return APP_STATUS_OK;
 }
 
