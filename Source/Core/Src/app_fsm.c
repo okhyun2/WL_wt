@@ -24,10 +24,10 @@
 #include "app_selftest.h"
 #include "app_comm_param.h"
 
-#if 0 //debug
+#if 1 //debug
 #if 1
-#define APP_DEBUG_METER_PERIOD_MS      (5u * 60000u)   /* 5 min */
-#define APP_DEBUG_TX_PERIOD_MS         (10u * 60000u)   /* 10 min : service TX */
+#define APP_DEBUG_METER_PERIOD_MS      (7u * 60000u)   /* 5 min */
+#define APP_DEBUG_TX_PERIOD_MS         (9u * 60000u)   /* 10 min : service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (10u * 60000u)   /* 10 min : management TX */
 #else
 /* run shot time for immediately test */
@@ -86,6 +86,20 @@ static uint32_t App_FsmGetRuntimeMgmtTxPeriodMs(void)
 }
 
 #define APP_FSM_MGMT_TX_BUSY_DEFER_MS  (30u * 1000u)
+
+/*
+ * Debug build only:
+ * Disable service/mgmt schedule guards so TX timing follows the configured
+ * debug period directly after bootstrap.
+ */
+static uint8_t App_FsmTxScheduleBypassDebugGuards(void)
+{
+#if defined(APP_DEBUG_TX_PERIOD_MS) || defined(APP_DEBUG_MGMT_TX_PERIOD_MS)
+    return APP_TRUE;
+#else
+    return APP_FALSE;
+#endif
+}
 
 #if defined(SUPPORT_METER_NORMAL)
 #define APP_FSM_BOOT_METER_SRC_TYPE   APP_METER_STORAGE_SRC_DIGITAL_UART
@@ -2108,6 +2122,11 @@ static AppStatus_t App_FsmTxScheduleApplyMeterProximityGuard(uint32_t *p_dueDate
 
     APP_RETURN_IF_FALSE((p_dueDateKey != NULL) && (p_dueMsOfDay != NULL), APP_STATUS_INVALID_PARAM);
 
+    if (App_FsmTxScheduleBypassDebugGuards() == APP_TRUE)
+    {
+        return APP_STATUS_OK;
+    }
+
     status = App_FsmMeterScheduleLoadPeriod(&meterPeriodHours);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
@@ -2424,6 +2443,11 @@ static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void)
     uint32_t prevMsOfDay;
     uint32_t serviceAnchorDateKey = 0u;
     uint32_t serviceAnchorMsOfDay = 0u;
+
+    if (App_FsmTxScheduleBypassDebugGuards() == APP_TRUE)
+    {
+        return APP_STATUS_OK;
+    }
 
     if ((g_appFsmTxSchedule.enabled != APP_TRUE) ||
         (g_appFsmMgmtTxSchedule.enabled != APP_TRUE))
