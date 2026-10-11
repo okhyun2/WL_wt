@@ -40,6 +40,15 @@ static uint8_t g_appSelfTestMeterLastReplyIsSc1xxx;
 static const char *App_SelfTestItemToString(AppSelfTestItem_t item);
 static AppStatus_t App_SelfTestCheckMeterCrc(void);
 
+/* Self-test 전용 NB-IoT short probe
+ * - 일반 boot/attach용 WaitUntilReady()를 쓰지 않고
+ * - 짧은 settle 후 짧은 ping 몇 회만 확인하여 NFC 세션 점유 시간을 줄인다.
+ */
+#define APP_SELFTEST_NBIOT_POWER_SETTLE_MS        (500u)
+#define APP_SELFTEST_NBIOT_PING_TIMEOUT_MS        (250u)
+#define APP_SELFTEST_NBIOT_PING_RETRY_MAX         (3u)
+#define APP_SELFTEST_NBIOT_PING_RETRY_DELAY_MS    (150u)
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
 /** @brief TEST3 자가진단 반복 실행 횟수(부팅 후 누적, seq 필드로 사용). */
@@ -626,6 +635,40 @@ static AppStatus_t App_SelfTestCheckMeterCrc(void)
     return APP_STATUS_OK;
 }
 
+static AppStatus_t App_SelfTestProbeNbiotUartShort(void)
+{
+    AppStatus_t status = APP_STATUS_UART_TIMEOUT;
+    uint32_t retry;
+    uint32_t startTick;
+
+    startTick = HAL_GetTick();
+
+    APP_WWDGFeed();
+    HAL_Delay(APP_SELFTEST_NBIOT_POWER_SETTLE_MS);
+
+    for (retry = 0u; retry < APP_SELFTEST_NBIOT_PING_RETRY_MAX; retry++)
+    {
+        APP_WWDGFeed();
+        status = App_Bc95AtPing(APP_SELFTEST_NBIOT_PING_TIMEOUT_MS);
+        if (status == APP_STATUS_OK)
+        {
+            APP_LOGI("SELF",
+                     "NB-IoT short probe PASS retry=%lu elapsed=%lums",
+                     (unsigned long)retry,
+                     (unsigned long)(HAL_GetTick() - startTick));
+            return APP_STATUS_OK;
+        }
+
+        if ((retry + 1u) < APP_SELFTEST_NBIOT_PING_RETRY_MAX)
+        {
+            HAL_Delay(APP_SELFTEST_NBIOT_PING_RETRY_DELAY_MS);
+        }
+    }
+
+    APP_LOGW("SELF", "NB-IoT short probe FAIL last=%d elapsed=%lums", (int)status, (unsigned long)(HAL_GetTick() - startTick));
+    return status;
+}
+
 static AppStatus_t App_SelfTestCheckNbiotUart(void)
 {
     AppStatus_t status;
@@ -641,11 +684,10 @@ static AppStatus_t App_SelfTestCheckNbiotUart(void)
     if (wasPowered != APP_TRUE)
     {
         APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-        APP_WWDGFeed();
-        status = App_Bc95AtWaitUntilReady(APP_BC95_BOOT_WAIT_BANNER_MS + APP_BC95_USIM_READY_TIMEOUT_MS);
     }
 
-    status = App_Bc95AtPing(APP_BC95_BOOT_PING_TIMEOUT_MS);
+    status = App_SelfTestProbeNbiotUartShort();
+
     APP_WWDGFeed();
 
     if (wasPowered != APP_TRUE)

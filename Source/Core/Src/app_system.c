@@ -1723,30 +1723,25 @@ AppStatus_t App_SystemInit(void)
     App_NfcInit();
 
 #if defined(SUPPORT_SELFTEST) || (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
-#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3) 
-    /* [[EPC TEST3 관련 수정]]
+    /* Early self-test context init:
      * 기존에는 App_SelfTestInit()이 App_SystemRunBootSelfTest()/
-     * App_SystemRunWakeDataCollection() 내부에서만 호출되었고, 이 두 함수는
-     * FSM이 APP_FSM_STATE_NBIOT_EXCHANGE_AT까지 도달해야만(=NB-IoT 부팅 배너/AT
-     * 응답 성공) 호출된다. NB-IoT가 의도적으로 응답하지 않는 시나리오(TEST3 등)에서는
-     * EXCHANGE_AT에 영원히 도달하지 못해 App_SelfTestInit()이 실행되지 않고,
-     * g_appSelfTestContext.initialized == FALSE 상태가 계속되어 매 wake마다 강제
-     * 실행되는 주기 자가진단(App_SelfTestRunPeriodicMeterWakeSequence)이
-     * APP_STATUS_NOT_INITIALIZED(=2)로 조기 반환되어 [SELFDIAG] 로그가 전혀
-     * 출력되지 않는 문제가 있었다.
-     * NB-IoT 연결 성공 여부와 무관하게 자가진단 컨텍스트를 부팅 시점에 선(先) 초기화하여
-     * 해결한다. */
+     * App_SystemRunWakeDataCollection() 내부에서만 호출되었고, 이 경로는
+     * FSM이 APP_FSM_STATE_NBIOT_EXCHANGE_AT까지 도달해야만 진입 가능했다.
+     * 따라서 NB-IoT boot banner/AT 응답 실패처럼 부트 초기에 탈락하는 경우
+     * g_appSelfTestContext.initialized == FALSE 상태가 남아
+     * NFC RUN_SUMMARY_GET / 주기 self-test가 APP_STATUS_NOT_INITIALIZED로
+     * 조기 반환될 수 있다.
+     * NB-IoT 성공 여부와 무관하게 부팅 시점에 선행 초기화한다. */
     status = App_SelfTestInit();
     if (status != APP_STATUS_OK)
     {
         APP_LOGW("SELF", "Early App_SelfTestInit() failed at boot: status=%lu", (unsigned long)status);
-        /* 자가진단 초기화 실패는 부팅을 중단시킬 만큼 치명적이지 않으므로 계속 진행 */
+        /* self-test 초기화 실패는 부팅 중단 사유로 보지 않고 계속 진행 */
     }
     else
     {
         APP_LOGI("SELF", "Self-test context pre-initialized at boot (NB-IoT independent)");
     }
-#endif
 #endif
 
     status = App_SystemInitFsm();
