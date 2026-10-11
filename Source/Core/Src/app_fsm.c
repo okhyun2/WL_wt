@@ -26,7 +26,7 @@
 
 #if 1 //debug
 #if 1
-#define APP_DEBUG_METER_PERIOD_MS      (7u * 60000u)   /* 5 min */
+#define APP_DEBUG_METER_PERIOD_MS      (3u * 60000u)   /* 5 min */
 #define APP_DEBUG_TX_PERIOD_MS         (9u * 60000u)   /* 10 min : service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (10u * 60000u)   /* 10 min : management TX */
 #else
@@ -2664,6 +2664,98 @@ static void App_FsmTxScheduleDisableContext(AppFsmTxScheduleContext_t *p_schedul
     p_schedule->currentJitterMs = 0u;
 }
 
+
+#if defined(APP_DEBUG_METER_PERIOD_MS) && \
+    defined(APP_DEBUG_TX_PERIOD_MS) && \
+    defined(APP_DEBUG_MGMT_TX_PERIOD_MS)
+static AppStatus_t App_FsmTxScheduleAnchorFromNowCommon(AppFsmTxScheduleContext_t *p_schedule,
+                                                        uint8_t periodHours,
+                                                        uint32_t delayMs,
+                                                        const char *p_tag)
+{
+    AppDateTime_t now;
+    AppStatus_t status;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
+
+    APP_RETURN_IF_FALSE((p_schedule != NULL) && (p_tag != NULL), APP_STATUS_INVALID_PARAM);
+
+    if (delayMs == 0u)
+    {
+        App_FsmTxScheduleDisableContext(p_schedule);
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    status = RTC_GetTime(&now);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    nowDateKey = App_FsmMeterScheduleDateKey(&now);
+    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+    p_schedule->initialized           = APP_TRUE;
+    p_schedule->enabled               = APP_TRUE;
+    p_schedule->periodHours           = periodHours;
+    p_schedule->rtcReadyLogged        = APP_TRUE;
+    p_schedule->offsetApplied         = APP_TRUE;
+    p_schedule->baseSlotOffsetMs      = 0u;
+    p_schedule->fixedOffsetMs         = 0u;
+    p_schedule->configuredSpreadMaxMs = 0u;
+    p_schedule->currentJitterMs       = 0u;
+    p_schedule->lastDispatchedDateKey = 0u;
+    p_schedule->lastDispatchedMsOfDay = 0u;
+
+    status = App_FsmScheduleAddMs(nowDateKey,
+                                  nowMsOfDay,
+                                  delayMs,
+                                  &p_schedule->nextDueDateKey,
+                                  &p_schedule->nextDueMsOfDay);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    APP_LOGN("FSM",
+             "%s debug boot-live re-anchor now=%lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu delayMs=%lu",
+             p_tag,
+             (unsigned long)nowDateKey,
+             (unsigned long)now.hour,
+             (unsigned long)now.minute,
+             (unsigned long)now.second,
+             (unsigned long)p_schedule->nextDueDateKey,
+             (unsigned long)(p_schedule->nextDueMsOfDay / 3600000u),
+             (unsigned long)((p_schedule->nextDueMsOfDay % 3600000u) / 60000u),
+             (unsigned long)((p_schedule->nextDueMsOfDay % 60000u) / 1000u),
+             (unsigned long)delayMs);
+
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_FsmAnchorRegularTxSchedulesFromBootLiveTx(void)
+{
+    AppStatus_t status;
+    uint8_t servicePeriodHours;
+    uint8_t mgmtPeriodHours;
+
+    status = App_FsmTxScheduleLoadPeriod(&servicePeriodHours);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    status = App_FsmMgmtTxScheduleLoadPeriod(&mgmtPeriodHours);
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    status = App_FsmTxScheduleAnchorFromNowCommon(&g_appFsmTxSchedule,
+                                                  servicePeriodHours,
+                                                  APP_DEBUG_TX_PERIOD_MS,
+                                                  "[[ServiceTxSchedule]]");
+    APP_RETURN_IF_FALSE((status == APP_STATUS_OK) || (status == APP_STATUS_NOT_INITIALIZED), status);
+
+    status = App_FsmTxScheduleAnchorFromNowCommon(&g_appFsmMgmtTxSchedule,
+                                                  mgmtPeriodHours,
+                                                  APP_DEBUG_MGMT_TX_PERIOD_MS,
+                                                  "[[MgmtTxSchedule]]");
+    APP_RETURN_IF_FALSE((status == APP_STATUS_OK) || (status == APP_STATUS_NOT_INITIALIZED), status);
+
+    App_FsmMgmtTxGuardShiftReset("debug boot-live re-anchor");
+    return APP_STATUS_OK;
+}
+#endif
+
 static AppStatus_t App_FsmTxScheduleEnsureInitializedCommon(AppFsmTxScheduleContext_t *p_schedule,
                                                             uint8_t periodHours,
                                                             uint32_t spreadMaxMs,
@@ -3984,11 +4076,26 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                     g_appFsmNbiotBusyWindow = APP_TRUE;
                     mgmtTxStatus = App_NBIoTTransmitMgmtLiveRecord(&bootLiveRecord);
                     g_appFsmNbiotBusyWindow = APP_FALSE;
+
                     if (mgmtTxStatus != APP_STATUS_OK)
                     {
                         APP_LOGW("FSM", "[[BootLiveTx]] mgmt send failed status=%d",
                                  (int)mgmtTxStatus);
                     }
+#if defined(APP_DEBUG_METER_PERIOD_MS) && \
+    defined(APP_DEBUG_TX_PERIOD_MS) && \
+    defined(APP_DEBUG_MGMT_TX_PERIOD_MS)
+                    else
+                    {
+                        AppStatus_t anchorStatus;
+                        anchorStatus = App_FsmAnchorRegularTxSchedulesFromBootLiveTx();
+                        if (anchorStatus != APP_STATUS_OK)
+                        {
+                            APP_LOGW("FSM", "[[BootLiveTx]] debug re-anchor failed status=%d",
+                                     (int)anchorStatus);
+                        }
+                    }
+#endif
                 }
             }
             else
