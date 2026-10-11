@@ -24,7 +24,7 @@
 #include "app_selftest.h"
 #include "app_comm_param.h"
 
-#if 1 //debug
+#if 0 //debug
 #if 1
 #define APP_DEBUG_METER_PERIOD_MS      (5u * 60000u)   /* 5 min */
 #define APP_DEBUG_TX_PERIOD_MS         (10u * 60000u)   /* 10 min : service TX */

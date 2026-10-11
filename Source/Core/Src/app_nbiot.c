@@ -2752,8 +2752,10 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
     uint32_t pollCount   = 0u;
     uint32_t deniedCount = 0u;
     uint32_t registeringPollCount = 0u;
+    uint32_t registeringGraceMs = APP_BC95_NET_REGISTERING_GRACE_MS;
     uint8_t  cfunFixDone = APP_FALSE;
     uint8_t  registeringGraceUsed = APP_FALSE;
+    uint8_t  registeringMinPolls = APP_BC95_NET_REGISTERING_STUCK_MIN_POLLS;
     AppBc95NetPhase_t lastPhase = APP_BC95_NET_PHASE_INIT;
 
     APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
@@ -2761,9 +2763,24 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
     if (p_status != NULL) (void)memset(p_status, 0, sizeof(*p_status));
     (void)memset(&snapshot, 0, sizeof(snapshot));
 
+    if ((g_appBc95LastRecoverableCmeWas524 == APP_TRUE) ||
+        (g_appBc95ServiceReadyRecoveryActive == APP_TRUE) ||
+        (g_appBc95WakeNeedsCme524AttachBackoff == APP_TRUE))
+    {
+        registeringGraceMs = APP_BC95_NET_REGISTERING_GRACE_MS_FAST_RECOVERY;
+        registeringMinPolls = APP_BC95_NET_REGISTERING_STUCK_MIN_POLLS_FAST_RECOVERY;
+    }
+
     startTick = HAL_GetTick();
     effectiveTimeoutMs = totalTimeoutMs;
-    APP_LOGI("NBIOT", "Wait for network (timeout=%lums)...", (unsigned long)totalTimeoutMs);
+
+    APP_LOGI("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
+             " registering-stuck policy grace=%lums minPolls=%u last524=%u recoveryActive=%u cme524Backoff=%u",
+             (unsigned long)registeringGraceMs,
+             (unsigned)registeringMinPolls,
+             (unsigned)g_appBc95LastRecoverableCmeWas524,
+             (unsigned)g_appBc95ServiceReadyRecoveryActive,
+             (unsigned)g_appBc95WakeNeedsCme524AttachBackoff);
 
     while (1)
     {
@@ -2879,13 +2896,13 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
                 (elapsed >= totalTimeoutMs) &&
                 (snapshot.phase == APP_BC95_NET_PHASE_REGISTERING) &&
                 (snapshot.rejectCauseValid != APP_TRUE) &&
-                (registeringPollCount >= APP_BC95_NET_REGISTERING_STUCK_MIN_POLLS))
+                (registeringPollCount >= registeringMinPolls))
             {
                 registeringGraceUsed = APP_TRUE;
-                effectiveTimeoutMs = totalTimeoutMs + APP_BC95_NET_REGISTERING_GRACE_MS;
+                effectiveTimeoutMs = totalTimeoutMs + registeringGraceMs;
                 APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
                          " registering timeout relaxed by %lums (poll=%lu streak=%lu newTimeout=%lums)",
-                         (unsigned long)APP_BC95_NET_REGISTERING_GRACE_MS,
+                         (unsigned long)registeringGraceMs,
                          (unsigned long)pollCount,
                          (unsigned long)registeringPollCount,
                          (unsigned long)effectiveTimeoutMs);
