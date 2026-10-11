@@ -93,6 +93,12 @@
 #define APP_BC95_CME524_ATTACH_READY_RECHECK_MS      (12000u)
 #define APP_BC95_CME524_ATTACH_RECHECK_RETRY_MAX     (2u)
 
+/* 현재 소스 추가 보강안: 524는 더 늦게 recovery로 넘기고, recovery 직후 net reset 1회 생략 */
+#define APP_BC95_CME524_WAKE_GRACE_MS                (4000u)
+#define APP_BC95_CME524_WAKE_RECOVERY_THRESHOLD      (4u)
+#define APP_BC95_CME524_GRACE_POLL_MS                (1000u)
+#define APP_BC95_CME524_ATTACH_WINDOW_MS             (45000u)
+
 #define APP_BC95_AT_CMD_QLWSREGIND_REGISTER  "AT+QLWSREGIND=0\r\n"
 #define APP_BC95_AT_CMD_QLWULDATASTATUS_QUERY "AT+QLWULDATASTATUS?\r\n"
 #define APP_BC95_AT_QLWEVTIND_PREFIX         "+QLWEVTIND:"
@@ -182,6 +188,8 @@ static uint8_t g_appBc95RegisteringStuckRecoveryUsed = APP_FALSE;
 static uint8_t g_appBc95WakeNeedsPreAttachNetReset = APP_FALSE;
 static uint8_t g_appBc95WakeNeedsCme524AttachBackoff = APP_FALSE;
 static uint8_t g_appBc95LastRecoverableCmeWas524 = APP_FALSE;
+static uint8_t g_appBc95WakeCme524GraceUsed = APP_FALSE;
+static uint8_t g_appBc95WakeSkipPreAttachNetResetOnce = APP_FALSE;
 static uint8_t g_appBc95Cme524AttachRecheckCount = 0u;
 static uint32_t g_appBc95LastRecoverableCmeTick = 0u;
 
@@ -1540,6 +1548,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
     uint8_t recoverableCmeThreshold;
     uint8_t requiredReadyStreak;
     uint8_t readyStreak = 0u;
+    uint8_t effectiveRecoverableCmeThreshold;
     int32_t recoverableCme = -1;
     AppBc95ServiceReadyProbe_t probe;
 
@@ -1568,6 +1577,8 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
     }
 
     startTick = HAL_GetTick();
+    g_appBc95WakeCme524GraceUsed = APP_FALSE;
+
     APP_LOGI("NBIOT",
              "Wait for service ready after boot banner (timeout=%lums, settle=%lums, poll=%lums, fastPath=%u, postRecover=%u, cmeThreshold=%u, readyStreak=%u)...",
              (unsigned long)totalTimeoutMs,
@@ -1630,6 +1641,37 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
 
         if (App_Bc95AtIsRecoverableServiceReadyCme(probe.lastCmeError) == APP_TRUE)
         {
+            effectiveRecoverableCmeThreshold = recoverableCmeThreshold;
+
+            if ((probe.lastCmeError == 524) &&
+                ((g_appBc95ServiceReadyFastPath == APP_TRUE) ||
+                 (g_appBc95ServiceReadyRecoveryActive == APP_TRUE)))
+            {
+                if ((g_appBc95WakeCme524GraceUsed != APP_TRUE) &&
+                    ((HAL_GetTick() - startTick) < APP_BC95_CME524_WAKE_GRACE_MS))
+                {
+                    g_appBc95WakeCme524GraceUsed = APP_TRUE;
+                    recoverableCmeCount = 0u;
+                    recoverableCme = -1;
+
+                    APP_LOGW("NBIOT",
+                             "Service ready CME=524 grace active (elapsed=%lums < %lums) -> wait/reprobe without recovery",
+                             (unsigned long)(HAL_GetTick() - startTick),
+                             (unsigned long)APP_BC95_CME524_WAKE_GRACE_MS);
+
+                    elapsedMs = HAL_GetTick() - startTick;
+                    if (elapsedMs < totalTimeoutMs)
+                    {
+                        remainingMs = totalTimeoutMs - elapsedMs;
+                        App_Bc95AtDelayWithFeed((remainingMs > APP_BC95_CME524_GRACE_POLL_MS) ?
+                                                APP_BC95_CME524_GRACE_POLL_MS : remainingMs);
+                    }
+                    continue;
+                }
+
+                effectiveRecoverableCmeThreshold = APP_BC95_CME524_WAKE_RECOVERY_THRESHOLD;
+            }
+
             if (probe.lastCmeError == recoverableCme)
             {
                 if (recoverableCmeCount < 0xFFu)
@@ -1646,9 +1688,10 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
             APP_LOGW("NBIOT", "Service ready recoverable CME=%ld streak=%u/%u",
                      (long)recoverableCme,
                      (unsigned)recoverableCmeCount,
-                     (unsigned)recoverableCmeThreshold);
+                     (unsigned)effectiveRecoverableCmeThreshold);
 
-            if (recoverableCmeCount >= recoverableCmeThreshold)
+
+            if (recoverableCmeCount >= effectiveRecoverableCmeThreshold)
             {
                 recoverStatus = App_Bc95AtRecoverFromServiceReadyCme(recoverableCme);
                 if (recoverStatus == APP_STATUS_OK)
@@ -3125,7 +3168,10 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
     if (isCme524 == APP_TRUE)
     {
         g_appBc95WakeNeedsCme524AttachBackoff = APP_TRUE;
+        g_appBc95WakeSkipPreAttachNetResetOnce = APP_TRUE;
         g_appBc95Cme524AttachRecheckCount = 0u;
+        APP_LOGW("NBIOT",
+                 "[[ReadyProbe]] CME=524 detected -> skip pre-attach net reset once after stabilize");
     }
 
     if (funVal == 0)
@@ -3173,7 +3219,7 @@ static AppStatus_t App_Bc95AtStabilizeBeforeAttachAfterCme524(void)
              (unsigned long)APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS,
              (unsigned long)(HAL_GetTick() - g_appBc95LastRecoverableCmeTick));
 
-    HAL_Delay(APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS);
+    App_Bc95AtDelayWithFeed(APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS);
 
     for (retry = 0u; retry < APP_BC95_CME524_ATTACH_RECHECK_RETRY_MAX; retry++)
     {
@@ -3196,7 +3242,7 @@ static AppStatus_t App_Bc95AtStabilizeBeforeAttachAfterCme524(void)
                  (unsigned)retry,
                  (int)status);
 
-        HAL_Delay(1000u);
+        App_Bc95AtDelayWithFeed(1000u);
     }
 
     APP_LOGW("NBIOT",
@@ -6023,13 +6069,27 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
             {
                 specialWakePolicy = APP_TRUE;
 
-                APP_LOGW("NBIOT", "[[Attach]] special wake policy enabled -> run pre-attach net reset");
-                (void)App_Bc95AtPreAttachNetResetOnWake();
-                g_appBc95WakeNeedsPreAttachNetReset = APP_FALSE;
+                if ((g_appBc95LastRecoverableCmeWas524 == APP_TRUE) &&
+                    (g_appBc95WakeSkipPreAttachNetResetOnce == APP_TRUE))
+                {
+                    APP_LOGW("NBIOT",
+                             "[[Attach]] special wake policy enabled but pre-attach net reset skipped once for CME=524 session");
+                    if (attachWindowMs < APP_BC95_CME524_ATTACH_WINDOW_MS)
+                    {
+                        attachWindowMs = APP_BC95_CME524_ATTACH_WINDOW_MS;
+                    }
+                    g_appBc95WakeSkipPreAttachNetResetOnce = APP_FALSE;
+                }
+                else
+                {
+                    APP_LOGW("NBIOT", "[[Attach]] special wake policy enabled -> run pre-attach net reset");
+                    (void)App_Bc95AtPreAttachNetResetOnWake();
+                    attachWindowMs = APP_BC95_WAKE_FIRST_ATTACH_TIMEOUT_MS;
+                    APP_LOGW("NBIOT", "[[Attach]] first wake attach timeout shortcut=%lums",
+                             (unsigned long)attachWindowMs);
+                }
 
-                attachWindowMs = APP_BC95_WAKE_FIRST_ATTACH_TIMEOUT_MS;
-                APP_LOGW("NBIOT", "[[Attach]] first wake attach timeout shortcut=%lums",
-                         (unsigned long)attachWindowMs);
+                g_appBc95WakeNeedsPreAttachNetReset = APP_FALSE;
             }
 
             g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_NETWORK_WAIT;
@@ -6044,6 +6104,7 @@ attach_finalize:
         if (status == APP_STATUS_OK)
         {
             g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
+            g_appBc95WakeSkipPreAttachNetResetOnce = APP_FALSE;
             g_appBc95LastRecoverableCmeWas524 = APP_FALSE;
             g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_READY;
 
