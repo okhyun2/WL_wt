@@ -9,6 +9,7 @@ extern "C" {
 #include "app_log.h"
 #include "app_fsm_state_defs.h"
 #include "app_clock.h"
+#include "app_meter_storage.h"
 
 typedef enum
 {
@@ -102,6 +103,7 @@ AppStatus_t App_FsmNfcCliExecute(const char *p_subcommand,
 
 AppStatus_t App_MeterInit(void);
 AppStatus_t App_NfcInit(void);
+AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord);
 
 #ifdef DEBUG
 #define APP_FSM_DEBUG_PRINT(module, fmt, ...)                         \

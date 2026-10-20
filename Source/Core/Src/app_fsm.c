@@ -24,11 +24,11 @@
 #include "app_selftest.h"
 #include "app_comm_param.h"
 
-#if 1 //debug
+#if 0 //debug
 #if 1
-#define APP_DEBUG_METER_PERIOD_MS      (3u * 60000u)   /* 5 min */
-#define APP_DEBUG_TX_PERIOD_MS         (9u * 60000u)   /* 10 min : service TX */
-#define APP_DEBUG_MGMT_TX_PERIOD_MS    (10u * 60000u)   /* 10 min : management TX */
+#define APP_DEBUG_METER_PERIOD_MS      (2u * 60000u)   /* 5 min */
+#define APP_DEBUG_TX_PERIOD_MS         (3u * 60000u)   /* 10 min : service TX */
+#define APP_DEBUG_MGMT_TX_PERIOD_MS    (3u * 60000u)   /* 10 min : management TX */
 #else
 /* run shot time for immediately test */
 #define APP_DEBUG_METER_PERIOD_MS      (2u * 60000u)   /* 1 min */
@@ -179,7 +179,6 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
                                  AppStatus_t status);
 static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags);
 static AppStatus_t App_FsmMeterProbeAndStore(void);
-static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord);
 static uint32_t App_FsmMeterApplyPostNbiotPowerOffGuard(const char *p_logTag);
 static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void);
 static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed);
@@ -458,7 +457,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
 #endif
 }
 
-static AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord)
+AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord)
 {
 #if defined(SUPPORT_METER_NORMAL)
     static const uint8_t meterWakeFrame[] = { 0x10, 0x5B, 0x01, 0x5C, 0x16 };
@@ -980,7 +979,8 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
              (raw[2] == APP_NFC_SEOUL_CMD_MTR_REQ) ||
              (raw[2] == APP_NFC_SEOUL_CMD_AMI_REQ) ||
              (raw[2] == APP_NFC_SEOUL_CMD_RSET_REQ) ||
-             (raw[2] == APP_NFC_SEOUL_CMD_ALL_REQ)))
+             (raw[2] == APP_NFC_SEOUL_CMD_ALL_REQ) ||
+             (raw[2] == APP_NFC_SEOUL_CMD_RT_ALL_REQ)))
         {
             if (g_appFsmNfcBusyReplyPending == APP_TRUE)
             {

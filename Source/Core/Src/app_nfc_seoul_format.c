@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "app_build_config.h"
+#include "app_fsm.h"
 #include "app_hw.h"
 #include "app_log.h"
 #include "app_meter_server_format.h"
@@ -510,7 +511,9 @@ static void App_NfcSeoulApplyTestModeLiveFields(uint8_t *p_payload, uint8_t payl
 static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_payload, uint8_t payloadCapacity, uint8_t *p_payloadLength)
 {
     AppNfcSeoulSnapshot_t snapshot;
+    AppMeterStorageRecord_t liveRecord;
     uint8_t cursor;
+    AppStatus_t liveStatus;
 
     APP_LOGI("NFC", "Seoul cmd:0x%02x", cmd2);
     if ((p_payload == NULL) || (p_payloadLength == NULL))
@@ -519,6 +522,24 @@ static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_pay
     }
 
     App_NfcSeoulBuildSnapshot(&snapshot);
+
+    if (cmd2 == APP_NFC_SEOUL_CMD_RT_ALL_RES)
+    {
+        (void)memset(&liveRecord, 0, sizeof(liveRecord));
+        liveStatus = App_FsmMeterProbeNoStore(&liveRecord);
+        if (liveStatus == APP_STATUS_OK)
+        {
+            App_NfcSeoulApplyRecordToSnapshot(&snapshot, &liveRecord);
+            snapshot.commState = APP_NFC_SEOUL_COMM_ON;
+            APP_LOGI("NFC", "Seoul realtime meter probe PASS");
+        }
+        else
+        {
+            snapshot.commState = APP_NFC_SEOUL_COMM_BUSY;
+            APP_LOGW("NFC", "Seoul realtime meter probe FAIL status=%d", (int)liveStatus);
+        }
+    }
+
     App_NfcSeoulLogLayer1Profile(&snapshot, cmd2);
     App_NfcSeoulPrintSnapshot(&snapshot);
     App_LogHexDump(APP_LOG_LEVEL_INFO, "NFC", (const uint8_t *)&snapshot, sizeof(AppNfcSeoulSnapshot_t));
@@ -604,6 +625,26 @@ static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_pay
             APP_NFC_SEOUL_APPEND(&snapshot.commState, 1u);
             break;
 
+        case APP_NFC_SEOUL_CMD_RT_ALL_RES:
+            APP_NFC_SEOUL_APPEND(snapshot.meterIdBcd, sizeof(snapshot.meterIdBcd));
+            APP_NFC_SEOUL_APPEND(snapshot.reportTime, sizeof(snapshot.reportTime));
+            APP_NFC_SEOUL_APPEND(snapshot.readingTime, sizeof(snapshot.readingTime));
+            APP_NFC_SEOUL_APPEND(&snapshot.recordCount, 1u);
+            APP_NFC_SEOUL_APPEND(snapshot.reading, sizeof(snapshot.reading));
+            APP_NFC_SEOUL_APPEND(&snapshot.caliberDecimal, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.meterCode, 1u);
+            APP_NFC_SEOUL_APPEND(snapshot.terminalId, sizeof(snapshot.terminalId));
+            APP_NFC_SEOUL_APPEND(snapshot.firmwareVersion, sizeof(snapshot.firmwareVersion));
+            APP_NFC_SEOUL_APPEND(&snapshot.formatVersion, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.alarmStatus, 1u);
+            APP_NFC_SEOUL_APPEND(snapshot.rsrp, sizeof(snapshot.rsrp));
+            APP_NFC_SEOUL_APPEND(&snapshot.ackCount, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.carrier, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.modemStatus, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.battery, 1u);
+            APP_NFC_SEOUL_APPEND(&snapshot.commState, 1u);
+            break;
+
         default:
             return APP_STATUS_INVALID_PARAM;
     }
@@ -644,6 +685,11 @@ static uint8_t App_NfcSeoulResolveResponseCmd(uint8_t reqCmd2, uint8_t *p_rspCmd
 
         case APP_NFC_SEOUL_CMD_ALL_REQ:
             *p_rspCmd2 = APP_NFC_SEOUL_CMD_ALL_RES;
+            *p_commRequested = APP_TRUE;
+            return APP_TRUE;
+
+        case APP_NFC_SEOUL_CMD_RT_ALL_REQ:
+            *p_rspCmd2 = APP_NFC_SEOUL_CMD_RT_ALL_RES;
             *p_commRequested = APP_TRUE;
             return APP_TRUE;
 
@@ -1392,6 +1438,12 @@ static uint8_t App_NfcSeoulTryExtractPayload(uint16_t startBlock, uint8_t *p_pay
             break;
             case APP_NFC_SEOUL_CMD_STOR_RES:
                 payloadLength = 2+30;
+            break;
+            case APP_NFC_SEOUL_CMD_ALL_RES:
+                payloadLength = 2+38;
+            break;
+            case APP_NFC_SEOUL_CMD_RT_ALL_RES:
+                payloadLength = 2+38;
             break;
             default:
                 payloadLength = 0;

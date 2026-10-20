@@ -217,6 +217,22 @@ static NFC_CMD_Result_t nfc_cmd_write_response_payload(NFC_CMD_Handle_t *hcmd,
              (unsigned int)raw[1],
              (unsigned int)raw[2],
              (unsigned int)raw[3]);
+#if 1 /* TODO delete. runtime-info(22B) payload-only compaction */
+{
+    if (payloadLen == 22u)
+    {
+        /* drop raw[12], shift raw[13..21] -> raw[12..20], fill last with 0x0F */
+        (void)memmove(&raw[12], &raw[13], 9u);
+        raw[21] = 0x0Fu;
+    }
+}
+
+#endif
+
+    App_LogHexDump(APP_LOG_LEVEL_INFO,
+                   "FSM",
+                   (const uint8_t *)raw,
+                   payloadLen);
 
     blockCount = nfc_cmd_calc_payload_blocks(payloadLen);
     ret = NFC_NTP53321_WriteMultiBlock(hcmd->hntag,
