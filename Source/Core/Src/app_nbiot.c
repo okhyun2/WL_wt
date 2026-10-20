@@ -89,6 +89,16 @@
 #define APP_BC95_SERVICE_READY_POST_CFUN_SETTLE_MS   (2500u)
 #define APP_BC95_SERVICE_READY_WAKE_READY_STREAK     (2u)
 
+/*
+ * wakeup fast-path에서 service-ready probe로 너무 빨리 들어가면
+ * CPIN/USIM 준비 전이라 CME=524가 반복될 수 있다.
+ * -> 최근 NRB ready 힌트로 skip-boot-wait를 타는 세션에 한해
+ *    고정 지연 + CPIN READY gate를 한 번 먼저 수행한다.
+ */
+#define APP_BC95_WAKE_CPIN_GUARD_DELAY_MS            (3000u)
+#define APP_BC95_WAKE_CPIN_GUARD_TIMEOUT_MS          (30000u)
+#define APP_BC95_WAKE_CPIN_GUARD_POLL_MS             (500u)
+
 /* CME 524 반복 후 attach 진입 전 추가 안정화 */
 #define APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS    (1500u)
 #define APP_BC95_CME524_ATTACH_READY_RECHECK_MS      (4000u)
@@ -187,6 +197,7 @@ static AppBc95NetStatus_t g_appBc95AtNetStatus;
 static AppNbiotCarrierContext_t g_appNbiotCarrierContext;
 static uint8_t g_appBc95UsimFatal = APP_FALSE;
 static uint8_t g_appBc95SkipNextAttachBootWait = APP_FALSE;
+static uint8_t g_appBc95ForceSkipAttachBootWaitOnce = APP_FALSE;
 static uint8_t g_appBc95RegisteringStuckRecoveryUsed = APP_FALSE;
 static uint8_t g_appBc95WakeNeedsPreAttachNetReset = APP_FALSE;
 static uint8_t g_appBc95WakeNeedsCme524AttachBackoff = APP_FALSE;
@@ -1446,6 +1457,106 @@ static uint8_t App_Bc95AtResponseHasCpinReady(const char *p_resp)
     }
 
     return APP_FALSE;
+}
+
+static AppStatus_t App_Bc95AtWakeDelayAndWaitForCpinReady(void)
+{
+    AppStatus_t status;
+    AppBc95AtStatus_t atStatus;
+    uint32_t startTick;
+    uint32_t elapsedMs;
+    uint16_t rxLen = 0u;
+    int32_t cmeErr = 0;
+
+    /*
+     * wakeup fast-path(recent NRB ready 기반 skip boot wait)일 때만 적용.
+     * cold boot / 일반 경로는 그대로 둔다.
+     */
+    if (g_appBc95SkipNextAttachBootWait != APP_TRUE)
+    {
+        return APP_STATUS_OK;
+    }
+
+    APP_LOGW("NBIOT",
+             "[[ReadyProbe]] wake CPIN guard start fixedDelay=%lums timeout=%lums poll=%lums",
+             (unsigned long)APP_BC95_WAKE_CPIN_GUARD_DELAY_MS,
+             (unsigned long)APP_BC95_WAKE_CPIN_GUARD_TIMEOUT_MS,
+             (unsigned long)APP_BC95_WAKE_CPIN_GUARD_POLL_MS);
+
+    App_Bc95AtDelayWithFeed(APP_BC95_WAKE_CPIN_GUARD_DELAY_MS);
+
+    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CMEE_ON,
+                                           APP_BC95_AT_RX_TIMEOUT_MS,
+                                           "AT+CMEE=1",
+                                           "[[ReadyProbe]]");
+
+    startTick = HAL_GetTick();
+
+    while (1)
+    {
+        APP_WWDGFeed();
+        rxLen = 0u;
+        cmeErr = 0;
+
+        status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_CPIN_QUERY,
+                                       g_appBc95AtRxBuf,
+                                       (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                       APP_BC95_AT_RX_TIMEOUT_MS,
+                                       &rxLen);
+
+        if (status == APP_STATUS_OK)
+        {
+            atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
+
+            if ((atStatus == APP_BC95_AT_OK) &&
+                (App_Bc95AtResponseHasCpinReady((const char *)g_appBc95AtRxBuf) == APP_TRUE))
+            {
+                APP_LOGN("NBIOT",
+                         "[[ReadyProbe]] wake CPIN guard passed (elapsed=%lums)",
+                         (unsigned long)(HAL_GetTick() - startTick));
+                return APP_STATUS_OK;
+            }
+
+            if (atStatus == APP_BC95_AT_ERR_CME_ERROR)
+            {
+                APP_LOGW("NBIOT",
+                         "[[ReadyProbe]] wake CPIN guard waiting (CME=%ld, elapsed=%lums)",
+                         (long)cmeErr,
+                         (unsigned long)(HAL_GetTick() - startTick));
+            }
+            else if (atStatus == APP_BC95_AT_OK)
+            {
+                APP_LOGW("NBIOT",
+                         "[[ReadyProbe]] wake CPIN guard waiting (OK but READY not visible, elapsed=%lums)",
+                         (unsigned long)(HAL_GetTick() - startTick));
+            }
+            else
+            {
+                APP_LOGW("NBIOT",
+                         "[[ReadyProbe]] wake CPIN guard parse=%s elapsed=%lums",
+                         App_Bc95AtGetStatusString(atStatus),
+                         (unsigned long)(HAL_GetTick() - startTick));
+            }
+        }
+        else
+        {
+            APP_LOGW("NBIOT",
+                     "[[ReadyProbe]] wake CPIN guard UART issue status=%d elapsed=%lums",
+                     (int)status,
+                     (unsigned long)(HAL_GetTick() - startTick));
+        }
+
+        elapsedMs = HAL_GetTick() - startTick;
+        if (elapsedMs >= APP_BC95_WAKE_CPIN_GUARD_TIMEOUT_MS)
+        {
+            APP_LOGW("NBIOT",
+                     "[[ReadyProbe]] wake CPIN guard timeout (elapsed=%lums) -> force conservative path",
+                     (unsigned long)elapsedMs);
+            return APP_STATUS_UART_TIMEOUT;
+        }
+
+        App_Bc95AtDelayWithFeed(APP_BC95_WAKE_CPIN_GUARD_POLL_MS);
+    }
 }
 
 AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
@@ -3467,6 +3578,15 @@ static AppStatus_t App_NbiotRunBoardAttachVerificationSequence(void)
                                            "AT+CGATT=1",
                                            "[[BootTrack]]");
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    /*
+     * 바로 직전에 CFUN=1, NCCID/CIMI/IMEI 조회, CGATT=1까지 끝난 상태이므로
+     * 여기서 이어지는 attach bring-up의 두 번째 boot-banner wait는 생략한다.
+     * attach mandatory 진입 직전의 conservative clear에 지워지지 않도록
+     * one-shot 보호 플래그도 함께 세운다.
+     */
+    g_appBc95SkipNextAttachBootWait = APP_TRUE;
+    g_appBc95ForceSkipAttachBootWaitOnce = APP_TRUE;
 
     status = App_NBIoTCarrierAttachMandatory();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
@@ -5990,6 +6110,7 @@ AppStatus_t App_NBIoTBringUp(void)
 {
     AppStatus_t status;
     uint32_t settleMs;
+    uint8_t wakeCpinGuardTimedOut = APP_FALSE;
 
     status = App_Bc95AtWaitUntilReady(APP_BC95_BOOT_WAIT_BANNER_MS + 6000u);
     if (status != APP_STATUS_OK)
@@ -5999,10 +6120,36 @@ AppStatus_t App_NBIoTBringUp(void)
     }
 
     /*
+     * wake fast-path에서만 CPIN guard를 수행한다.
+     * timeout이면 fast-path를 강제로 끄고 보수 경로로만 진행한다.
+     */
+    if (g_appBc95SkipNextAttachBootWait == APP_TRUE)
+    {
+        status = App_Bc95AtWakeDelayAndWaitForCpinReady();
+        if (status == APP_STATUS_FATAL)
+        {
+            APP_LOGE("NBIOT", "[[ReadyProbe]] wake CPIN guard fatal");
+            return status;
+        }
+        if (status != APP_STATUS_OK)
+        {
+            wakeCpinGuardTimedOut = APP_TRUE;
+            g_appBc95SkipNextAttachBootWait = APP_FALSE;
+            APP_LOGW("NBIOT",
+                     "[[ReadyProbe]] wake CPIN guard timeout -> fastPath OFF, conservative service-ready");
+
+            /*
+             * 더 엄격한 차단안이 필요하면 아래 한 줄로 교체:
+             * return APP_STATUS_UART_TIMEOUT;
+             */
+        }
+    }
+
+    /*
      * fast-path/wake 경로에서는 service-ready를 더 보수적으로 본다.
      * 현재 코드베이스에서는 recent NRB/skip-boot-wait 힌트를 wake/fast-path 판정에 재사용한다.
      */
-    g_appBc95ServiceReadyFastPath = g_appBc95SkipNextAttachBootWait;
+    g_appBc95ServiceReadyFastPath = (wakeCpinGuardTimedOut == APP_TRUE) ? APP_FALSE : g_appBc95SkipNextAttachBootWait;
 
     settleMs = (g_appBc95ServiceReadyFastPath == APP_TRUE)
              ? APP_BC95_SERVICE_READY_WAKE_SETTLE_MS
@@ -6142,56 +6289,43 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
                  (unsigned)g_appNbiotCarrierContext.attachAttemptCount,
                  App_NbiotCarrierAttachStateString(g_appNbiotCarrierContext.attachState));
 
+        if (g_appBc95ForceSkipAttachBootWaitOnce == APP_TRUE)
+        {
+            APP_LOGI("NBIOT", "[[Attach]] keep recent-NRB fast-path hint once for boottrack attach-verification");
+            g_appBc95ForceSkipAttachBootWaitOnce = APP_FALSE;
+        }
+        else
+        {
+            APP_LOGW("NBIOT", "[[Attach]] conservative wake policy: clear recent-NRB fast-path hint before bring-up");
+            g_appBc95SkipNextAttachBootWait = APP_FALSE;
+            g_appBc95ServiceReadyFastPath   = APP_FALSE;
+        }
+
         status = App_NBIoTBringUp();
         if (status == APP_STATUS_OK)
         {
-            AppStatus_t stabilizeStatus = APP_STATUS_OK;
             /*
-             * 중요:
-             * g_appBc95WakeNeedsPreAttachNetReset 는 App_NBIoTBringUp() 내부의
-             * service-ready recovery(CFUN=1) 과정에서 세팅될 수 있으므로,
-             * 함수 초반이 아니라 BringUp 성공 직후 여기서 검사해야 한다.
+             * 2차 보수화:
+             * CME=524 wake shortcut(추가 stabilize/backoff, skip-once)를 사용하지 않는다.
+             * -> bring-up 성공 후에는 boot와 같은 일반 attach 정책으로 바로 진행.
              */
             if (g_appBc95WakeNeedsCme524AttachBackoff == APP_TRUE)
             {
-                specialWakePolicy = APP_TRUE;
-                stabilizeStatus = App_Bc95AtStabilizeBeforeAttachAfterCme524();
-                if (stabilizeStatus != APP_STATUS_OK)
-                {
-                    APP_LOGW("NBIOT",
-                             "[[Attach]] CME=524 pre-attach stabilize failed status=%d -> skip attach entry this round",
-                             (int)stabilizeStatus);
-                    status = stabilizeStatus;
-                }
-            }
-
-            if (status != APP_STATUS_OK)
-            {
-                goto attach_finalize;
+                APP_LOGW("NBIOT",
+                         "[[Attach]] conservative wake policy: ignore CME=524 wake shortcut/backoff");
+                g_appBc95WakeNeedsCme524AttachBackoff = APP_FALSE;
+                g_appBc95WakeSkipPreAttachNetResetOnce = APP_FALSE;
             }
 
             if (g_appBc95WakeNeedsPreAttachNetReset == APP_TRUE)
             {
                 specialWakePolicy = APP_TRUE;
 
-                if ((g_appBc95LastRecoverableCmeWas524 == APP_TRUE) &&
-                    (g_appBc95WakeSkipPreAttachNetResetOnce == APP_TRUE))
-                {
-                    APP_LOGW("NBIOT",
-                        "[[Attach]] CME=524 wake fast-path: skip pre-attach net reset once and use short attach window");
-                    attachWindowMs = APP_BC95_CME524_ATTACH_WINDOW_MS;
-                    g_appBc95WakeSkipPreAttachNetResetOnce = APP_FALSE;
-                }
-                else
-                {
-                    APP_LOGW("NBIOT", "[[Attach]] special wake policy enabled -> run pre-attach net reset");
-                    (void)App_Bc95AtPreAttachNetResetOnWake();
-                    attachWindowMs = APP_BC95_WAKE_FIRST_ATTACH_TIMEOUT_MS;
-                    APP_LOGW("NBIOT", "[[Attach]] first wake attach timeout shortcut=%lums",
-                             (unsigned long)attachWindowMs);
-                }
-
+                APP_LOGW("NBIOT",
+                         "[[Attach]] conservative wake policy: always run pre-attach net reset and keep default attach window");
+                (void)App_Bc95AtPreAttachNetResetOnWake();
                 g_appBc95WakeNeedsPreAttachNetReset = APP_FALSE;
+                g_appBc95WakeSkipPreAttachNetResetOnce = APP_FALSE;
             }
 
             g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_NETWORK_WAIT;
