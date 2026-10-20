@@ -211,7 +211,6 @@ static uint32_t g_appBc95LastRecoverableCmeTick = 0u;
 static uint8_t g_appBc95UdpSeqCounter = 0u;
 
 static uint8_t g_appBc95RecoverableCmeHwCycleUsed = APP_FALSE;
-static uint8_t g_appBc95ServiceReadyFastPath = APP_FALSE;
 
 #ifdef DEBUG
 typedef struct
@@ -266,11 +265,9 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
                                                      const AppMeterStorageRecord_t *p_liveRecord);
 static void App_Bc95AtBytesToHex(const uint8_t *p_in, uint32_t inLen, char *p_out);
 static uint8_t App_Bc95AtNextUdpSeq(void);
-static AppStatus_t App_Bc95AtPreAttachNetResetOnWake(void);
 
 #define APP_BC95_SERVICE_READY_CPIN_STABLE_DELAY_MS   (200u)
 #define APP_BC95_SERVICE_READY_POST_RECOVER_POLL_MS   (1200u)
-#define APP_BC95_WAKE_FIRST_ATTACH_TIMEOUT_MS         (12000u)
 
 static uint8_t g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
 
@@ -1635,11 +1632,10 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
     }
 
     /*
-     * wake fast-path 또는 recoverable-CME recovery 직후에는
+     * recoverable-CME recovery 직후에만
      * CPIN READY를 한 번 더 확인해서 READY 흔들림을 줄인다.
      */
-    if ((g_appBc95ServiceReadyFastPath == APP_TRUE) ||
-        (g_appBc95ServiceReadyRecoveryActive == APP_TRUE))
+    if (g_appBc95ServiceReadyRecoveryActive == APP_TRUE)
     {
         App_Bc95AtDelayWithFeed(APP_BC95_SERVICE_READY_CPIN_STABLE_DELAY_MS);
 
@@ -1760,13 +1756,6 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
         recoverableCmeThreshold = 1u;
         requiredReadyStreak = APP_BC95_SERVICE_READY_WAKE_READY_STREAK;
     }
-    else if (g_appBc95ServiceReadyFastPath == APP_TRUE)
-    {
-        settleMs = APP_BC95_SERVICE_READY_WAKE_SETTLE_MS;
-        pollMs = APP_BC95_USIM_READY_POLL_MS;
-        recoverableCmeThreshold = APP_BC95_SERVICE_READY_WAKE_CME_THRESHOLD;
-        requiredReadyStreak = APP_BC95_SERVICE_READY_WAKE_READY_STREAK;
-    }
     else
     {
         settleMs = APP_BC95_SERVICE_READY_SETTLE_MS;
@@ -1779,11 +1768,10 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
     g_appBc95WakeCme524GraceUsed = APP_FALSE;
 
     APP_LOGI("NBIOT",
-             "Wait for service ready after boot banner (timeout=%lums, settle=%lums, poll=%lums, fastPath=%u, postRecover=%u, cmeThreshold=%u, readyStreak=%u)...",
+             "Wait for service ready after boot banner (timeout=%lums, settle=%lums, poll=%lums, postRecover=%u, cmeThreshold=%u, readyStreak=%u)...",
              (unsigned long)totalTimeoutMs,
              (unsigned long)settleMs,
              (unsigned long)pollMs,
-             (unsigned)g_appBc95ServiceReadyFastPath,
              (unsigned)g_appBc95ServiceReadyRecoveryActive,
              (unsigned)recoverableCmeThreshold,
              (unsigned)requiredReadyStreak);
@@ -1843,8 +1831,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
             effectiveRecoverableCmeThreshold = recoverableCmeThreshold;
 
             if ((probe.lastCmeError == 524) &&
-                ((g_appBc95ServiceReadyFastPath == APP_TRUE) ||
-                 (g_appBc95ServiceReadyRecoveryActive == APP_TRUE)))
+                 (g_appBc95ServiceReadyRecoveryActive == APP_TRUE))
             {
                 if ((g_appBc95WakeCme524GraceUsed != APP_TRUE) &&
                     ((HAL_GetTick() - startTick) < APP_BC95_CME524_WAKE_GRACE_MS))
@@ -3377,7 +3364,6 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
      */
     g_appBc95ServiceReadyRecoveryActive = APP_TRUE;
     g_appBc95WakeNeedsPreAttachNetReset = APP_TRUE;
-    g_appBc95ServiceReadyFastPath = APP_TRUE;
     g_appBc95LastRecoverableCmeWas524 = isCme524;
     g_appBc95LastRecoverableCmeTick = HAL_GetTick();
 
@@ -4562,33 +4548,6 @@ static uint8_t App_Bc95AtNextUdpSeq(void)
     g_appBc95UdpSeqCounter++;
     if (g_appBc95UdpSeqCounter == 0u) g_appBc95UdpSeqCounter = 1u;
     return g_appBc95UdpSeqCounter;
-}
-
-static AppStatus_t App_Bc95AtPreAttachNetResetOnWake(void)
-{
-    APP_LOGW("NBIOT", "[[Attach]] wake pre-attach net reset start");
-
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CEREG_SET_3,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+CEREG=3",
-                                           "[[Attach]]");
-
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CGATT_DETACH,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+CGATT=0",
-                                           "[[Attach]]");
-
-    App_Bc95AtDelayWithFeed(1500u);
-
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CGATT_ATTACH,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+CGATT=1",
-                                           "[[Attach]]");
-
-    App_Bc95AtDelayWithFeed(2500u);
-
-    APP_LOGW("NBIOT", "[[Attach]] wake pre-attach net reset done");
-    return APP_STATUS_OK;
 }
 
 static AppBc95AtStatus_t App_Bc95AtParseQdnsResult(const char *p_resp,
@@ -6109,7 +6068,6 @@ AppStatus_t App_NBIoTAtInit(void)
 AppStatus_t App_NBIoTBringUp(void)
 {
     AppStatus_t status;
-    uint32_t settleMs;
     uint8_t wakeCpinGuardTimedOut = APP_FALSE;
 
     status = App_Bc95AtWaitUntilReady(APP_BC95_BOOT_WAIT_BANNER_MS + 6000u);
@@ -6145,23 +6103,10 @@ AppStatus_t App_NBIoTBringUp(void)
         }
     }
 
-    /*
-     * fast-path/wake 경로에서는 service-ready를 더 보수적으로 본다.
-     * 현재 코드베이스에서는 recent NRB/skip-boot-wait 힌트를 wake/fast-path 판정에 재사용한다.
-     */
-    g_appBc95ServiceReadyFastPath = (wakeCpinGuardTimedOut == APP_TRUE) ? APP_FALSE : g_appBc95SkipNextAttachBootWait;
-
-    settleMs = (g_appBc95ServiceReadyFastPath == APP_TRUE)
-             ? APP_BC95_SERVICE_READY_WAKE_SETTLE_MS
-             : APP_BC95_SERVICE_READY_SETTLE_MS;
-
     status = App_Bc95AtWaitForServiceReady(APP_BC95_USIM_READY_TIMEOUT_MS +
-                                           settleMs +
+                                           APP_BC95_SERVICE_READY_SETTLE_MS +
                                            APP_BC95_AT_RX_TIMEOUT_MS +
                                            APP_BC95_SERVICE_READY_POST_CFUN_SETTLE_MS);
-
-    g_appBc95ServiceReadyFastPath = APP_FALSE;
-
     if (status != APP_STATUS_OK)
     {
         if (g_appBc95UsimFatal == APP_TRUE)
@@ -6298,7 +6243,6 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
         {
             APP_LOGW("NBIOT", "[[Attach]] conservative wake policy: clear recent-NRB fast-path hint before bring-up");
             g_appBc95SkipNextAttachBootWait = APP_FALSE;
-            g_appBc95ServiceReadyFastPath   = APP_FALSE;
         }
 
         status = App_NBIoTBringUp();
@@ -6319,15 +6263,11 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
 
             if (g_appBc95WakeNeedsPreAttachNetReset == APP_TRUE)
             {
-                specialWakePolicy = APP_TRUE;
-
                 APP_LOGW("NBIOT",
-                         "[[Attach]] conservative wake policy: always run pre-attach net reset and keep default attach window");
-                (void)App_Bc95AtPreAttachNetResetOnWake();
+                         "[[Attach]] conservative wake policy: ignore wake pre-attach net-reset shortcut and keep default attach window");
                 g_appBc95WakeNeedsPreAttachNetReset = APP_FALSE;
                 g_appBc95WakeSkipPreAttachNetResetOnce = APP_FALSE;
             }
-
             g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_NETWORK_WAIT;
             status = App_Bc95AtWaitForNetwork(attachWindowMs, &netStatus);
             g_appNbiotCarrierContext.lastNetStatus = netStatus;
