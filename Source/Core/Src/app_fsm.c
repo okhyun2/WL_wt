@@ -35,6 +35,8 @@
 #define APP_DEBUG_TX_PERIOD_MS         (3u * 60000u)   /* 5 min : service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (5u * 60000u)   /* 10 min : management TX */
 #endif
+#undef APP_RTC_ALARM_COLLISION_TX_DELAY_SEC
+#define APP_RTC_ALARM_COLLISION_TX_DELAY_SEC        (10u)
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////
