@@ -101,12 +101,12 @@ extern "C" {
 
 #define NBIOT_SUPPORT_DNS
 #ifdef NBIOT_SUPPORT_DNS
-//#define MY_SERVER_DOMAIN              "acorp2.iptime.org"
-//#define APP_SERVICE_SERVER_PORT                 (6001u)
-//#define APP_MGMT_SERVER_PORT                    (6001u)
-#define MY_SERVER_DOMAIN              "dev-aro.com"
-#define APP_SERVICE_SERVER_PORT                 (41001u)
-#define APP_MGMT_SERVER_PORT                    (41001u)
+#define MY_SERVER_DOMAIN              "acorp2.iptime.org"
+#define APP_SERVICE_SERVER_PORT                 (6001u)
+#define APP_MGMT_SERVER_PORT                    (6001u)
+//#define MY_SERVER_DOMAIN              "dev-aro.com"
+//#define APP_SERVICE_SERVER_PORT                 (41001u)
+//#define APP_MGMT_SERVER_PORT                    (41001u)
 
 #define WARMUPDNS_SERVER_DOMAIN       "www.google.com"
 #define APP_MGMT_SERVER_DOMAIN        MY_SERVER_DOMAIN
@@ -221,12 +221,14 @@ extern "C" {
 #define APP_TEST_SERVER_TX_BUZZER_OFF_MS            (40u)
 
 /* ----------------------------------------------------------------
- * Management TX only: append self-test summary trailer
+ * Management TX only: append temp_humi, self-test summary trailer
  * ---------------------------------------------------------------- */
+#define APP_MGMT_TX_APPEND_ENV_ENABLE               (APP_TRUE)
+#define APP_MGMT_TX_ENV_TAG                         (0xD1u)
+#define APP_MGMT_TX_ENV_PAYLOAD_LEN                 (5u)
 #define APP_MGMT_TX_APPEND_SELFTEST_ENABLE          (APP_TRUE)
-#define APP_MGMT_TX_SELFTEST_TAG                    (0xD1u)
+#define APP_MGMT_TX_SELFTEST_TAG                    (0xD2u)
 #define APP_MGMT_TX_SELFTEST_PAYLOAD_LEN            (7u)
-
 
 /* NFC production hardening */
 #define APP_NFC_MASTER_KEY_BYTES                      { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C }

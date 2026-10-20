@@ -25,7 +25,7 @@
 #include "app_comm_param.h"
 
 #if 0 //debug
-#if 1
+#if 0
 #define APP_DEBUG_METER_PERIOD_MS      (2u * 60000u)   /* 5 min */
 #define APP_DEBUG_TX_PERIOD_MS         (3u * 60000u)   /* 10 min : service TX */
 #define APP_DEBUG_MGMT_TX_PERIOD_MS    (3u * 60000u)   /* 10 min : management TX */

@@ -13,6 +13,7 @@
 #include "app_meter_storage.h"
 #include "app_meter_server_format.h"
 #include "app_comm_param.h"
+#include "app_aux.h"
 #include "app_selftest.h"
 
 
@@ -332,6 +333,13 @@ static void App_NbiotPutU16Le(uint8_t *p_dst, uint16_t value)
     p_dst[1] = (uint8_t)((value >> 8) & 0xFFu);
 }
 
+static void App_NbiotPutS16Le(uint8_t *p_dst, int16_t value)
+{
+    if (p_dst == NULL) { return; }
+    p_dst[0] = (uint8_t)((uint16_t)value & 0xFFu);
+    p_dst[1] = (uint8_t)(((uint16_t)value >> 8) & 0xFFu);
+}
+
 static uint8_t App_NbiotChecksum8(const uint8_t *p_data, uint16_t startIndex, uint16_t endIndex)
 {
     uint16_t i;
@@ -366,7 +374,7 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet,
     /* 기존 checksum 위치부터 다시 덮어쓴다 */
     cursor = (uint16_t)(p_result->packetLength - 1u);
 
-    /* tag + len + payload(7) + checksum */
+    /* self-test TLV: tag(D2) + len + payload(7) + checksum */
     APP_RETURN_IF_FALSE(((uint32_t)cursor + 2u + APP_MGMT_TX_SELFTEST_PAYLOAD_LEN + 1u) <= packetCapacity,
                         APP_STATUS_BUFFER_OVERFLOW);
 
@@ -415,6 +423,84 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet,
              (unsigned int)passedMask,
              (unsigned int)diag[4],
              (unsigned int)((uint16_t)diag[5] | ((uint16_t)diag[6] << 8)),
+             (unsigned int)p_result->packetLength);
+
+    return APP_STATUS_OK;
+#else
+    (void)p_packet;
+    (void)packetCapacity;
+    (void)p_result;
+    return APP_STATUS_OK;
+#endif
+}
+
+static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet,
+                                                 uint16_t packetCapacity,
+                                                 AppMeterServerFormatResult_t *p_result)
+{
+#if (APP_MGMT_TX_APPEND_ENV_ENABLE == APP_TRUE)
+    uint16_t cursor;
+    uint8_t env[APP_MGMT_TX_ENV_PAYLOAD_LEN];
+    SHTC3_Data_t th;
+    uint8_t validFlags = 0u;
+    int16_t tempX100 = 0;
+    uint16_t rhX100 = 0u;
+
+    APP_RETURN_IF_FALSE((p_packet != NULL) && (p_result != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(p_result->packetLength >= 3u, APP_STATUS_INVALID_PARAM);
+
+    /* 기존 checksum 위치부터 다시 덮어쓴다 */
+    cursor = (uint16_t)(p_result->packetLength - 1u);
+
+    /* tag + len + payload(5) + checksum */
+    APP_RETURN_IF_FALSE(((uint32_t)cursor + 2u + APP_MGMT_TX_ENV_PAYLOAD_LEN + 1u) <= packetCapacity,
+                        APP_STATUS_BUFFER_OVERFLOW);
+
+    (void)memset(env, 0, sizeof(env));
+
+    if (SHTC3_ReadTempHumidity(APP_I2C_AUX_HANDLE, &th) == HAL_OK)
+    {
+        float tempScaled = th.temperature * 100.0f;
+        float rhScaled   = th.humidity * 100.0f;
+
+        if (tempScaled > 32767.0f) { tempScaled = 32767.0f; }
+        if (tempScaled < -32768.0f) { tempScaled = -32768.0f; }
+        if (rhScaled < 0.0f) { rhScaled = 0.0f; }
+        if (rhScaled > 65535.0f) { rhScaled = 65535.0f; }
+
+        tempX100 = (int16_t)tempScaled;
+        rhX100   = (uint16_t)rhScaled;
+        validFlags = 0x03u; /* bit0=temp valid, bit1=humidity valid */
+
+        env[0] = validFlags;
+        App_NbiotPutS16Le(&env[1], tempX100);
+        App_NbiotPutU16Le(&env[3], rhX100);
+    }
+    else
+    {
+        env[0] = 0x00u;
+        App_NbiotPutS16Le(&env[1], 0);
+        App_NbiotPutU16Le(&env[3], 0u);
+    }
+
+    p_packet[cursor++] = APP_MGMT_TX_ENV_TAG;
+    p_packet[cursor++] = APP_MGMT_TX_ENV_PAYLOAD_LEN;
+    (void)memcpy(&p_packet[cursor], env, sizeof(env));
+    cursor = (uint16_t)(cursor + sizeof(env));
+
+    /* length = byte[2]부터 checksum 직전까지 */
+    p_packet[1] = (uint8_t)(cursor - 2u);
+    p_result->checksum = App_NbiotChecksum8(p_packet, 2u, cursor);
+    p_packet[cursor++] = p_result->checksum;
+
+    p_result->payloadLength = p_packet[1];
+    p_result->packetLength  = cursor;
+
+    APP_LOGI("NBIOT",
+             "[[MgmtTx]] env trailer appended flags=0x%02X tempX100=%d rhX100=%u len=%u",
+             (unsigned int)env[0],
+             (int)tempX100,
+             (unsigned int)rhX100,
              (unsigned int)p_result->packetLength);
 
     return APP_STATUS_OK;
@@ -6247,6 +6333,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                                                 uint8_t appendSelfTestToMgmt)
 {
     AppStatus_t status;
+    AppStatus_t envAppendStatus;
     AppStatus_t diagAppendStatus;
     AppBc95UdpResult_t sendResult;
     AppMeterServerFormatOptions_t opt;
@@ -6273,6 +6360,16 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
     {
         if (appendSelfTestToMgmt == APP_TRUE)
         {
+            envAppendStatus = App_NbiotAppendMgmtEnvTrailer(packet, sizeof(packet), &buildResult);
+            if (envAppendStatus != APP_STATUS_OK)
+            {
+                APP_LOGW("NBIOT",
+                         "%s env trailer skipped (status=%d, len=%u)",
+                         p_logTag,
+                         (int)envAppendStatus,
+                         (unsigned int)buildResult.packetLength);
+            }
+
             diagAppendStatus = App_NbiotAppendMgmtSelfTestTrailer(packet, sizeof(packet), &buildResult);
             if (diagAppendStatus != APP_STATUS_OK)
             {
