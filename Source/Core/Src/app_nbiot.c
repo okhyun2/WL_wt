@@ -90,15 +90,15 @@
 #define APP_BC95_SERVICE_READY_WAKE_READY_STREAK     (2u)
 
 /* CME 524 반복 후 attach 진입 전 추가 안정화 */
-#define APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS    (4000u)
-#define APP_BC95_CME524_ATTACH_READY_RECHECK_MS      (12000u)
-#define APP_BC95_CME524_ATTACH_RECHECK_RETRY_MAX     (2u)
+#define APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS    (1500u)
+#define APP_BC95_CME524_ATTACH_READY_RECHECK_MS      (4000u)
+#define APP_BC95_CME524_ATTACH_RECHECK_RETRY_MAX     (1u)
 
 /* 현재 소스 추가 보강안: 524는 더 늦게 recovery로 넘기고, recovery 직후 net reset 1회 생략 */
 #define APP_BC95_CME524_WAKE_GRACE_MS                (4000u)
 #define APP_BC95_CME524_WAKE_RECOVERY_THRESHOLD      (4u)
 #define APP_BC95_CME524_GRACE_POLL_MS                (1000u)
-#define APP_BC95_CME524_ATTACH_WINDOW_MS             (45000u)
+#define APP_BC95_CME524_ATTACH_WINDOW_MS             (15000u)
 
 #define APP_BC95_AT_CMD_QLWSREGIND_REGISTER  "AT+QLWSREGIND=0\r\n"
 #define APP_BC95_AT_CMD_QLWULDATASTATUS_QUERY "AT+QLWULDATASTATUS?\r\n"
@@ -259,7 +259,7 @@ static AppStatus_t App_Bc95AtPreAttachNetResetOnWake(void);
 
 #define APP_BC95_SERVICE_READY_CPIN_STABLE_DELAY_MS   (200u)
 #define APP_BC95_SERVICE_READY_POST_RECOVER_POLL_MS   (1200u)
-#define APP_BC95_WAKE_FIRST_ATTACH_TIMEOUT_MS         (30000u)
+#define APP_BC95_WAKE_FIRST_ATTACH_TIMEOUT_MS         (12000u)
 
 static uint8_t g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
 
@@ -6178,11 +6178,8 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
                     (g_appBc95WakeSkipPreAttachNetResetOnce == APP_TRUE))
                 {
                     APP_LOGW("NBIOT",
-                             "[[Attach]] special wake policy enabled but pre-attach net reset skipped once for CME=524 session");
-                    if (attachWindowMs < APP_BC95_CME524_ATTACH_WINDOW_MS)
-                    {
-                        attachWindowMs = APP_BC95_CME524_ATTACH_WINDOW_MS;
-                    }
+                        "[[Attach]] CME=524 wake fast-path: skip pre-attach net reset once and use short attach window");
+                    attachWindowMs = APP_BC95_CME524_ATTACH_WINDOW_MS;
                     g_appBc95WakeSkipPreAttachNetResetOnce = APP_FALSE;
                 }
                 else
