@@ -700,46 +700,6 @@ static AppStatus_t App_SelfTestCheckNbiotUart(void)
 }
 
 /**
- * @brief NB-IoT pseudo connectivity probe.
- *
- * @note Real module boot and AT response parsing should be added when BC95-GV
- *       power-up timing and AT command policy are finalized.
- *
- * @return APP_STATUS_OK on success, error code otherwise.
- */
-static AppStatus_t App_SelfTestCheckNbiotAttach(void)
-{
-    AppStatus_t status = APP_STATUS_OK;
-    APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
-
-    APP_LOGI("SELF", "NB-IoT Attach real probe start");
-    g_appSelfTestNbiotExecuted = APP_TRUE;
-
-    APP_RETURN_IF_FALSE(App_GpioLpSetNbiotPowered(APP_TRUE) == APP_STATUS_OK, APP_STATUS_UART_TX_FAILED);
-
-    APP_WWDGFeed();
-    if (App_NBIoTBringUpWithReset(2u) != APP_STATUS_OK)
-    {
-        status = APP_STATUS_FATAL;
-        goto cleanup;
-    }
-    APP_WWDGFeed();
-    if (App_NBIoTNetworkBringUp() != APP_STATUS_OK)
-    {
-        status = APP_STATUS_FATAL;
-        goto cleanup;
-    }
-    APP_WWDGFeed();
-    (void)App_NBIoTReadIdentity(APP_FALSE);
-    (void)App_NBIoTReadQuality(APP_FALSE);
-
-cleanup:
-    (void)App_GpioLpSetNbiotPowered(APP_FALSE);
-    HAL_Delay(APP_SELFTEST_UART_METER_POST_NBIOT_SETTLE_DELAY_MS);
-    return status;
-}
-
-/**
  * @brief Shared I2C pseudo/real ready check.
  *
  * @param p_i2cHandle I2C handle.

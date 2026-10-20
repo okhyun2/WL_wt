@@ -27,17 +27,6 @@ static uint32_t App_MeterBytesToUint32LE(const uint8_t *bytes)
            ((uint32_t)bytes[3] << 24);
 }
 
-/* uint32_t → 4바이트 배열 (Little Endian) */
-#if 0 //optimize for del
-static void App_MeterUint32ToBytes(uint32_t value, uint8_t *bytes)
-{
-    bytes[0] = (uint8_t)(value & 0xFF);
-    bytes[1] = (uint8_t)((value >> 8) & 0xFF);
-    bytes[2] = (uint8_t)((value >> 16) & 0xFF);
-    bytes[3] = (uint8_t)((value >> 24) & 0xFF);
-}
-#endif
-
 /* ================================================
  * BCD 유효성 검사: 각 니블이 0-9 범위인지 확인
  * ================================================ */
@@ -74,27 +63,6 @@ static uint32_t BCD_To_Decimal(uint32_t bcd_value)
     
     return decimal;
 }
-
-/* ================================================
- * 10진수 → BCD 변환 (역변환)
- * 12345678 → 0x12345678
- * ================================================ */
-#if 0 //optimize for del
-static uint32_t Decimal_To_BCD(uint32_t decimal_value)
-{
-    uint32_t bcd = 0;
-    
-    for (int i = 0; i < 8; i++) {
-        uint8_t digit = decimal_value % 10;
-        bcd |= ((uint32_t)digit << (i * 4));
-        decimal_value /= 10;
-        
-        if (decimal_value == 0) break;  // 더 이상 처리할 자릿수 없음
-    }
-    
-    return bcd;
-}
-#endif
 
 static void App_MeterGetTimestamp(uint8_t ts[6], uint8_t *p_timeValid)
 {
@@ -305,18 +273,6 @@ static AppStatus_t App_MeterBuildSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxF
 
     return APP_STATUS_OK;
 }
-
-#if 0 //optimize for del
-static AppStatus_t App_MeterSaveSc1xxxRecord(const App_MeterSC1xxxUnion_t *pRxFrame)
-{
-    AppMeterStorageRecord_t record;
-    AppStatus_t status;
-
-    status = App_MeterBuildSc1xxxRecord(pRxFrame, &record);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    return(App_MeterStoragePush(&record));
-}
-#endif
 
 /* ================================================
  * [[PlaceholderRecord]] 검침 실패(무응답/파싱오류) 시 치환 레코드 생성

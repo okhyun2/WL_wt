@@ -88,36 +88,6 @@ static void App_SystemRtcRecoverBackupDomainOnce(uint8_t forceReset)
     }
 }
 
-static AppStatus_t App_SystemRtcEnsureLseReady(void)
-{
-    AppStatus_t status;
-    uint32_t attempt;
-
-    SET_BIT(RCC->CSR, RCC_CSR_LSEON);
-
-    for (attempt = 0u; attempt < APP_CLOCK_LSE_RETRY_COUNT; ++attempt)
-    {
-        status = App_SystemRtcWaitLseReady(APP_CLOCK_LSE_READY_TIMEOUT_MS);
-        if (status == APP_STATUS_OK)
-        {
-            HAL_Delay(APP_CLOCK_LSE_POST_READY_SETTLE_MS);
-            return APP_STATUS_OK;
-        }
-
-        if ((attempt == 0u) && (g_appSystemRtcBackupRecoveryApplied == APP_FALSE))
-        {
-            App_SystemRtcRecoverBackupDomainOnce(APP_TRUE);
-        }
-
-        CLEAR_BIT(RCC->CSR, RCC_CSR_LSEON);
-        HAL_Delay(APP_CLOCK_LSE_RETRY_OFF_DELAY_MS);
-        SET_BIT(RCC->CSR, RCC_CSR_LSEON);
-        HAL_Delay(APP_CLOCK_LSE_RETRY_ON_DELAY_MS);
-    }
-
-    return APP_STATUS_INIT_FAILED;
-}
-
 static const char *App_SystemBuildWakeupFlagString(uint32_t wakeFlags)
 {
     static char wakeFlagString[96];

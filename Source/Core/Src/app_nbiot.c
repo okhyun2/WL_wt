@@ -210,8 +210,6 @@ static uint32_t g_appBc95LastRecoverableCmeTick = 0u;
 /* UDP seq 단조 증가 카운터 (stale URC 매칭 방지) */
 static uint8_t g_appBc95UdpSeqCounter = 0u;
 
-static uint8_t g_appBc95RecoverableCmeHwCycleUsed = APP_FALSE;
-
 #ifdef DEBUG
 typedef struct
 {
@@ -308,30 +306,6 @@ static void App_HwNbiotPowerCycle(void)
      */
     HAL_Delay(200u);
     App_GpioLpSetNbiotPowered(APP_TRUE);  /* on */
-}
-
-static uint8_t App_NbiotSelfTestMaskFromContext(const AppSelfTestContext_t *p_ctx, uint8_t passedOnly)
-{
-    uint8_t i;
-    uint16_t mask = 0u;
-
-    if (p_ctx == NULL)
-    {
-        return 0u;
-    }
-
-    for (i = 0u; i < (uint8_t)APP_SELFTEST_ITEM_COUNT; i++)
-    {
-        if (p_ctx->items[i].executed != 0u)
-        {
-            if ((passedOnly == 0u) || (p_ctx->items[i].passed != 0u))
-            {
-                mask |= (uint16_t)(1u << i);
-            }
-        }
-    }
-
-    return mask;
 }
 
 static void App_NbiotPutU16Le(uint8_t *p_dst, uint16_t value)
@@ -3274,44 +3248,6 @@ static AppStatus_t App_Bc95AtSendBestEffortSimpleOk(const char *p_cmd,
     return status;
 }
 
-static void App_Bc95AtDumpAttachDiagnostics(const char *p_prefix)
-{
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CPIN_QUERY,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+CPIN?",
-                                           p_prefix);
-
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_NCCID_QUERY,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+NCCID?",
-                                           p_prefix);
-
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_IMSI,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+CIMI",
-                                           p_prefix);
-
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CEREG_QUERY,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+CEREG?",
-                                           p_prefix);
-
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CGATT_QUERY,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+CGATT?",
-                                           p_prefix);
-
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CSQ,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+CSQ",
-                                           p_prefix);
-
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_NUESTATS_CELL,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+NUESTATS=CELL",
-                                           p_prefix);
-}
-
 static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
 {
     AppStatus_t status;
@@ -3404,54 +3340,6 @@ static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
              (long)cmeErr);
 
     return APP_STATUS_UART_TIMEOUT;
-}
-
-static AppStatus_t App_Bc95AtStabilizeBeforeAttachAfterCme524(void)
-{
-    AppStatus_t status = APP_STATUS_UART_TIMEOUT;
-    uint8_t retry = 0u;
-
-    if (g_appBc95WakeNeedsCme524AttachBackoff != APP_TRUE)
-    {
-        return APP_STATUS_OK;
-    }
-
-    APP_LOGW("NBIOT",
-             "[[Attach]] CME=524 stabilize/backoff start delay=%lums sinceRecover=%lums",
-             (unsigned long)APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS,
-             (unsigned long)(HAL_GetTick() - g_appBc95LastRecoverableCmeTick));
-
-    App_Bc95AtDelayWithFeed(APP_BC95_CME524_ATTACH_STABILIZE_DELAY_MS);
-
-    for (retry = 0u; retry < APP_BC95_CME524_ATTACH_RECHECK_RETRY_MAX; retry++)
-    {
-        status = App_Bc95AtWaitForServiceReady(APP_BC95_CME524_ATTACH_READY_RECHECK_MS);
-        g_appBc95Cme524AttachRecheckCount++;
-
-        if (status == APP_STATUS_OK)
-        {
-            APP_LOGN("NBIOT",
-                     "[[Attach]] CME=524 stabilize/backoff passed retry=%u recheckCount=%u",
-                     (unsigned)retry,
-                     (unsigned)g_appBc95Cme524AttachRecheckCount);
-
-            g_appBc95WakeNeedsCme524AttachBackoff = APP_FALSE;
-            return APP_STATUS_OK;
-        }
-
-        APP_LOGW("NBIOT",
-                 "[[Attach]] CME=524 stabilize/backoff recheck failed retry=%u status=%d",
-                 (unsigned)retry,
-                 (int)status);
-
-        App_Bc95AtDelayWithFeed(1000u);
-    }
-
-    APP_LOGW("NBIOT",
-             "[[Attach]] CME=524 stabilize/backoff exhausted -> defer attach to outer recovery");
-
-    g_appBc95WakeNeedsCme524AttachBackoff = APP_FALSE;
-    return status;
 }
 
 static AppStatus_t App_Bc95AtSendRebootBestEffort(void)
