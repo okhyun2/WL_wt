@@ -4100,7 +4100,6 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             }
             else
             {
-#if (APP_POLICY_WAKE_ALIGN_TO_BOOTTRACK == APP_TRUE)
                 /*
                  * wakeup 경로도 부팅 시와 완전히 동일한 NB-IoT 절차를 타도록 한다.
                  * 기존 wake 전용 attach/fast-path 경로(App_NBIoTCarrierAttachMandatory +
@@ -4118,17 +4117,6 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 g_appFsmNbiotBusyWindow = APP_TRUE;
                 (void)App_FsmRunTxWakeTracks(deleteOnServiceTx);
                 g_appFsmNbiotBusyWindow = APP_FALSE;
-#else
-                trackStatus = App_NBIoTCarrierAttachMandatory();
-                if (trackStatus != APP_STATUS_OK)
-                {
-                    return App_FsmHandleWakeupLowPower("attach fail", trackStatus);
-                }
-
-                g_appFsmNbiotBusyWindow = APP_TRUE;
-                (void)App_FsmRunTxWakeTracks(deleteOnServiceTx);
-                g_appFsmNbiotBusyWindow = APP_FALSE;
-#endif
             }
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierPowerOffMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);

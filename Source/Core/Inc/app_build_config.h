@@ -288,12 +288,6 @@ extern "C" {
 #define APP_LP_TEST_FORCE_ADC_FULL_OFF_BEFORE_STOP  (APP_TRUE)
 #define APP_NFC_ENTER_STANDBY_BEFORE_MCU_STOP      (APP_TRUE)
 
-/* wakeup 경로를 부팅 절차와 동일하게 맞추는 시험용 정책
- * APP_TRUE  : wake tx 전에 BootTrack 강제 수행
- * APP_FALSE : 기존 wake fast-path 유지
- */
-#define APP_POLICY_WAKE_ALIGN_TO_BOOTTRACK   (APP_TRUE)
-
 /* LGU+ Step1 Carrier Mandatory Layer */
 #define APP_NBIOT_MANDATORY_LAYER_ENABLE           (APP_TRUE)
 #define APP_NBIOT_ATTACH_TIMEOUT_MS                (60000u)
