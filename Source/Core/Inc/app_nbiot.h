@@ -226,6 +226,10 @@ typedef struct
     uint16_t           sentBytes;
     uint8_t            seqNumber;
     uint8_t            sendConfirmed;
+    uint32_t           dnsElapsedMs;
+    uint8_t            dnsAttempts;
+    uint8_t            udpSendAttempts;
+    uint8_t            usedCachedIp;
 } AppBc95UdpResult_t;
 
 #define APP_BC95_DNS_CMD_TIMEOUT_MS         (3000u)
@@ -357,7 +361,7 @@ const AppNbiotCarrierContext_t *App_NBIoTCarrierGetContext(void);
 AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTColdBootResetTrack(void);
-AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage);
+AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage, uint8_t allowMgmtPiggyback);
 AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage);
 AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage);
 AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage);

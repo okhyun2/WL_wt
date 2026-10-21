@@ -80,7 +80,7 @@
 #define APP_BC95_AT_CMD_QLWSERVERIP_SET_BS   "AT+QLWSERVERIP=" APP_BC95_PLATFORM_BOOTSTRAP_MODE "," APP_BC95_PLATFORM_SERVER_IP_STRING "," APP_BC95_PLATFORM_SERVER_PORT_STRING "\r\n"
 #define APP_BC95_AT_CMD_QLWSERVERIP_SET_LWM2M "AT+QLWSERVERIP=" APP_BC95_PLATFORM_LWM2M_MODE "," APP_BC95_PLATFORM_SERVER_IP_STRING "," APP_BC95_PLATFORM_SERVER_PORT_STRING "\r\n"
 #define APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_SET_0 "AT+QBOOTSTRAPHOLDOFF=0\r\n"
-#define APP_BC95_AT_CMD_QLWEPNS_SET          "AT+QLWEPNS=1,\"" APP_BC95_PLATFORM_EPNS_STRING "\"\r\n"
+#define APP_BC95_AT_CMD_QLWEPNS_SET          "AT+QLWEPNS=1," APP_BC95_PLATFORM_EPNS_STRING "\r\n"
 #define APP_BC95_AT_CMD_QLWMBSPS_SET         "AT+QLWMBSPS=" APP_BC95_PLATFORM_MBSPS_STRING "\r\n"
 #define APP_BC95_AT_CMD_CSQ                  "AT+CSQ\r\n"
 
@@ -263,11 +263,129 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
                                                      const AppMeterStorageRecord_t *p_liveRecord);
 static void App_Bc95AtBytesToHex(const uint8_t *p_in, uint32_t inLen, char *p_out);
 static uint8_t App_Bc95AtNextUdpSeq(void);
+static void App_Bc95AtDelayWithFeed(uint32_t ms);
 
 #define APP_BC95_SERVICE_READY_CPIN_STABLE_DELAY_MS   (200u)
 #define APP_BC95_SERVICE_READY_POST_RECOVER_POLL_MS   (1200u)
 
 static uint8_t g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
+
+typedef struct
+{
+    uint8_t  valid;
+    uint32_t tickMs;
+    char     host[APP_BC95_HOSTNAME_MAX_LEN];
+    char     ip[APP_BC95_IP_STR_SIZE];
+} AppBc95DnsCacheEntry_t;
+
+static AppBc95DnsCacheEntry_t g_appBc95DnsCache[2];
+
+static uint8_t App_NbiotIsIpv4Literal(const char *p_host)
+{
+    uint8_t dots = 0u;
+    if ((p_host == NULL) || (*p_host == '\0')) { return APP_FALSE; }
+    while (*p_host != '\0')
+    {
+        if (*p_host == '.') { dots++; }
+        else if ((*p_host < '0') || (*p_host > '9')) { return APP_FALSE; }
+        p_host++;
+    }
+    return (dots == 3u) ? APP_TRUE : APP_FALSE;
+}
+
+static uint8_t App_NbiotDnsCacheLookup(const char *p_host, char *p_ipOut, uint32_t ipBufSize)
+{
+    uint32_t i;
+    uint32_t now = HAL_GetTick();
+    for (i = 0u; i < (sizeof(g_appBc95DnsCache) / sizeof(g_appBc95DnsCache[0])); i++)
+    {
+        if ((g_appBc95DnsCache[i].valid == APP_TRUE) &&
+            (strncmp(g_appBc95DnsCache[i].host, p_host, sizeof(g_appBc95DnsCache[i].host)) == 0) &&
+            ((now - g_appBc95DnsCache[i].tickMs) < APP_BC95_DNS_CACHE_TTL_MS))
+        {
+            (void)strncpy(p_ipOut, g_appBc95DnsCache[i].ip, ipBufSize - 1u);
+            p_ipOut[ipBufSize - 1u] = '\\0';
+            return APP_TRUE;
+        }
+    }
+    return APP_FALSE;
+}
+
+static void App_NbiotDnsCacheStore(const char *p_host, const char *p_ip)
+{
+    AppBc95DnsCacheEntry_t *p_slot = &g_appBc95DnsCache[0];
+    (void)memset(p_slot, 0, sizeof(*p_slot));
+    p_slot->valid = APP_TRUE;
+    p_slot->tickMs = HAL_GetTick();
+    (void)strncpy(p_slot->host, p_host, sizeof(p_slot->host) - 1u);
+    (void)strncpy(p_slot->ip, p_ip, sizeof(p_slot->ip) - 1u);
+}
+
+static void App_NbiotDnsCacheInvalidate(const char *p_host)
+{
+    uint32_t i;
+    for (i = 0u; i < (sizeof(g_appBc95DnsCache) / sizeof(g_appBc95DnsCache[0])); i++)
+    {
+        if ((g_appBc95DnsCache[i].valid == APP_TRUE) &&
+            (strncmp(g_appBc95DnsCache[i].host, p_host, sizeof(g_appBc95DnsCache[i].host)) == 0))
+        {
+            g_appBc95DnsCache[i].valid = APP_FALSE;
+        }
+    }
+}
+
+static AppStatus_t App_Bc95AtResolveHostRobustInternal(const char *p_hostname,
+                                                       char *p_ipOut,
+                                                       uint32_t ipBufSize,
+                                                       uint8_t *p_attemptsOut,
+                                                       uint32_t *p_elapsedMsOut)
+{
+    AppStatus_t status;
+    uint32_t attempt;
+    uint32_t totalAttempts = 0u;
+    uint32_t uartErrCount  = 0u;
+    uint32_t startTick = HAL_GetTick();
+
+    if (p_attemptsOut != NULL) { *p_attemptsOut = 0u; }
+    if (p_elapsedMsOut != NULL) { *p_elapsedMsOut = 0u; }
+    (void)memset(p_ipOut, 0, ipBufSize);
+
+    APP_LOGI("NBIOT", "==== DNS resolve start: %s ====", p_hostname);
+
+    for (attempt = 1u; attempt <= APP_BC95_DNS_FAIL_RETRY_MAX; attempt++)
+    {
+        totalAttempts++;
+        status = App_Bc95AtResolveHost(p_hostname, p_ipOut, ipBufSize);
+        if (status == APP_STATUS_OK)
+        {
+            if (p_attemptsOut != NULL) { *p_attemptsOut = (uint8_t)totalAttempts; }
+            if (p_elapsedMsOut != NULL) { *p_elapsedMsOut = HAL_GetTick() - startTick; }
+            APP_LOGI("NBIOT", "==== DNS resolved: %s -> %s (attempts=%lu, elapsed=%lums) ====",
+                     p_hostname, p_ipOut,
+                     (unsigned long)totalAttempts,
+                     (unsigned long)(HAL_GetTick() - startTick));
+            return APP_STATUS_OK;
+        }
+        if (status == APP_STATUS_FATAL) { return APP_STATUS_FATAL; }
+        if (status == APP_STATUS_UART_RX_FAILED)
+        {
+            uartErrCount++;
+            if (uartErrCount >= 3u) { return APP_STATUS_UART_RX_FAILED; }
+        }
+        else
+        {
+            uartErrCount = 0u;
+        }
+        if (attempt < APP_BC95_DNS_FAIL_RETRY_MAX)
+        {
+            App_Bc95AtDelayWithFeed(APP_BC95_DNS_FAIL_RETRY_DELAY_MS);
+        }
+    }
+
+    if (p_attemptsOut != NULL) { *p_attemptsOut = (uint8_t)totalAttempts; }
+    if (p_elapsedMsOut != NULL) { *p_elapsedMsOut = HAL_GetTick() - startTick; }
+    return APP_STATUS_UART_TIMEOUT;
+}
 
 #if (APP_TEST_SERVER_TX_BUZZER_ENABLE == APP_TRUE)
 static void App_NbiotTestNotifyServerTxBuzzer(void)
@@ -3677,7 +3795,7 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
     return APP_STATUS_OK;
 }
 
-AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
+AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage, uint8_t allowMgmtPiggyback)
 {
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
     /* 시험 7 전용: 실제 모뎀 측정/시간동기/플랫폼 전송을 전부 건너뛰고 시나리오만 진행 */
@@ -3691,6 +3809,12 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
     return APP_STATUS_OK;
 #else
     AppStatus_t status;
+    AppStatus_t mgmtStatus;
+    AppBc95UdpResult_t mgmtSendResult;
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+    AppCommServiceSessionMetrics_t sessionMetrics;
+    const AppNbiotCarrierContext_t *pCarrier;
+#endif
 
     APP_LOGN("NBIOT", "[[ServicePlatformWake]] start (fast-path only)");
 
@@ -3721,6 +3845,62 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
         APP_LOGW("NBIOT", "[[ServiceTx]] platform transmit failed (status=%d)", (int)status);
         return status;
     }
+
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+    (void)memset(&sessionMetrics, 0, sizeof(sessionMetrics));
+    pCarrier = App_NBIoTCarrierGetContext();
+    if ((pCarrier != NULL) && (pCarrier->attachStartTick != 0u))
+    {
+        sessionMetrics.attachElapsedMs = HAL_GetTick() - pCarrier->attachStartTick;
+    }
+    sessionMetrics.extremeWeak = App_CommIsExtremeWeak();
+    App_CommApplyServiceSessionCost(&sessionMetrics);
+    App_CommParamRecompose();
+
+    if (App_CommShouldAbortRemainingServerTx() == APP_TRUE)
+    {
+        APP_LOGW("NBIOT", "[[ServicePlatformWake]] policy updated, abort remaining server tx in this wake");
+        return APP_STATUS_OK;
+    }
+#endif
+
+    if (allowMgmtPiggyback != APP_TRUE)
+    {
+        APP_LOGN("NBIOT", "[[ServicePlatformWake]] mgmt piggyback disabled for this wake");
+        APP_LOGN("NBIOT", "[[ServicePlatformWake]] done");
+        return APP_STATUS_OK;
+    }
+
+    (void)memset(&mgmtSendResult, 0, sizeof(mgmtSendResult));
+#ifdef NBIOT_SUPPORT_DNS
+    mgmtStatus = App_NBIoTTransmitUdpInternal("[[MgmtTx/Piggyback]]",
+                                              APP_MGMT_SERVER_DOMAIN,
+                                              APP_MGMT_SERVER_PORT,
+                                              deleteStorage,
+                                              APP_FALSE,
+                                              NULL,
+                                              APP_TRUE,
+                                              &mgmtSendResult);
+#else
+    mgmtStatus = App_NBIoTTransmitUdpInternal("[[MgmtTx/Piggyback]]",
+                                              APP_MGMT_SERVER_IP,
+                                              APP_MGMT_SERVER_PORT,
+                                              deleteStorage,
+                                              APP_FALSE,
+                                              NULL,
+                                              APP_TRUE,
+                                              &mgmtSendResult);
+#endif
+
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+    (void)memset(&sessionMetrics, 0, sizeof(sessionMetrics));
+    sessionMetrics.dnsElapsedMs    = mgmtSendResult.dnsElapsedMs;
+    sessionMetrics.dnsAttempts     = mgmtSendResult.dnsAttempts;
+    sessionMetrics.udpSendAttempts = mgmtSendResult.udpSendAttempts;
+    sessionMetrics.extremeWeak     = App_CommIsExtremeWeak();
+    App_CommApplyServiceSessionCost(&sessionMetrics);
+    App_CommParamRecompose();
+#endif
 
     APP_LOGN("NBIOT", "[[ServicePlatformWake]] done");
     return APP_STATUS_OK;
@@ -4699,78 +4879,74 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
 
 AppStatus_t App_Bc95AtResolveHostRobust(const char *p_hostname, char *p_ipOut, uint32_t ipBufSize)
 {
-    AppStatus_t status;
-    uint32_t attempt;
-    uint32_t totalAttempts = 0u;   /* 패치: 초기화 */
-    uint32_t uartErrCount  = 0u;   /* 패치: 초기화 */
-    uint32_t startTick;
-
-    if ((p_hostname == NULL) || (p_ipOut == NULL) || (ipBufSize < APP_BC95_IP_STR_SIZE))
-    {
-        APP_LOGE("NBIOT", "ResolveHostRobust: invalid param");
-        return APP_STATUS_FATAL;
-    }
-    (void)memset(p_ipOut, 0, ipBufSize);
-    APP_LOGI("NBIOT", "==== DNS resolve start: %s ====", p_hostname);
-
-    startTick = HAL_GetTick();
-
-    for (attempt = 1u; attempt <= APP_BC95_DNS_FAIL_RETRY_MAX; attempt++)
-    {
-        totalAttempts++;
-
-        APP_LOGD("NBIOT", "DNS attempt %lu (try=%lu/%lu)",
-                 (unsigned long)totalAttempts,
-                 (unsigned long)attempt,
-                 (unsigned long)APP_BC95_DNS_FAIL_RETRY_MAX);
-
-        status = App_Bc95AtResolveHost(p_hostname, p_ipOut, ipBufSize);
-
-        if (status == APP_STATUS_OK)
-        {
-            APP_LOGI("NBIOT", "==== DNS resolved: %s -> %s (attempts=%lu, elapsed=%lums) ====",
-                     p_hostname, p_ipOut,
-                     (unsigned long)totalAttempts,
-                     (unsigned long)(HAL_GetTick() - startTick));
-            return APP_STATUS_OK;
-        }
-        if (status == APP_STATUS_FATAL)
-        {
-            APP_LOGE("NBIOT", "DNS fatal (attempt=%lu)", (unsigned long)totalAttempts);
-            return APP_STATUS_FATAL;
-        }
-        if (status == APP_STATUS_UART_RX_FAILED)
-        {
-            uartErrCount++;
-            APP_LOGE("NBIOT", "DNS UART err count=%lu", (unsigned long)uartErrCount);
-            if (uartErrCount >= 3u)
-            {
-                APP_LOGE("NBIOT", "DNS abort: UART persistent");
-                return APP_STATUS_UART_RX_FAILED;
-            }
-        }
-        else
-        {
-            uartErrCount = 0u;
-        }
-
-        if (attempt < APP_BC95_DNS_FAIL_RETRY_MAX)
-        {
-            APP_LOGI("NBIOT", "DNS retry after %lums (status=%d)",
-                     (unsigned long)APP_BC95_DNS_FAIL_RETRY_DELAY_MS, (int)status);
-            App_Bc95AtDelayWithFeed(APP_BC95_DNS_FAIL_RETRY_DELAY_MS);
-        }
-    }
-
-    APP_LOGE("NBIOT", "==== DNS FAILED: %s (totalAttempts=%lu, elapsed=%lums) ====",
-             p_hostname,
-             (unsigned long)totalAttempts,
-             (unsigned long)(HAL_GetTick() - startTick));
-    (void)memset(p_ipOut, 0, ipBufSize);
-    return APP_STATUS_UART_TIMEOUT;
+    return App_Bc95AtResolveHostRobustInternal(p_hostname, p_ipOut, ipBufSize, NULL, NULL);
 }
 
 #ifdef NBIOT_SUPPORT_DNS
+typedef struct
+{
+    uint8_t  valid;
+    uint32_t tickMs;
+    char     host[APP_BC95_HOSTNAME_MAX_LEN];
+    char     ip[APP_BC95_IP_STR_SIZE];
+} AppBc95DnsWarmupCacheEntry_t;
+
+#define APP_BC95_DNS_WARMUP_CACHE_TTL_MS    (3600000u)  /* 1 hour */
+
+static AppBc95DnsWarmupCacheEntry_t g_appBc95DnsWarmupCache;
+
+static uint8_t App_Bc95AtWarmupDnsCacheLookup(const char *p_hostname,
+                                              char *p_ipOut,
+                                              uint32_t ipBufSize)
+{
+    uint32_t now;
+
+    APP_RETURN_IF_FALSE((p_hostname != NULL), APP_FALSE);
+    APP_RETURN_IF_FALSE((p_ipOut != NULL), APP_FALSE);
+    APP_RETURN_IF_FALSE((ipBufSize >= APP_BC95_IP_STR_SIZE), APP_FALSE);
+
+    if (g_appBc95DnsWarmupCache.valid != APP_TRUE)
+    {
+        return APP_FALSE;
+    }
+
+    if (strncmp(g_appBc95DnsWarmupCache.host,
+                p_hostname,
+                sizeof(g_appBc95DnsWarmupCache.host)) != 0)
+    {
+        return APP_FALSE;
+    }
+
+    now = HAL_GetTick();
+    if ((now - g_appBc95DnsWarmupCache.tickMs) >= APP_BC95_DNS_WARMUP_CACHE_TTL_MS)
+    {
+        g_appBc95DnsWarmupCache.valid = APP_FALSE;
+        return APP_FALSE;
+    }
+
+    (void)strncpy(p_ipOut, g_appBc95DnsWarmupCache.ip, ipBufSize - 1u);
+    p_ipOut[ipBufSize - 1u] = '\0';
+    return APP_TRUE;
+}
+
+static void App_Bc95AtWarmupDnsCacheStore(const char *p_hostname, const char *p_ip)
+{
+    if ((p_hostname == NULL) || (p_ip == NULL))
+    {
+        return;
+    }
+
+    (void)memset(&g_appBc95DnsWarmupCache, 0, sizeof(g_appBc95DnsWarmupCache));
+    g_appBc95DnsWarmupCache.valid = APP_TRUE;
+    g_appBc95DnsWarmupCache.tickMs = HAL_GetTick();
+    (void)strncpy(g_appBc95DnsWarmupCache.host,
+                  p_hostname,
+                  sizeof(g_appBc95DnsWarmupCache.host) - 1u);
+    (void)strncpy(g_appBc95DnsWarmupCache.ip,
+                  p_ip,
+                  sizeof(g_appBc95DnsWarmupCache.ip) - 1u);
+}
+
 static AppStatus_t App_Bc95AtWarmupDns(const char *p_hostname)
 {
     AppStatus_t status;
@@ -4780,11 +4956,18 @@ static AppStatus_t App_Bc95AtWarmupDns(const char *p_hostname)
     APP_RETURN_IF_FALSE((p_hostname != NULL), APP_STATUS_INVALID_PARAM);
     APP_LOGI("NBIOT", "[DNS] warmup with %s", p_hostname);
 
+    if (App_Bc95AtWarmupDnsCacheLookup(p_hostname, ipBuf, sizeof(ipBuf)) == APP_TRUE)
+    {
+        APP_LOGI("NBIOT", "[DNS] warmup cache hit (%s:ip=%s)", p_hostname, ipBuf);
+        return APP_STATUS_OK;
+    }
+
     for (attempt = 1u; attempt <= APP_BC95_DNS_FAIL_RETRY_MAX; attempt++)
     {
         status = App_Bc95AtResolveHostRobust(p_hostname, ipBuf, sizeof(ipBuf));
         if (status == APP_STATUS_OK)
         {
+            App_Bc95AtWarmupDnsCacheStore(p_hostname, ipBuf);
             APP_LOGI("NBIOT", "[DNS] warmup OK on %lu (%s:ip=%s)",
                      (unsigned long)attempt, p_hostname, ipBuf);
             return APP_STATUS_OK;
@@ -5409,6 +5592,9 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     uint32_t attempt;
     uint8_t  seq = 0u;
     AppBc95UdpResult_t result;
+    uint8_t dnsAttempts = 0u;
+    uint32_t dnsElapsedMs = 0u;
+    uint8_t usedCachedIp = APP_FALSE;
 
     (void)memset(&result, 0, sizeof(result));
     result.socketId  = -1;
@@ -5431,20 +5617,36 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     /* 1) DNS */
     result.lastStage = APP_BC95_UDP_STAGE_RESOLVE;
 #ifdef NBIOT_SUPPORT_DNS
-    status = App_Bc95AtResolveHostRobust(p_host, ipBuf, sizeof(ipBuf));
-    if ((status != APP_STATUS_OK) || (ipBuf[0] == '\0'))
+    if (App_NbiotIsIpv4Literal(p_host) == APP_TRUE)
     {
-        APP_LOGE("NBIOT", "DNS resolve failed for %s", p_host);
-        if (p_result != NULL)
-            (void)memcpy(p_result, &result, sizeof(*p_result));
-        return (status != APP_STATUS_OK) ? status : APP_STATUS_FATAL;
+        (void)strncpy(ipBuf, p_host, sizeof(ipBuf) - 1u);
     }
+    else if (App_NbiotDnsCacheLookup(p_host, ipBuf, sizeof(ipBuf)) == APP_TRUE)
+    {
+        usedCachedIp = APP_TRUE;
+        result.usedCachedIp = APP_TRUE;
+        APP_LOGI("NBIOT", "DNS cache hit: %s -> %s", p_host, ipBuf);
+    }
+    else
+    {
+        status = App_Bc95AtResolveHostRobustInternal(p_host, ipBuf, sizeof(ipBuf),
+                                                     &dnsAttempts, &dnsElapsedMs);
+        result.dnsAttempts = dnsAttempts;
+        result.dnsElapsedMs = dnsElapsedMs;
+        if ((status != APP_STATUS_OK) || (ipBuf[0] == '\\0'))
+        {
+            APP_LOGE("NBIOT", "DNS resolve failed for %s", p_host);
+            if (p_result != NULL) (void)memcpy(p_result, &result, sizeof(*p_result));
+            return (status != APP_STATUS_OK) ? status : APP_STATUS_FATAL;
+        }
+        App_NbiotDnsCacheStore(p_host, ipBuf);
+    }
+
     (void)strncpy(result.resolvedIp, ipBuf, sizeof(result.resolvedIp) - 1u);
 #else
     (void)strcpy(ipBuf, p_host);
     (void)strcpy(result.resolvedIp, ipBuf);
 #endif
-
 
     /* 2) Create socket (재시도) */
     result.lastStage = APP_BC95_UDP_STAGE_CREATE;
@@ -5475,6 +5677,7 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     {
         seq = App_Bc95AtNextUdpSeq();   /* 패치: 전역 단조 증가 seq */
         result.seqNumber = seq;
+        result.udpSendAttempts = (uint8_t)attempt;
 
         APP_WWDGFeed();
         status = App_Bc95AtUdpSendAndConfirm(socketId, ipBuf, port,
@@ -5499,6 +5702,13 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
         if (attempt < APP_BC95_UDP_SEND_RETRY_MAX)
             App_Bc95AtDelayWithFeed(APP_BC95_UDP_SEND_RETRY_DELAY_MS);
     }
+
+#ifdef NBIOT_SUPPORT_DNS
+    if ((status != APP_STATUS_OK) && (usedCachedIp == APP_TRUE))
+    {
+        App_NbiotDnsCacheInvalidate(p_host);
+    }
+#endif
 
 #if (APP_POLICY_WAIT_SERVER_ACK_ENABLE == APP_TRUE)
     if ((status == APP_STATUS_OK) && (waitServerAck == APP_TRUE))
@@ -6291,7 +6501,8 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                                                 uint8_t deleteStorage,
                                                 uint8_t unsentOnly,
                                                 const AppMeterStorageRecord_t *p_liveRecord,
-                                                uint8_t appendSelfTestToMgmt)
+                                                uint8_t appendSelfTestToMgmt,
+                                                AppBc95UdpResult_t *p_sendResultOut)
 {
     AppStatus_t status;
     AppStatus_t envAppendStatus;
@@ -6343,6 +6554,11 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
         }
 
         status = App_Bc95AtUdpSendOnce(p_logTag, p_host, port, packet, buildResult.packetLength, &sendResult);
+        if (p_sendResultOut != NULL)
+        {
+            *p_sendResultOut = sendResult;
+        }
+
         if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u))
         {
             if (p_liveRecord != NULL)
@@ -6447,36 +6663,36 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
 AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL);
 #else
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL);
 #endif
 }
 
 AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL, APP_TRUE);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL, APP_TRUE, NULL);
 #else
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL, APP_TRUE);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL, APP_TRUE, NULL);
 #endif
 }
 
 AppStatus_t App_NBIoTTransmitServiceLiveRecord(const AppMeterStorageRecord_t *p_record)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL);
 #else
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL);
 #endif
 }
 
 AppStatus_t App_NBIoTTransmitMgmtLiveRecord(const AppMeterStorageRecord_t *p_record)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_TRUE);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_TRUE, NULL);
 #else
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_TRUE);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_TRUE, NULL);
 #endif
 }
 

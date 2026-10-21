@@ -223,6 +223,7 @@ static uint8_t g_appFsmRtcMeterWakePending = APP_FALSE;
 static uint8_t g_appFsmRtcTxWakePending = APP_FALSE;
 static uint8_t g_appFsmRtcServiceTxWakePending = APP_FALSE;
 static uint8_t g_appFsmRtcMgmtTxWakePending = APP_FALSE;
+static uint8_t g_appFsmMgmtTxCarryPendingAfterAbort = APP_FALSE;
 
 #define APP_FSM_MGMT_TX_GUARD_SHIFT_MAX      (2u)
 #define APP_FSM_MGMT_TX_MAX_STARVATION_MS    (180000u) /* 3 min */
@@ -614,7 +615,23 @@ static AppStatus_t App_FsmRunTxWakeTracks(uint8_t deleteOnServiceTx)
     if ((g_appFsmRtcServiceTxWakePending == APP_TRUE) &&
         (g_appFsmRtcMgmtTxWakePending == APP_TRUE))
     {
-        APP_LOGW("FSM", "[[WakeTrack]] service+mgmt due together -> run mgmt first to avoid starvation");
+        APP_LOGW("FSM", "[[WakeTrack]] service+mgmt due together -> run service first");
+    }
+
+    if (g_appFsmRtcServiceTxWakePending == APP_TRUE)
+    {
+        (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx,
+                                                (g_appFsmRtcMgmtTxWakePending == APP_TRUE) ? APP_FALSE : APP_TRUE);
+
+#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
+        if ((g_appFsmRtcMgmtTxWakePending == APP_TRUE) &&
+            (App_CommShouldAbortRemainingServerTx() == APP_TRUE))
+        {
+            APP_LOGW("FSM", "[[WakeTrack]] policy updated -> stop remaining server tx in this wake, keep mgmt for next wake");
+            g_appFsmMgmtTxCarryPendingAfterAbort = APP_TRUE;
+            return APP_STATUS_OK;
+        }
+#endif
     }
 
     if (g_appFsmRtcMgmtTxWakePending == APP_TRUE)
@@ -622,15 +639,10 @@ static AppStatus_t App_FsmRunTxWakeTracks(uint8_t deleteOnServiceTx)
         (void)App_NBIoTMgmtSocketWakeTrack(APP_TRUE);
     }
 
-    if (g_appFsmRtcServiceTxWakePending == APP_TRUE)
-    {
-        (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx);
-    }
-
     if ((g_appFsmRtcServiceTxWakePending != APP_TRUE) &&
         (g_appFsmRtcMgmtTxWakePending != APP_TRUE))
     {
-        (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx);
+        (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx, APP_TRUE);
     }
 
     return APP_STATUS_OK;
@@ -3946,6 +3958,14 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             {
                 APP_RETURN_IF_FALSE(App_FsmTxScheduleCheckDue(&serviceDue) == APP_STATUS_OK, APP_STATUS_FATAL);
                 APP_RETURN_IF_FALSE(App_FsmMgmtTxScheduleCheckDue(&mgmtDue) == APP_STATUS_OK, APP_STATUS_FATAL);
+
+                if (g_appFsmMgmtTxCarryPendingAfterAbort == APP_TRUE)
+                {
+                    mgmtDue = APP_TRUE;
+                    g_appFsmMgmtTxCarryPendingAfterAbort = APP_FALSE;
+                    APP_LOGW("FSM", "[[MgmtTxSchedule]] revive skipped mgmt once on next wake after high-cost abort");
+                }
+
                 if ((serviceDue != APP_TRUE) && (mgmtDue != APP_TRUE))
                 {
                     g_appFsmWakeCollectionPending = APP_FALSE;

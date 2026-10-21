@@ -108,20 +108,20 @@ extern "C" {
 //#define APP_SERVICE_SERVER_PORT                 (41001u)
 //#define APP_MGMT_SERVER_PORT                    (41001u)
 
-#define WARMUPDNS_SERVER_DOMAIN       "www.google.com"
+#define WARMUPDNS_SERVER_DOMAIN       MY_SERVER_DOMAIN
 #define APP_MGMT_SERVER_DOMAIN        MY_SERVER_DOMAIN
 #else
-#define MY_SERVER_IP                    "125.138.79.82"
+#define MY_SERVER_IP                    "59.27.15.61"
 #define APP_MGMT_SERVER_IP             MY_SERVER_IP
 #endif // NBIOT_SUPPORT_DNS
 
 /* BC95-GV board-aligned platform provisioning defaults */
-#define APP_BC95_PLATFORM_SERVER_IP_STRING      "106.103.233.155"
+#define APP_BC95_PLATFORM_SERVER_IP_STRING      "lbk.onem2mstp.uplus.co.kr"
 #define APP_BC95_PLATFORM_SERVER_PORT_STRING    "5783"
 #define APP_BC95_PLATFORM_BOOTSTRAP_MODE        "BS"
 #define APP_BC95_PLATFORM_LWM2M_MODE            "LWM2M"
-#define APP_BC95_PLATFORM_EPNS_STRING           "ASN_CSE-D-9abbf178c4-JHC1"
-#define APP_BC95_PLATFORM_MBSPS_STRING          "JHC1,4323800010,01226680136,919592,KSJ_WT-NB23"
+#define APP_BC95_PLATFORM_EPNS_STRING           "ASN_CSE-S-8ec0d193b5-ADJ1"
+#define APP_BC95_PLATFORM_MBSPS_STRING          "ADJ1,4323800010,01226680136,919592,KSJ_WT-NB23"
 #define APP_BC95_PLATFORM_NBAND_STRING          "5"
 
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
@@ -352,6 +352,20 @@ extern "C" {
 #define APP_COMM_COST_GOOD_RECOVERY_REWARD      (1u)   /* strong + 1차 성공 */
 #define APP_COMM_SERVICE_EXPENSIVE_ATTEMPT_IDX  (1u)   /* 0=1차 성공, 1=2차 성공 */
 
+/* v2.1: attach / DNS / UDP retry + same-wake abort */
+#define APP_COMM_ATTACH_SLOW_MS                      (20000u)
+#define APP_COMM_DNS_SLOW_MS                         (8000u)
+#define APP_COMM_COST_ATTACH_SLOW_PENALTY           (1u)
+#define APP_COMM_COST_DNS_SLOW_PENALTY              (1u)
+#define APP_COMM_COST_UDP_RETRY_PENALTY             (1u)
+#define APP_COMM_COST_ABORT_REMAINING_TX_THRESHOLD  (4u)
+
+/* extreme weak -> nightOnly */
+#define APP_COMM_EXTREME_WEAK_RSRP_DBM              (-120)
+#define APP_COMM_EXTREME_WEAK_SNR_DB                (0)
+
+/* DNS cache */
+#define APP_BC95_DNS_CACHE_TTL_MS                   (86400000u) /* 24h */
 
 #define APP_COMM_ADAPTIVE_STRONG_REPORT_HOURS       (APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS)
 #define APP_COMM_ADAPTIVE_WEAK_REPORT_HOURS         (4u)   /* 약전계 시 4시간. 사용자 설정. */
