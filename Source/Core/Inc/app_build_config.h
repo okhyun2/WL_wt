@@ -168,8 +168,8 @@ extern "C" {
 #ifdef DEBUG
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE) //org
 #else
-#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org
-//#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
+//#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org
+#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #endif
 
 #define SUPPORT_EEPROM
@@ -329,16 +329,29 @@ extern "C" {
 
 #define APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE    (APP_FALSE) 
 
-#if 1 //TODO Chamber test
-#define APP_COMM_RSSI_WEAK_DBM            (-90)
-#define APP_COMM_RSRP_WEAK_DBM            (-90)
-#else 
 #define APP_COMM_RSSI_WEAK_DBM            (-100)
 #define APP_COMM_RSRP_WEAK_DBM            (-110)
-#endif
 
 #define APP_COMM_SUCCESS_STREAK_NEEDED          (2u)
 #define APP_COMM_GOOD_MAX_ATTEMPT_IDX           (2u)   /* 0,1,2 = 1~3차 성공 -> HIGH */
+
+/*
+ * Adaptive policy v2
+ * - service 우선, mgmt는 정책 입력에서 제외
+ * - 배터리 우선: 악화는 빠르게(1h -> 4h), 회복은 느리게(4h -> 1h)
+ * - 추가 wake/probe 없이 service TX 1회에서 얻는 quality + retry/fail 비용만 사용
+ */
+#define APP_COMM_SIGNAL_RECOVER_MARGIN_DB       (5)    /* weak -> strong 복귀 여유폭 */
+#define APP_COMM_COST_SCORE_MAX                 (7u)
+#define APP_COMM_COST_WEAK_ENTER_THRESHOLD      (2u)   /* cost score >= 2 => weak(4h) */
+#define APP_COMM_COST_STRONG_EXIT_THRESHOLD     (0u)   /* cost score == 0 => strong(1h) */
+#define APP_COMM_COST_NIGHT_ONLY_THRESHOLD      (5u)   /* extreme poor + LOW 일 때만 nightOnly */
+#define APP_COMM_COST_FAIL_PENALTY              (3u)   /* 전체 실패 */
+#define APP_COMM_COST_RETRY_PENALTY             (2u)   /* 2차 이상 성공 */
+#define APP_COMM_COST_WEAK_SUCCESS_PENALTY      (1u)   /* weak but 1차 성공 */
+#define APP_COMM_COST_GOOD_RECOVERY_REWARD      (1u)   /* strong + 1차 성공 */
+#define APP_COMM_SERVICE_EXPENSIVE_ATTEMPT_IDX  (1u)   /* 0=1차 성공, 1=2차 성공 */
+
 
 #define APP_COMM_ADAPTIVE_STRONG_REPORT_HOURS       (APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS)
 #define APP_COMM_ADAPTIVE_WEAK_REPORT_HOURS         (4u)   /* 약전계 시 4시간. 사용자 설정. */

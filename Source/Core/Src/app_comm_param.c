@@ -11,6 +11,7 @@ static AppCommSuccessState_t g_appCommSuccessState = APP_COMM_SUCCESS_HIGH;
 static uint8_t g_appCommGoodStreak = 0u;
 static uint8_t g_appCommBadStreak  = 0u;
 static uint8_t g_appCommAdaptiveLoaded = APP_FALSE;
+static uint8_t g_appCommServiceCostScore = 0u;   /* RAM-only: EEPROM layout 변경 없음 */
 static AppCommAdaptivePolicy_t g_appCommAdaptivePolicy;
 
 #define APP_COMM_DEVICECFG_MARKER_IDX              (5u)
@@ -31,6 +32,26 @@ static uint8_t app_comm_is_supported_reporting_period(uint8_t hours)
 static uint32_t app_comm_minutes_to_ms(uint8_t minutes)
 {
     return (minutes == 0u) ? 0u : ((uint32_t)minutes * 60000u);
+}
+
+static void app_comm_cost_score_add(uint8_t delta)
+{
+    uint16_t next = (uint16_t)g_appCommServiceCostScore + (uint16_t)delta;
+    g_appCommServiceCostScore = (next > APP_COMM_COST_SCORE_MAX)
+                              ? (uint8_t)APP_COMM_COST_SCORE_MAX
+                              : (uint8_t)next;
+}
+
+static void app_comm_cost_score_sub(uint8_t delta)
+{
+    g_appCommServiceCostScore = (g_appCommServiceCostScore > delta)
+                              ? (uint8_t)(g_appCommServiceCostScore - delta)
+                              : 0u;
+}
+
+static uint8_t app_comm_is_effective_weak(void)
+{
+    return (uint8_t)((g_appCommSignalState == APP_COMM_SIGNAL_WEAK) || (g_appCommServiceCostScore >= APP_COMM_COST_WEAK_ENTER_THRESHOLD));
 }
 
 void App_CommAdaptivePolicySetDefaults(AppCommAdaptivePolicy_t *p_policy)
@@ -192,25 +213,35 @@ uint8_t App_CommShouldBypassNightOnlyGate(void)
 void App_CommSignalMeasureAndUpdate(const AppBc95Quality_t *p_quality)
 {
     AppCommSignalState_t prevState;
+    uint8_t weakNow;
+    uint8_t strongRecover;
 
     if ((p_quality == NULL) || (p_quality->valid != APP_TRUE)) { return; }
 
     prevState = g_appCommSignalState;
 
-    if ((p_quality->rssiDbm <= APP_COMM_RSSI_WEAK_DBM) ||
-        (p_quality->rsrpDbm <= APP_COMM_RSRP_WEAK_DBM))
+    weakNow = (uint8_t)(((p_quality->rssiDbm <= APP_COMM_RSSI_WEAK_DBM) ||
+                         (p_quality->rsrpDbm <= APP_COMM_RSRP_WEAK_DBM)) ? APP_TRUE : APP_FALSE);
+
+    strongRecover = (uint8_t)(((p_quality->rssiDbm > (APP_COMM_RSSI_WEAK_DBM + APP_COMM_SIGNAL_RECOVER_MARGIN_DB)) &&
+                               (p_quality->rsrpDbm > (APP_COMM_RSRP_WEAK_DBM + APP_COMM_SIGNAL_RECOVER_MARGIN_DB)))
+                               ? APP_TRUE : APP_FALSE);
+
+    if (weakNow == APP_TRUE)
     {
         g_appCommSignalState = APP_COMM_SIGNAL_WEAK;
     }
-    else
+    else if (strongRecover == APP_TRUE)
     {
         g_appCommSignalState = APP_COMM_SIGNAL_STRONG;
     }
+    /* 중간 영역에서는 기존 상태 유지: sparse sample 환경에서 flap 방지 */
 
-    APP_LOGN("COMM", "signal state %s -> %s (RSSI=%d RSRP=%d)",
+    APP_LOGN("COMM", "signal state %s -> %s (RSSI=%d RSRP=%d cost=%u)",
          (prevState == APP_COMM_SIGNAL_STRONG) ? "STRONG" : "WEAK",
          (g_appCommSignalState == APP_COMM_SIGNAL_STRONG) ? "STRONG" : "WEAK",
-         p_quality->rssiDbm, p_quality->rsrpDbm);
+         p_quality->rssiDbm, p_quality->rsrpDbm,
+         (unsigned)g_appCommServiceCostScore);
 }
 
 void App_CommSuccessUpdate(uint8_t attemptUsedIdx, uint8_t allFailed)
@@ -237,9 +268,33 @@ void App_CommSuccessUpdate(uint8_t attemptUsedIdx, uint8_t allFailed)
         }
     }
 
-    APP_LOGN("COMM", "success update: attemptIdx=%u allFailed=%u goodStreak=%u/%u badStreak=%u/%u",
+    /*
+     * v2 cost-score:
+     * - mgmt는 제외, service TX 결과만 사용
+     * - 악화는 빠르게, 회복은 느리게
+     */
+    if (allFailed == APP_TRUE)
+    {
+        app_comm_cost_score_add(APP_COMM_COST_FAIL_PENALTY);
+    }
+    else if ((g_appCommSignalState == APP_COMM_SIGNAL_WEAK) &&
+             (attemptUsedIdx >= APP_COMM_SERVICE_EXPENSIVE_ATTEMPT_IDX))
+    {
+        app_comm_cost_score_add(APP_COMM_COST_RETRY_PENALTY);
+    }
+    else if ((g_appCommSignalState == APP_COMM_SIGNAL_WEAK) ||
+             (attemptUsedIdx >= APP_COMM_SERVICE_EXPENSIVE_ATTEMPT_IDX))
+    {
+        app_comm_cost_score_add(APP_COMM_COST_WEAK_SUCCESS_PENALTY);
+    }
+    else
+    {
+        app_comm_cost_score_sub(APP_COMM_COST_GOOD_RECOVERY_REWARD);
+    }
+
+    APP_LOGN("COMM", "success update: attemptIdx=%u allFailed=%u goodStreak=%u/%u badStreak=%u/%u cost=%u",
          attemptUsedIdx, allFailed, g_appCommGoodStreak, APP_COMM_SUCCESS_STREAK_NEEDED,
-         g_appCommBadStreak, APP_COMM_SUCCESS_STREAK_NEEDED);
+         g_appCommBadStreak, APP_COMM_SUCCESS_STREAK_NEEDED, (unsigned)g_appCommServiceCostScore);
 }
 
 AppCommSignalState_t  App_CommGetSignalState(void)  { return g_appCommSignalState; }
@@ -251,6 +306,7 @@ void App_CommParamRecompose(void)
     AppCommAdaptivePolicy_t policy;
     uint8_t targetReportingHours;
     uint8_t targetNightOnly;
+    uint8_t effectiveWeak;
 
     app_comm_adaptive_policy_ensure_loaded();
     policy = g_appCommAdaptivePolicy;
@@ -260,17 +316,19 @@ void App_CommParamRecompose(void)
         /* defaults already applied by Load(); fall through to recompute below */
     }
 
-    targetReportingHours = (g_appCommSignalState == APP_COMM_SIGNAL_WEAK)
-                           ? policy.weakReportingHours
-                           : policy.strongReportingHours;
+    effectiveWeak = app_comm_is_effective_weak();
 
+    targetReportingHours = (effectiveWeak == APP_TRUE) ? policy.weakReportingHours
+                                                       : policy.strongReportingHours;
     if ((policy.flags & APP_COMM_ADAPTIVE_FLAG_BYPASS_NIGHT_ONLY) != 0u)
     {
         targetNightOnly = APP_FALSE;
     }
     else
     {
-        targetNightOnly = (g_appCommSuccessState == APP_COMM_SUCCESS_LOW) ? APP_TRUE : APP_FALSE;
+        targetNightOnly = ((g_appCommSuccessState == APP_COMM_SUCCESS_LOW) &&
+                           (g_appCommServiceCostScore >= APP_COMM_COST_NIGHT_ONLY_THRESHOLD))
+                          ? APP_TRUE : APP_FALSE;
     }
 
     if ((opt.reportingPeriodHours != targetReportingHours) ||
@@ -287,9 +345,13 @@ void App_CommParamRecompose(void)
         (void)App_MeterServerOptionsUpdate(&opt);
     }
 
-    APP_LOGN("COMM", "param applied: reportPeriod=%uh nightOnly=%u txOv=%lu meterOv=%lu",
-         opt.reportingPeriodHours,
-         opt.nightOnly,
+    APP_LOGN("COMM",
+         "param applied: signal=%s effectiveWeak=%u success=%s cost=%u reportPeriod=%uh nightOnly=%u txOv=%lu meterOv=%lu",
+         (g_appCommSignalState == APP_COMM_SIGNAL_WEAK) ? "WEAK" : "STRONG",
+         (unsigned)effectiveWeak,
+         (g_appCommSuccessState == APP_COMM_SUCCESS_LOW) ? "LOW" : "HIGH",
+         (unsigned)g_appCommServiceCostScore,
+         opt.reportingPeriodHours, opt.nightOnly,
          (unsigned long)App_CommGetTxPeriodOverrideMs(),
          (unsigned long)App_CommGetMeterPeriodOverrideMs());
 }

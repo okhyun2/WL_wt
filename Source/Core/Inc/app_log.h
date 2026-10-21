@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include "app_build_config.h"
 #include "app_error.h"
 
 /**
@@ -38,7 +39,7 @@ typedef enum
  * define print log level. print >= defined_level
  */ 
 #if APP_BUILD_IS_PRODUCTION == (APP_TRUE)
-#define APP_LOG_LEVEL (APP_LOG_LEVEL_E_WARN)
+#define APP_LOG_LEVEL (APP_LOG_LEVEL_E_NOTICE)
 #else
 #define APP_LOG_LEVEL (APP_LOG_LEVEL_E_INFO)
 #endif

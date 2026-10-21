@@ -933,7 +933,11 @@ void App_MeterServerOptionsSetNightOnly(AppMeterServerFormatOptions_t *p_options
 
 uint32_t App_MeterServerOptionsGetReportingSpreadMs(const AppMeterServerFormatOptions_t *p_options)
 {
-    APP_RETURN_IF_FALSE(p_options != NULL, APP_POLICY_REPORT_SPREAD_FALLBACK_MS);
+    if (p_options == NULL)
+    {
+        App_ErrorRecord(APP_STATUS_INVALID_PARAM, __FILE__, __LINE__);
+        return APP_POLICY_REPORT_SPREAD_FALLBACK_MS;
+    }
 
     if (p_options->reportingSpreadHours == 0u)
     {
@@ -945,13 +949,23 @@ uint32_t App_MeterServerOptionsGetReportingSpreadMs(const AppMeterServerFormatOp
 
 uint32_t App_MeterServerOptionsGetAckTimeoutMs(const AppMeterServerFormatOptions_t *p_options)
 {
-    APP_RETURN_IF_FALSE(p_options != NULL, APP_POLICY_SERVER_ACK_TIMEOUT_MS);
+    if (p_options == NULL)
+    {
+        App_ErrorRecord(APP_STATUS_INVALID_PARAM, __FILE__, __LINE__);
+        return APP_POLICY_SERVER_ACK_TIMEOUT_MS;
+    }
+
     return ((uint32_t)p_options->ackTimeoutSec * 1000u);
 }
 
 uint32_t App_MeterServerOptionsGetAckPollMs(const AppMeterServerFormatOptions_t *p_options)
 {
-    APP_RETURN_IF_FALSE(p_options != NULL, APP_POLICY_SERVER_ACK_POLL_MS);
+    if (p_options == NULL)
+    {
+        App_ErrorRecord(APP_STATUS_INVALID_PARAM, __FILE__, __LINE__);
+        return APP_POLICY_SERVER_ACK_POLL_MS;
+    }
+
     return ((uint32_t)p_options->ackPoll100Ms * 100u);
 }
 

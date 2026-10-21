@@ -3697,9 +3697,9 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
 
+    /* v2: service 우선. quality는 미리 반영하되, 주기 재구성은 실제 service TX 결과까지 본 뒤 수행 */
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
     App_CommSignalMeasureAndUpdate(App_Bc95AtGetQuality());
-    App_CommParamRecompose();
 #endif
 
     (void)App_NBIoTSyncTime();
@@ -3734,10 +3734,10 @@ AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage)
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
 
-#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
-    App_CommSignalMeasureAndUpdate(App_Bc95AtGetQuality());
-    App_CommParamRecompose();
-#endif
+    /*
+     * v2: mgmt는 차선 기능. adaptive policy의 상태전환 입력으로 사용하지 않음.
+     * (배터리 우선 / service-driven policy)
+     */
 
     return App_NBIoTTransmitMgmtUdp(deleteStorage);
 }
@@ -4123,7 +4123,8 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
             if (status == APP_STATUS_OK)
             {
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
-                App_CommSuccessUpdate((uint8_t)(sendAttempt - 1u), APP_FALSE);
+                App_CommSuccessUpdate((uint8_t)(sendAttempt - 1u), APP_FALSE); /* service 결과만 반영 */
+                App_CommParamRecompose(); /* 1h <-> 4h / nightOnly 재계산 */
 #endif
 #if (APP_TEST_SERVER_TX_BUZZER_ENABLE == APP_TRUE)
                 App_NbiotTestNotifyServerTxBuzzer();
@@ -4147,6 +4148,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
     if (status != APP_STATUS_OK)
     {
         App_CommSuccessUpdate(APP_BC95_PLATFORM_SEND_RETRY_MAX, APP_TRUE); /* 전체 실패 */
+        App_CommParamRecompose(); /* 빠른 하향 전환 */
     }
 #endif
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
