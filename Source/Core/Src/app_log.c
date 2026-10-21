@@ -109,7 +109,6 @@ AppStatus_t App_LogWrite(AppLogLevel_t level, const char *p_module, const char *
 {
     char txBuffer[APP_LOG_BUFFER_SIZE];
     int32_t formattedLength;
-    const char *p_levelString;
     const char *p_safeModule;
     const char *p_safeMessage;
 
@@ -121,18 +120,31 @@ AppStatus_t App_LogWrite(AppLogLevel_t level, const char *p_module, const char *
         return APP_STATUS_OK;
     }
 
-    p_levelString = App_LogLevelToString(level);
     p_safeModule = (p_module != NULL) ? p_module : "APP";
     p_safeMessage = (p_message != NULL) ? p_message : "";
 
+#if (APP_BUILD_DEBUG_ENABLED == APP_TRUE)
+    {
+        const char *p_levelString;
+        p_levelString = App_LogLevelToString(level);
+
+        formattedLength = snprintf(txBuffer,
+                                   sizeof(txBuffer),
+                                   "[%s][%s][%s] %s%s",
+                                   get_local_time_str(),
+                                   p_levelString,
+                                   p_safeModule,
+                                   p_safeMessage,
+                                   APP_DEBUG_CONSOLE_EOL);
+    }
+#else
     formattedLength = snprintf(txBuffer,
                                sizeof(txBuffer),
-                               "[%s][%s][%s] %s%s",
-                                get_local_time_str(),
-                               p_levelString,
+                               "[%s] %s%s",
                                p_safeModule,
                                p_safeMessage,
                                APP_DEBUG_CONSOLE_EOL);
+#endif
     APP_RETURN_IF_FALSE((formattedLength >= 0), APP_STATUS_INIT_FAILED);
 
     if ((uint32_t)formattedLength >= (uint32_t)sizeof(txBuffer))

@@ -1,21 +1,9 @@
 #include "app_debug.h"
 
-#include <stdio.h>
 #include <string.h>
 
 #include "app_build_config.h"
-#include "app_clock.h"
-#include "app_dualboot.h"
-#include "app_fsm.h"
 #include "app_hw.h"
-#include "app_msgq.h"
-#include "app_system.h"
-#include "app_selftest.h"
-#include "app_meter_storage.h"
-#include "app_meter_server_format.h"
-#include "app_aux.h"
-#include "app_nbiot.h"
-#include "app_nfc_seoul_format.h"
 
 static AppDebugConsoleContext_t g_appDebugConsoleContext;
 

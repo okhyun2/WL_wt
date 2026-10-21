@@ -168,8 +168,8 @@ extern "C" {
 #ifdef DEBUG
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE) //org
 #else
-//#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org
-#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
+#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org
+//#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #endif
 
 #define SUPPORT_EEPROM
@@ -342,7 +342,7 @@ extern "C" {
 
 #define APP_COMM_ADAPTIVE_STRONG_REPORT_HOURS       (APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS)
 #define APP_COMM_ADAPTIVE_WEAK_REPORT_HOURS         (4u)   /* 약전계 시 4시간. 사용자 설정. */
-#define APP_COMM_ADAPTIVE_BYPASS_NIGHT_ONLY_DEFAULT (APP_TRUE)  /* APP_FALSE-> nightOnly 정상 동작: 통신 성공 상태가 LOW일 때 야간 전송 모드(01:00~04:00) 적용 */
+#define APP_COMM_ADAPTIVE_BYPASS_NIGHT_ONLY_DEFAULT (APP_FALSE)  /* APP_FALSE-> nightOnly 정상 동작: 통신 성공 상태가 LOW일 때 야간 전송 모드(01:00~04:00) 적용 */
 
 #if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
 #define APP_COMM_ADAPTIVE_TEST_OVERRIDE_ENABLE      (APP_TRUE)

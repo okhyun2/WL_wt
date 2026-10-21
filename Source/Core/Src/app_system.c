@@ -1659,11 +1659,13 @@ AppStatus_t App_SystemInit(void)
     status = App_DebugConsoleInit();
     if (status != APP_STATUS_OK)
     {
-        return APP_STATUS_DEBUG_INIT_FAILED;
+        APP_LOGW("SYS", "debug console init skipped status=%d", (int)status);
     }
-
-    g_appSystemContext.debugReady = APP_TRUE;
-    g_appSystemContext.bootStage = APP_BOOT_STAGE_DEBUG_READY;
+    else
+    {
+        g_appSystemContext.debugReady = APP_TRUE;
+        g_appSystemContext.bootStage = APP_BOOT_STAGE_DEBUG_READY;
+    }
 
     status = App_SystemPrintBootLogs();
     if (status != APP_STATUS_OK)
