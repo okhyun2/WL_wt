@@ -168,8 +168,8 @@ extern "C" {
 #ifdef DEBUG
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE) //org
 #else
-//#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org
-#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
+#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org
+//#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #endif
 
 #define SUPPORT_EEPROM
@@ -331,6 +331,18 @@ extern "C" {
 
 #define APP_COMM_RSSI_WEAK_DBM            (-100)
 #define APP_COMM_RSRP_WEAK_DBM            (-110)
+
+/*
+ * Pre-attach weak-signal fast abort policy
+ * - bring-up 직후 AT+CSQ로 1차 선별
+ * - 약전계면 짧은 camp probe 후 NUESTATS=CELL로 최종 확인
+ * - confirmed weak/not-camped 이면 긴 attach wait로 들어가지 않고 이번 wake attach를 조기 종료
+ */
+#define APP_BC95_PRE_ATTACH_CSQ_WEAK_DBM          (-108)
+#define APP_BC95_PRE_ATTACH_CAMP_PROBE_TIMEOUT_MS (8000u)
+#define APP_BC95_PRE_ATTACH_ABORT_RSSI_DBM        (-110)
+#define APP_BC95_PRE_ATTACH_ABORT_RSRP_DBM        (-120)
+#define APP_BC95_PRE_ATTACH_NUESTATS_RETRY_MAX    (1u)
 
 #define APP_COMM_SUCCESS_STREAK_NEEDED          (2u)
 #define APP_COMM_GOOD_MAX_ATTEMPT_IDX           (2u)   /* 0,1,2 = 1~3차 성공 -> HIGH */
