@@ -15,7 +15,7 @@ SECTIONS
   .isr_vector : { . = ALIGN(4); KEEP(*(.isr_vector)) . = ALIGN(4); } > FLASH
 
   /* Image header - placed immediately after vector table */
-  /* Address must match BOOT_APP_BASE_ADDR + BOOT_IMAGE_HEADER_OFFSET */
+  /* Address must match update image base + BOOT_IMAGE_HEADER_OFFSET */
   .image_header :
   {
     . = ALIGN(4);

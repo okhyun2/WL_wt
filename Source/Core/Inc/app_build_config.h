@@ -78,7 +78,8 @@ extern "C" {
 #define APP_FLASH_TARGET_SIZE_BYTES                 (128u * 1024u)
 #define APP_BOOTLOADER_BASE_ADDR                    (0x08000000u)
 #define APP_BOOTLOADER_SIZE_BYTES                   (8u * 1024u)
-#define APP_SLOT1_BASE_ADDR                         (0x08002000u)
+#define APP_IMAGE_BASE_ADDR                         (0x08002000u)
+#define APP_IMAGE_NAME                              "app"
 
 #define APP_FW_VERSION_MAJOR                        (0u)
 #define APP_FW_VERSION_MINOR                        (10u)

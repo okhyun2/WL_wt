@@ -19,9 +19,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "app_build_config.h"
-#ifdef SUPPORT_DUALBOOT
+#ifdef SUPPORT_BOOTLOADER_UPDATE
 #include "boot_info.h"
-#endif // SUPPORT_DUALBOOT
+#endif // SUPPORT_BOOTLOADER_UPDATE
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -43,9 +43,9 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#ifdef SUPPORT_DUALBOOT
+#ifdef SUPPORT_BOOTLOADER_UPDATE
 /* -------------------------------------------------------
- * Firmware image header
+ * Firmware image header for bootloader update
  * Placed at BOOT_APP_BASE_ADDR + BOOT_IMAGE_HEADER_OFFSET
  * firmwareSize and firmwareCRC are filled by post_build_crc.py
  * ------------------------------------------------------- */
@@ -60,7 +60,7 @@ const BootImageHeader_t gImageHeader =
     .versionPatch = 0u,
     .reserved     = {0u, 0u},
 };
-#endif // SUPPORT_DUALBOOT
+#endif // SUPPORT_BOOTLOADER_UPDATE
 
 /* 메인 루프 health 플래그 */
 volatile uint8_t  g_wwdg_main_loop_alive = 0;
@@ -273,11 +273,11 @@ int main(void)
   #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
   /* EPC 시험 세션 시작 마커 - APP_EPC_TEST_MODE_ENABLE=0 이면 이 블록 전체가
      전처리 단계에서 제거되어 운영 빌드 코드/바이너리에 전혀 남지 않는다. */
-  EPC_LOGI("session start testId=%s fw=%u.%u slot=%s",
+  EPC_LOGI("session start testId=%s fw=%u.%u image=%s",
            APP_EPC_TEST_ID_STRING,
            (unsigned)APP_FW_VERSION_MAJOR,
            (unsigned)APP_FW_VERSION_MINOR,
-           APP_SLOT_NAME);
+           APP_IMAGE_NAME);
   EPC_LOGI("test=%s,seq=0,event=BOOT", APP_EPC_TEST_ID_STRING);
 
   #if (APP_EPC_ACTIVE_TEST_ID == 3u) && (APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED == APP_TRUE)
