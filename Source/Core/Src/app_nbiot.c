@@ -259,7 +259,6 @@ static AppBc95AtStatus_t App_Bc95AtParseQlwevtind(const char *p_resp, int *p_eve
 static uint8_t App_Bc95AtPlatformEventIsReady(int eventType);
 static uint8_t App_Bc95AtPlatformEventNeedsRegisterRetry(int eventType);
 static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, uint8_t *p_needRegisterRetry);
-static AppStatus_t App_Bc95AtReadCsqRssiDbm(int16_t *p_rssiDbm);
 static AppStatus_t App_Bc95AtRunShortCampProbe(AppBc95NetStatus_t *p_status);
 static AppStatus_t App_Bc95AtConfirmWeakCellAfterProbe(uint8_t *p_confirmed, AppBc95Quality_t *p_quality, uint8_t *p_noCellAfterProbe);
 static AppBc95AtStatus_t App_Bc95AtParseQlwuldataStatus(const char *p_resp, int *p_statusOut, int *p_seqOut);
@@ -275,6 +274,328 @@ static uint8_t App_Bc95AtNextUdpSeq(void);
 static void App_Bc95AtDelayWithFeed(uint32_t ms);
 static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
+
+/* ============================================================
+ *  Pre-attach radio power check (AT+NUESTATS) + deferred abort
+ * ============================================================ */
+#define APP_BC95_AT_CMD_NUESTATS_RADIO        "AT+NUESTATS\r\n"
+#define APP_BC95_AT_NUESTATS_SIGNAL_TAG       "Signal power:"
+#define APP_BC95_AT_NUESTATS_TOTAL_TAG        "Total power:"
+#define APP_BC95_AT_NUESTATS_INVALID_RAW      (-32768L)
+/* raw 는 0.1 dBm 단위: APP_BC95_AT_DBM_ABS_MAX(150 dBm) -> 1500 */
+#define APP_BC95_AT_NUESTATS_RAW_ABS_MAX      ((int32_t)APP_BC95_AT_DBM_ABS_MAX * 10)
+
+#ifndef APP_BC95_PRE_ATTACH_SIGNAL_WEAK_DBM
+#define APP_BC95_PRE_ATTACH_SIGNAL_WEAK_DBM       (-115)   /* Signal power(RSRP 계열) 기준, 현장 튜닝 */
+#endif
+#ifndef APP_BC95_PRE_ATTACH_POWER_POLL_MS
+#define APP_BC95_PRE_ATTACH_POWER_POLL_MS         (1500u)  /* 1~2초 간격 */
+#endif
+#ifndef APP_BC95_PRE_ATTACH_POWER_TIMEOUT_MS
+#define APP_BC95_PRE_ATTACH_POWER_TIMEOUT_MS      (9000u)  /* 이 시간 동안 -32768 이면 음영 의심 */
+#endif
+#ifndef APP_BC95_PRE_ATTACH_POWER_COMM_FAIL_MAX
+#define APP_BC95_PRE_ATTACH_POWER_COMM_FAIL_MAX   (3u)
+#endif
+#ifndef APP_BC95_PRE_ATTACH_CGATT_KICK_TIMEOUT_MS
+#define APP_BC95_PRE_ATTACH_CGATT_KICK_TIMEOUT_MS (5000u)
+#endif
+
+static int16_t App_Bc95AtCentibelToDbm(int32_t centibel);
+
+typedef struct
+{
+    uint8_t          pending;
+    uint8_t          qualityValid;
+    AppBc95Quality_t quality;
+    int16_t          rssiDbm;      /* 0 = 측정 없음 (App_CommOnPreAttachAbort 규약) */
+    uint8_t          noCell;
+    uint8_t          attemptNo;
+} AppNbiotPreAttachAbortPending_t;
+
+/* "Tag:-800" 형태에서 정수 추출 */
+static uint8_t App_Bc95AtParseTaggedInt(const char *p_resp, const char *p_tag, int32_t *p_out)
+{
+    const char *p_pos;
+    char *p_end = NULL;
+    long value;
+
+    if ((p_resp == NULL) || (p_tag == NULL) || (p_out == NULL)) { return APP_FALSE; }
+
+    p_pos = strstr(p_resp, p_tag);
+    if (p_pos == NULL) { return APP_FALSE; }
+
+    p_pos += strlen(p_tag);
+    while ((*p_pos == ' ') || (*p_pos == '\t')) { p_pos++; }
+
+    value = strtol(p_pos, &p_end, 10);
+    if (p_end == p_pos) { return APP_FALSE; }
+
+    *p_out = (int32_t)value;
+    return APP_TRUE;
+}
+
+static uint8_t App_Bc95AtNuestatsRawIsValid(int32_t raw)
+{
+    if (raw == APP_BC95_AT_NUESTATS_INVALID_RAW) { return APP_FALSE; }
+    if ((raw > APP_BC95_AT_NUESTATS_RAW_ABS_MAX) ||
+        (raw < -APP_BC95_AT_NUESTATS_RAW_ABS_MAX)) { return APP_FALSE; }
+    return APP_TRUE;
+}
+
+/* CFUN=1 이 아니면 NUESTATS 값이 올라오지 않으므로 사전 확인 */
+static AppStatus_t App_Bc95AtEnsureCfunFull(void)
+{
+    AppStatus_t status;
+    uint16_t rxLen = 0u;
+    const char *p_cfun;
+    int cfun = -1;
+
+    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_CFUN_QUERY,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   APP_BC95_AT_RX_TIMEOUT_MS,
+                                   &rxLen);
+    if (status != APP_STATUS_OK) { return status; }
+
+    p_cfun = strstr((const char *)g_appBc95AtRxBuf, APP_BC95_AT_CFUN_PREFIX);
+    if ((p_cfun != NULL) &&
+        (sscanf(p_cfun + APP_BC95_AT_CFUN_PREFIX_LEN, "%d", &cfun) == 1) &&
+        (cfun == 1))
+    {
+        return APP_STATUS_OK;
+    }
+
+    APP_LOGI("NBIOT", APP_NBIOT_LOG_PREATTACH " CFUN=%d -> set CFUN=1", cfun);
+    return App_Bc95AtSetFullFunction();
+}
+
+/*
+ * AUTOCONNECT=FALSE 이므로 CFUN=1 만으로는 셀 탐색이 시작되지 않는 것으로 추정된다.
+ * 신호 측정 전에 CGATT=1 로 탐색/Attach 를 명시적으로 시작한다.
+ */
+static void App_Bc95AtKickAttachIfNeeded(void)
+{
+    uint16_t rxLen = 0u;
+    const char *p_cgatt;
+    int attached = -1;
+
+    if (App_Bc95AtSendCommand(APP_BC95_AT_CMD_CGATT_QUERY,
+                              g_appBc95AtRxBuf,
+                              (uint16_t)sizeof(g_appBc95AtRxBuf),
+                              APP_BC95_AT_RX_TIMEOUT_MS,
+                              &rxLen) == APP_STATUS_OK)
+    {
+        p_cgatt = strstr((const char *)g_appBc95AtRxBuf, APP_BC95_AT_CGATT_PREFIX);
+        if (p_cgatt != NULL)
+        {
+            (void)sscanf(p_cgatt + APP_BC95_AT_CGATT_PREFIX_LEN, "%d", &attached);
+        }
+    }
+
+    if (attached == 1) { return; }
+
+    APP_LOGI("NBIOT", APP_NBIOT_LOG_PREATTACH " CGATT=%d -> kick attach (CGATT=1)", attached);
+    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CGATT_ATTACH,
+                                           APP_BC95_PRE_ATTACH_CGATT_KICK_TIMEOUT_MS,
+                                           "AT+CGATT=1",
+                                           "[[Attach]]");
+}
+
+/*
+ * AT+NUESTATS 1회 조회.
+ *  - 통신 성공(또는 부분 수신) 시 APP_STATUS_OK, *p_valid 로 유효 여부 전달
+ *  - Signal power / Total power 둘 다 -32768 이 아니어야 유효
+ *  - 응답이 RX 버퍼(256B)보다 길어 UART_TIMEOUT 이 나도, 앞쪽 두 줄이 들어왔으면 파싱한다.
+ */
+static AppStatus_t App_Bc95AtReadNuestatsPowerOnce(int16_t *p_signalDbm,
+                                                   int16_t *p_totalDbm,
+                                                   uint8_t *p_valid)
+{
+    AppStatus_t status;
+    AppBc95AtStatus_t atStatus;
+    uint16_t rxLen = 0u;
+    int32_t cmeErr = 0;
+    int32_t sigRaw = APP_BC95_AT_NUESTATS_INVALID_RAW;
+    int32_t totRaw = APP_BC95_AT_NUESTATS_INVALID_RAW;
+    uint8_t sigFound;
+    uint8_t totFound;
+
+    APP_RETURN_IF_FALSE((p_signalDbm != NULL) && (p_totalDbm != NULL) && (p_valid != NULL),
+                        APP_STATUS_INVALID_PARAM);
+    *p_signalDbm = 0;
+    *p_totalDbm  = 0;
+    *p_valid     = APP_FALSE;
+
+    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_NUESTATS_RADIO,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   APP_BC95_AT_RX_TIMEOUT_MS,
+                                   &rxLen);
+    if ((status != APP_STATUS_OK) && (rxLen == 0u))
+    {
+        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH " NUESTATS tx/rx fail st=%d", (int)status);
+        return status;
+    }
+
+    if (status == APP_STATUS_OK)
+    {
+        atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
+        if (atStatus != APP_BC95_AT_OK)
+        {
+            APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH " NUESTATS !OK parse=%s cme=%ld",
+                     App_Bc95AtGetStatusString(atStatus), (long)cmeErr);
+            return (atStatus == APP_BC95_AT_ERR_CME_ERROR) ? APP_STATUS_UART_TIMEOUT
+                                                           : APP_STATUS_FATAL;
+        }
+    }
+
+    sigFound = App_Bc95AtParseTaggedInt((const char *)g_appBc95AtRxBuf,
+                                        APP_BC95_AT_NUESTATS_SIGNAL_TAG, &sigRaw);
+    totFound = App_Bc95AtParseTaggedInt((const char *)g_appBc95AtRxBuf,
+                                        APP_BC95_AT_NUESTATS_TOTAL_TAG, &totRaw);
+    if ((sigFound != APP_TRUE) || (totFound != APP_TRUE))
+    {
+        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH " NUESTATS parse fail (sig=%u tot=%u st=%d)",
+                 (unsigned)sigFound, (unsigned)totFound, (int)status);
+        return (status != APP_STATUS_OK) ? status : APP_STATUS_FATAL;
+    }
+
+    APP_LOGD("NBIOT", APP_NBIOT_LOG_PREATTACH " NUESTATS raw sig=%ld tot=%ld",
+             (long)sigRaw, (long)totRaw);
+
+    if ((App_Bc95AtNuestatsRawIsValid(sigRaw) == APP_TRUE) &&
+        (App_Bc95AtNuestatsRawIsValid(totRaw) == APP_TRUE))
+    {
+        *p_signalDbm = App_Bc95AtCentibelToDbm(sigRaw);
+        *p_totalDbm  = App_Bc95AtCentibelToDbm(totRaw);
+        *p_valid     = APP_TRUE;
+    }
+    return APP_STATUS_OK;
+}
+
+/*
+ * 망 접속 이전 안테나/음영 판별용:
+ *  - CFUN=1 확인 + CGATT=1 로 탐색 시작 후 AT+NUESTATS 를 POLL_MS 간격으로 반복 조회
+ *  - 유효값이 올라오면 APP_STATUS_OK (*p_signalDbm=Signal power, *p_totalDbm=Total power)
+ *  - TIMEOUT_MS 동안 계속 -32768 이면 APP_STATUS_UART_TIMEOUT (음영 의심)
+ *  - 통신 오류가 연속 발생하면 해당 status 반환
+ */
+static AppStatus_t App_Bc95AtReadPreAttachSignalDbm(int16_t *p_signalDbm, int16_t *p_totalDbm)
+{
+    AppStatus_t status;
+    uint32_t startTick;
+    uint32_t attempt = 0u;
+    uint32_t commFail = 0u;
+    int16_t signalDbm = 0;
+    int16_t totalDbm = 0;
+    uint8_t valid = APP_FALSE;
+
+    APP_RETURN_IF_FALSE((p_signalDbm != NULL) && (p_totalDbm != NULL), APP_STATUS_INVALID_PARAM);
+    *p_signalDbm = 0;
+    *p_totalDbm  = 0;
+
+    status = App_Bc95AtEnsureCfunFull();
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH " CFUN=1 ensure fail st=%d", (int)status);
+        return status;
+    }
+
+    App_Bc95AtKickAttachIfNeeded();
+
+    startTick = HAL_GetTick();
+    while (1)
+    {
+        attempt++;
+        status = App_Bc95AtReadNuestatsPowerOnce(&signalDbm, &totalDbm, &valid);
+
+        if (status == APP_STATUS_OK)
+        {
+            commFail = 0u;
+            if (valid == APP_TRUE)
+            {
+                *p_signalDbm = signalDbm;
+                *p_totalDbm  = totalDbm;
+                APP_LOGI("NBIOT", APP_NBIOT_LOG_PREATTACH
+                         " radio power ok sig=%d dBm tot=%d dBm a=%lu t=%lums",
+                         (int)signalDbm, (int)totalDbm,
+                         (unsigned long)attempt,
+                         (unsigned long)(HAL_GetTick() - startTick));
+                return APP_STATUS_OK;
+            }
+        }
+        else
+        {
+            commFail++;
+            if (commFail >= APP_BC95_PRE_ATTACH_POWER_COMM_FAIL_MAX) { return status; }
+        }
+
+        if ((HAL_GetTick() - startTick) >= APP_BC95_PRE_ATTACH_POWER_TIMEOUT_MS)
+        {
+            APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
+                     " radio power invalid(-32768) for %lums a=%lu -> shadow suspected",
+                     (unsigned long)(HAL_GetTick() - startTick),
+                     (unsigned long)attempt);
+            return APP_STATUS_UART_TIMEOUT;
+        }
+
+        App_Bc95AtDelayWithFeed(APP_BC95_PRE_ATTACH_POWER_POLL_MS);
+    }
+}
+
+/* abort 정보 보관: 같은 사이클에서 여러 번 발생하면 마지막 것으로 덮어쓴다 */
+static void App_NbiotPreAttachAbortDefer(AppNbiotPreAttachAbortPending_t *p_pending,
+                                         const AppBc95Quality_t *p_quality,
+                                         int16_t rssiDbm,
+                                         uint8_t noCell,
+                                         uint8_t attemptNo)
+{
+    if (p_pending == NULL) { return; }
+
+    (void)memset(p_pending, 0, sizeof(*p_pending));
+    if ((p_quality != NULL) && (p_quality->valid == APP_TRUE))
+    {
+        p_pending->quality = *p_quality;
+        p_pending->qualityValid = APP_TRUE;
+    }
+    p_pending->rssiDbm   = rssiDbm;
+    p_pending->noCell    = noCell;
+    p_pending->attemptNo = attemptNo;
+    p_pending->pending   = APP_TRUE;
+}
+
+/* 최종 실패 시에만 학습 모듈(cost/badStreak/extremeWeak/nightOnly)에 1회 반영 */
+static void App_NbiotPreAttachAbortFlush(AppNbiotPreAttachAbortPending_t *p_pending)
+{
+    if ((p_pending == NULL) || (p_pending->pending != APP_TRUE)) { return; }
+
+    APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
+             " apply deferred abort (attempt=%u rssi=%d noCell=%u)",
+             (unsigned)p_pending->attemptNo,
+             (int)p_pending->rssiDbm,
+             (unsigned)p_pending->noCell);
+
+    App_CommOnPreAttachAbort(
+        (p_pending->qualityValid == APP_TRUE) ? &p_pending->quality : NULL,
+        p_pending->rssiDbm,
+        p_pending->noCell);
+
+    p_pending->pending = APP_FALSE;
+}
+
+/* 이후 시도에서 attach 성공 시 보관해 둔 abort 폐기 */
+static void App_NbiotPreAttachAbortDiscard(AppNbiotPreAttachAbortPending_t *p_pending,
+                                           uint8_t successAttemptNo)
+{
+    if ((p_pending == NULL) || (p_pending->pending != APP_TRUE)) { return; }
+
+    APP_LOGI("NBIOT", APP_NBIOT_LOG_PREATTACH
+             " discard deferred abort (abort attempt=%u, recovered at attempt=%u)",
+             (unsigned)p_pending->attemptNo,
+             (unsigned)successAttemptNo);
+    p_pending->pending = APP_FALSE;
+}
 
 #define APP_BC95_SERVICE_READY_CPIN_STABLE_DELAY_MS   (200u)
 #define APP_BC95_SERVICE_READY_POST_RECOVER_POLL_MS   (1200u)
@@ -4225,62 +4546,6 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
     return APP_STATUS_UART_TIMEOUT;
 }
 
-static AppStatus_t App_Bc95AtReadCsqRssiDbm(int16_t *p_rssiDbm)
-{
-    AppStatus_t status;
-    AppBc95AtStatus_t atStatus;
-    uint16_t rxLen = 0u;
-    int32_t cmeErr = 0;
-    const char *p_csq;
-    int rssi = 99;
-    int ber  = 99;
-
-    APP_RETURN_IF_FALSE((p_rssiDbm != NULL), APP_STATUS_INVALID_PARAM);
-    *p_rssiDbm = 0;
-
-    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_CSQ,
-                                   g_appBc95AtRxBuf,
-                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
-                                   APP_BC95_AT_RX_TIMEOUT_MS,
-                                   &rxLen);
-    if (status != APP_STATUS_OK)
-    {
-        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
-            " CSQ tx fail st=%d", (int)status);
-        return status;
-    }
-
-    atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
-    if (atStatus != APP_BC95_AT_OK)
-    {
-        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
-            " CSQ !OK parse=%s cme=%ld",
-                 App_Bc95AtGetStatusString(atStatus), (long)cmeErr);
-        return APP_STATUS_FATAL;
-    }
-
-    p_csq = strstr((const char *)g_appBc95AtRxBuf, "+CSQ:");
-    if ((p_csq == NULL) || (sscanf(p_csq, "+CSQ: %d,%d", &rssi, &ber) != 2))
-    {
-        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
-            " CSQ parse fail");
-        return APP_STATUS_FATAL;
-    }
-
-    if ((rssi < 0) || (rssi > 31))
-    {
-        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
-            " CSQ bad rssi=%d", rssi);
-        return APP_STATUS_UART_TIMEOUT;
-    }
-
-    *p_rssiDbm = (int16_t)(-113 + (2 * rssi));
-    APP_LOGI("NBIOT", APP_NBIOT_LOG_PREATTACH
-        " CSQ rssi=%d raw=%d ber=%d",
-             (int)*p_rssiDbm, rssi, ber);
-    return APP_STATUS_OK;
-}
-
 static AppStatus_t App_Bc95AtRunShortCampProbe(AppBc95NetStatus_t *p_status)
 {
     APP_LOGI("NBIOT", APP_NBIOT_LOG_PREATTACH
@@ -6575,6 +6840,8 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
     uint8_t preAttachNoCellAfterProbe;
     uint8_t preAttachNeedShortProbe;
     uint8_t preAttachEarlyAbort;
+    int16_t preAttachSignalDbm;
+    AppNbiotPreAttachAbortPending_t preAttachAbort = { 0 };
 
     if (g_appBc95AtInitialized != APP_TRUE)
     {
@@ -6632,21 +6899,22 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
             (void)memset(&preAttachQuality, 0, sizeof(preAttachQuality));
             (void)memset(&probeNetStatus, 0, sizeof(probeNetStatus));
 
-            status = App_Bc95AtReadCsqRssiDbm(&preAttachCsqRssiDbm);
+            preAttachSignalDbm = 0;
+            status = App_Bc95AtReadPreAttachSignalDbm(&preAttachSignalDbm, &preAttachCsqRssiDbm);
             if ((status == APP_STATUS_OK) &&
-                (preAttachCsqRssiDbm <= APP_BC95_PRE_ATTACH_CSQ_WEAK_DBM))
+                (preAttachSignalDbm <= APP_BC95_PRE_ATTACH_SIGNAL_WEAK_DBM))
             {
                 preAttachNeedShortProbe = APP_TRUE;
                 APP_LOGW("NBIOT",
-                         "[[PreAttach]] weak CSQ detected (%d dBm) -> short camp probe",
-                         (int)preAttachCsqRssiDbm);
+                         "[PreAttach] weak signal power detected (%d dBm) -> short camp probe",
+                         (int)preAttachSignalDbm);
             }
             else if (status != APP_STATUS_OK)
             {
                 preAttachNeedShortProbe = APP_TRUE;
                 preAttachCsqRssiDbm = 0;
                 APP_LOGW("NBIOT",
-                         "[[PreAttach]] CSQ unavailable -> short camp probe first");
+                         "[PreAttach] radio power unavailable -> short camp probe first");
                 status = APP_STATUS_OK;
             }
 
@@ -6658,7 +6926,7 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
                 if (status == APP_STATUS_OK)
                 {
                     APP_LOGI("NBIOT",
-                             "[[PreAttach]] short camp probe reached READY -> reuse result");
+                             "[PreAttach] short camp probe reached READY -> reuse result");
                     netStatus = probeNetStatus;
                     goto attach_finalize;
                 }
@@ -6681,22 +6949,24 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
 
                 if (preAttachEarlyAbort == APP_TRUE)
                 {
-                    App_CommOnPreAttachAbort(
+                    App_NbiotPreAttachAbortDefer(
+                        &preAttachAbort,
                         (preAttachQuality.valid == APP_TRUE) ? &preAttachQuality : NULL,
                         preAttachCsqRssiDbm,
-                        preAttachNoCellAfterProbe);
+                        preAttachNoCellAfterProbe,
+                        g_appNbiotCarrierContext.attachAttemptCount);
 
                     g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_ABORT;
                     g_appNbiotCarrierContext.lastNetStatus = probeNetStatus;
                     status = APP_STATUS_UART_TIMEOUT;
 
                     APP_LOGW("NBIOT",
-                             "[[PreAttach]] early-abort this attempt -> skip long network wait and go recovery");
+                             "[PreAttach] early-abort this attempt -> skip long network wait and go recovery");
                     goto attach_finalize;
                 }
 
                 APP_LOGW("NBIOT",
-                         "[[PreAttach]] short probe inconclusive -> continue normal attach");
+                         "[PreAttach] short probe inconclusive -> continue normal attach");
                 status = APP_STATUS_OK;
             }
 
@@ -6748,6 +7018,8 @@ attach_finalize:
                      App_Bc95AtGetNetPhaseString(netStatus.phase),
                      netStatus.ipAddr,
                      (unsigned)specialWakePolicy);
+            App_NbiotPreAttachAbortDiscard(&preAttachAbort,
+                                           g_appNbiotCarrierContext.attachAttemptCount);
             return APP_STATUS_OK;
         }
 
@@ -6771,6 +7043,7 @@ attach_finalize:
                      App_NbiotCarrierAttachStateString(g_appNbiotCarrierContext.attachState),
                      App_NbiotCarrierResetTypeString(g_appNbiotCarrierContext.lastResetType),
                      (int)recoverStatus);
+            App_NbiotPreAttachAbortFlush(&preAttachAbort);
             return recoverStatus;
         }
 

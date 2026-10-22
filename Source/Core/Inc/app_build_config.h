@@ -325,7 +325,7 @@ extern "C" {
  * - 약전계면 짧은 camp probe 후 NUESTATS=CELL로 최종 확인
  * - confirmed weak/not-camped 이면 긴 attach wait로 들어가지 않고 이번 wake attach를 조기 종료
  */
-#define APP_BC95_PRE_ATTACH_CSQ_WEAK_DBM          (-106)
+#define APP_BC95_PRE_ATTACH_RSSI_WEAK_DBM          (-106)
 #define APP_BC95_PRE_ATTACH_CAMP_PROBE_TIMEOUT_MS (6000u)
 #define APP_BC95_PRE_ATTACH_ABORT_RSSI_DBM        (-108)
 #define APP_BC95_PRE_ATTACH_ABORT_RSRP_DBM        (-118)

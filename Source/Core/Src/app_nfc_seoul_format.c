@@ -941,7 +941,7 @@ static AppStatus_t App_NfcSeoulWriteNdefToBlock(uint16_t startBlock,
         return APP_STATUS_BUFFER_OVERFLOW;
     }
 
-    APP_LOGI("NFC",
+    APP_LOGD("NFC",
              "Seoul %s write start blk=0x%04X blocks=%u bytes=%u mode=%s tick=%lu",
              p_name,
              (unsigned int)startBlock,
