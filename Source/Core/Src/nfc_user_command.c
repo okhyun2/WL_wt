@@ -229,7 +229,7 @@ static NFC_CMD_Result_t nfc_cmd_write_response_payload(NFC_CMD_Handle_t *hcmd,
 
 #endif
 
-    App_LogHexDump(APP_LOG_LEVEL_INFO,
+    App_LogHexDump(APP_LOG_LEVEL_DEBUG,
                    "FSM",
                    (const uint8_t *)raw,
                    payloadLen);

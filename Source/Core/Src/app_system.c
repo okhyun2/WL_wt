@@ -875,13 +875,13 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     APP_LOGI("RTC", "STOP wake period=%lu ms (%s)",
                                  (unsigned long)APP_RTC_WAKEUP_PERIOD_MS,
                                  (APP_RTC_WAKEUP_PERIOD_MS == 0) ? "Don't work stop" : "LSE" " rtc wakeup");
-    APP_LOGI("DBG", "USART1 debug console ready at %lu baud",
+    APP_LOGI("DBG", "USART1 dbg %lu baud",
                                  (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate);
-    APP_LOGI("METER", "USART2 meter ready at %lu baud",
+    APP_LOGI("METER", "USART2 meter %lu baud",
                                  (unsigned long)APP_UART_METER_HANDLE->Init.BaudRate);
-    APP_LOGI("NBIoT", "LPUART1 NBIoT ready at %lu baud",
+    APP_LOGI("NBIoT", "LPUART1 nbiot %lu baud",
                                  (unsigned long)APP_UART_NBIOT_HANDLE->Init.BaudRate);
-    APP_LOGI("NFC", "I2C2 NFC ready at %sKhz",
+    APP_LOGI("NFC", "I2C2 nfc %sKHz",
                                  (((unsigned long)APP_I2C_NFC_HANDLE->Init.Timing == 0x00000708)?"100":"unknown"));
 
     return APP_STATUS_OK;
@@ -1001,9 +1001,9 @@ static AppStatus_t App_SystemInitFsm(void)
     g_appSystemContext.fsmStatus = APP_STATUS_OK;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_FSM_READY;
 
-    APP_LOGI("FSM", "FSM ready: queue=%u state=%s",
-                                 (unsigned int)APP_MSGQ_CAPACITY,
-                                 App_FsmGetCurrentStateString());
+    APP_LOGI("FSM", "FSM q=%u st=%s",
+             (unsigned int)APP_MSGQ_CAPACITY,
+             App_FsmGetCurrentStateString());
 
     return APP_STATUS_OK;
 }
@@ -1919,7 +1919,7 @@ static void Print_BootInfo(BootInfo_t *pBootInfo)
         APP_LOGI("BOOT", " OBL");
 
     /* --- 백업 레지스터 내용 표시 --- */
-    APP_LOGI("BOOT", "backup resgs");
+    APP_LOGI("BOOT", "backup");
     APP_LOGI("BOOT", "  BKP0R = 0x%08lX", (unsigned long)pBootInfo->bkp0);
     APP_LOGI("BOOT", "  BKP1R = 0x%08lX", (unsigned long)pBootInfo->bkp1);
     APP_LOGI("BOOT", "  BKP2R = 0x%08lX", (unsigned long)pBootInfo->bkp2);

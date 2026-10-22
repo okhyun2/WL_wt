@@ -823,8 +823,8 @@ NFC_AUTH_Result_t NFC_AUTH_Init(NFC_AUTH_Handle_t *hauth,
 
     memcpy(hauth->master_key, master_key, NFC_AUTH_KEY_SIZE);
 
-    APP_LOGI("NFC", "Initialized Auth(timeout=%lu ms)",
-           (unsigned long)NFC_AUTH_SESSION_TIMEOUT_MS);
+    APP_LOGI("NFC", "Auth init to=%lums",
+             (unsigned long)NFC_AUTH_SESSION_TIMEOUT_MS);
     APP_LOGN("NFC", "%s ready to=%lu retry=inf", g_nfcAuthTag,
            (unsigned long)NFC_AUTH_SESSION_TIMEOUT_MS);
     auth_log_session_valid(hauth, "init");

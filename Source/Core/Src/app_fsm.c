@@ -375,7 +375,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
         return status;
     }
 
-    App_LogHexDump(APP_LOG_LEVEL_INFO,
+    App_LogHexDump(APP_LOG_LEVEL_DEBUG,
                    "FSM",
                    (const uint8_t *)meterReply,
                    APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
@@ -437,7 +437,7 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
         return status;
     }
 
-    App_LogHexDump(APP_LOG_LEVEL_INFO,
+    App_LogHexDump(APP_LOG_LEVEL_DEBUG,
                    "FSM",
                    (const uint8_t *)meterReply,
                    APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
@@ -508,7 +508,7 @@ AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord)
         return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
     }
 
-    App_LogHexDump(APP_LOG_LEVEL_INFO,
+    App_LogHexDump(APP_LOG_LEVEL_DEBUG,
                    "FSM",
                    (const uint8_t *)meterReply,
                    APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
@@ -565,7 +565,7 @@ AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord)
         return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
     }
 
-    App_LogHexDump(APP_LOG_LEVEL_INFO,
+    App_LogHexDump(APP_LOG_LEVEL_DEBUG,
                    "FSM",
                    (const uint8_t *)meterReply,
                    APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);

@@ -512,7 +512,7 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
 
     HAL_Delay(100); //>= meter spec. 100ms
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
-    App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+    App_LogHexDump(APP_LOG_LEVEL_DEBUG, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
     APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
 
     uint8_t storageEnabledPrev;
@@ -575,7 +575,7 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
         HAL_Delay(100); //>= 100ms
         App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_RESET);
         HAL_Delay(100); 
-        App_LogHexDump(APP_LOG_LEVEL_INFO, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
+        App_LogHexDump(APP_LOG_LEVEL_DEBUG, "SELF", (const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
     }
 
     {

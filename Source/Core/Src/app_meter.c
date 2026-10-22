@@ -768,7 +768,7 @@ void App_MeterPrintUnionDetailed(const App_MeterUnion_t *pRxFrame)
              BCD_To_Decimal(data));
 
     #if 0  //raw byte dump
-    App_LogHexDump(APP_LOG_LEVEL_INFO,
+    App_LogHexDump(APP_LOG_LEVEL_DEBUG,
                    "METER",
                    (const uint8_t *)pRxFrame->raw,
                    sizeof(App_MeterFrame_t));

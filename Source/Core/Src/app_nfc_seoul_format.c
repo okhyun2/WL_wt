@@ -472,7 +472,7 @@ static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_pay
 
     App_NfcSeoulLogLayer1Profile(&snapshot, cmd2);
     App_NfcSeoulPrintSnapshot(&snapshot);
-    App_LogHexDump(APP_LOG_LEVEL_INFO, "NFC", (const uint8_t *)&snapshot, sizeof(AppNfcSeoulSnapshot_t));
+    App_LogHexDump(APP_LOG_LEVEL_DEBUG, "NFC", (const uint8_t *)&snapshot, sizeof(AppNfcSeoulSnapshot_t));
 
     cursor = 0u;
     p_payload[cursor++] = APP_NFC_SEOUL_CMD_RES_GROUP;
@@ -1342,7 +1342,7 @@ static uint8_t App_NfcSeoulTryExtractPayload(uint16_t startBlock, uint8_t *p_pay
     }
 
     APP_LOGI("NFC", "read startBlock:%04x", startBlock);
-    App_LogHexDump(APP_LOG_LEVEL_INFO, "NFC-Debug", (const uint8_t *)raw, APP_NFC_SEOUL_NDEF_MAX_BYTES);
+    App_LogHexDump(APP_LOG_LEVEL_DEBUG, "NFC-Debug", (const uint8_t *)raw, APP_NFC_SEOUL_NDEF_MAX_BYTES);
 
     if((raw[8] != APP_NFC_SEOUL_CMD_REQ_GROUP) && (raw[8] != APP_NFC_SEOUL_CMD_RES_GROUP) )
     {
@@ -1414,7 +1414,7 @@ AppStatus_t App_NfcSeoulInit(NFC_NTP53321_Handle_t *p_tag)
     (void)memset(&g_appNfcSeoulDebugInfo, 0, sizeof(g_appNfcSeoulDebugInfo));
 
     APP_LOGN("NFC",
-             "[[NFC-L1]] Seoul format init fmt=0x%02X readonly=%u patent_l2=%u",
+             "[L1] Seoul init fmt=0x%02X ro=%u p2=%u",
              (unsigned int)g_appNfcSeoulLayer1Info.snapshotFormatVersion,
              (unsigned int)g_appNfcSeoulLayer1Info.readOnlyLayer1,
              (unsigned int)g_appNfcSeoulLayer1Info.patentLayer2Supported);
