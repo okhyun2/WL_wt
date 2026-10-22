@@ -63,16 +63,16 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
                            reg_block, 4U);
     if (ret != NFC_RESULT_OK)
     {
-        APP_LOGE("NFC", "Init: I2C read FAILED (ret=%d)", ret);
+        APP_LOGE("NFC", "init i2c rd fail ret=%d", ret);
         hntag->state = NFC_STATE_ERROR;
         return ret;
     }
 
-    APP_LOGI("NFC", "Get CC Block: %02X %02X %02X %02X",
+    APP_LOGI("NFC", "CC %02X %02X %02X %02X",
              reg_block[0], reg_block[1], reg_block[2], reg_block[3]);
 
     if (reg_block[0] != NFC_CC_MAGIC_BYTE) {
-        APP_LOGE("NFC", "CC Magic FAIL: 0x%02X (expected 0x%02X)",
+        APP_LOGE("NFC", "CC magic fail 0x%02X exp=0x%02X",
                  reg_block[0], NFC_CC_MAGIC_BYTE);
         hntag->state = NFC_STATE_ERROR;
         return NFC_RESULT_ERROR;
@@ -87,7 +87,7 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
                             reg_block, 4U);
     if (ret == NFC_RESULT_OK)
     {
-        APP_LOGI("NFC", "Cfg Sync Data Block Addr");
+        APP_LOGI("NFC", "cfg sync-data blk");
     }
 
     ret = nfc_i2c_mem_read(hntag,
@@ -100,7 +100,7 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
         return ret;
     }
 
-    APP_LOGI("NFC", "Get SyncDataBlock: %02X %02X %02X %02X",
+    APP_LOGI("NFC", "sync blk %02X %02X %02X %02X",
              reg_block[0], reg_block[1], reg_block[2], reg_block[3]);
 
     /* STATUS 레지스터 읽기 (0x10A0) — VCC/NFC 부트 확인 */
@@ -111,8 +111,8 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
         ret = nfc_i2c_reg_read(hntag, NFC_SESSION_STATUS_ADDR, 0U, &status0);
         if (ret == NFC_RESULT_OK) {
             nfc_i2c_reg_read(hntag, NFC_SESSION_STATUS_ADDR, 1U, &status1);
-            APP_LOGI("NFC", "STATUS0=0x%02X STATUS1=0x%02X", status0, status1);
-            APP_LOGI("NFC", "  VCC_OK=%d NFC_FIELD=%d VCC_BOOT=%d NFC_BOOT=%d",
+            APP_LOGI("NFC", "S0=0x%02X S1=0x%02X", status0, status1);
+            APP_LOGI("NFC", " VCC=%d FLD=%d VB=%d NB=%d",
                      (status0 & NFC_STATUS0_VCC_SUPPLY_OK) ? 1 : 0,
                      (status0 & NFC_STATUS0_NFC_FIELD_OK)  ? 1 : 0,
                      (status1 & NFC_STATUS1_VCC_BOOT_OK)   ? 1 : 0,
@@ -141,7 +141,7 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
                                 reg_block, 4U);
         if (ret == NFC_RESULT_OK)
         {
-            APP_LOGI("NFC", "Enable SRAM");
+            APP_LOGI("NFC", "SRAM on");
         }
     }
 
@@ -149,13 +149,13 @@ NFC_Result_t NFC_NTP53321_Init(NFC_NTP53321_Handle_t *hntag, I2C_HandleTypeDef *
     ret = NFC_NTP53321_SetEDMode(hntag, NFC_ED_MODE_FIELD_DETECT);
     if (ret != NFC_RESULT_OK)
     {
-        APP_LOGE("NFC", "SetEDMode FAILED (ret=%d)", ret);
+        APP_LOGE("NFC", "SetEDMode fail ret=%d", ret);
         hntag->state = NFC_STATE_ERROR;
         return ret;
     }
 
     hntag->state = NFC_STATE_IDLE;
-    APP_LOGI("NFC", "NTP53321 initialized");
+    APP_LOGI("NFC", "NTP53321 init ok");
     return NFC_RESULT_OK;
 }
 
@@ -165,7 +165,7 @@ NFC_Result_t NFC_NTP53321_DeInit(NFC_NTP53321_Handle_t *hntag)
     HAL_NVIC_DisableIRQ(EXTI4_15_IRQn);
     HAL_GPIO_DeInit(NFC_ED_GPIO_Port, NFC_ED_Pin);
     hntag->state = NFC_STATE_UNINITIALIZED;
-    APP_LOGI("NFC", "De-initialized");
+    APP_LOGI("NFC", "deinit");
     return NFC_RESULT_OK;
 }
 
@@ -211,7 +211,7 @@ NFC_Result_t NFC_NTP53321_SetEDMode(NFC_NTP53321_Handle_t *hntag, NFC_EDMode_t m
                             blk, 4U);
     if (ret == NFC_RESULT_OK) {
         hntag->ed_mode = mode;
-        APP_LOGI("NFC", "ED mode = 0x%02X (%s)", (uint8_t)mode,
+        APP_LOGI("NFC", "ED=0x%02X (%s)", (uint8_t)mode,
             (mode == NFC_ED_MODE_DISABLED)     ? "Disabled"      :
             (mode == NFC_ED_MODE_FIELD_DETECT) ? "Field Detect"  :
             (mode == NFC_ED_MODE_DATA_READY)   ? "NFC->I2C PT"   :
@@ -241,7 +241,7 @@ NFC_Result_t NFC_NTP53321_ConfigureCC(NFC_NTP53321_Handle_t *hntag)
                             NFC_BLOCK_TO_I2C_ADDR(NFC_CC_BLOCK_ADDR),
                             cc, 4U);
     if (ret == NFC_RESULT_OK)
-        APP_LOGI("NFC", "Set CC block = %02X %02X %02X %02X",
+        APP_LOGI("NFC", "set CC %02X %02X %02X %02X",
                  cc[0], cc[1], cc[2], cc[3]);
     return ret;
 }
@@ -325,7 +325,7 @@ NFC_Result_t NFC_NTP53321_EnableSRAMMirror(NFC_NTP53321_Handle_t *hntag, bool en
         return NFC_RESULT_ERROR_BUSY;
     }
 
-    APP_LOGI("NFC", "SRAM mirror %s cfg1=0x%02X", enable ? "ON" : "OFF", (unsigned int)cfg1);
+    APP_LOGI("NFC", "SRAM %s cfg1=0x%02X", enable ? "ON" : "OFF", (unsigned int)cfg1);
     return NFC_RESULT_OK;
 }
 
@@ -350,7 +350,7 @@ static bool nfc_wait_sram_data_ready(NFC_NTP53321_Handle_t *h)
     for (uint8_t i = 0U; i < NFC_SRAM_READY_POLL_MAX; i++) {
         ret = nfc_i2c_reg_read(h, NFC_SESSION_STATUS_ADDR, 0U, &status0);
         if (ret != NFC_RESULT_OK) {
-            APP_LOGW("NFC", "SRAM ready check: reg_read fail (ret=%d)", ret);
+            APP_LOGW("NFC", "SRAM ready rd fail ret=%d", ret);
             return false;
         }
         if ((status0 & NFC_STATUS0_SRAM_DATA_READY) != 0U) {
@@ -358,7 +358,7 @@ static bool nfc_wait_sram_data_ready(NFC_NTP53321_Handle_t *h)
         }
         HAL_Delay(NFC_SRAM_READY_POLL_DELAY_MS);
     }
-    APP_LOGW("NFC", "SRAM_DATA_READY timeout (status0=0x%02X)", status0);
+    APP_LOGW("NFC", "SRAM ready TO s0=0x%02X", status0);
     return false;
 }
 #endif
@@ -402,7 +402,7 @@ NFC_Result_t NFC_NTP53321_ReadMultiBlock(NFC_NTP53321_Handle_t *hntag,
     is_sram = ((block_addr >= NFC_SRAM_BASE_ADDR) && (last_block <= NFC_SRAM_END_ADDR));
     if ((!is_eeprom) && (!is_sram))
     {
-        APP_LOGE("NFC", "ReadMultiBlock range invalid start=0x%04X blocks=%u",
+        APP_LOGE("NFC", "RMB bad range blk=0x%04X n=%u",
                  (unsigned int)block_addr,
                  (unsigned int)num_blocks);
         return NFC_RESULT_ERROR_INVALID_PARAM;
@@ -416,7 +416,7 @@ NFC_Result_t NFC_NTP53321_ReadMultiBlock(NFC_NTP53321_Handle_t *hntag,
                                       &data[i * NFC_EEPROM_BLOCK_SIZE]);
         if (ret != NFC_RESULT_OK)
         {
-            APP_LOGE("NFC", "ReadMultiBlock fallback fail blk=0x%04X idx=%u ret=%d",
+            APP_LOGE("NFC", "RMB fb fail blk=0x%04X idx=%u ret=%d",
                      (unsigned int)(block_addr + i),
                      (unsigned int)i,
                      (int)ret);
@@ -449,7 +449,7 @@ NFC_Result_t NFC_NTP53321_WriteMultiBlock(NFC_NTP53321_Handle_t *hntag,
     is_sram = ((block_addr >= NFC_SRAM_BASE_ADDR) && (last_block <= NFC_SRAM_END_ADDR));
     if ((!is_eeprom) && (!is_sram))
     {
-        APP_LOGE("NFC", "WriteMultiBlock range invalid start=0x%04X blocks=%u",
+        APP_LOGE("NFC", "WMB bad range blk=0x%04X n=%u",
                  (unsigned int)block_addr,
                  (unsigned int)num_blocks);
         return NFC_RESULT_ERROR_INVALID_PARAM;
@@ -463,7 +463,7 @@ NFC_Result_t NFC_NTP53321_WriteMultiBlock(NFC_NTP53321_Handle_t *hntag,
                                       &data[i * NFC_EEPROM_BLOCK_SIZE]);
         if (ret != NFC_RESULT_OK)
         {
-            APP_LOGE("NFC", "WriteMultiBlock fallback fail blk=0x%04X idx=%u ret=%d",
+            APP_LOGE("NFC", "WMB fb fail blk=0x%04X idx=%u ret=%d",
                      (unsigned int)(block_addr + i),
                      (unsigned int)i,
                      (int)ret);
@@ -641,9 +641,9 @@ NFC_Result_t NFC_NTP53321_EnterStandby(NFC_NTP53321_Handle_t *hntag)
     if (ret == NFC_RESULT_OK) {
         hntag->state = NFC_STATE_STOP;
         hntag->sleep_enter_tick = HAL_GetTick();
-        APP_LOGD("NFC", "Enter Standby (<6uA). NFC field wakeup OK.");
+        APP_LOGD("NFC", "enter standby ok");
     } else {
-        APP_LOGE("NFC", "Enter Standby FAILED (ret=%d)", ret);
+        APP_LOGE("NFC", "enter standby fail ret=%d", ret);
     }
     return ret;
 }
@@ -725,7 +725,7 @@ NFC_Result_t NFC_NTP53321_ExitStandby(NFC_NTP53321_Handle_t *hntag)
     ret = nfc_wait_i2c_ready_after_standby(hntag);
     if (ret != NFC_RESULT_OK)
     {
-        APP_LOGE("NFC", "ExitStandby: I2C ready polling failed (ret=%d)", ret);
+        APP_LOGE("NFC", "exit stdby poll fail ret=%d", ret);
         return NFC_RESULT_ERROR_BUSY;
     }
 
@@ -735,14 +735,14 @@ NFC_Result_t NFC_NTP53321_ExitStandby(NFC_NTP53321_Handle_t *hntag)
                                       0U,                       /* Byte0 = STATUS0 */
                                       &status0);
     if (ret != NFC_RESULT_OK) {
-        APP_LOGE("NFC", "ExitStandby: I2C still unavailable (ret=%d)", ret);
+        APP_LOGE("NFC", "exit stdby i2c off ret=%d", ret);
         return NFC_RESULT_ERROR_BUSY;
     }
 
     NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 1U, &status1);
 
-    APP_LOGI("NFC", "ExitStandby: STATUS0=0x%02X STATUS1=0x%02X", status0, status1);
-    APP_LOGI("NFC", "  VCC_OK=%d NFC_FIELD=%d VCC_BOOT=%d NFC_BOOT=%d",
+    APP_LOGI("NFC", "exit stdby S0=0x%02X S1=0x%02X", status0, status1);
+    APP_LOGI("NFC", " VCC=%d FLD=%d VB=%d NB=%d",
              (status0 & NFC_STATUS0_VCC_SUPPLY_OK) ? 1 : 0,
              (status0 & NFC_STATUS0_NFC_FIELD_OK)  ? 1 : 0,
              (status1 & NFC_STATUS1_VCC_BOOT_OK)   ? 1 : 0,
@@ -758,7 +758,7 @@ NFC_Result_t NFC_NTP53321_ExitStandby(NFC_NTP53321_Handle_t *hntag)
     hntag->state = NFC_STATE_IDLE;
     hntag->stats.total_sleep_ticks +=
         (HAL_GetTick() - hntag->sleep_enter_tick);
-    APP_LOGI("NFC", "ExitStandby OK");
+    APP_LOGI("NFC", "exit stdby ok");
     return NFC_RESULT_OK;
 }
 
@@ -839,11 +839,11 @@ void NFC_NTP53321_GetStats(NFC_NTP53321_Handle_t *hntag, NFC_NTP53321_Stats_t *s
 void NFC_NTP53321_PrintStats(NFC_NTP53321_Handle_t *hntag)
 {
     if (hntag == NULL) return;
-    APP_LOGI("NFC", "=== Driver Stats ===");
-    APP_LOGI("NFC", "Wakeups    : %lu", (unsigned long)hntag->stats.wakeup_count);
-    APP_LOGI("NFC", "I2C errors : %lu", (unsigned long)hntag->stats.i2c_error_count);
-    APP_LOGI("NFC", "Active ms  : %lu", (unsigned long)hntag->stats.total_active_ticks);
-    APP_LOGI("NFC", "Sleep ms   : %lu", (unsigned long)hntag->stats.total_sleep_ticks);
+    APP_LOGI("NFC", "=== Ntag stats ===");
+    APP_LOGI("NFC", "wake=%lu", (unsigned long)hntag->stats.wakeup_count);
+    APP_LOGI("NFC", "i2c_err=%lu", (unsigned long)hntag->stats.i2c_error_count);
+    APP_LOGI("NFC", "act_ms=%lu", (unsigned long)hntag->stats.total_active_ticks);
+    APP_LOGI("NFC", "slp_ms=%lu", (unsigned long)hntag->stats.total_sleep_ticks);
 }
 
 /* ============================================================
@@ -1035,7 +1035,7 @@ static NFC_Result_t nfc_i2c_reg_write(NFC_NTP53321_Handle_t *h,
         h->stats.i2c_error_count++;
         if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
         {
-            APP_LOGE("NFC", "Reg_Write err blk=0x%04X rega=0x%02X mask=0x%02X val=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+            APP_LOGE("NFC", "RW err b=0x%04X r=0x%02X m=0x%02X v=0x%02X try=%u hal=%d e=0x%08lX st=%lu",
                      (unsigned int)block_addr,
                      (unsigned int)reg_offset,
                      (unsigned int)mask,
@@ -1047,7 +1047,7 @@ static NFC_Result_t nfc_i2c_reg_write(NFC_NTP53321_Handle_t *h,
             return NFC_RESULT_ERROR_I2C_RETRY;
         }
 
-        APP_LOGW("NFC", "Reg_Write retry blk=0x%04X rega=0x%02X mask=0x%02X val=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+        APP_LOGW("NFC", "RW retry b=0x%04X r=0x%02X m=0x%02X v=0x%02X try=%u hal=%d e=0x%08lX st=%lu",
                  (unsigned int)block_addr,
                  (unsigned int)reg_offset,
                  (unsigned int)mask,
@@ -1089,13 +1089,6 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
     cmd[2] = reg_offset;                      /* REGA   */
 
     do {
-        /*
-        APP_LOGD("NFC", "Reg_Read stage=TX start blk=0x%04X rega=0x%02X retry=%u",
-                 (unsigned int)block_addr,
-                 (unsigned int)reg_offset,
-                 (unsigned int)retry);
-        */
-
         hal_ret = HAL_I2C_Master_Transmit(h->hi2c,
                                           NFC_NTP53321_I2C_ADDR,
                                           cmd, 3U,
@@ -1106,7 +1099,7 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
             h->stats.i2c_error_count++;
             if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
             {
-                APP_LOGE("NFC", "Reg_Read TX err blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+                APP_LOGE("NFC", "RR TX err b=0x%04X r=0x%02X try=%u hal=%d e=0x%08lX st=%lu",
                          (unsigned int)block_addr,
                          (unsigned int)reg_offset,
                          (unsigned int)retry,
@@ -1116,7 +1109,7 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
             }
             else
             {
-                APP_LOGW("NFC", "Reg_Read TX retry blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+                APP_LOGW("NFC", "RR TX retry b=0x%04X r=0x%02X try=%u hal=%d e=0x%08lX st=%lu",
                          (unsigned int)block_addr,
                          (unsigned int)reg_offset,
                          (unsigned int)retry,
@@ -1126,17 +1119,6 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
             }
             goto retry_label;
         }
-
-        /*
-        APP_LOGD("NFC", "Reg_Read stage=TX ok blk=0x%04X rega=0x%02X retry=%u",
-                 (unsigned int)block_addr,
-                 (unsigned int)reg_offset,
-                 (unsigned int)retry);
-        APP_LOGD("NFC", "Reg_Read stage=RX start blk=0x%04X rega=0x%02X retry=%u",
-                 (unsigned int)block_addr,
-                 (unsigned int)reg_offset,
-                 (unsigned int)retry);
-        */
 
         hal_ret = HAL_I2C_Master_Receive(h->hi2c,
                                          NFC_NTP53321_I2C_ADDR,
@@ -1158,7 +1140,7 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
         h->stats.i2c_error_count++;
         if (retry == NFC_NTP53321_I2C_RETRY_MAX - 1U)
         {
-            APP_LOGE("NFC", "Reg_Read RX err blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+            APP_LOGE("NFC", "RR RX err b=0x%04X r=0x%02X try=%u hal=%d e=0x%08lX st=%lu",
                      (unsigned int)block_addr,
                      (unsigned int)reg_offset,
                      (unsigned int)retry,
@@ -1168,7 +1150,7 @@ static NFC_Result_t nfc_i2c_reg_read(NFC_NTP53321_Handle_t *h,
         }
         else
         {
-            APP_LOGW("NFC", "Reg_Read RX retry blk=0x%04X rega=0x%02X retry=%u hal=%d err=0x%08lX state=%lu",
+            APP_LOGW("NFC", "RR RX retry b=0x%04X r=0x%02X try=%u hal=%d e=0x%08lX st=%lu",
                      (unsigned int)block_addr,
                      (unsigned int)reg_offset,
                      (unsigned int)retry,

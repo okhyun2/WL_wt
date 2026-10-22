@@ -213,8 +213,7 @@ static AppStatus_t App_SelfTestReinitMeterUart(uint32_t settleDelayMs)
 
     HAL_Delay(settleDelayMs);
 
-    APP_LOGD("SELF", "Meter UART full re-init done (settle=%lu ms)",
-             (unsigned long)settleDelayMs);
+    APP_LOGD("SELF", "meter uart reinit settle=%lums", (unsigned long)settleDelayMs);
 
     return APP_STATUS_OK;
 }
@@ -325,14 +324,14 @@ static AppStatus_t App_SelfTestPlayBuzzerPattern(uint8_t count, uint32_t onMs, u
  */
 static AppStatus_t App_SelfTestCheckBuzzer(void)
 {
-    APP_LOGI("SELF", "Buzzer test start");
+    APP_LOGI("SELF", "buzzer start");
 
     APP_RETURN_IF_FALSE(App_SelfTestPlayBuzzerPattern(APP_SELFTEST_BUZZER_BOOT_BEEP_COUNT,
                                                       APP_SELFTEST_BUZZER_BEEP_ON_MS,
                                                       APP_SELFTEST_BUZZER_BEEP_OFF_MS) == APP_STATUS_OK,
                         APP_STATUS_SELFTEST_FAILED);
 
-    APP_LOGI("SELF", "Buzzer test pass");
+    APP_LOGI("SELF", "buzzer pass");
 
     return APP_STATUS_OK;
 }
@@ -351,7 +350,7 @@ static AppStatus_t App_SelfTestCheckCrc(void)
     APP_RETURN_IF_FALSE(APP_CRC_HANDLE->Instance == CRC, APP_STATUS_HW_HANDLE_INVALID);
 
     crcValue = HAL_CRC_Calculate(APP_CRC_HANDLE, testVector, 2u);
-    APP_LOGI("SELF", "CRC sanity value = 0x%08lX", (unsigned long)crcValue);
+    APP_LOGI("SELF", "crc=0x%08lX", (unsigned long)crcValue);
 
     if(crcValue == result) {
         return APP_STATUS_OK;
@@ -373,7 +372,7 @@ static AppStatus_t App_SelfTestCheckBatteryAdc(void)
     APP_RETURN_IF_FALSE(APP_ADC_BATTERY_HANDLE->Instance == ADC1, APP_STATUS_HW_HANDLE_INVALID);
     APP_RETURN_IF_HAL_ERROR(Battery_ReadVoltage_Averaged_mV(&adc_vref, &adc_vbat, &vdda_mv, &vbat_mv), APP_STATUS_SELFTEST_FAILED);
 
-    APP_LOGI("SELF", "ADC(vref:%lu, vbat:%lu) Volt(vdda:%lumV, vbat:%lumV)", 
+    APP_LOGI("SELF", "adc vref=%lu vbat=%lu vdda=%lumV vb=%lumV",
         (unsigned long)adc_vref,
         (unsigned long)adc_vbat,
         (unsigned long)vdda_mv,
@@ -395,7 +394,7 @@ static AppStatus_t App_SelfTestCheckBatteryAdc(void)
 static AppStatus_t App_SelfTestCheckDebugUart(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_DEBUG_HANDLE->Instance == USART1, APP_STATUS_HW_HANDLE_INVALID);
-    APP_LOGI("SELF", "Debug UART online at %lu baud", (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate);
+    APP_LOGI("SELF", "dbg uart %lu baud", (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate);
 
     return APP_STATUS_OK;
 }
@@ -408,7 +407,8 @@ static AppStatus_t App_SelfTestCheckDebugUart(void)
 static AppStatus_t App_SelfTestCheckMeterUartLineOk(void)
 {
     AppStatus_t status = APP_STATUS_OK;
-    APP_LOGD("SELF", "METER_LINE skipped-as-ok because METER_UART ok");
+    APP_LOGD("SELF", "METER_LINE skip, METER_UART ok");
+
     return (status);
 }
 
@@ -425,7 +425,7 @@ static AppStatus_t App_SelfTestCheckMeterUartLine(void)
     //const uint8_t SYNC_START = 0x68;
     //const uint8_t SYNC_STOP = 0x16;
 
-    APP_LOGI("SELF", "Meter UART Line real probe start");
+    APP_LOGI("SELF", "meter line probe start");
     App_GpioLpConfigOutput(Meter_UART_Loop_GPIO_Port, Meter_UART_Loop_Pin, GPIO_PIN_SET);
     HAL_Delay(50);
     App_GpioLpConfigInput(Meter_RX_GPIO_Port, Meter_RX_Pin);
@@ -483,7 +483,7 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
     g_appSelfTestMeterLastReplyLen = 0u;
     g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
 
-    APP_LOGI("SELF", "Meter(Normal) UART real probe start");
+    APP_LOGI("SELF", "meter normal probe start");
 
     App_GpioLpConfigOutput(Meter_TX_GPIO_Port, Meter_TX_Pin, GPIO_PIN_SET);
     HAL_Delay(50); //>= meter spec. 50ms
@@ -517,8 +517,8 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
 
     uint8_t storageEnabledPrev;
 
-    APP_LOGI("SELF", "Meter UART reply received (%u bytes minimum)", (unsigned int)APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
-    APP_LOGI("SELF", "Meter probe result is for self-test only; storage push suppressed");
+    APP_LOGI("SELF", "meter reply >=%uB", (unsigned int)APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
+    APP_LOGI("SELF", "selftest-only, no storage push");
 
     storageEnabledPrev = App_MeterIsStorageEnabled();
     App_MeterSetStorageEnabled(APP_FALSE);
@@ -543,7 +543,7 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
     g_appSelfTestMeterLastReplyLen = 0u;
     g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
 
-    APP_LOGI("SELF", "Meter(SC1xxx) UART real probe start");
+    APP_LOGI("SELF", "meter SC1 probe start");
 
     //Read protocols meter(SC1xxx)
     //for(i = 0; i < 100; i++)
@@ -580,7 +580,7 @@ static AppStatus_t App_SelfTestCheckMeterSC1xxxUart(void)
 
     {
         uint8_t storageEnabledPrev = App_MeterIsStorageEnabled();
-        APP_LOGI("SELF", "Meter probe result is for self-test only; storage push suppressed");
+        APP_LOGI("SELF", "selftest-only, no storage push");
         App_MeterSetStorageEnabled(APP_FALSE);
         status = App_MeterSC1xxxProcessReceivedData((const uint8_t *)meterReply, APP_SELFTEST_UART_METER_SC1xxx_EXPECTED_RX_MIN_LEN);
         App_MeterSetStorageEnabled(storageEnabledPrev);
@@ -594,7 +594,7 @@ static AppStatus_t App_SelfTestCheckMeterCrc(void)
 
     if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed != APP_TRUE)
     {
-        APP_LOGD("SELF", "METER_CRC skipped-as-fail because METER_UART failed");
+        APP_LOGD("SELF", "METER_CRC fail-skip by METER_UART fail");
         return APP_STATUS_SELFTEST_FAILED;
     }
 
@@ -610,11 +610,11 @@ static AppStatus_t App_SelfTestCheckMeterCrc(void)
                                                 g_appSelfTestMeterLastReplyLen);
         if (meterResult != APP_METER_OK)
         {
-            APP_LOGE("SELF", "METER_CRC(SC1xxx) FAIL parse=%d", (int)meterResult);
+            APP_LOGE("SELF", "MCRC(SC1) fail parse=%d", (int)meterResult);
             return APP_STATUS_SELFTEST_FAILED;
         }
 
-        APP_LOGI("SELF", "METER_CRC(SC1xxx) PASS");
+        APP_LOGI("SELF", "MCRC(SC1) pass");
         return APP_STATUS_OK;
     }
 #endif
@@ -626,12 +626,12 @@ static AppStatus_t App_SelfTestCheckMeterCrc(void)
                                           g_appSelfTestMeterLastReplyLen);
         if (meterResult != APP_METER_OK)
         {
-            APP_LOGE("SELF", "METER_CRC(Normal) FAIL parse=%d", (int)meterResult);
+            APP_LOGE("SELF", "MCRC(norm) fail parse=%d", (int)meterResult);
             return APP_STATUS_SELFTEST_FAILED;
         }
     }
 
-    APP_LOGI("SELF", "METER_CRC(Normal) PASS");
+    APP_LOGI("SELF", "MCRC(norm) pass");
     return APP_STATUS_OK;
 }
 
@@ -652,8 +652,7 @@ static AppStatus_t App_SelfTestProbeNbiotUartShort(void)
         status = App_Bc95AtPing(APP_SELFTEST_NBIOT_PING_TIMEOUT_MS);
         if (status == APP_STATUS_OK)
         {
-            APP_LOGI("SELF",
-                     "NB-IoT short probe PASS retry=%lu elapsed=%lums",
+            APP_LOGI("SELF", "nbiot probe pass try=%lu t=%lums",
                      (unsigned long)retry,
                      (unsigned long)(HAL_GetTick() - startTick));
             return APP_STATUS_OK;
@@ -665,7 +664,7 @@ static AppStatus_t App_SelfTestProbeNbiotUartShort(void)
         }
     }
 
-    APP_LOGW("SELF", "NB-IoT short probe FAIL last=%d elapsed=%lums", (int)status, (unsigned long)(HAL_GetTick() - startTick));
+    APP_LOGW("SELF", "nbiot probe fail last=%d t=%lums", (int)status, (unsigned long)(HAL_GetTick() - startTick));
     return status;
 }
 
@@ -676,7 +675,7 @@ static AppStatus_t App_SelfTestCheckNbiotUart(void)
 
     APP_RETURN_IF_FALSE(APP_UART_NBIOT_HANDLE->Instance == LPUART1, APP_STATUS_HW_HANDLE_INVALID);
 
-    APP_LOGI("SELF", "NB-IoT UART probe start");
+    APP_LOGI("SELF", "nbiot uart probe start");
 
     /* 검사 시작 전 현재 전원 상태를 저장해, 검사 종료 후 원래 상태로 복원한다. */
     wasPowered = App_GpioLpGetContext()->nbiotPowered;
@@ -715,7 +714,7 @@ static AppStatus_t App_SelfTestCheckI2cDevice(I2C_HandleTypeDef *p_i2cHandle,
 
     if (address7bit != 0u)
     {
-        APP_LOGI("SELF", "%s I2C real probe start: addr=0x%02X", p_itemName, (unsigned int)address7bit);
+        APP_LOGI("SELF", "%s i2c probe addr=0x%02X", p_itemName, (unsigned int)address7bit);
 
         APP_RETURN_IF_FALSE(HAL_I2C_IsDeviceReady(p_i2cHandle,
                                                   (uint16_t)((uint16_t)address7bit << 1u),
@@ -764,7 +763,7 @@ static AppStatus_t App_SelfTestCheckAuxI2c(void)
         if (t_dec < 0)
             t_dec = -t_dec;
 
-        APP_LOGI("SELF", "T = %d.%02d C, RH = %d.%02d %%", t_int, t_dec, h_int, h_dec);
+        APP_LOGI("SELF", "T=%d.%02dC RH=%d.%02d%%", t_int, t_dec, h_int, h_dec);
         return APP_STATUS_OK;
     }
     else
@@ -813,11 +812,11 @@ static void App_SelfTestRunItemWithPolicy(AppSelfTestItem_t item,
 
     if (status == APP_STATUS_OK)
     {
-        APP_LOGI("SELF", "%s PASS", App_SelfTestItemToString(item));
+        APP_LOGI("SELF", "%s pass", App_SelfTestItemToString(item));
     }
     else
     {
-        APP_LOGE("SELF", "%s FAIL status=%lu", App_SelfTestItemToString(item), (unsigned long)status);
+        APP_LOGE("SELF", "%s fail st=%lu", App_SelfTestItemToString(item), (unsigned long)status);
         if (beepOnFail == APP_TRUE)
         {
             (void)App_SelfTestSignalErrorBuzzer();
@@ -943,7 +942,7 @@ static AppStatus_t App_SelfTestRunSequenceInternal(AppSelfTestSequenceKind_t kin
 
     if (kind == APP_SELFTEST_SEQ_DATA_COLLECTION)
     {
-        APP_LOGN("SELF", "Operational data collection start");
+        APP_LOGN("SELF", "op-data start");
         App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
 #if defined(SUPPORT_METER_NORMAL)
         App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart, APP_FALSE);
@@ -962,7 +961,7 @@ static AppStatus_t App_SelfTestRunSequenceInternal(AppSelfTestSequenceKind_t kin
         return g_appSelfTestContext.lastSequenceStatus;
     }
 
-    APP_LOGN("SELF", "Periodic meter-wake self-test start");
+    APP_LOGN("SELF", "meter-wake selftest start");
     App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
     App_SelfTestRecordResult(APP_SELFTEST_ITEM_METER_UART, meterProbeStatus);
     if (meterProbeStatus == APP_STATUS_OK)

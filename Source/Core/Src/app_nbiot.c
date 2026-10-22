@@ -150,6 +150,10 @@
 #define APP_BC95_NET_REGISTERING_STUCK_MIN_POLLS (8u)
 #define APP_BC95_NET_REGISTERING_STUCK_MIN_POLLS_FAST_RECOVERY (4u)
 
+static const char g_appNbiotLogReadyProbe[] = "[[RP]]";
+static const char g_appNbiotLogPreAttach[]  = "[[PA]]";
+static const char g_appNbiotLogDns[]        = "[DNS]";
+
 #define APP_NBIOT_REPORT_LOG_ATTACH         "[[Attach]]"
 #define APP_NBIOT_REPORT_LOG_RESET          "[[Reset]]"
 #define APP_NBIOT_REPORT_LOG_DETACH         "[[Detach]]"
@@ -1471,24 +1475,24 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
 
     if (skipBootWaitOnce == APP_TRUE)
     {
-        APP_LOGI("NBIOT", "Skip boot banner wait after recent NRB ready, probe with AT");
+        APP_LOGI("NBIOT", "skip boot wait after NRB, probe AT");
     }
     else if (g_appNbiotCarrierContext.lastResetType == APP_NBIOT_CARRIER_RESET_SW)
     {
-        APP_LOGI("NBIOT", "Skip boot banner wait after SW reset, probe with AT");
+        APP_LOGI("NBIOT", "skip boot wait after SW reset");
     }
     else
     {
-        APP_LOGI("NBIOT", "Wait for boot banner up to %lums...", (unsigned long)bannerWaitMs);
+        APP_LOGI("NBIOT", "wait boot banner %lums", (unsigned long)bannerWaitMs);
         status = App_Bc95AtWaitForBoot(bannerWaitMs);
         if (status == APP_STATUS_OK)
         {
             bannerSeen = APP_TRUE;
-            APP_LOGD("NBIOT", "Boot banner received");
+            APP_LOGD("NBIOT", "boot banner rx");
         }
         else
         {
-            APP_LOGI("NBIOT", "Boot banner not received, probe with AT");
+            APP_LOGI("NBIOT", "no boot banner, probe AT");
         }
     }
 
@@ -1498,7 +1502,7 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
         elapsedMs = HAL_GetTick() - startTick;
         if (elapsedMs >= totalTimeoutMs)
         {
-            APP_LOGE("NBIOT", "Ready check timeout (banner=%u, retry=%lu)",
+            APP_LOGE("NBIOT", "ready timeout b=%u r=%lu",
                      (unsigned)bannerSeen, (unsigned long)retryCount);
             return APP_STATUS_UART_TIMEOUT;
         }
@@ -1507,7 +1511,7 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
         if (status == APP_STATUS_OK)
         {
             g_appBc95SkipNextAttachBootWait = APP_TRUE;
-            APP_LOGI("NBIOT", "Module ready (banner=%u, retry=%lu, elapsed=%lums)",
+            APP_LOGI("NBIOT", "ready b=%u r=%lu t=%lums",
                      (unsigned)bannerSeen, (unsigned long)retryCount,
                      (unsigned long)(HAL_GetTick() - startTick));
             return APP_STATUS_OK;
@@ -1542,7 +1546,7 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
 
     g_appBc95UsimFatal = APP_FALSE;
     startTick = HAL_GetTick();
-    APP_LOGI("NBIOT", "Wait for USIM ready (timeout=%lums)...", (unsigned long)timeoutMs);
+    APP_LOGI("NBIOT", "wait USIM %lums", (unsigned long)timeoutMs);
 
     while (1)
     {
@@ -1559,7 +1563,7 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
                                                imsiStr, sizeof(imsiStr));
             if (atSt == APP_BC95_AT_OK)
             {
-                APP_LOGI("NBIOT", "USIM ready (attempt=%lu, elapsed=%lums)",
+                APP_LOGI("NBIOT", "USIM ready a=%lu t=%lums",
                          (unsigned long)attempt,
                          (unsigned long)(HAL_GetTick() - startTick));
                 return APP_STATUS_OK;
@@ -1577,18 +1581,18 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
                     APP_LOGE("NBIOT", "USIM fatal (CME=%ld)", (long)cmeErr);
                     return APP_STATUS_FATAL;
                 }
-                APP_LOGI("NBIOT", "USIM not ready (CME=%ld, attempt=%lu)",
+                APP_LOGI("NBIOT", "USIM !ready cme=%ld a=%lu",
                          (long)cmeErr, (unsigned long)attempt);
             }
             else
             {
-                APP_LOGD("NBIOT", "USIM not ready (parse=%s, attempt=%lu)",
+                APP_LOGD("NBIOT", "USIM !ready parse=%s a=%lu",
                          App_Bc95AtGetStatusString(atSt), (unsigned long)attempt);
             }
         }
         else
         {
-            APP_LOGI("NBIOT", "USIM probe UART issue (status=%d, attempt=%lu)",
+            APP_LOGI("NBIOT", "USIM probe uart st=%d a=%lu",
                      (int)st, (unsigned long)attempt);
         }
 
@@ -1596,7 +1600,7 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
         if (elapsed >= timeoutMs)
         {
             g_appBc95UsimFatal = APP_TRUE;
-            APP_LOGE("NBIOT", "USIM fatal (timeout/no response, attempt=%lu, elapsed=%lums)",
+            APP_LOGE("NBIOT", "USIM fatal timeout a=%lu t=%lums",
                      (unsigned long)attempt, (unsigned long)elapsed);
             return APP_STATUS_FATAL;
         }
@@ -1940,7 +1944,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
     g_appBc95WakeCme524GraceUsed = APP_FALSE;
 
     APP_LOGI("NBIOT",
-             "Wait for service ready after boot banner (timeout=%lums, settle=%lums, poll=%lums, postRecover=%u, cmeThreshold=%u, readyStreak=%u)...",
+             "wait srv-ready t=%lums s=%lums p=%lums pr=%u c=%u rs=%u",
              (unsigned long)totalTimeoutMs,
              (unsigned long)settleMs,
              (unsigned long)pollMs,
@@ -1956,7 +1960,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
     elapsedMs = HAL_GetTick() - startTick;
     if (elapsedMs >= totalTimeoutMs)
     {
-        APP_LOGE("NBIOT", "Service ready timeout before USIM probe (elapsed=%lums)",
+        APP_LOGE("NBIOT", "srv-ready timeout before USIM t=%lums",
                  (unsigned long)elapsedMs);
         g_appBc95UsimFatal = APP_TRUE;
         return APP_STATUS_FATAL;
@@ -1968,7 +1972,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
         if (status == APP_STATUS_OK)
         {
             readyStreak++;
-            APP_LOGI("NBIOT", "Service ready probe success streak=%u/%u (elapsed=%lums)",
+            APP_LOGI("NBIOT", "srv-ready streak=%u/%u t=%lums",
                      (unsigned)readyStreak,
                      (unsigned)requiredReadyStreak,
                      (unsigned long)(HAL_GetTick() - startTick));
@@ -1981,7 +1985,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
 
             g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
 
-            APP_LOGI("NBIOT", "Service ready confirmed (elapsed=%lums)",
+            APP_LOGI("NBIOT", "srv-ready ok t=%lums",
                      (unsigned long)(HAL_GetTick() - startTick));
             return APP_STATUS_OK;
         }
@@ -1992,7 +1996,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
             (App_Bc95AtIsUsimFatalCme(probe.lastCmeError) == APP_TRUE))
         {
             g_appBc95UsimFatal = APP_TRUE;
-            APP_LOGE("NBIOT", "Service ready fatal (status=%d, cme=%ld)",
+            APP_LOGE("NBIOT", "srv-ready fatal st=%d cme=%ld",
                      (int)probe.lastStatus,
                      (long)probe.lastCmeError);
             return APP_STATUS_FATAL;
@@ -2013,7 +2017,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
                     recoverableCme = -1;
 
                     APP_LOGW("NBIOT",
-                             "Service ready CME=524 grace active (elapsed=%lums < %lums) -> wait/reprobe without recovery",
+                             "srv-ready 524 grace t=%lums<%lums, reprobe",
                              (unsigned long)(HAL_GetTick() - startTick),
                              (unsigned long)APP_BC95_CME524_WAKE_GRACE_MS);
 
@@ -2043,7 +2047,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
                 recoverableCmeCount = 1u;
             }
 
-            APP_LOGW("NBIOT", "Service ready recoverable CME=%ld streak=%u/%u",
+            APP_LOGW("NBIOT", "srv-ready recover cme=%ld streak=%u/%u",
                      (long)recoverableCme,
                      (unsigned)recoverableCmeCount,
                      (unsigned)effectiveRecoverableCmeThreshold);
@@ -2065,7 +2069,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
                 }
 
                 APP_LOGW("NBIOT",
-                         "Service ready recoverable-CME recovery failed (status=%d, cme=%ld) -> hand over to attach recovery",
+                         "srv-ready recover fail st=%d cme=%ld -> attach",
                          (int)recoverStatus,
                          (long)recoverableCme);
                 return APP_STATUS_UART_TIMEOUT;
@@ -2083,14 +2087,14 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
             if (App_Bc95AtIsRecoverableServiceReadyCme(probe.lastCmeError) == APP_TRUE)
             {
                 APP_LOGW("NBIOT",
-                         "Service ready timeout after recoverable CME=%ld streak (elapsed=%lums) -> hand over to attach recovery",
+                         "srv-ready timeout after recover cme=%ld t=%lums -> attach",
                          (long)probe.lastCmeError,
                          (unsigned long)elapsedMs);
                 return APP_STATUS_UART_TIMEOUT;
             }
 
             g_appBc95UsimFatal = APP_TRUE;
-            APP_LOGE("NBIOT", "Service ready timeout (elapsed=%lums, lastStatus=%d, cme=%ld)",
+            APP_LOGE("NBIOT", "srv-ready timeout t=%lums st=%d cme=%ld",
                      (unsigned long)elapsedMs,
                      (int)probe.lastStatus,
                      (long)probe.lastCmeError);
@@ -4209,14 +4213,15 @@ static AppStatus_t App_Bc95AtReadCsqRssiDbm(int16_t *p_rssiDbm)
                                    &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGW("NBIOT", "[[PreAttach]] CSQ send fail (status=%d)", (int)status);
+        APP_LOGW("NBIOT", "%s CSQ tx fail st=%d", g_appNbiotLogPreAttach, (int)status);
         return status;
     }
 
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
     if (atStatus != APP_BC95_AT_OK)
     {
-        APP_LOGW("NBIOT", "[[PreAttach]] CSQ response not OK (parse=%s, cme=%ld)",
+        APP_LOGW("NBIOT", "%s CSQ !OK parse=%s cme=%ld",
+                 g_appNbiotLogPreAttach,
                  App_Bc95AtGetStatusString(atStatus), (long)cmeErr);
         return APP_STATUS_FATAL;
     }
@@ -4224,25 +4229,27 @@ static AppStatus_t App_Bc95AtReadCsqRssiDbm(int16_t *p_rssiDbm)
     p_csq = strstr((const char *)g_appBc95AtRxBuf, "+CSQ:");
     if ((p_csq == NULL) || (sscanf(p_csq, "+CSQ: %d,%d", &rssi, &ber) != 2))
     {
-        APP_LOGW("NBIOT", "[[PreAttach]] CSQ parse fail");
+        APP_LOGW("NBIOT", "%s CSQ parse fail", g_appNbiotLogPreAttach);
         return APP_STATUS_FATAL;
     }
 
     if ((rssi < 0) || (rssi > 31))
     {
-        APP_LOGW("NBIOT", "[[PreAttach]] CSQ unknown/invalid rssi=%d", rssi);
+        APP_LOGW("NBIOT", "%s CSQ bad rssi=%d", g_appNbiotLogPreAttach, rssi);
         return APP_STATUS_UART_TIMEOUT;
     }
 
     *p_rssiDbm = (int16_t)(-113 + (2 * rssi));
-    APP_LOGI("NBIOT", "[[PreAttach]] CSQ RSSI=%d dBm (raw=%d, ber=%d)",
+    APP_LOGI("NBIOT", "%s CSQ rssi=%d raw=%d ber=%d",
+             g_appNbiotLogPreAttach,
              (int)*p_rssiDbm, rssi, ber);
     return APP_STATUS_OK;
 }
 
 static AppStatus_t App_Bc95AtRunShortCampProbe(AppBc95NetStatus_t *p_status)
 {
-    APP_LOGI("NBIOT", "[[PreAttach]] short camp probe start timeout=%lums",
+    APP_LOGI("NBIOT", "%s camp probe %lums",
+             g_appNbiotLogPreAttach,
              (unsigned long)APP_BC95_PRE_ATTACH_CAMP_PROBE_TIMEOUT_MS);
     return App_Bc95AtWaitForNetwork(APP_BC95_PRE_ATTACH_CAMP_PROBE_TIMEOUT_MS, p_status);
 }
@@ -4279,7 +4286,8 @@ static AppStatus_t App_Bc95AtConfirmWeakCellAfterProbe(uint8_t *p_confirmed, App
         {
             *p_confirmed = APP_TRUE;
             APP_LOGW("NBIOT",
-                     "[[PreAttach]] confirm weak by NUESTATS (RSSI=%d, RSRP=%d, SNR=%d)",
+                     "%s weak by NUESTATS rssi=%d rsrp=%d snr=%d",
+                     g_appNbiotLogPreAttach,
                      quality.rssiDbm, quality.rsrpDbm, quality.snrDb);
         }
         return APP_STATUS_OK;
@@ -4293,7 +4301,7 @@ static AppStatus_t App_Bc95AtConfirmWeakCellAfterProbe(uint8_t *p_confirmed, App
             *p_noCellAfterProbe = APP_TRUE;
         }
         APP_LOGW("NBIOT",
-                 "[[PreAttach]] confirm weak by NUESTATS: no cell info after short probe");
+                 "%s weak: no cell after probe", g_appNbiotLogPreAttach);
         return APP_STATUS_OK;
     }
 
@@ -5150,11 +5158,11 @@ static AppStatus_t App_Bc95AtWarmupDns(const char *p_hostname)
     uint32_t attempt;
 
     APP_RETURN_IF_FALSE((p_hostname != NULL), APP_STATUS_INVALID_PARAM);
-    APP_LOGI("NBIOT", "[DNS] warmup with %s", p_hostname);
+    APP_LOGI("NBIOT", "%s warm %s", g_appNbiotLogDns, p_hostname);
 
     if (App_Bc95AtWarmupDnsCacheLookup(p_hostname, ipBuf, sizeof(ipBuf)) == APP_TRUE)
     {
-        APP_LOGI("NBIOT", "[DNS] warmup cache hit (%s:ip=%s)", p_hostname, ipBuf);
+        APP_LOGI("NBIOT", "%s hit %s ip=%s", g_appNbiotLogDns, p_hostname, ipBuf);
         return APP_STATUS_OK;
     }
 
@@ -5164,16 +5172,19 @@ static AppStatus_t App_Bc95AtWarmupDns(const char *p_hostname)
         if (status == APP_STATUS_OK)
         {
             App_Bc95AtWarmupDnsCacheStore(p_hostname, ipBuf);
-            APP_LOGI("NBIOT", "[DNS] warmup OK on %lu (%s:ip=%s)",
+            APP_LOGI("NBIOT", "%s ok %lu %s ip=%s",
+                     g_appNbiotLogDns,
                      (unsigned long)attempt, p_hostname, ipBuf);
             return APP_STATUS_OK;
         }
-        APP_LOGI("NBIOT", "[DNS] warmup %lu/%lu failed",
+        APP_LOGI("NBIOT", "%s fail %lu/%lu",
+                 g_appNbiotLogDns,
                  (unsigned long)attempt, (unsigned long)APP_BC95_DNS_FAIL_RETRY_MAX);
         if (attempt < APP_BC95_DNS_FAIL_RETRY_MAX)
             App_Bc95AtDelayWithFeed(APP_BC95_DNS_FAIL_RETRY_DELAY_MS);
     }
-    APP_LOGI("NBIOT", "[DNS] warmup skipped");
+    APP_LOGI("NBIOT", "%s skip", g_appNbiotLogDns);
+
     return APP_STATUS_UART_TIMEOUT;
 }
 #endif // NBIOT_SUPPORT_DNS

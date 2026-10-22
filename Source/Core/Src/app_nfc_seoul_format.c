@@ -135,7 +135,7 @@ static void App_NfcSeoulLogLayer1Profile(const AppNfcSeoulSnapshot_t *p_snapshot
     }
 
     APP_LOGN("NFC",
-             "[[NFC-L1]] cmd=0x%02X fmt=0x%02X readonly=%u patent_l2=%u recordCount=%u comm=%u battery=0x%02X",
+             "[L1] cmd=0x%02X fmt=0x%02X ro=%u p2=%u rec=%u comm=%u bat=0x%02X",
              (unsigned int)responseCmd,
              (unsigned int)g_appNfcSeoulLayer1Info.snapshotFormatVersion,
              (unsigned int)g_appNfcSeoulLayer1Info.readOnlyLayer1,
@@ -190,7 +190,7 @@ static void App_NfcSeoulPrintSnapshot(const AppNfcSeoulSnapshot_t *p_snapshot)
              (unsigned int)p_snapshot->readingTime[5]);
 
     APP_LOGI("NFC",
-             "readingRaw=%02X %02X %02X %02X meterIdRaw=%02X %02X %02X %02X",
+             "rd=%02X %02X %02X %02X id=%02X %02X %02X %02X",
              (unsigned int)p_snapshot->reading[0],
              (unsigned int)p_snapshot->reading[1],
              (unsigned int)p_snapshot->reading[2],
@@ -201,13 +201,13 @@ static void App_NfcSeoulPrintSnapshot(const AppNfcSeoulSnapshot_t *p_snapshot)
              (unsigned int)p_snapshot->meterIdBcd[3]);
 
     APP_LOGI("NFC",
-             "meterCode=0x%02X caliberDecimal=0x%02X alarmStatus=0x%02X",
+             "mcode=0x%02X calDec=0x%02X alarm=0x%02X",
              (unsigned int)p_snapshot->meterCode,
              (unsigned int)p_snapshot->caliberDecimal,
              (unsigned int)p_snapshot->alarmStatus);
 
     APP_LOGI("NFC",
-             "terminalId=%02X%02X%02X%02X fw=%u.%u fmt=0x%02X",
+             "tid=%02X%02X%02X%02X fw=%u.%u fmt=0x%02X",
              (unsigned int)p_snapshot->terminalId[0],
              (unsigned int)p_snapshot->terminalId[1],
              (unsigned int)p_snapshot->terminalId[2],
@@ -217,7 +217,7 @@ static void App_NfcSeoulPrintSnapshot(const AppNfcSeoulSnapshot_t *p_snapshot)
              (unsigned int)p_snapshot->formatVersion);
 
     APP_LOGI("NFC",
-             "rsrp=0x%04X ack=0x%02X carrier=0x%02X modem=0x%02X battery=0x%02X comm=0x%02X",
+             "rsrp=0x%04X ack=0x%02X car=0x%02X mdm=0x%02X bat=0x%02X comm=0x%02X",
              (unsigned int)rsrp,
              (unsigned int)p_snapshot->ackCount,
              (unsigned int)p_snapshot->carrier,
@@ -724,7 +724,7 @@ static uint8_t App_NfcSeoulWaitEepromAccessReady(const char *p_stage, uint16_t b
         HAL_Delay(1u);
     }
 
-    APP_LOGW("NFC", "Seoul EEPROM wait timeout stage=%s blk=0x%04X status0=0x%02X status1=0x%02X",
+    APP_LOGW("NFC", "EE wait TO st=%s blk=0x%04X s0=0x%02X s1=0x%02X",
              (p_stage != NULL) ? p_stage : "?",
              (unsigned int)blockAddr,
              (unsigned int)status0,
@@ -750,14 +750,14 @@ static uint8_t App_NfcSeoulWaitSyncWriteGate(void)
         {
             if ((status0 & NFC_STATUS0_SYNCH_BLOCK_WRITE) != 0u)
             {
-                APP_LOGI("NFC", "Seoul sync-write gate ok status0=0x%02X", (unsigned int)status0);
+                APP_LOGI("NFC", "sync-wr ok s0=0x%02X", (unsigned int)status0);
                 return APP_TRUE;
             }
         }
         HAL_Delay(APP_NFC_SEOUL_SYNC_WAIT_POLL_MS);
     } while ((HAL_GetTick() - startTick) < APP_NFC_SEOUL_SYNC_WAIT_TIMEOUT_MS);
 
-    APP_LOGW("NFC", "Seoul sync-write gate timeout status0=0x%02X", (unsigned int)status0);
+    APP_LOGW("NFC", "sync-wr TO s0=0x%02X", (unsigned int)status0);
     return APP_FALSE;
 }
 
@@ -781,7 +781,7 @@ static void App_NfcSeoulWaitSyncReadAck(void)
             if ((status0 & NFC_STATUS0_SYNCH_BLOCK_READ) != 0u)
             {
                 APP_LOGI("NFC",
-                         "Seoul sync-read ack status0=0x%02X elapsed=%lums loops=%lu read_fail=%lu",
+                         "sync-rd ack s0=0x%02X t=%lums loop=%lu rf=%lu",
                          (unsigned int)status0,
                          (unsigned long)(HAL_GetTick() - startTick),
                          (unsigned long)loopCount,
@@ -793,7 +793,7 @@ static void App_NfcSeoulWaitSyncReadAck(void)
         {
             readFailCount++;
             APP_LOGW("NFC",
-                     "Seoul sync-read ack poll fail ret=%d loop=%lu elapsed=%lums read_fail=%lu",
+                     "sync-rd poll fail ret=%d loop=%lu t=%lums rf=%lu",
                      (int)ret,
                      (unsigned long)loopCount,
                      (unsigned long)(HAL_GetTick() - startTick),
@@ -804,7 +804,7 @@ static void App_NfcSeoulWaitSyncReadAck(void)
     } while ((HAL_GetTick() - startTick) < APP_NFC_SEOUL_SYNC_WAIT_TIMEOUT_MS);
 
     APP_LOGW("NFC",
-             "Seoul sync-read ack timeout status0=0x%02X elapsed=%lums loops=%lu read_fail=%lu",
+             "sync-rd TO s0=0x%02X t=%lums loop=%lu rf=%lu",
              (unsigned int)status0,
              (unsigned long)(HAL_GetTick() - startTick),
              (unsigned long)loopCount,
@@ -866,7 +866,7 @@ static uint8_t App_NfcSeoulIsSramModeReady(void)
     nfcBootOk = ((status1 & NFC_STATUS1_NFC_BOOT_OK) != 0u) ? APP_TRUE : APP_FALSE;
     i2cUnlocked = ((status1 & NFC_STATUS1_I2C_IF_LOCKED) == 0u) ? APP_TRUE : APP_FALSE;
 
-    APP_LOGI("NFC", "Seoul SRAM factors status0=0x%02X status1=0x%02X cfg1=0x%02X arb=0x%02X vcc=%u field=%u vcc_boot=%u nfc_boot=%u i2c_unlocked=%u sram_en=%u dir=%u",
+    APP_LOGI("NFC", "SRAM s0=0x%02X s1=0x%02X c1=0x%02X arb=0x%02X v=%u f=%u vb=%u nb=%u iu=%u se=%u dir=%u",
              (unsigned int)status0,
              (unsigned int)status1,
              (unsigned int)cfg1,
@@ -881,7 +881,7 @@ static uint8_t App_NfcSeoulIsSramModeReady(void)
 
     if ((fieldOk == APP_TRUE) && (sramEnabled != APP_TRUE))
     {
-        APP_LOGW("NFC", "Seoul SRAM field detected but session config not ready yet (arb=0x%02X sram_en=%u)",
+        APP_LOGW("NFC", "SRAM field on but cfg not ready arb=0x%02X se=%u",
                  (unsigned int)arbiter,
                  (unsigned int)sramEnabled);
     }
@@ -1190,8 +1190,8 @@ static void App_NfcSeoulLogIndicateContext(const char *p_stage,
                                        &status1);
 
     APP_LOGI("NFC",
-             "Seoul indicate ctx stage=%s start=0x%04X bl=%u raw=%02X %02X %02X %02X "
-             "ret0=%d st0=0x%02X ret1=%d st1=0x%02X sync_wr=%u sync_rd=%u field=%u i2c_locked=%u tick=%lu",
+             "ind st=%s start=0x%04X bl=%u raw=%02X %02X %02X %02X "
+             "r0=%d s0=0x%02X r1=%d s1=0x%02X sw=%u sr=%u f=%u i2c=%u tk=%lu",
              (p_stage != NULL) ? p_stage : "?",
              (unsigned int)startBlock,
              (unsigned int)blockLen,
@@ -1300,7 +1300,7 @@ static AppStatus_t App_NfcSeoulWritePayloadWithLocation(const uint8_t *p_payload
         *p_responseBlockLen = (uint8_t)numBlocks;
     }
 
-    APP_LOGI("NFC", "Seoul NDEF updated cmd=%02X%02X len=%u rsp_blk=0x%04X rsp_bl=%u (EEPROM-only)",
+    APP_LOGI("NFC", "NDEF upd cmd=%02X%02X len=%u rsp=0x%04X bl=%u",
              (unsigned int)p_payload[0],
              (unsigned int)p_payload[1],
              (unsigned int)payloadLength,
@@ -1639,7 +1639,7 @@ AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t fram
     }
 
     APP_LOGI("NFC",
-             "Seoul rsp build req=%02X%02X rsp_cmd2=0x%02X payload_len=%u tick=%lu",
+             "rsp build req=%02X%02X cmd2=0x%02X len=%u tk=%lu",
              (unsigned int)p_frame[0],
              (unsigned int)p_frame[1],
              (unsigned int)cmd2,
@@ -1657,7 +1657,7 @@ AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t fram
     }
 
     APP_LOGI("NFC",
-             "Seoul rsp payload committed start=0x%04X blks=%u tick=%lu",
+             "rsp payload start=0x%04X bl=%u tk=%lu",
              (unsigned int)responseStartBlock,
              (unsigned int)responseBlockLen,
              (unsigned long)HAL_GetTick());
@@ -1677,7 +1677,7 @@ AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t fram
     }
 
     APP_LOGI("NFC",
-             "Seoul rsp publish cmd2=0x%02X status_blk=0x%04X ind_blk=0x%04X rsp_start=0x%04X rsp_blks=%u tick=%lu",
+             "rsp pub cmd2=0x%02X stb=0x%04X ib=0x%04X start=0x%04X bl=%u tk=%lu",
              (unsigned int)cmd2,
              (unsigned int)NFC_SRAM_STATUS_BLOCK,
              (unsigned int)NFC_SRAM_UCMD_IND_BLOCK,
@@ -1695,7 +1695,7 @@ AppStatus_t App_NfcSeoulProcessCommandFrame(const uint8_t *p_frame, uint8_t fram
     App_NfcSeoulWaitSyncReadAck();
 
     APP_LOGI("NFC",
-             "Seoul rsp complete req=%02X%02X rsp_cmd2=0x%02X tick=%lu",
+             "rsp done req=%02X%02X cmd2=0x%02X tk=%lu",
              (unsigned int)p_frame[0],
              (unsigned int)p_frame[1],
              (unsigned int)cmd2,
