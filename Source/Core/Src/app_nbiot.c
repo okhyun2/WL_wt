@@ -267,6 +267,8 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
 static void App_Bc95AtBytesToHex(const uint8_t *p_in, uint32_t inLen, char *p_out);
 static uint8_t App_Bc95AtNextUdpSeq(void);
 static void App_Bc95AtDelayWithFeed(uint32_t ms);
+static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
+static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 
 #define APP_BC95_SERVICE_READY_CPIN_STABLE_DELAY_MS   (200u)
 #define APP_BC95_SERVICE_READY_POST_RECOVER_POLL_MS   (1200u)
@@ -408,6 +410,85 @@ static uint8_t App_NbiotResolveDeleteAfterSend(uint8_t requestedDeleteStorage,
                      (p_options->deleteAfterSend == APP_TRUE));
 }
 
+static AppStatus_t App_NbiotBuildMeterPacket(const char *p_logTag,
+                                             uint8_t deleteStorage,
+                                             uint8_t unsentOnly,
+                                             const AppMeterStorageRecord_t *p_liveRecord,
+                                             uint8_t appendMgmtTrailers,
+                                             AppMeterServerFormatOptions_t *p_optOut,
+                                             AppMeterServerFormatResult_t *p_buildResultOut,
+                                             uint8_t *p_packet,
+                                             uint32_t packetCapacity,
+                                             uint8_t *p_effectiveDeleteStorageOut)
+{
+    AppStatus_t status;
+    AppStatus_t envAppendStatus;
+    AppStatus_t diagAppendStatus;
+    AppMeterServerFormatOptions_t opt;
+    AppMeterServerFormatResult_t buildResult;
+    uint8_t effectiveDeleteStorage;
+
+    APP_RETURN_IF_FALSE((p_logTag != NULL) &&
+                        (p_buildResultOut != NULL) &&
+                        (p_packet != NULL) &&
+                        (p_effectiveDeleteStorageOut != NULL),
+                        APP_STATUS_INVALID_PARAM);
+
+    App_MeterServerOptionsLoad(&opt);
+    App_MeterServerOptionsDump(&opt);
+
+    effectiveDeleteStorage = App_NbiotResolveDeleteAfterSend(deleteStorage, &opt);
+
+    if (p_liveRecord != NULL)
+    {
+        status = App_MeterServerFormatBuildFromRecord(&opt,
+                                                      p_liveRecord,
+                                                      p_packet,
+                                                      packetCapacity,
+                                                      &buildResult);
+    }
+    else
+    {
+        status = (unsentOnly == APP_TRUE)
+               ? App_MeterServerFormatBuildFromUnsentStorage(&opt,
+                                                             p_packet,
+                                                             packetCapacity,
+                                                             &buildResult)
+               : App_MeterServerFormatBuildFromStorage(&opt,
+                                                      p_packet,
+                                                      packetCapacity,
+                                                      &buildResult);
+    }
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if (appendMgmtTrailers == APP_TRUE)
+    {
+        envAppendStatus = App_NbiotAppendMgmtEnvTrailer(p_packet, packetCapacity, &buildResult);
+        if (envAppendStatus != APP_STATUS_OK)
+        {
+            APP_LOGW("NBIOT",
+                     "%s env trailer skipped (status=%d, len=%u)",
+                     p_logTag, (int)envAppendStatus, (unsigned int)buildResult.packetLength);
+        }
+
+        diagAppendStatus = App_NbiotAppendMgmtSelfTestTrailer(p_packet, packetCapacity, &buildResult);
+        if (diagAppendStatus != APP_STATUS_OK)
+        {
+            APP_LOGW("NBIOT",
+                     "%s selftest trailer skipped (status=%d, len=%u)",
+                     p_logTag, (int)diagAppendStatus, (unsigned int)buildResult.packetLength);
+        }
+    }
+
+    if (p_optOut != NULL)
+    {
+        *p_optOut = opt;
+    }
+    *p_buildResultOut = buildResult;
+    *p_effectiveDeleteStorageOut = effectiveDeleteStorage;
+    return APP_STATUS_OK;
+}
+
 static uint8_t App_NbiotResolveWaitServerAck(const AppMeterServerFormatOptions_t *p_options)
 {
     APP_RETURN_IF_FALSE(p_options != NULL, (uint8_t)APP_POLICY_WAIT_SERVER_ACK_ENABLE);
@@ -460,9 +541,7 @@ static uint8_t App_NbiotChecksum8(const uint8_t *p_data, uint16_t startIndex, ui
     return sum;
 }
 
-static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet,
-                                                      uint16_t packetCapacity,
-                                                      AppMeterServerFormatResult_t *p_result)
+static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result)
 {
 #if (APP_MGMT_TX_APPEND_SELFTEST_ENABLE == APP_TRUE)
     const AppSelfTestContext_t *p_ctx;
@@ -537,9 +616,7 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet,
 #endif
 }
 
-static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet,
-                                                 uint16_t packetCapacity,
-                                                 AppMeterServerFormatResult_t *p_result)
+static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result)
 {
 #if (APP_MGMT_TX_APPEND_ENV_ENABLE == APP_TRUE)
     uint16_t cursor;
@@ -3369,6 +3446,73 @@ static AppStatus_t App_Bc95AtSendBestEffortSimpleOk(const char *p_cmd,
     return status;
 }
 
+typedef enum
+{
+    APP_BC95_SEQ_STEP_REQUIRED_OK = 0,
+    APP_BC95_SEQ_STEP_BESTEFFORT_OK,
+    APP_BC95_SEQ_STEP_BESTEFFORT_QUERY,
+    APP_BC95_SEQ_STEP_REBOOT
+} AppBc95SeqStepType_t;
+
+typedef struct
+{
+    AppBc95SeqStepType_t type;
+    const char          *p_cmd;
+    uint32_t             rxTimeoutMs;
+    const char          *p_cmdLabel;
+} AppBc95SeqStep_t;
+
+static AppStatus_t App_Bc95AtRunSequence(const AppBc95SeqStep_t *p_steps,
+                                         uint32_t stepCount,
+                                         const char *p_logPrefix)
+{
+    uint32_t index;
+    AppStatus_t status = APP_STATUS_OK;
+
+    APP_RETURN_IF_FALSE(p_steps != NULL, APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(p_logPrefix != NULL, APP_STATUS_INVALID_PARAM);
+
+    for (index = 0u; index < stepCount; index++)
+    {
+        const AppBc95SeqStep_t *p_step = &p_steps[index];
+
+        switch (p_step->type)
+        {
+            case APP_BC95_SEQ_STEP_REQUIRED_OK:
+                status = App_Bc95AtSendSimpleOkCommand(p_step->p_cmd,
+                                                       p_step->rxTimeoutMs,
+                                                       p_step->p_cmdLabel,
+                                                       p_logPrefix);
+                APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+                break;
+
+            case APP_BC95_SEQ_STEP_BESTEFFORT_OK:
+                (void)App_Bc95AtSendBestEffortSimpleOk(p_step->p_cmd,
+                                                       p_step->rxTimeoutMs,
+                                                       p_step->p_cmdLabel,
+                                                       p_logPrefix);
+                break;
+
+            case APP_BC95_SEQ_STEP_BESTEFFORT_QUERY:
+                (void)App_Bc95AtSendBestEffortQuery(p_step->p_cmd,
+                                                    p_step->rxTimeoutMs,
+                                                    p_step->p_cmdLabel,
+                                                    p_logPrefix);
+                break;
+
+            case APP_BC95_SEQ_STEP_REBOOT:
+                status = App_Bc95AtSendRebootBestEffort();
+                APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+                break;
+
+            default:
+                return APP_STATUS_INVALID_PARAM;
+        }
+    }
+
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_Bc95AtRecoverFromServiceReadyCme(int32_t cmeErr)
 {
     AppStatus_t status;
@@ -3500,78 +3644,48 @@ static AppStatus_t App_Bc95AtSendRebootBestEffort(void)
 static AppStatus_t App_NbiotRunBootConfigurationSequence(void)
 {
     AppStatus_t status;
+    static const AppBc95SeqStep_t kBootCfgSeq[] =
+    {
+        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_QGMR_QUERY,                APP_BC95_AT_RX_TIMEOUT_MS, "AT+QGMR" },
+        { APP_BC95_SEQ_STEP_BESTEFFORT_OK,    APP_BC95_AT_CMD_QLWFOTAIND_OFF,            APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWFOTAIND=0" },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QREGSWT_SET_2,             APP_BC95_AT_RX_TIMEOUT_MS, "AT+QREGSWT=2" },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_OFF,   APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCONFIG=AUTOCONNECT,FALSE" },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NCONFIG_CELL_RESELECTION_ON, APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCONFIG=CELL_RESELECTION,TRUE" },
+        { APP_BC95_SEQ_STEP_REBOOT,           NULL,                                       0u,                        "AT+NRB" }
+    };
 
     status = App_Bc95AtWaitUntilReady(APP_BC95_BOOT_WAIT_BANNER_MS + APP_BC95_USIM_READY_TIMEOUT_MS);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QGMR_QUERY,
-                                        APP_BC95_AT_RX_TIMEOUT_MS,
-                                        "AT+QGMR",
-                                        "[[BootTrack]]");
-    (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_QLWFOTAIND_OFF,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+QLWFOTAIND=0",
-                                           "[[BootTrack]]");
-/* If you want this response, increase rx buf size.
-    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NCONFIG_QUERY,
-                                        APP_BC95_AT_RX_TIMEOUT_MS,
-                                        "AT+NCONFIG?",
-                                        "[[BootTrack]]");
-*/
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QREGSWT_SET_2,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+QREGSWT=2",
-                                           "[[BootTrack]]");
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_OFF,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+NCONFIG=AUTOCONNECT,FALSE",
-                                           "[[BootTrack]]");
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_NCONFIG_CELL_RESELECTION_ON,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+NCONFIG=CELL_RESELECTION,TRUE",
-                                           "[[BootTrack]]");
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    status = App_Bc95AtSendRebootBestEffort();
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    return APP_STATUS_OK;
+    return App_Bc95AtRunSequence(kBootCfgSeq,
+                                 (uint32_t)(sizeof(kBootCfgSeq) / sizeof(kBootCfgSeq[0])),
+                                 "[[BootTrack]]");
 }
 
 static AppStatus_t App_NbiotRunBoardAttachVerificationSequence(void)
 {
     AppStatus_t status;
+    static const AppBc95SeqStep_t kAttachVerifyPreSeq[] =
+    {
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NBAND_SET,       APP_BC95_AT_RX_TIMEOUT_MS, "AT+NBAND=" APP_BC95_PLATFORM_NBAND_STRING },
+        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_CPSMS_QUERY,     APP_BC95_AT_RX_TIMEOUT_MS, "AT+CPSMS?" },
+        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_NCCID_QUERY,     APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCCID?" },
+        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_IMSI,            APP_BC95_AT_RX_TIMEOUT_MS, "AT+CIMI" },
+        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_IMEI,            APP_BC95_AT_RX_TIMEOUT_MS, "AT+CGSN=1" },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_CGATT_ATTACH,    APP_BC95_AT_RX_TIMEOUT_MS, "AT+CGATT=1" },
+    };
+    static const AppBc95SeqStep_t kAttachVerifyPostSeq[] =
+    {
+        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_NCCID_QUERY,     APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCCID?" },
+    };
 
     APP_LOGN("NBIOT", "[[BootTrack]] start board attach-verification sequence");
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_NBAND_SET,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+NBAND=" APP_BC95_PLATFORM_NBAND_STRING,
-                                           "[[BootTrack]]");
+    status = App_Bc95AtRunSequence(kAttachVerifyPreSeq,
+                                   (uint32_t)(sizeof(kAttachVerifyPreSeq) / sizeof(kAttachVerifyPreSeq[0])),
+                                   "[[BootTrack]]");
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     status = App_Bc95AtSetFullFunction();
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_CPSMS_QUERY,
-                                        APP_BC95_AT_RX_TIMEOUT_MS,
-                                        "AT+CPSMS?",
-                                        "[[BootTrack]]");
-    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NCCID_QUERY,
-                                        APP_BC95_AT_RX_TIMEOUT_MS,
-                                        "AT+NCCID?",
-                                        "[[BootTrack]]");
-    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_IMSI,
-                                        APP_BC95_AT_RX_TIMEOUT_MS,
-                                        "AT+CIMI",
-                                        "[[BootTrack]]");
-    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_IMEI,
-                                        APP_BC95_AT_RX_TIMEOUT_MS,
-                                        "AT+CGSN=1",
-                                        "[[BootTrack]]");
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CGATT_ATTACH,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+CGATT=1",
-                                           "[[BootTrack]]");
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     /*
@@ -3586,10 +3700,9 @@ static AppStatus_t App_NbiotRunBoardAttachVerificationSequence(void)
     status = App_NBIoTCarrierAttachMandatory();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NCCID_QUERY,
-                                        APP_BC95_AT_RX_TIMEOUT_MS,
-                                        "AT+NCCID?",
-                                        "[[BootTrack]]");
+    (void)App_Bc95AtRunSequence(kAttachVerifyPostSeq,
+                                (uint32_t)(sizeof(kAttachVerifyPostSeq) / sizeof(kAttachVerifyPostSeq[0])),
+                                "[[BootTrack]]");
     (void)App_NBIoTReadQuality(APP_TRUE);
     (void)App_NBIoTSyncTime();
     return APP_STATUS_OK;
@@ -3597,51 +3710,23 @@ static AppStatus_t App_NbiotRunBoardAttachVerificationSequence(void)
 
 static AppStatus_t App_NbiotRunBoardProvisioningSequence(void)
 {
-    AppStatus_t status;
+    static const AppBc95SeqStep_t kProvisionSeq[] =
+    {
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QLWSERVERIP_SET_BS,        APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP=BS,..." },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QLWSERVERIP_SET_LWM2M,     APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP=LWM2M,..." },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_SET_0,   APP_BC95_AT_RX_TIMEOUT_MS, "AT+QBOOTSTRAPHOLDOFF=0" },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QLWEPNS_SET,               APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWEPNS=1,..." },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QLWMBSPS_SET,              APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWMBSPS=..." },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QREGSWT_SET_1,             APP_BC95_AT_RX_TIMEOUT_MS, "AT+QREGSWT=1" },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_ON,    APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCONFIG=AUTOCONNECT,TRUE" },
+        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_QLWSERVERIP_QUERY,         APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP?" },
+        { APP_BC95_SEQ_STEP_REBOOT,           NULL,                                       0u,                        "AT+NRB" }
+    };
 
     APP_LOGN("NBIOT", "[[BootTrack]] start board provisioning sequence");
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QLWSERVERIP_SET_BS,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+QLWSERVERIP=BS,...",
-                                           "[[BootTrack]]");
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QLWSERVERIP_SET_LWM2M,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+QLWSERVERIP=LWM2M,...",
-                                           "[[BootTrack]]");
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_SET_0,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+QBOOTSTRAPHOLDOFF=0",
-                                           "[[BootTrack]]");
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QLWEPNS_SET,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+QLWEPNS=1,...",
-                                           "[[BootTrack]]");
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QLWMBSPS_SET,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+QLWMBSPS=...",
-                                           "[[BootTrack]]");
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QREGSWT_SET_1,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+QREGSWT=1",
-                                           "[[BootTrack]]");
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_ON,
-                                           APP_BC95_AT_RX_TIMEOUT_MS,
-                                           "AT+NCONFIG=AUTOCONNECT,TRUE",
-                                           "[[BootTrack]]");
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QLWSERVERIP_QUERY,
-                                        APP_BC95_AT_RX_TIMEOUT_MS,
-                                        "AT+QLWSERVERIP?",
-                                        "[[BootTrack]]");
-    status = App_Bc95AtSendRebootBestEffort();
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    return APP_STATUS_OK;
+    return App_Bc95AtRunSequence(kProvisionSeq,
+                                 (uint32_t)(sizeof(kProvisionSeq) / sizeof(kProvisionSeq[0])),
+                                 "[[BootTrack]]");
 }
 
 static AppStatus_t App_NbiotSyncTimeSoft(void)
@@ -4379,19 +4464,16 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
 
     APP_RETURN_IF_FALSE((p_logTag != NULL), APP_STATUS_INVALID_PARAM);
 
-    App_MeterServerOptionsLoad(&opt);
-    App_MeterServerOptionsDump(&opt);
-    effectiveDeleteStorage = App_NbiotResolveDeleteAfterSend(deleteStorage, &opt);
-    if (p_liveRecord != NULL)
-    {
-        status = App_MeterServerFormatBuildFromRecord(&opt, p_liveRecord, packet, sizeof(packet), &buildResult);
-    }
-    else
-    {
-        status = (unsentOnly == APP_TRUE)
-                 ? App_MeterServerFormatBuildFromUnsentStorage(&opt, packet, sizeof(packet), &buildResult)
-                 : App_MeterServerFormatBuildFromStorage(&opt, packet, sizeof(packet), &buildResult);
-    }
+    status = App_NbiotBuildMeterPacket(p_logTag,
+                                       deleteStorage,
+                                       unsentOnly,
+                                       p_liveRecord,
+                                       APP_FALSE,
+                                       &opt,
+                                       &buildResult,
+                                       packet,
+                                       sizeof(packet),
+                                       &effectiveDeleteStorage);
     if (status != APP_STATUS_OK)
     {
         APP_LOGW("NBIOT", "%s skip send", p_logTag);
@@ -6675,8 +6757,6 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                                                 AppBc95UdpResult_t *p_sendResultOut)
 {
     AppStatus_t status;
-    AppStatus_t envAppendStatus;
-    AppStatus_t diagAppendStatus;
     AppBc95UdpResult_t sendResult;
     AppMeterServerFormatOptions_t opt;
     AppMeterServerFormatResult_t buildResult;
@@ -6685,45 +6765,24 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
 
     APP_RETURN_IF_FALSE((p_logTag != NULL) && (p_host != NULL), APP_STATUS_INVALID_PARAM);
 
-    App_MeterServerOptionsLoad(&opt);
-    App_MeterServerOptionsDump(&opt);
-    effectiveDeleteStorage = App_NbiotResolveDeleteAfterSend(deleteStorage, &opt);
-    if (p_liveRecord != NULL)
-    {
-        status = App_MeterServerFormatBuildFromRecord(&opt, p_liveRecord, packet, sizeof(packet), &buildResult);
-    }
-    else
-    {
-        status = (unsentOnly == APP_TRUE)
-                 ? App_MeterServerFormatBuildFromUnsentStorage(&opt, packet, sizeof(packet), &buildResult)
-                 : App_MeterServerFormatBuildFromStorage(&opt, packet, sizeof(packet), &buildResult);
-    }
+    status = App_NbiotBuildMeterPacket(p_logTag,
+                                       deleteStorage,
+                                       unsentOnly,
+                                       p_liveRecord,
+                                       appendSelfTestToMgmt,
+                                       &opt,
+                                       &buildResult,
+                                       packet,
+                                       sizeof(packet),
+                                       &effectiveDeleteStorage);
     if (status == APP_STATUS_OK)
     {
-        if (appendSelfTestToMgmt == APP_TRUE)
-        {
-            envAppendStatus = App_NbiotAppendMgmtEnvTrailer(packet, sizeof(packet), &buildResult);
-            if (envAppendStatus != APP_STATUS_OK)
-            {
-                APP_LOGW("NBIOT",
-                         "%s env trailer skipped (status=%d, len=%u)",
-                         p_logTag,
-                         (int)envAppendStatus,
-                         (unsigned int)buildResult.packetLength);
-            }
-
-            diagAppendStatus = App_NbiotAppendMgmtSelfTestTrailer(packet, sizeof(packet), &buildResult);
-            if (diagAppendStatus != APP_STATUS_OK)
-            {
-                APP_LOGW("NBIOT",
-                         "%s selftest trailer skipped (status=%d, len=%u)",
-                         p_logTag,
-                         (int)diagAppendStatus,
-                         (unsigned int)buildResult.packetLength);
-            }
-        }
-
-        status = App_Bc95AtUdpSendOnce(p_logTag, p_host, port, packet, buildResult.packetLength, &sendResult);
+        status = App_Bc95AtUdpSendOnce(p_logTag,
+                                       p_host,
+                                       port,
+                                       packet,
+                                       buildResult.packetLength,
+                                       &sendResult);
         if (p_sendResultOut != NULL)
         {
             *p_sendResultOut = sendResult;

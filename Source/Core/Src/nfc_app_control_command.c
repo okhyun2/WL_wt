@@ -4,6 +4,7 @@
 
 #include "app_log.h"
 #include "app_comm_param.h"
+#include "app_util.h"
 #include "app_meter_server_format.h"
 #include "app_meter_storage.h"
 #include "app_nbiot.h"
@@ -73,53 +74,9 @@ static AppDeviceConfig_t s_lastSavedDevice;
 static uint8_t s_lastSavedOptionsValid = 0U;
 static uint8_t s_lastSavedDeviceValid = 0U;
 
-static void nfc_app_ctrl_put_u16le(uint8_t out[2], uint16_t value)
-{
-    out[0] = (uint8_t)(value & 0xFFU);
-    out[1] = (uint8_t)((value >> 8) & 0xFFU);
-}
-
-static void nfc_app_ctrl_put_u32le(uint8_t out[4], uint32_t value)
-{
-    out[0] = (uint8_t)(value & 0xFFU);
-    out[1] = (uint8_t)((value >> 8) & 0xFFU);
-    out[2] = (uint8_t)((value >> 16) & 0xFFU);
-    out[3] = (uint8_t)((value >> 24) & 0xFFU);
-}
-
-static uint8_t nfc_app_ctrl_is_all_zero(const uint8_t *p_data, uint32_t len)
-{
-    uint32_t i;
-    if (p_data == NULL)
-    {
-        return 1U;
-    }
-    for (i = 0U; i < len; ++i)
-    {
-        if (p_data[i] != 0U)
-        {
-            return 0U;
-        }
-    }
-    return 1U;
-}
-
 static AppStatus_t nfc_app_ctrl_load_options(AppMeterServerFormatOptions_t *p_options)
 {
-    AppStatus_t status;
-
-    if (p_options == NULL)
-    {
-        return APP_STATUS_INVALID_PARAM;
-    }
-
-    status = App_MeterServerOptionsLoad(p_options);
-    if (status == APP_STATUS_NOT_INITIALIZED)
-    {
-        App_MeterServerOptionsSetDefaults(p_options);
-        return APP_STATUS_OK;
-    }
-    return status;
+    return App_UtilLoadMeterServerOptionsWithDefaults(p_options);
 }
 
 static AppStatus_t nfc_app_ctrl_load_device(AppDeviceConfig_t *p_config)
@@ -715,10 +672,10 @@ static uint8_t nfc_app_ctrl_handle_diagnosis(const NfcAppCtrlCmd_t *p_cmd,
             executedMask = nfc_app_ctrl_mask_from_context(p_ctx, 0U);
             passedMask = nfc_app_ctrl_mask_from_context(p_ctx, 1U);
             p_rsp->diagnosisRunSummaryGet.diagSeq = s_appCtrlDiagSeq;
-            nfc_app_ctrl_put_u16le(p_rsp->diagnosisRunSummaryGet.executedMaskLe, executedMask);
-            nfc_app_ctrl_put_u16le(p_rsp->diagnosisRunSummaryGet.passedMaskLe, passedMask);
+            App_UtilPutU16Le(p_rsp->diagnosisRunSummaryGet.executedMaskLe, executedMask);
+            App_UtilPutU16Le(p_rsp->diagnosisRunSummaryGet.passedMaskLe, passedMask);
             p_rsp->diagnosisRunSummaryGet.failCount = (uint8_t)(p_ctx->failCount & 0xFFU);
-            nfc_app_ctrl_put_u16le(p_rsp->diagnosisRunSummaryGet.lastStatusLe, (uint16_t)p_ctx->lastSequenceStatus);
+            App_UtilPutU16Le(p_rsp->diagnosisRunSummaryGet.lastStatusLe, (uint16_t)p_ctx->lastSequenceStatus);
             *p_rsp_len = 8U;
             *p_op_status = nfc_app_ctrl_map_status(status);
             return (uint8_t)NFC_CMD_RESULT_OK;
@@ -739,8 +696,8 @@ static uint8_t nfc_app_ctrl_handle_diagnosis(const NfcAppCtrlCmd_t *p_cmd,
             p_rsp->diagnosisDetailGet.itemId = itemId;
             p_rsp->diagnosisDetailGet.executed = p_ctx->items[itemId].executed;
             p_rsp->diagnosisDetailGet.passed = p_ctx->items[itemId].passed;
-            nfc_app_ctrl_put_u16le(p_rsp->diagnosisDetailGet.statusLe, (uint16_t)p_ctx->items[itemId].status);
-            nfc_app_ctrl_put_u32le(p_rsp->diagnosisDetailGet.tickMsLe, p_ctx->items[itemId].tickMs);
+            App_UtilPutU16Le(p_rsp->diagnosisDetailGet.statusLe, (uint16_t)p_ctx->items[itemId].status);
+            App_UtilPutU32Le(p_rsp->diagnosisDetailGet.tickMsLe, p_ctx->items[itemId].tickMs);
             *p_rsp_len = 9U;
             *p_op_status = (uint8_t)NFC_APP_CTRL_OP_OK;
             return (uint8_t)NFC_CMD_RESULT_OK;
@@ -768,7 +725,7 @@ static uint8_t nfc_app_ctrl_handle_diagnosis(const NfcAppCtrlCmd_t *p_cmd,
             p_rsp->diagnosisRetryItem.itemId = itemId;
             p_rsp->diagnosisRetryItem.executed = p_ctx->items[itemId].executed;
             p_rsp->diagnosisRetryItem.passed = p_ctx->items[itemId].passed;
-            nfc_app_ctrl_put_u16le(p_rsp->diagnosisRetryItem.statusLe, (uint16_t)p_ctx->items[itemId].status);
+            App_UtilPutU16Le(p_rsp->diagnosisRetryItem.statusLe, (uint16_t)p_ctx->items[itemId].status);
             *p_rsp_len = 5U;
             *p_op_status = nfc_app_ctrl_map_status(status);
             return (uint8_t)NFC_CMD_RESULT_OK;
@@ -895,7 +852,7 @@ static uint8_t nfc_app_ctrl_handle_param_runtime_info_get(NfcAppCtrlRspPayload_u
         p_rsp->paramRuntimeInfoGet.reportingSpreadHours = options.reportingSpreadHours;
 
         flags |= NFC_APP_CTRL_RUNTIME_INFO_FLAG_SCHEDULE_VALID;
-        if (nfc_app_ctrl_is_all_zero(options.deviceSerialBcd, sizeof(options.deviceSerialBcd)) == 0U)
+        if (App_UtilIsAllZero(options.deviceSerialBcd, sizeof(options.deviceSerialBcd)) == 0U)
         {
             flags |= NFC_APP_CTRL_RUNTIME_INFO_FLAG_SERIAL_VALID;
         }
@@ -903,7 +860,7 @@ static uint8_t nfc_app_ctrl_handle_param_runtime_info_get(NfcAppCtrlRspPayload_u
 
     p_imei_cached = App_Bc95AtGetImeiBcd();
     if ((p_imei_cached != NULL) &&
-        (nfc_app_ctrl_is_all_zero(p_imei_cached, APP_BC95_IMEI_BCD_BYTES) == 0U))
+        (App_UtilIsAllZero(p_imei_cached, APP_BC95_IMEI_BCD_BYTES) == 0U))
     {
         (void)memcpy(p_rsp->paramRuntimeInfoGet.imeiBcd,
                      p_imei_cached,
@@ -923,8 +880,8 @@ static uint8_t nfc_app_ctrl_handle_param_runtime_info_get(NfcAppCtrlRspPayload_u
     p_quality = App_Bc95AtGetQuality();
     if ((p_quality != NULL) && (p_quality->valid != 0U))
     {
-        nfc_app_ctrl_put_u16le(p_rsp->paramRuntimeInfoGet.rssiDbmLe, (uint16_t)p_quality->rssiDbm);
-        nfc_app_ctrl_put_u16le(p_rsp->paramRuntimeInfoGet.rsrpDbmLe, (uint16_t)p_quality->rsrpDbm);
+        App_UtilPutU16Le(p_rsp->paramRuntimeInfoGet.rssiDbmLe, (uint16_t)p_quality->rssiDbm);
+        App_UtilPutU16Le(p_rsp->paramRuntimeInfoGet.rsrpDbmLe, (uint16_t)p_quality->rsrpDbm);
         flags |= NFC_APP_CTRL_RUNTIME_INFO_FLAG_QUALITY_VALID;
     }
 

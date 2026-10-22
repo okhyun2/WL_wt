@@ -830,6 +830,162 @@ static void App_SelfTestRunItem(AppSelfTestItem_t item, AppStatus_t (*p_checkFun
     App_SelfTestRunItemWithPolicy(item, p_checkFunction, APP_TRUE);
 }
 
+typedef enum
+{
+    APP_SELFTEST_SEQ_BOOT = 0,
+    APP_SELFTEST_SEQ_DATA_COLLECTION,
+    APP_SELFTEST_SEQ_PERIODIC_METER_WAKE
+} AppSelfTestSequenceKind_t;
+
+typedef struct
+{
+    AppSelfTestItem_t item;
+    AppStatus_t (*p_checkFunction)(void);
+    uint8_t beepOnFail;
+} AppSelfTestSeqStep_t;
+
+static void App_SelfTestPrepareSequenceContext(uint8_t resetMeterReplyCache)
+{
+    g_appSelfTestContext.running = APP_TRUE;
+    g_appSelfTestContext.lastRunTickMs = HAL_GetTick();
+    g_appSelfTestContext.passCount = 0u;
+    g_appSelfTestContext.failCount = 0u;
+    (void)memset(g_appSelfTestContext.items, 0, sizeof(g_appSelfTestContext.items));
+
+    if (resetMeterReplyCache == APP_TRUE)
+    {
+        g_appSelfTestMeterLastReplyLen = 0u;
+        g_appSelfTestMeterLastReplyValid = APP_FALSE;
+        g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
+    }
+}
+
+static void App_SelfTestFinalizeSequenceContext(const char *p_summaryFmt)
+{
+    g_appSelfTestContext.running = APP_FALSE;
+    g_appSelfTestContext.lastSequenceStatus =
+        (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
+
+    APP_LOGN("SELF", p_summaryFmt,
+             (unsigned long)g_appSelfTestContext.passCount,
+             (unsigned long)g_appSelfTestContext.failCount);
+
+#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
+    App_SelfTestReportTest3Result();
+#endif
+}
+
+static void App_SelfTestRunCommonSteps(const AppSelfTestSeqStep_t *p_steps, uint32_t count)
+{
+    uint32_t i;
+    for (i = 0u; i < count; i++)
+    {
+        App_SelfTestRunItemWithPolicy(p_steps[i].item,
+                                      p_steps[i].p_checkFunction,
+                                      p_steps[i].beepOnFail);
+    }
+}
+
+static AppStatus_t App_SelfTestRunSequenceInternal(AppSelfTestSequenceKind_t kind,
+                                                   AppStatus_t meterProbeStatus)
+{
+    static const AppSelfTestSeqStep_t kBootPrefix[] =
+    {
+        { APP_SELFTEST_ITEM_BUZZER,       App_SelfTestCheckBuzzer,           APP_TRUE },
+        { APP_SELFTEST_ITEM_CRC,          App_SelfTestCheckCrc,              APP_TRUE },
+        { APP_SELFTEST_ITEM_BATTERY_ADC,  App_SelfTestCheckBatteryAdc,       APP_TRUE },
+        { APP_SELFTEST_ITEM_DEBUG_UART,   App_SelfTestCheckDebugUart,        APP_TRUE },
+    };
+
+    static const AppSelfTestSeqStep_t kCommonSuffixBeep[] =
+    {
+        { APP_SELFTEST_ITEM_METER_CRC,    App_SelfTestCheckMeterCrc,         APP_TRUE  },
+        { APP_SELFTEST_ITEM_NBIOT_UART,   App_SelfTestCheckNbiotUart,        APP_TRUE  },
+        { APP_SELFTEST_ITEM_NFC_I2C,      App_SelfTestCheckNfcI2c,           APP_TRUE  },
+        { APP_SELFTEST_ITEM_AUX_I2C,      App_SelfTestCheckAuxI2c,           APP_TRUE  },
+        { APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog, APP_TRUE  },
+    };
+
+    static const AppSelfTestSeqStep_t kCommonSuffixSilent[] =
+    {
+        { APP_SELFTEST_ITEM_METER_CRC,    App_SelfTestCheckMeterCrc,         APP_FALSE },
+        { APP_SELFTEST_ITEM_NBIOT_UART,   App_SelfTestCheckNbiotUart,        APP_FALSE },
+        { APP_SELFTEST_ITEM_NFC_I2C,      App_SelfTestCheckNfcI2c,           APP_FALSE },
+        { APP_SELFTEST_ITEM_AUX_I2C,      App_SelfTestCheckAuxI2c,           APP_FALSE },
+        { APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog, APP_FALSE },
+    };
+
+    APP_RETURN_IF_FALSE(g_appSelfTestContext.initialized == APP_TRUE, APP_STATUS_NOT_INITIALIZED);
+    APP_RETURN_IF_FALSE(App_LogGetContext()->initialized == APP_TRUE, APP_STATUS_LOG_INIT_FAILED);
+
+    App_SelfTestPrepareSequenceContext((kind == APP_SELFTEST_SEQ_PERIODIC_METER_WAKE) ? APP_FALSE : APP_TRUE);
+
+    if (kind == APP_SELFTEST_SEQ_BOOT)
+    {
+        App_SelfTestRunCommonSteps(kBootPrefix,
+                                   (uint32_t)(sizeof(kBootPrefix) / sizeof(kBootPrefix[0])));
+#if defined(SUPPORT_METER_NORMAL)
+        App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
+#elif defined(SUPPORT_METER_SC1xxx)
+        App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
+#endif
+        App_SelfTestRunItem((g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed == APP_TRUE)
+                                ? APP_SELFTEST_ITEM_METER_UART_LINE
+                                : APP_SELFTEST_ITEM_METER_UART_LINE,
+                            (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed == APP_TRUE)
+                                ? App_SelfTestCheckMeterUartLineOk
+                                : App_SelfTestCheckMeterUartLine);
+        App_SelfTestRunCommonSteps(kCommonSuffixBeep,
+                                   (uint32_t)(sizeof(kCommonSuffixBeep) / sizeof(kCommonSuffixBeep[0])));
+        App_SelfTestFinalizeSequenceContext("------ Boot self-test summary: pass=%lu fail=%lu");
+        return g_appSelfTestContext.lastSequenceStatus;
+    }
+
+    if (kind == APP_SELFTEST_SEQ_DATA_COLLECTION)
+    {
+        APP_LOGN("SELF", "Operational data collection start");
+        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
+#if defined(SUPPORT_METER_NORMAL)
+        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart, APP_FALSE);
+#elif defined(SUPPORT_METER_SC1xxx)
+        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart, APP_FALSE);
+#endif
+        App_SelfTestRunItemWithPolicy(
+            APP_SELFTEST_ITEM_METER_UART_LINE,
+            (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed == APP_TRUE)
+                ? App_SelfTestCheckMeterUartLineOk
+                : App_SelfTestCheckMeterUartLine,
+            APP_FALSE);
+        App_SelfTestRunCommonSteps(kCommonSuffixSilent,
+                                   (uint32_t)(sizeof(kCommonSuffixSilent) / sizeof(kCommonSuffixSilent[0])));
+        App_SelfTestFinalizeSequenceContext("Operational data collection done: pass=%lu fail=%lu");
+        return g_appSelfTestContext.lastSequenceStatus;
+    }
+
+    APP_LOGN("SELF", "Periodic meter-wake self-test start");
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
+    App_SelfTestRecordResult(APP_SELFTEST_ITEM_METER_UART, meterProbeStatus);
+    if (meterProbeStatus == APP_STATUS_OK)
+    {
+        APP_LOGI("SELF", "%s PASS", App_SelfTestItemToString(APP_SELFTEST_ITEM_METER_UART));
+    }
+    else
+    {
+        APP_LOGE("SELF", "%s FAIL status=%lu",
+                 App_SelfTestItemToString(APP_SELFTEST_ITEM_METER_UART),
+                 (unsigned long)meterProbeStatus);
+    }
+    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE,
+                                  (meterProbeStatus == APP_STATUS_OK)
+                                      ? App_SelfTestCheckMeterUartLineOk
+                                      : App_SelfTestCheckMeterUartLine,
+                                  APP_FALSE);
+    App_SelfTestRunCommonSteps(kCommonSuffixSilent,
+                               (uint32_t)(sizeof(kCommonSuffixSilent) / sizeof(kCommonSuffixSilent[0])));
+    App_SelfTestFinalizeSequenceContext("Periodic meter-wake self-test done: pass=%lu fail=%lu");
+    return g_appSelfTestContext.lastSequenceStatus;
+}
+
 AppStatus_t App_SelfTestInit(void)
 {
     (void)memset(&g_appSelfTestContext, 0, sizeof(g_appSelfTestContext));
@@ -852,167 +1008,17 @@ void App_SelfTestSetNbiotExecutedHint(uint8_t executed)
 
 AppStatus_t App_SelfTestRunBootSequence(void)
 {
-    APP_RETURN_IF_FALSE(g_appSelfTestContext.initialized == APP_TRUE, APP_STATUS_NOT_INITIALIZED);
-    APP_RETURN_IF_FALSE(App_LogGetContext()->initialized == APP_TRUE, APP_STATUS_LOG_INIT_FAILED);
-
-    g_appSelfTestContext.running = APP_TRUE;
-    g_appSelfTestContext.lastRunTickMs = HAL_GetTick();
-    g_appSelfTestContext.passCount = 0u;
-    g_appSelfTestContext.failCount = 0u;
-    (void)memset(g_appSelfTestContext.items, 0, sizeof(g_appSelfTestContext.items));
-    g_appSelfTestMeterLastReplyLen = 0u;
-    g_appSelfTestMeterLastReplyValid = APP_FALSE;
-    g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
-
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_BUZZER, App_SelfTestCheckBuzzer);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_CRC, App_SelfTestCheckCrc);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_DEBUG_UART, App_SelfTestCheckDebugUart);
-#if defined(SUPPORT_METER_NORMAL)
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart);
-#elif defined(SUPPORT_METER_SC1xxx)
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart);
-#endif
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_CRC, App_SelfTestCheckMeterCrc);
-
-    /* METER 검사가 실패했을 때만 라인(하드웨어 루프백) 진단을 추가로 수행 */
-    if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed == APP_TRUE)
-    {
-        App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLineOk);
-    }
-    else
-    {
-        App_SelfTestRunItem(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine);
-    }
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiotUart);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c);
-    App_SelfTestRunItem(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog);
-
-    g_appSelfTestContext.running = APP_FALSE;
-    g_appSelfTestContext.lastSequenceStatus = (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
-
-    APP_LOGI("SELF", "------ Boot self-test summary: pass=%lu fail=%lu",
-                                 (unsigned long)g_appSelfTestContext.passCount,
-                                 (unsigned long)g_appSelfTestContext.failCount);
-
-#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
-    App_SelfTestReportTest3Result();   /* 신규: TEST3 자가진단 로그 출력 */
-#endif
-
-    return g_appSelfTestContext.lastSequenceStatus;
+    return App_SelfTestRunSequenceInternal(APP_SELFTEST_SEQ_BOOT, APP_STATUS_OK);
 }
 
 AppStatus_t App_SelfTestRunDataCollectionSequence(void)
 {
-    APP_RETURN_IF_FALSE(g_appSelfTestContext.initialized == APP_TRUE, APP_STATUS_NOT_INITIALIZED);
-    APP_RETURN_IF_FALSE(App_LogGetContext()->initialized == APP_TRUE, APP_STATUS_LOG_INIT_FAILED);
-
-    g_appSelfTestContext.running = APP_TRUE;
-    g_appSelfTestContext.lastRunTickMs = HAL_GetTick();
-    g_appSelfTestContext.passCount = 0u;
-    g_appSelfTestContext.failCount = 0u;
-    (void)memset(g_appSelfTestContext.items, 0, sizeof(g_appSelfTestContext.items));
-    g_appSelfTestMeterLastReplyLen = 0u;
-    g_appSelfTestMeterLastReplyValid = APP_FALSE;
-    g_appSelfTestMeterLastReplyIsSc1xxx = APP_FALSE;
-
-    APP_LOGN("SELF", "Operational data collection start");
-
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
-#if defined(SUPPORT_METER_NORMAL)
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterNormalUart, APP_FALSE);
-#elif defined(SUPPORT_METER_SC1xxx)
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART, App_SelfTestCheckMeterSC1xxxUart, APP_FALSE);
-#endif
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_CRC, App_SelfTestCheckMeterCrc, APP_FALSE);
-
-    if (g_appSelfTestContext.items[APP_SELFTEST_ITEM_METER_UART].passed == APP_TRUE)
-    {
-        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLineOk, APP_FALSE);
-    }
-    else
-    {
-        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine, APP_FALSE);
-    }
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiotUart, APP_FALSE);
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c, APP_FALSE);
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c, APP_FALSE);
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog, APP_FALSE);
-
-    g_appSelfTestContext.running = APP_FALSE;
-    g_appSelfTestContext.lastSequenceStatus = (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
-
-    APP_LOGN("SELF", "Operational data collection done: pass=%lu fail=%lu",
-                                 (unsigned long)g_appSelfTestContext.passCount,
-                                 (unsigned long)g_appSelfTestContext.failCount);
-
-#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
-    App_SelfTestReportTest3Result();   /* 신규: TEST3 자가진단 로그 출력 */
-#endif
-
-    return g_appSelfTestContext.lastSequenceStatus;
+    return App_SelfTestRunSequenceInternal(APP_SELFTEST_SEQ_DATA_COLLECTION, APP_STATUS_OK);
 }
 
 AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatus)
 {
-    APP_RETURN_IF_FALSE(g_appSelfTestContext.initialized == APP_TRUE, APP_STATUS_NOT_INITIALIZED);
-    APP_RETURN_IF_FALSE(App_LogGetContext()->initialized == APP_TRUE, APP_STATUS_LOG_INIT_FAILED);
-
-    g_appSelfTestContext.running = APP_TRUE;
-    g_appSelfTestContext.lastRunTickMs = HAL_GetTick();
-    g_appSelfTestContext.passCount = 0u;
-    g_appSelfTestContext.failCount = 0u;
-    (void)memset(g_appSelfTestContext.items, 0, sizeof(g_appSelfTestContext.items));
-
-    APP_LOGN("SELF", "Periodic meter-wake self-test start");
-
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_BATTERY_ADC, App_SelfTestCheckBatteryAdc, APP_FALSE);
-
-    /* METER_UART 항목: 이미 App_FsmMeterProbeAndStore()가 수행한 실제 검침
-       결과를 그대로 기록한다. 계량기 UART 트랜잭션을 이 자리에서 다시
-       수행하지 않는다(동일 사이클 내 이중 통신/충돌 방지). */
-    App_SelfTestRecordResult(APP_SELFTEST_ITEM_METER_UART, meterProbeStatus);
-    if (meterProbeStatus == APP_STATUS_OK)
-    {
-        APP_LOGI("SELF", "%s PASS", App_SelfTestItemToString(APP_SELFTEST_ITEM_METER_UART));
-    }
-    else
-    {
-        APP_LOGE("SELF", "%s FAIL status=%lu",
-                 App_SelfTestItemToString(APP_SELFTEST_ITEM_METER_UART),
-                 (unsigned long)meterProbeStatus);
-    }
-
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_CRC, App_SelfTestCheckMeterCrc, APP_FALSE);
-
-    /* METER 검사가 실패했을 때만 라인(하드웨어 루프백) 진단을 추가로 수행 */
-    if (meterProbeStatus == APP_STATUS_OK)
-    {
-        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLineOk, APP_FALSE);
-    }
-    else
-    {
-        App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_METER_UART_LINE, App_SelfTestCheckMeterUartLine, APP_FALSE);
-    }
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NBIOT_UART, App_SelfTestCheckNbiotUart, APP_FALSE);
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_NFC_I2C, App_SelfTestCheckNfcI2c, APP_FALSE);
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_AUX_I2C, App_SelfTestCheckAuxI2c, APP_FALSE);
-    App_SelfTestRunItemWithPolicy(APP_SELFTEST_ITEM_EXT_WATCHDOG, App_SelfTestCheckExternalWatchdog, APP_FALSE);
-
-    g_appSelfTestContext.running = APP_FALSE;
-    g_appSelfTestContext.lastSequenceStatus =
-        (g_appSelfTestContext.failCount == 0u) ? APP_STATUS_OK : APP_STATUS_SELFTEST_FAILED;
-
-    APP_LOGN("SELF", "Periodic meter-wake self-test done: pass=%lu fail=%lu",
-             (unsigned long)g_appSelfTestContext.passCount,
-             (unsigned long)g_appSelfTestContext.failCount);
-
-#if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 3u)
-    App_SelfTestReportTest3Result();   /* 신규: 매 검침 사이클마다 SELFDIAG 로그 출력 */
-#endif
-
-    return g_appSelfTestContext.lastSequenceStatus;
+   return App_SelfTestRunSequenceInternal(APP_SELFTEST_SEQ_PERIODIC_METER_WAKE, meterProbeStatus);
 }
 
 AppStatus_t App_SelfTestSignalErrorBuzzer(void)

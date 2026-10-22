@@ -5,6 +5,7 @@
 
 #include "app_build_config.h"
 #include "app_fsm.h"
+#include "app_util.h"
 #include "app_hw.h"
 #include "app_log.h"
 #include "app_meter_server_format.h"
@@ -102,25 +103,6 @@ static void App_NfcSeoulFillUnknown(uint8_t *p_buf, uint8_t length)
     (void)memset(p_buf, 0xFF, length);
 }
 
-static void App_NfcSeoulU32ToBe(uint32_t value, uint8_t *p_out)
-{
-    p_out[0] = (uint8_t)((value >> 24) & 0xFFu);
-    p_out[1] = (uint8_t)((value >> 16) & 0xFFu);
-    p_out[2] = (uint8_t)((value >> 8) & 0xFFu);
-    p_out[3] = (uint8_t)(value & 0xFFu);
-}
-
-static void App_NfcSeoulU16ToBe(uint16_t value, uint8_t *p_out)
-{
-    p_out[0] = (uint8_t)((value >> 8) & 0xFFu);
-    p_out[1] = (uint8_t)(value & 0xFFu);
-}
-
-static uint16_t App_NfcSeoulReadLe16(const uint8_t *p_buf)
-{
-    return (uint16_t)((uint16_t)p_buf[0] | ((uint16_t)p_buf[1] << 8));
-}
-
 static void App_NfcSeoulEncodeBcdBe(uint32_t value, uint8_t *p_out, uint8_t digitBytes)
 {
     uint8_t i;
@@ -139,61 +121,9 @@ static void App_NfcSeoulEncodeBcdBe(uint32_t value, uint8_t *p_out, uint8_t digi
     }
 }
 
-static uint8_t App_NfcSeoulIsAllZero(const uint8_t *p_buf, uint8_t length)
-{
-    uint8_t i;
-
-    for (i = 0u; i < length; i++)
-    {
-        if (p_buf[i] != 0u)
-        {
-            return APP_FALSE;
-        }
-    }
-
-    return APP_TRUE;
-}
-
 static AppStatus_t App_NfcSeoulLoadOptions(AppMeterServerFormatOptions_t *p_options)
 {
-    AppStatus_t status;
-
-    if (p_options == NULL)
-    {
-        return APP_STATUS_INVALID_PARAM;
-    }
-
-    App_MeterServerOptionsSetDefaults(p_options);
-    status = App_MeterServerOptionsLoad(p_options);
-    if ((status == APP_STATUS_OK) || (status == APP_STATUS_NOT_INITIALIZED))
-    {
-        return APP_STATUS_OK;
-    }
-
-    return status;
-}
-
-static uint32_t App_NfcSeoulReadBe32(const uint8_t src[4])
-{
-    if (src == NULL)
-    {
-        return 0u;
-    }
-
-    return ((uint32_t)src[0] << 24) |
-           ((uint32_t)src[1] << 16) |
-           ((uint32_t)src[2] << 8)  |
-           ((uint32_t)src[3]);
-}
-
-static uint16_t App_NfcSeoulReadBe16(const uint8_t src[2])
-{
-    if (src == NULL)
-    {
-        return 0u;
-    }
-
-    return (uint16_t)(((uint16_t)src[0] << 8) | (uint16_t)src[1]);
+    return App_UtilLoadMeterServerOptionsWithDefaults(p_options);
 }
 
 static void App_NfcSeoulLogLayer1Profile(const AppNfcSeoulSnapshot_t *p_snapshot,
@@ -227,9 +157,9 @@ static void App_NfcSeoulPrintSnapshot(const AppNfcSeoulSnapshot_t *p_snapshot)
         return;
     }
 
-    meterId = App_NfcSeoulReadBe32(p_snapshot->meterIdBcd);
-    reading = App_NfcSeoulReadBe32(p_snapshot->reading);
-    rsrp    = App_NfcSeoulReadBe16(p_snapshot->rsrp);
+    meterId = App_UtilReadU32Be(p_snapshot->meterIdBcd);
+    reading = App_UtilReadU32Be(p_snapshot->reading);
+    rsrp    = App_UtilReadU16Be(p_snapshot->rsrp);
 
     APP_LOGI("NFC", "----- Seoul Snapshot -----");
     APP_LOGI("NFC",
@@ -320,7 +250,7 @@ static void App_NfcSeoulApplyRecordToSnapshot(AppNfcSeoulSnapshot_t *p_snapshot,
     App_NfcSeoulEncodeBcdBe(p_record->meterId,
                             p_snapshot->meterIdBcd,
                             (uint8_t)sizeof(p_snapshot->meterIdBcd));
-    App_NfcSeoulU32ToBe(p_record->readingScaled, p_snapshot->reading);
+    App_UtilPutU32Be(p_snapshot->reading, p_record->readingScaled);
     p_snapshot->caliberDecimal = p_record->caliberDecimal;
     p_snapshot->alarmStatus = (uint8_t)(p_record->meterStatus &
                                         (APP_METER_STORAGE_STATUS_OVERFLOW |
@@ -423,10 +353,10 @@ static void App_NfcSeoulBuildSnapshot(AppNfcSeoulSnapshot_t *p_snapshot)
         p_snapshot->battery = options.terminalBattery.value;
         memcpy(p_snapshot->terminalId, &options.deviceSerialBcd[1], (uint8_t)sizeof(p_snapshot->terminalId)); //get last 4byte
 
-        if (App_NfcSeoulIsAllZero(options.wirelessQuality, (uint8_t)sizeof(options.wirelessQuality)) != APP_TRUE)
+        if (App_UtilIsAllZero(options.wirelessQuality, (uint8_t)sizeof(options.wirelessQuality)) != APP_TRUE)
         {
-            rsrpValue = App_NfcSeoulReadLe16(&options.wirelessQuality[4]);
-            App_NfcSeoulU16ToBe(rsrpValue, p_snapshot->rsrp);
+            rsrpValue = App_UtilReadU16Le(&options.wirelessQuality[4]);
+            App_UtilPutU16Be(p_snapshot->rsrp, rsrpValue);
         }
     }
 
