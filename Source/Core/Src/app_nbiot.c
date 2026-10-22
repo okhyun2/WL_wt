@@ -150,9 +150,9 @@
 #define APP_BC95_NET_REGISTERING_STUCK_MIN_POLLS (8u)
 #define APP_BC95_NET_REGISTERING_STUCK_MIN_POLLS_FAST_RECOVERY (4u)
 
-static const char g_appNbiotLogReadyProbe[] = "[[RP]]";
-static const char g_appNbiotLogPreAttach[]  = "[[PA]]";
-static const char g_appNbiotLogDns[]        = "[DNS]";
+#define APP_NBIOT_LOG_PREATTACH         "[PreAttach]"
+#define APP_NBIOT_LOG_DNS               "[DNS]"
+#define APP_NBIOT_LOG_READYPROBE        "[ReadyProbe]"
 
 #define APP_NBIOT_REPORT_LOG_ATTACH         "[[Attach]]"
 #define APP_NBIOT_REPORT_LOG_RESET          "[[Reset]]"
@@ -201,6 +201,7 @@ static AppBc95NetStatus_t g_appBc95AtNetStatus;
 static AppNbiotCarrierContext_t g_appNbiotCarrierContext;
 static uint8_t g_appBc95UsimFatal = APP_FALSE;
 static uint8_t g_appBc95SkipNextAttachBootWait = APP_FALSE;
+static uint8_t g_appBc95ShortRetryBootBannerWaitOnce = APP_FALSE;
 static uint8_t g_appBc95ForceSkipAttachBootWaitOnce = APP_FALSE;
 static uint8_t g_appBc95RegisteringStuckRecoveryUsed = APP_FALSE;
 static uint8_t g_appBc95WakeNeedsPreAttachNetReset = APP_FALSE;
@@ -1465,6 +1466,7 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
     uint32_t retryCount;
     uint8_t  bannerSeen = APP_FALSE;
     uint8_t  skipBootWaitOnce = g_appBc95SkipNextAttachBootWait;
+    uint8_t  shortRetryBannerWait = g_appBc95ShortRetryBootBannerWaitOnce;
 
     APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
     startTick = HAL_GetTick();
@@ -1472,6 +1474,20 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
     bannerWaitMs = (totalTimeoutMs > APP_BC95_BOOT_WAIT_BANNER_MS)
                        ? APP_BC95_BOOT_WAIT_BANNER_MS
                        : totalTimeoutMs;
+
+    if ((shortRetryBannerWait == APP_TRUE) &&
+        (skipBootWaitOnce != APP_TRUE) &&
+        (g_appNbiotCarrierContext.lastResetType == APP_NBIOT_CARRIER_RESET_NONE))
+    {
+        if (bannerWaitMs > APP_BC95_ATTACH_RETRY_BANNER_WAIT_MS)
+        {
+            bannerWaitMs = APP_BC95_ATTACH_RETRY_BANNER_WAIT_MS;
+        }
+        g_appBc95ShortRetryBootBannerWaitOnce = APP_FALSE;
+        APP_LOGI("NBIOT",
+                 "short boot wait for attach retry %lums",
+                 (unsigned long)bannerWaitMs);
+    }
 
     if (skipBootWaitOnce == APP_TRUE)
     {
@@ -3673,14 +3689,17 @@ static AppStatus_t App_NbiotRunBoardAttachVerificationSequence(void)
     {
         { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NBAND_SET,       APP_BC95_AT_RX_TIMEOUT_MS, "AT+NBAND=" APP_BC95_PLATFORM_NBAND_STRING },
         { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_CPSMS_QUERY,     APP_BC95_AT_RX_TIMEOUT_MS, "AT+CPSMS?" },
-        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_NCCID_QUERY,     APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCCID?" },
-        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_IMSI,            APP_BC95_AT_RX_TIMEOUT_MS, "AT+CIMI" },
-        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_IMEI,            APP_BC95_AT_RX_TIMEOUT_MS, "AT+CGSN=1" },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_CGATT_ATTACH,    APP_BC95_AT_RX_TIMEOUT_MS, "AT+CGATT=1" },
+        /*
+         * NCCID/CIMI/IMEI/CGATT는 NRB 직후 service-ready 이전 타이밍에서는
+         * AT error가 날 수 있다. 실제 attach는 뒤의
+         * App_NBIoTCarrierAttachMandatory()가 수행하므로 여기서는 조기 CGATT를 강제하지 않는다.
+         */
     };
     static const AppBc95SeqStep_t kAttachVerifyPostSeq[] =
     {
         { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_NCCID_QUERY,     APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCCID?" },
+        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_IMSI,            APP_BC95_AT_RX_TIMEOUT_MS, "AT+CIMI" },
+        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_IMEI,            APP_BC95_AT_RX_TIMEOUT_MS, "AT+CGSN=1" },
     };
 
     APP_LOGN("NBIOT", "[[BootTrack]] start board attach-verification sequence");
@@ -3700,6 +3719,10 @@ static AppStatus_t App_NbiotRunBoardAttachVerificationSequence(void)
      */
     g_appBc95SkipNextAttachBootWait = APP_TRUE;
     g_appBc95ForceSkipAttachBootWaitOnce = APP_TRUE;
+
+    /*
+     * 실제 attach / service-ready 확인은 mandatory attach 경로에 일원화한다.
+     */
 
     status = App_NBIoTCarrierAttachMandatory();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
@@ -4213,15 +4236,16 @@ static AppStatus_t App_Bc95AtReadCsqRssiDbm(int16_t *p_rssiDbm)
                                    &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGW("NBIOT", "%s CSQ tx fail st=%d", g_appNbiotLogPreAttach, (int)status);
+        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
+            " CSQ tx fail st=%d", (int)status);
         return status;
     }
 
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
     if (atStatus != APP_BC95_AT_OK)
     {
-        APP_LOGW("NBIOT", "%s CSQ !OK parse=%s cme=%ld",
-                 g_appNbiotLogPreAttach,
+        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
+            " CSQ !OK parse=%s cme=%ld",
                  App_Bc95AtGetStatusString(atStatus), (long)cmeErr);
         return APP_STATUS_FATAL;
     }
@@ -4229,27 +4253,29 @@ static AppStatus_t App_Bc95AtReadCsqRssiDbm(int16_t *p_rssiDbm)
     p_csq = strstr((const char *)g_appBc95AtRxBuf, "+CSQ:");
     if ((p_csq == NULL) || (sscanf(p_csq, "+CSQ: %d,%d", &rssi, &ber) != 2))
     {
-        APP_LOGW("NBIOT", "%s CSQ parse fail", g_appNbiotLogPreAttach);
+        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
+            " CSQ parse fail");
         return APP_STATUS_FATAL;
     }
 
     if ((rssi < 0) || (rssi > 31))
     {
-        APP_LOGW("NBIOT", "%s CSQ bad rssi=%d", g_appNbiotLogPreAttach, rssi);
+        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
+            " CSQ bad rssi=%d", rssi);
         return APP_STATUS_UART_TIMEOUT;
     }
 
     *p_rssiDbm = (int16_t)(-113 + (2 * rssi));
-    APP_LOGI("NBIOT", "%s CSQ rssi=%d raw=%d ber=%d",
-             g_appNbiotLogPreAttach,
+    APP_LOGI("NBIOT", APP_NBIOT_LOG_PREATTACH
+        " CSQ rssi=%d raw=%d ber=%d",
              (int)*p_rssiDbm, rssi, ber);
     return APP_STATUS_OK;
 }
 
 static AppStatus_t App_Bc95AtRunShortCampProbe(AppBc95NetStatus_t *p_status)
 {
-    APP_LOGI("NBIOT", "%s camp probe %lums",
-             g_appNbiotLogPreAttach,
+    APP_LOGI("NBIOT", APP_NBIOT_LOG_PREATTACH
+        " camp probe %lums",
              (unsigned long)APP_BC95_PRE_ATTACH_CAMP_PROBE_TIMEOUT_MS);
     return App_Bc95AtWaitForNetwork(APP_BC95_PRE_ATTACH_CAMP_PROBE_TIMEOUT_MS, p_status);
 }
@@ -4285,9 +4311,8 @@ static AppStatus_t App_Bc95AtConfirmWeakCellAfterProbe(uint8_t *p_confirmed, App
             (quality.rsrpDbm <= APP_BC95_PRE_ATTACH_ABORT_RSRP_DBM))
         {
             *p_confirmed = APP_TRUE;
-            APP_LOGW("NBIOT",
-                     "%s weak by NUESTATS rssi=%d rsrp=%d snr=%d",
-                     g_appNbiotLogPreAttach,
+            APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
+                     " weak by NUESTATS rssi=%d rsrp=%d snr=%d",
                      quality.rssiDbm, quality.rsrpDbm, quality.snrDb);
         }
         return APP_STATUS_OK;
@@ -4300,8 +4325,8 @@ static AppStatus_t App_Bc95AtConfirmWeakCellAfterProbe(uint8_t *p_confirmed, App
         {
             *p_noCellAfterProbe = APP_TRUE;
         }
-        APP_LOGW("NBIOT",
-                 "%s weak: no cell after probe", g_appNbiotLogPreAttach);
+        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH
+                 " weak: no cell after probe");
         return APP_STATUS_OK;
     }
 
@@ -5158,11 +5183,13 @@ static AppStatus_t App_Bc95AtWarmupDns(const char *p_hostname)
     uint32_t attempt;
 
     APP_RETURN_IF_FALSE((p_hostname != NULL), APP_STATUS_INVALID_PARAM);
-    APP_LOGI("NBIOT", "%s warm %s", g_appNbiotLogDns, p_hostname);
+    APP_LOGI("NBIOT", APP_NBIOT_LOG_DNS 
+        " warm %s", p_hostname);
 
     if (App_Bc95AtWarmupDnsCacheLookup(p_hostname, ipBuf, sizeof(ipBuf)) == APP_TRUE)
     {
-        APP_LOGI("NBIOT", "%s hit %s ip=%s", g_appNbiotLogDns, p_hostname, ipBuf);
+        APP_LOGI("NBIOT", APP_NBIOT_LOG_DNS 
+            " hit %s ip=%s", p_hostname, ipBuf);
         return APP_STATUS_OK;
     }
 
@@ -5172,18 +5199,19 @@ static AppStatus_t App_Bc95AtWarmupDns(const char *p_hostname)
         if (status == APP_STATUS_OK)
         {
             App_Bc95AtWarmupDnsCacheStore(p_hostname, ipBuf);
-            APP_LOGI("NBIOT", "%s ok %lu %s ip=%s",
-                     g_appNbiotLogDns,
+            APP_LOGI("NBIOT", APP_NBIOT_LOG_DNS
+                 " ok %lu %s ip=%s",
                      (unsigned long)attempt, p_hostname, ipBuf);
             return APP_STATUS_OK;
         }
-        APP_LOGI("NBIOT", "%s fail %lu/%lu",
-                 g_appNbiotLogDns,
+        APP_LOGI("NBIOT", APP_NBIOT_LOG_DNS 
+            " fail %lu/%lu",
                  (unsigned long)attempt, (unsigned long)APP_BC95_DNS_FAIL_RETRY_MAX);
         if (attempt < APP_BC95_DNS_FAIL_RETRY_MAX)
             App_Bc95AtDelayWithFeed(APP_BC95_DNS_FAIL_RETRY_DELAY_MS);
     }
-    APP_LOGI("NBIOT", "%s skip", g_appNbiotLogDns);
+    APP_LOGI("NBIOT", APP_NBIOT_LOG_DNS
+         " skip");
 
     return APP_STATUS_UART_TIMEOUT;
 }
@@ -6511,6 +6539,8 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
     uint8_t preAttachWeakConfirmed;
     AppBc95Quality_t preAttachQuality;
     uint8_t preAttachNoCellAfterProbe;
+    uint8_t preAttachNeedShortProbe;
+    uint8_t preAttachEarlyAbort;
 
     if (g_appBc95AtInitialized != APP_TRUE)
     {
@@ -6563,6 +6593,8 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
             preAttachCsqRssiDbm = 0;
             preAttachWeakConfirmed = APP_FALSE;
             preAttachNoCellAfterProbe = APP_FALSE;
+            preAttachNeedShortProbe = APP_FALSE;
+            preAttachEarlyAbort = APP_FALSE;
             (void)memset(&preAttachQuality, 0, sizeof(preAttachQuality));
             (void)memset(&probeNetStatus, 0, sizeof(probeNetStatus));
 
@@ -6570,10 +6602,22 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
             if ((status == APP_STATUS_OK) &&
                 (preAttachCsqRssiDbm <= APP_BC95_PRE_ATTACH_CSQ_WEAK_DBM))
             {
+                preAttachNeedShortProbe = APP_TRUE;
                 APP_LOGW("NBIOT",
                          "[[PreAttach]] weak CSQ detected (%d dBm) -> short camp probe",
                          (int)preAttachCsqRssiDbm);
+            }
+            else if (status != APP_STATUS_OK)
+            {
+                preAttachNeedShortProbe = APP_TRUE;
+                preAttachCsqRssiDbm = 0;
+                APP_LOGW("NBIOT",
+                         "[[PreAttach]] CSQ unavailable -> short camp probe first");
+                status = APP_STATUS_OK;
+            }
 
+            if (preAttachNeedShortProbe == APP_TRUE)
+            {
                 status = App_Bc95AtRunShortCampProbe(&probeNetStatus);
                 g_appNbiotCarrierContext.lastNetStatus = probeNetStatus;
 
@@ -6585,8 +6629,23 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
                     goto attach_finalize;
                 }
 
-                (void)App_Bc95AtConfirmWeakCellAfterProbe(&preAttachWeakConfirmed, &preAttachQuality, &preAttachNoCellAfterProbe);
-                if (preAttachWeakConfirmed == APP_TRUE)
+                (void)App_Bc95AtConfirmWeakCellAfterProbe(&preAttachWeakConfirmed,
+                                                          &preAttachQuality,
+                                                          &preAttachNoCellAfterProbe);
+
+                if ((preAttachWeakConfirmed == APP_TRUE) ||
+                    (preAttachNoCellAfterProbe == APP_TRUE))
+                {
+                    preAttachEarlyAbort = APP_TRUE;
+                }
+                else if ((probeNetStatus.phase != APP_BC95_NET_PHASE_READY) &&
+                         (probeNetStatus.phase != APP_BC95_NET_PHASE_ATTACHING) &&
+                         (probeNetStatus.phase != APP_BC95_NET_PHASE_WAITING_IP))
+                {
+                    preAttachEarlyAbort = APP_TRUE;
+                }
+
+                if (preAttachEarlyAbort == APP_TRUE)
                 {
                     App_CommOnPreAttachAbort(
                         (preAttachQuality.valid == APP_TRUE) ? &preAttachQuality : NULL,
@@ -6594,20 +6653,16 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
                         preAttachNoCellAfterProbe);
 
                     g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_ABORT;
-                    g_appNbiotCarrierContext.lastStatus = APP_STATUS_UART_TIMEOUT;
+                    g_appNbiotCarrierContext.lastNetStatus = probeNetStatus;
+                    status = APP_STATUS_UART_TIMEOUT;
+
                     APP_LOGW("NBIOT",
-                             "[[PreAttach]] confirmed weak/not-camped -> adaptive downshift applied, abort this attach before long network wait");
-                    return APP_STATUS_UART_TIMEOUT;
+                             "[[PreAttach]] early-abort this attempt -> skip long network wait and go recovery");
+                    goto attach_finalize;
                 }
 
                 APP_LOGW("NBIOT",
-                         "[[PreAttach]] short probe failed but weak not confirmed -> continue normal attach");
-                status = APP_STATUS_OK;
-            }
-            else if (status != APP_STATUS_OK)
-            {
-                APP_LOGW("NBIOT",
-                         "[[PreAttach]] CSQ unavailable -> continue normal attach");
+                         "[[PreAttach]] short probe inconclusive -> continue normal attach");
                 status = APP_STATUS_OK;
             }
 
@@ -6683,6 +6738,11 @@ attach_finalize:
                      App_NbiotCarrierResetTypeString(g_appNbiotCarrierContext.lastResetType),
                      (int)recoverStatus);
             return recoverStatus;
+        }
+
+        if (g_appNbiotCarrierContext.lastResetType == APP_NBIOT_CARRIER_RESET_NONE)
+        {
+            g_appBc95ShortRetryBootBannerWaitOnce = APP_TRUE;
         }
     }
 #endif

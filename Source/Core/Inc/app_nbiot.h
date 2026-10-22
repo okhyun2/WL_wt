@@ -27,6 +27,7 @@ extern "C" {
 #define APP_BC95_BOOT_BANNER                 "Neul"
 #define APP_BC95_BOOT_BANNER_LEN             (4u)
 #define APP_BC95_BOOT_WAIT_BANNER_MS         (10000u)
+#define APP_BC95_ATTACH_RETRY_BANNER_WAIT_MS (2000u)
 #define APP_BC95_BOOT_PING_TIMEOUT_MS        (500u)
 #define APP_BC95_BOOT_PING_INTERVAL_MS       (200u)
 #define APP_BC95_BOOT_PING_MAX_RETRY         (30u)
