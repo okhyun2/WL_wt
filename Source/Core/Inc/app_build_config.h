@@ -74,27 +74,11 @@ extern "C" {
 #endif
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/* 128KB dual-boot flash layout */
+/* 128KB flash layout (bootloader + single application) */
 #define APP_FLASH_TARGET_SIZE_BYTES                 (128u * 1024u)
 #define APP_BOOTLOADER_BASE_ADDR                    (0x08000000u)
 #define APP_BOOTLOADER_SIZE_BYTES                   (8u * 1024u)
 #define APP_SLOT1_BASE_ADDR                         (0x08002000u)
-#define APP_SLOT2_BASE_ADDR                         (0x08010000u)
-#define APP_SLOT_SIZE_BYTES                         (56u * 1024u)
-#define APP_BOOT_INFO_BASE_ADDR                     (0x0801E000u)
-#define APP_DUALBOOT_TRIAL_CONFIRM_MS               (60000u)
-
-#ifndef APP_SLOT_ID
-#define APP_SLOT_ID                                 (1u)
-#endif
-
-#if (APP_SLOT_ID == 1u)
-#define APP_SLOT_NAME                               "slot1"
-#elif (APP_SLOT_ID == 2u)
-#define APP_SLOT_NAME                               "slot2"
-#else
-#error "APP_SLOT_ID must be 1 or 2."
-#endif
 
 #define APP_FW_VERSION_MAJOR                        (0u)
 #define APP_FW_VERSION_MINOR                        (10u)
@@ -338,10 +322,10 @@ extern "C" {
  * - 약전계면 짧은 camp probe 후 NUESTATS=CELL로 최종 확인
  * - confirmed weak/not-camped 이면 긴 attach wait로 들어가지 않고 이번 wake attach를 조기 종료
  */
-#define APP_BC95_PRE_ATTACH_CSQ_WEAK_DBM          (-108)
-#define APP_BC95_PRE_ATTACH_CAMP_PROBE_TIMEOUT_MS (8000u)
-#define APP_BC95_PRE_ATTACH_ABORT_RSSI_DBM        (-110)
-#define APP_BC95_PRE_ATTACH_ABORT_RSRP_DBM        (-120)
+#define APP_BC95_PRE_ATTACH_CSQ_WEAK_DBM          (-106)
+#define APP_BC95_PRE_ATTACH_CAMP_PROBE_TIMEOUT_MS (6000u)
+#define APP_BC95_PRE_ATTACH_ABORT_RSSI_DBM        (-108)
+#define APP_BC95_PRE_ATTACH_ABORT_RSRP_DBM        (-118)
 #define APP_BC95_PRE_ATTACH_NUESTATS_RETRY_MAX    (1u)
 
 #define APP_COMM_SUCCESS_STREAK_NEEDED          (2u)

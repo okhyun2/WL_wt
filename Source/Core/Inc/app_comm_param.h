@@ -36,6 +36,7 @@ void App_CommSuccessUpdate(uint8_t attemptUsedIdx, uint8_t allFailed);
 AppCommSignalState_t  App_CommGetSignalState(void);
 AppCommSuccessState_t App_CommGetSuccessState(void);
 void App_CommParamRecompose(void);
+void App_CommOnPreAttachAbort(const AppBc95Quality_t *p_quality, int16_t csqRssiDbm, uint8_t noCellAfterProbe);
 void App_CommApplyServiceSessionCost(const AppCommServiceSessionMetrics_t *p_metrics);
 uint8_t App_CommIsExtremeWeak(void);
 uint8_t App_CommShouldAbortRemainingServerTx(void);

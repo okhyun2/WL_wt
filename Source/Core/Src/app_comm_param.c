@@ -55,6 +55,61 @@ static uint8_t app_comm_is_effective_weak(void)
     return (uint8_t)((g_appCommSignalState == APP_COMM_SIGNAL_WEAK) || (g_appCommServiceCostScore >= APP_COMM_COST_WEAK_ENTER_THRESHOLD));
 }
 
+void App_CommOnPreAttachAbort(const AppBc95Quality_t *p_quality,
+                              int16_t csqRssiDbm,
+                              uint8_t noCellAfterProbe)
+{
+    AppBc95Quality_t pseudoQuality;
+    uint8_t haveQuality = APP_FALSE;
+
+    if ((p_quality != NULL) && (p_quality->valid == APP_TRUE))
+    {
+        pseudoQuality = *p_quality;
+        haveQuality = APP_TRUE;
+    }
+    else if (csqRssiDbm < 0)
+    {
+        (void)memset(&pseudoQuality, 0, sizeof(pseudoQuality));
+        pseudoQuality.valid   = APP_TRUE;
+        pseudoQuality.rssiDbm = csqRssiDbm;
+        pseudoQuality.rsrpDbm = (noCellAfterProbe == APP_TRUE)
+                              ? APP_COMM_EXTREME_WEAK_RSRP_DBM
+                              : APP_COMM_RSRP_WEAK_DBM;
+        pseudoQuality.snrDb   = (noCellAfterProbe == APP_TRUE)
+                              ? APP_COMM_EXTREME_WEAK_SNR_DB
+                              : 1;
+        haveQuality = APP_TRUE;
+    }
+
+    if (haveQuality == APP_TRUE)
+    {
+        App_CommSignalMeasureAndUpdate(&pseudoQuality);
+    }
+
+    if (noCellAfterProbe == APP_TRUE)
+    {
+        g_appCommExtremeWeakLatched = APP_TRUE;
+    }
+
+    /*
+     * pre-attach abort는 배터리 관점에서
+     * "이번 wake에서는 붙여봐야 비싸다"는 강한 신호이므로
+     * service all-failed와 유사하게 cost/downshift에 반영한다.
+     */
+    App_CommSuccessUpdate(0u, APP_TRUE);
+    App_CommParamRecompose();
+
+    APP_LOGW("COMM",
+             "pre-attach abort applied: csq=%d noCell=%u signal=%s success=%s cost=%u extremeWeak=%u abort=%u",
+             (int)csqRssiDbm,
+             (unsigned)noCellAfterProbe,
+             (g_appCommSignalState == APP_COMM_SIGNAL_WEAK) ? "WEAK" : "STRONG",
+             (g_appCommSuccessState == APP_COMM_SUCCESS_LOW) ? "LOW" : "HIGH",
+             (unsigned)g_appCommServiceCostScore,
+             (unsigned)g_appCommExtremeWeakLatched,
+             (unsigned)App_CommShouldAbortRemainingServerTx());
+}
+
 void App_CommAdaptivePolicySetDefaults(AppCommAdaptivePolicy_t *p_policy)
 {
     if (p_policy == NULL) { return; }

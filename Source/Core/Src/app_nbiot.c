@@ -255,7 +255,7 @@ static uint8_t App_Bc95AtPlatformEventNeedsRegisterRetry(int eventType);
 static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, uint8_t *p_needRegisterRetry);
 static AppStatus_t App_Bc95AtReadCsqRssiDbm(int16_t *p_rssiDbm);
 static AppStatus_t App_Bc95AtRunShortCampProbe(AppBc95NetStatus_t *p_status);
-static AppStatus_t App_Bc95AtConfirmWeakCellAfterProbe(uint8_t *p_confirmWeak);
+static AppStatus_t App_Bc95AtConfirmWeakCellAfterProbe(uint8_t *p_confirmed, AppBc95Quality_t *p_quality, uint8_t *p_noCellAfterProbe);
 static AppBc95AtStatus_t App_Bc95AtParseQlwuldataStatus(const char *p_resp, int *p_statusOut, int *p_seqOut);
 static AppStatus_t App_Bc95AtPlatformRegister(void);
 static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint16_t length, uint8_t seqNum);
@@ -4162,42 +4162,57 @@ static AppStatus_t App_Bc95AtRunShortCampProbe(AppBc95NetStatus_t *p_status)
     return App_Bc95AtWaitForNetwork(APP_BC95_PRE_ATTACH_CAMP_PROBE_TIMEOUT_MS, p_status);
 }
 
-static AppStatus_t App_Bc95AtConfirmWeakCellAfterProbe(uint8_t *p_confirmWeak)
+static AppStatus_t App_Bc95AtConfirmWeakCellAfterProbe(uint8_t *p_confirmed, AppBc95Quality_t *p_quality, uint8_t *p_noCellAfterProbe)
 {
     AppStatus_t status;
     AppBc95Quality_t quality;
 
-    APP_RETURN_IF_FALSE((p_confirmWeak != NULL), APP_STATUS_INVALID_PARAM);
-    *p_confirmWeak = APP_FALSE;
+    APP_RETURN_IF_FALSE(p_confirmed != NULL, APP_STATUS_INVALID_PARAM);
+    *p_confirmed = APP_FALSE;
+    if (p_quality != NULL)
+    {
+        (void)memset(p_quality, 0, sizeof(*p_quality));
+    }
+    if (p_noCellAfterProbe != NULL)
+    {
+        *p_noCellAfterProbe = APP_FALSE;
+    }
 
     status = App_Bc95AtFetchQualityWithRetry(&quality,
                                              NULL,
                                              0u,
                                              APP_BC95_PRE_ATTACH_NUESTATS_RETRY_MAX);
-    if (status != APP_STATUS_OK)
+    if (status == APP_STATUS_OK)
     {
-        APP_LOGW("NBIOT", "[[PreAttach]] NUESTATS unavailable/not camped -> confirm weak");
-        *p_confirmWeak = APP_TRUE;
+        if (p_quality != NULL)
+        {
+            *p_quality = quality;
+        }
+
+        if ((quality.rssiDbm <= APP_BC95_PRE_ATTACH_ABORT_RSSI_DBM) ||
+            (quality.rsrpDbm <= APP_BC95_PRE_ATTACH_ABORT_RSRP_DBM))
+        {
+            *p_confirmed = APP_TRUE;
+            APP_LOGW("NBIOT",
+                     "[[PreAttach]] confirm weak by NUESTATS (RSSI=%d, RSRP=%d, SNR=%d)",
+                     quality.rssiDbm, quality.rsrpDbm, quality.snrDb);
+        }
         return APP_STATUS_OK;
     }
 
-    App_NBIoTPrintQuality(&quality);
-    if ((quality.rssiDbm <= APP_BC95_PRE_ATTACH_ABORT_RSSI_DBM) ||
-        (quality.rsrpDbm <= APP_BC95_PRE_ATTACH_ABORT_RSRP_DBM))
+    if (status == APP_STATUS_UART_TIMEOUT)
     {
-        *p_confirmWeak = APP_TRUE;
+        *p_confirmed = APP_TRUE;
+        if (p_noCellAfterProbe != NULL)
+        {
+            *p_noCellAfterProbe = APP_TRUE;
+        }
         APP_LOGW("NBIOT",
-                 "[[PreAttach]] confirm weak by NUESTATS (RSSI=%d, RSRP=%d)",
-                 quality.rssiDbm, quality.rsrpDbm);
-    }
-    else
-    {
-        APP_LOGI("NBIOT",
-                 "[[PreAttach]] NUESTATS acceptable (RSSI=%d, RSRP=%d)",
-                 quality.rssiDbm, quality.rsrpDbm);
+                 "[[PreAttach]] confirm weak by NUESTATS: no cell info after short probe");
+        return APP_STATUS_OK;
     }
 
-    return APP_STATUS_OK;
+    return status;
 }
 
 static AppBc95AtStatus_t App_Bc95AtParseQlwuldataStatus(const char *p_resp, int *p_statusOut, int *p_seqOut)
@@ -6401,6 +6416,8 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
     uint32_t attachWindowMs;
     int16_t preAttachCsqRssiDbm;
     uint8_t preAttachWeakConfirmed;
+    AppBc95Quality_t preAttachQuality;
+    uint8_t preAttachNoCellAfterProbe;
 
     if (g_appBc95AtInitialized != APP_TRUE)
     {
@@ -6452,6 +6469,8 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
         {
             preAttachCsqRssiDbm = 0;
             preAttachWeakConfirmed = APP_FALSE;
+            preAttachNoCellAfterProbe = APP_FALSE;
+            (void)memset(&preAttachQuality, 0, sizeof(preAttachQuality));
             (void)memset(&probeNetStatus, 0, sizeof(probeNetStatus));
 
             status = App_Bc95AtReadCsqRssiDbm(&preAttachCsqRssiDbm);
@@ -6473,13 +6492,18 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
                     goto attach_finalize;
                 }
 
-                (void)App_Bc95AtConfirmWeakCellAfterProbe(&preAttachWeakConfirmed);
+                (void)App_Bc95AtConfirmWeakCellAfterProbe(&preAttachWeakConfirmed, &preAttachQuality, &preAttachNoCellAfterProbe);
                 if (preAttachWeakConfirmed == APP_TRUE)
                 {
+                    App_CommOnPreAttachAbort(
+                        (preAttachQuality.valid == APP_TRUE) ? &preAttachQuality : NULL,
+                        preAttachCsqRssiDbm,
+                        preAttachNoCellAfterProbe);
+
                     g_appNbiotCarrierContext.attachState = APP_NBIOT_ATTACH_STATE_ABORT;
                     g_appNbiotCarrierContext.lastStatus = APP_STATUS_UART_TIMEOUT;
                     APP_LOGW("NBIOT",
-                             "[[PreAttach]] confirmed weak/not-camped -> abort this attach before long network wait");
+                             "[[PreAttach]] confirmed weak/not-camped -> adaptive downshift applied, abort this attach before long network wait");
                     return APP_STATUS_UART_TIMEOUT;
                 }
 

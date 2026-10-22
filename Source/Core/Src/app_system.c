@@ -6,7 +6,6 @@
 #include "app_build_config.h"
 #include "app_clock.h"
 #include "app_debug.h"
-#include "app_dualboot.h"
 #include "app_gpio_lp.h"
 #include "app_hw.h"
 #include "app_log.h"
@@ -1650,12 +1649,6 @@ AppStatus_t App_SystemInit(void)
 
     g_appSystemContext.bootStage = APP_BOOT_STAGE_GPIO_LP_READY;
 
-    status = App_DualBootInit();
-    if (status != APP_STATUS_OK)
-    {
-        return status;
-    }
-
     status = App_DebugConsoleInit();
     if (status != APP_STATUS_OK)
     {
@@ -1672,15 +1665,6 @@ AppStatus_t App_SystemInit(void)
     {
         return status;
     }
-
-    (void)App_DualBootConfirmSlot2();
-    APP_LOGN("BOOT",
-               "running image=%s(%lu) state=%s active=%lu pending=%lu",
-               App_DualBootGetCurrentSlotName(),
-               (unsigned long)App_DualBootGetCurrentSlotId(),
-               App_DualBootGetBootStateString(),
-               (unsigned long)App_DualBootGetInfo()->activeSlot,
-               (unsigned long)App_DualBootGetInfo()->pendingSlot);
 
     // booting info
     Print_BootInfo(&g_boot_info);
@@ -1783,7 +1767,6 @@ void App_SystemProcess(void)
         App_SystemResetStopQualification();
     }
 
-    App_DualBootService();
     g_appSystemContext.loopCounter++;
 }
 
