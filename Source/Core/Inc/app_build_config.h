@@ -281,6 +281,8 @@ extern "C" {
 #define APP_NBIOT_ATTACH_HW_RESET_MAX              (1u)
 #define APP_NBIOT_DETACH_WAIT_CEREG0_MS            (15000u)
 #define APP_NBIOT_DETACH_POLL_INTERVAL_MS          (1000u)
+/* detach 중 ready/home/CGATT=1 고착이면 장시간 대기하지 않고 CFUN=0으로 이행 */
+#define APP_NBIOT_DETACH_READY_STUCK_POLL_MAX      (4u)
 #define APP_NBIOT_AT_NORESP_RETRY_MAX              (3u)
 #define APP_NBIOT_SW_RESET_SETTLE_MS               (1500u)
 #define APP_NBIOT_HW_RESET_SETTLE_MS               (2000u)

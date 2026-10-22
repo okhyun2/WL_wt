@@ -96,6 +96,7 @@
  *    고정 지연 + CPIN READY gate를 한 번 먼저 수행한다.
  */
 #define APP_BC95_WAKE_CPIN_GUARD_DELAY_MS            (3000u)
+#define APP_BC95_WAKE_CPIN_GUARD_RETRY_DELAY_MS      (1000u)
 #define APP_BC95_WAKE_CPIN_GUARD_TIMEOUT_MS          (30000u)
 #define APP_BC95_WAKE_CPIN_GUARD_POLL_MS             (500u)
 
@@ -279,6 +280,7 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_
 #define APP_BC95_SERVICE_READY_POST_RECOVER_POLL_MS   (1200u)
 
 static uint8_t g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
+static uint8_t g_appBc95ShortRetryCpinGuardOnce = APP_FALSE;
 
 typedef struct
 {
@@ -1654,6 +1656,7 @@ static AppStatus_t App_Bc95AtWakeDelayAndWaitForCpinReady(void)
     AppBc95AtStatus_t atStatus;
     uint32_t startTick;
     uint32_t elapsedMs;
+    uint32_t fixedDelayMs = APP_BC95_WAKE_CPIN_GUARD_DELAY_MS;
     uint16_t rxLen = 0u;
     int32_t cmeErr = 0;
 
@@ -1666,13 +1669,19 @@ static AppStatus_t App_Bc95AtWakeDelayAndWaitForCpinReady(void)
         return APP_STATUS_OK;
     }
 
+    if (g_appBc95ShortRetryCpinGuardOnce == APP_TRUE)
+    {
+        fixedDelayMs = APP_BC95_WAKE_CPIN_GUARD_RETRY_DELAY_MS;
+        g_appBc95ShortRetryCpinGuardOnce = APP_FALSE;
+    }
+
     APP_LOGW("NBIOT",
              "[[ReadyProbe]] wake CPIN guard start fixedDelay=%lums timeout=%lums poll=%lums",
-             (unsigned long)APP_BC95_WAKE_CPIN_GUARD_DELAY_MS,
+             (unsigned long)fixedDelayMs,
              (unsigned long)APP_BC95_WAKE_CPIN_GUARD_TIMEOUT_MS,
              (unsigned long)APP_BC95_WAKE_CPIN_GUARD_POLL_MS);
 
-    App_Bc95AtDelayWithFeed(APP_BC95_WAKE_CPIN_GUARD_DELAY_MS);
+    App_Bc95AtDelayWithFeed(fixedDelayMs);
 
     (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CMEE_ON,
                                            APP_BC95_AT_RX_TIMEOUT_MS,
@@ -4680,6 +4689,7 @@ static AppStatus_t App_NbiotCarrierWaitForCereg0(uint32_t timeoutMs)
     AppStatus_t status;
     AppBc95NetStatus_t snapshot;
     uint32_t startTick = HAL_GetTick();
+    uint32_t readyHomeCgatt1Streak = 0u;
 
     while ((HAL_GetTick() - startTick) < timeoutMs)
     {
@@ -4693,12 +4703,33 @@ static AppStatus_t App_NbiotCarrierWaitForCereg0(uint32_t timeoutMs)
                      App_Bc95AtGetCeregStatString(snapshot.ceregStat),
                      (unsigned)snapshot.cgattState);
 
-            if ((snapshot.ceregStat == APP_BC95_CEREG_NOT_REGISTERED) || (snapshot.cfunValue != 1u))
+            if ((snapshot.ceregStat == APP_BC95_CEREG_NOT_REGISTERED) ||
+                (snapshot.cgattState == 0u) ||
+                (snapshot.cfunValue != 1u))
             {
                 APP_LOGN("NBIOT", APP_NBIOT_REPORT_LOG_DETACH " complete: CEREG=%s CGATT=%u",
                          App_Bc95AtGetCeregStatString(snapshot.ceregStat),
                          (unsigned)snapshot.cgattState);
                 return APP_STATUS_OK;
+            }
+
+            if ((snapshot.phase == APP_BC95_NET_PHASE_READY) &&
+                (snapshot.ceregStat == APP_BC95_CEREG_REGISTERED_HOME) &&
+                (snapshot.cgattState == 1u))
+            {
+                readyHomeCgatt1Streak++;
+                if (readyHomeCgatt1Streak >= APP_NBIOT_DETACH_READY_STUCK_POLL_MAX)
+                {
+                    APP_LOGW("NBIOT",
+                             APP_NBIOT_REPORT_LOG_DETACH
+                             " stuck ready/home/CGATT=1 for %lu polls -> stop wait, force CFUN0",
+                             (unsigned long)readyHomeCgatt1Streak);
+                    return APP_STATUS_UART_TIMEOUT;
+                }
+            }
+            else
+            {
+                readyHomeCgatt1Streak = 0u;
             }
         }
         else
@@ -4739,6 +4770,9 @@ static AppStatus_t App_NbiotCarrierRecoverRegisteringStuck(void)
                                            APP_BC95_AT_RX_TIMEOUT_MS,
                                            "AT+CGATT=1",
                                            APP_NBIOT_REPORT_LOG_ATTACH);
+
+    /* 다음 attempt는 soft-retry 직후이므로 CPIN fixed delay를 짧게 */
+    g_appBc95ShortRetryCpinGuardOnce = APP_TRUE;
 
     App_Bc95AtDelayWithFeed(APP_BC95_NET_POLL_INTERVAL_MS);
 
