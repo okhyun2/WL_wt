@@ -360,9 +360,18 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void);
 AppStatus_t App_NBIoTCarrierPowerOffMandatory(void);
 const AppNbiotCarrierContext_t *App_NBIoTCarrierGetContext(void);
 AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo);
+/* SIM info cache (RAM only, refreshed by App_NBIoTReadIdentity) */
+#define APP_NBIOT_SIM_ICCID_BUF_SIZE    (23u)   /* up to 22 chars + NUL */
+#define APP_NBIOT_SIM_MDN_BUF_SIZE      (12u)   /* '0' + 10 digits + NUL */
+#define APP_NBIOT_SIM_SERIAL_BUF_SIZE   (9u)    /* 8 digits + NUL (printed card number) */
+/* Return APP_TRUE and copy a NUL-terminated string if valid, else APP_FALSE.
+ * p_out must be at least APP_NBIOT_SIM_*_BUF_SIZE bytes. */
+uint8_t App_NBIoTGetSimIccid(char *p_out, size_t outSize);
+uint8_t App_NBIoTGetSimMdnEst(char *p_out, size_t outSize);
+uint8_t App_NBIoTGetSimSerial(char *p_out, size_t outSize);
 AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTColdBootResetTrack(void);
-AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage, uint8_t allowMgmtPiggyback);
+AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage);
 AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage);
 AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage);
 AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage);

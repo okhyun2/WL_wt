@@ -76,12 +76,12 @@
 #define APP_BC95_AT_CMD_QLWMBSPS_QUERY       "AT+QLWMBSPS?\r\n"
 #define APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_QUERY "AT+QBOOTSTRAPHOLDOFF?\r\n"
 #define APP_BC95_AT_CMD_NBAND_QUERY          "AT+NBAND?\r\n"
-#define APP_BC95_AT_CMD_NBAND_SET            "AT+NBAND=" APP_BC95_PLATFORM_NBAND_STRING "\r\n"
-#define APP_BC95_AT_CMD_QLWSERVERIP_SET_BS   "AT+QLWSERVERIP=" APP_BC95_PLATFORM_BOOTSTRAP_MODE "," APP_BC95_PLATFORM_SERVER_IP_STRING "," APP_BC95_PLATFORM_SERVER_PORT_STRING "\r\n"
-#define APP_BC95_AT_CMD_QLWSERVERIP_SET_LWM2M "AT+QLWSERVERIP=" APP_BC95_PLATFORM_LWM2M_MODE "," APP_BC95_PLATFORM_SERVER_IP_STRING "," APP_BC95_PLATFORM_SERVER_PORT_STRING "\r\n"
-#define APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_SET_0 "AT+QBOOTSTRAPHOLDOFF=0\r\n"
-#define APP_BC95_AT_CMD_QLWEPNS_SET          "AT+QLWEPNS=1," APP_BC95_PLATFORM_EPNS_STRING "\r\n"
-#define APP_BC95_AT_CMD_QLWMBSPS_SET         "AT+QLWMBSPS=" APP_BC95_PLATFORM_MBSPS_STRING "\r\n"
+#define APP_BC95_AT_CMD_NBAND_SET            "AT+NBAND=" APP_BC95_PLATFORM_LGU_NBAND_STRING "\r\n"
+#define APP_BC95_AT_CMD_LGU_QLWSERVERIP_SET_BS   "AT+QLWSERVERIP=" APP_BC95_PLATFORM_LGU_BOOTSTRAP_MODE "," APP_BC95_PLATFORM_LGU_SERVER_IP_STRING "," APP_BC95_PLATFORM_LGU_SERVER_PORT_STRING "\r\n"
+#define APP_BC95_AT_CMD_LGU_QLWSERVERIP_SET_LWM2M "AT+QLWSERVERIP=" APP_BC95_PLATFORM_LGU_LWM2M_MODE "," APP_BC95_PLATFORM_LGU_SERVER_IP_STRING "," APP_BC95_PLATFORM_LGU_SERVER_PORT_STRING "\r\n"
+#define APP_BC95_AT_CMD_LGU_QBOOTSTRAPHOLDOFF_SET_0 "AT+QBOOTSTRAPHOLDOFF=0\r\n"
+#define APP_BC95_AT_CMD_LGU_QLWEPNS_SET      "AT+QLWEPNS=1," APP_BC95_PLATFORM_LGU_EPNS_STRING "\r\n"
+#define APP_BC95_AT_CMD_LGU_QLWMBSPS_SET     "AT+QLWMBSPS=" APP_BC95_PLATFORM_LGU_MBSPS_STRING "\r\n"
 #define APP_BC95_AT_CMD_CSQ                  "AT+CSQ\r\n"
 
 #define APP_BC95_SERVICE_READY_WAKE_SETTLE_MS        (2500u)
@@ -300,6 +300,303 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_
 #ifndef APP_BC95_PRE_ATTACH_CGATT_KICK_TIMEOUT_MS
 #define APP_BC95_PRE_ATTACH_CGATT_KICK_TIMEOUT_MS (5000u)
 #endif
+
+/* ============================================================
+ *  SIM info log: PLMN / MDN(est) / ICCID / modem FW (log only)
+ * ============================================================ */
+#ifndef APP_BC95_SIM_INFO_LOG_ENABLE
+#define APP_BC95_SIM_INFO_LOG_ENABLE        (APP_TRUE)
+#endif
+
+#if (APP_BC95_SIM_INFO_LOG_ENABLE == APP_TRUE)
+
+#define APP_BC95_SIM_INFO_IMSI_DIGITS       (15u)
+#define APP_BC95_SIM_INFO_PLMN_LEN          (5u)
+#define APP_BC95_SIM_INFO_PLMN_LGUP         "45006"
+#define APP_BC95_SIM_INFO_MDN_BUF_SIZE      (APP_NBIOT_SIM_MDN_BUF_SIZE)
+#define APP_BC95_SIM_INFO_ICCID_MAX_LEN     (APP_NBIOT_SIM_ICCID_BUF_SIZE - 1u)
+#define APP_BC95_SIM_INFO_ICCID_MIN_LEN     (18u)
+/* Printed serial = ICCID digits [10..17] (0-based) of a 19-digit ICCID; the last digit is the check digit */
+#define APP_BC95_SIM_INFO_ICCID_LEN_SERIAL  (19u)
+#define APP_BC95_SIM_INFO_SERIAL_START      (10u)
+#define APP_BC95_SIM_INFO_SERIAL_LEN        (8u)
+#define APP_BC95_SIM_INFO_FW_MAX_LEN        (32u)
+#define APP_BC95_SIM_INFO_NCCID_PREFIX      "+NCCID:"
+#define APP_BC95_SIM_INFO_NCCID_PREFIX_LEN  (7u)
+
+_Static_assert((APP_BC95_IMSI_BCD_BYTES * 2u) >= APP_BC95_SIM_INFO_IMSI_DIGITS,
+               "IMSI BCD buffer too small");
+
+/* RAM-only cache. Never written to EEPROM. Cleared on every refresh. */
+typedef struct
+{
+    uint8_t iccidValid;
+    uint8_t mdnValid;
+    uint8_t serialValid;
+    char    iccid[APP_NBIOT_SIM_ICCID_BUF_SIZE];
+    char    mdn[APP_NBIOT_SIM_MDN_BUF_SIZE];
+    char    serial[APP_NBIOT_SIM_SERIAL_BUF_SIZE];
+} AppBc95SimInfoCache_t;
+
+static AppBc95SimInfoCache_t g_appBc95SimInfo;
+/* IMSI BCD(8B, 15 digits + pad nibble) -> ASCII 15 digits */
+static uint8_t App_Bc95SimImsiBcdToDigits(const uint8_t *p_bcd, char *p_out, size_t outSize)
+{
+    uint8_t i;
+    uint8_t nibble;
+
+    if ((p_bcd == NULL) || (p_out == NULL) ||
+        (outSize < (APP_BC95_SIM_INFO_IMSI_DIGITS + 1u)))
+    {
+        return APP_FALSE;
+    }
+    for (i = 0u; i < APP_BC95_SIM_INFO_IMSI_DIGITS; i++)
+    {
+        nibble = ((i & 1u) == 0u) ? (uint8_t)(p_bcd[i >> 1] >> 4)
+                                  : (uint8_t)(p_bcd[i >> 1] & 0x0Fu);
+        if (nibble > 9u) { return APP_FALSE; }
+        p_out[i] = (char)('0' + nibble);
+    }
+    p_out[APP_BC95_SIM_INFO_IMSI_DIGITS] = '\0';
+    /* MCC never starts with '0': rejects an unfilled (all-zero) buffer */
+    return (p_out[0] != '0') ? APP_TRUE : APP_FALSE;
+}
+
+/* LG U+ (45006) only: MDN(est) = '0' + IMSI[5..14]. Estimated value, not verified. */
+static uint8_t App_Bc95SimEstimateMdn(const char *p_imsi, char *p_out, size_t outSize)
+{
+    if ((p_imsi == NULL) || (p_out == NULL) ||
+        (outSize < APP_BC95_SIM_INFO_MDN_BUF_SIZE))
+    {
+        return APP_FALSE;
+    }
+    if (strncmp(p_imsi, APP_BC95_SIM_INFO_PLMN_LGUP, APP_BC95_SIM_INFO_PLMN_LEN) != 0)
+    {
+        return APP_FALSE;
+    }
+    p_out[0] = '0';
+    (void)memcpy(&p_out[1], &p_imsi[APP_BC95_SIM_INFO_PLMN_LEN],
+                 APP_BC95_SIM_INFO_IMSI_DIGITS - APP_BC95_SIM_INFO_PLMN_LEN);
+    p_out[1u + (APP_BC95_SIM_INFO_IMSI_DIGITS - APP_BC95_SIM_INFO_PLMN_LEN)] = '\0';
+    return APP_TRUE;
+}
+
+/* AT+NCCID? -> "+NCCID: <iccid>" (best-effort, logs and caches in RAM) */
+static void App_Bc95SimLogIccid(void)
+{
+    AppStatus_t status;
+    uint16_t rxLen = 0u;
+    const char *p_pos;
+    char iccid[APP_BC95_SIM_INFO_ICCID_MAX_LEN + 1u];
+    uint8_t n = 0u;
+    char ch;
+
+    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_NCCID_QUERY,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   APP_BC95_AT_RX_TIMEOUT_MS,
+                                   &rxLen);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("NBIOT", "ICCID query fail (status=%d)", (int)status);
+        return;
+    }
+
+    p_pos = strstr((const char *)g_appBc95AtRxBuf, APP_BC95_SIM_INFO_NCCID_PREFIX);
+    if (p_pos == NULL)
+    {
+        APP_LOGW("NBIOT", "ICCID n/a (no +NCCID in response)");
+        return;
+    }
+    p_pos += APP_BC95_SIM_INFO_NCCID_PREFIX_LEN;
+    while ((*p_pos == ' ') || (*p_pos == '\t')) { p_pos++; }
+
+    while (n < APP_BC95_SIM_INFO_ICCID_MAX_LEN)
+    {
+        ch = *p_pos++;
+        if (((ch >= '0') && (ch <= '9')) ||
+            ((ch >= 'A') && (ch <= 'F')) ||
+            ((ch >= 'a') && (ch <= 'f')))
+        {
+            iccid[n++] = ch;
+        }
+        else
+        {
+            break;
+        }
+    }
+    iccid[n] = '\0';
+
+    if (n < APP_BC95_SIM_INFO_ICCID_MIN_LEN)
+    {
+        APP_LOGW("NBIOT", "ICCID parse fail (len=%u)", (unsigned)n);
+        return;
+    }
+    APP_LOGN("NBIOT", "ICCID    : %s", iccid);
+
+    (void)memcpy(g_appBc95SimInfo.iccid, iccid, (size_t)n + 1u);
+    g_appBc95SimInfo.iccidValid = APP_TRUE;
+
+    if (n == APP_BC95_SIM_INFO_ICCID_LEN_SERIAL)
+    {
+        uint8_t i;
+        uint8_t allDigits = APP_TRUE;
+
+        for (i = 0u; i < n; i++)
+        {
+            if ((iccid[i] < '0') || (iccid[i] > '9')) { allDigits = APP_FALSE; }
+        }
+        if (allDigits == APP_TRUE)
+        {
+            (void)memcpy(g_appBc95SimInfo.serial,
+                         &iccid[APP_BC95_SIM_INFO_SERIAL_START],
+                         APP_BC95_SIM_INFO_SERIAL_LEN);
+            g_appBc95SimInfo.serial[APP_BC95_SIM_INFO_SERIAL_LEN] = '\0';
+            g_appBc95SimInfo.serialValid = APP_TRUE;
+            APP_LOGN("NBIOT", "Serial   : %s", g_appBc95SimInfo.serial);
+        }
+    }
+}
+
+/* AT+QGMR (also sent in BootTrack) -> first payload line (best-effort, log only) */
+static void App_Bc95SimLogModemFw(void)
+{
+    AppStatus_t status;
+    uint16_t rxLen = 0u;
+    const char *p_line;
+    char fw[APP_BC95_SIM_INFO_FW_MAX_LEN];
+    size_t len;
+
+    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_QGMR_QUERY,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   APP_BC95_AT_RX_TIMEOUT_MS,
+                                   &rxLen);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("NBIOT", "FW query fail (status=%d)", (int)status);
+        return;
+    }
+
+    if (App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL) != APP_BC95_AT_OK)
+    {
+        APP_LOGW("NBIOT", "FW n/a (not OK)");
+        return;
+    }
+
+    p_line = (const char *)g_appBc95AtRxBuf;
+    while (*p_line != '\0')
+    {
+        while ((*p_line == '\r') || (*p_line == '\n') || (*p_line == ' '))
+        {
+            p_line++;
+        }
+        if (*p_line == '\0') { break; }
+
+        len = 0u;
+        while ((p_line[len] != '\0') && (p_line[len] != '\r') && (p_line[len] != '\n'))
+        {
+            len++;
+        }
+
+        /* skip command echo (AT...) and the final "OK" */
+        if ((strncmp(p_line, "AT", 2) != 0) &&
+            !((len == 2u) && (strncmp(p_line, "OK", 2) == 0)))
+        {
+            if (len >= sizeof(fw)) { len = sizeof(fw) - 1u; }
+            (void)memcpy(fw, p_line, len);
+            fw[len] = '\0';
+            APP_LOGN("NBIOT", "Modem FW : %s", fw);
+            return;
+        }
+        p_line += len;
+    }
+    APP_LOGW("NBIOT", "FW n/a (no payload line)");
+}
+
+static void App_Bc95LogSimInfo(const uint8_t *p_imsiBcd)
+{
+    char imsi[APP_BC95_SIM_INFO_IMSI_DIGITS + 1u];
+    char plmn[APP_BC95_SIM_INFO_PLMN_LEN + 1u];
+    char mdnEst[APP_BC95_SIM_INFO_MDN_BUF_SIZE];
+    /* drop values from a previous SIM / failed read */
+    (void)memset(&g_appBc95SimInfo, 0, sizeof(g_appBc95SimInfo));
+
+    if (App_Bc95SimImsiBcdToDigits(p_imsiBcd, imsi, sizeof(imsi)) == APP_TRUE)
+    {
+        (void)memcpy(plmn, imsi, APP_BC95_SIM_INFO_PLMN_LEN);
+        plmn[APP_BC95_SIM_INFO_PLMN_LEN] = '\0';
+        APP_LOGN("NBIOT", "PLMN     : %s", plmn);
+
+        if (App_Bc95SimEstimateMdn(imsi, mdnEst, sizeof(mdnEst)) == APP_TRUE)
+        {
+            APP_LOGN("NBIOT", "MDN(est) : %s", mdnEst);
+            (void)memcpy(g_appBc95SimInfo.mdn, mdnEst, sizeof(g_appBc95SimInfo.mdn));
+            g_appBc95SimInfo.mdnValid = APP_TRUE;
+        }
+        else
+        {
+            APP_LOGN("NBIOT", "MDN(est) : n/a (PLMN != %s)", APP_BC95_SIM_INFO_PLMN_LGUP);
+        }
+    }
+    else
+    {
+        APP_LOGW("NBIOT", "IMSI BCD decode fail");
+    }
+
+    App_Bc95SimLogIccid();
+    App_Bc95SimLogModemFw();
+}
+
+uint8_t App_NBIoTGetSimIccid(char *p_out, size_t outSize)
+{
+    if ((p_out == NULL) || (outSize < APP_NBIOT_SIM_ICCID_BUF_SIZE)) { return APP_FALSE; }
+    p_out[0] = '\0';
+    if (g_appBc95SimInfo.iccidValid != APP_TRUE) { return APP_FALSE; }
+    (void)memcpy(p_out, g_appBc95SimInfo.iccid, APP_NBIOT_SIM_ICCID_BUF_SIZE);
+    return APP_TRUE;
+}
+
+uint8_t App_NBIoTGetSimMdnEst(char *p_out, size_t outSize)
+{
+    if ((p_out == NULL) || (outSize < APP_NBIOT_SIM_MDN_BUF_SIZE)) { return APP_FALSE; }
+    p_out[0] = '\0';
+    if (g_appBc95SimInfo.mdnValid != APP_TRUE) { return APP_FALSE; }
+    (void)memcpy(p_out, g_appBc95SimInfo.mdn, APP_NBIOT_SIM_MDN_BUF_SIZE);
+    return APP_TRUE;
+}
+
+uint8_t App_NBIoTGetSimSerial(char *p_out, size_t outSize)
+{
+    if ((p_out == NULL) || (outSize < APP_NBIOT_SIM_SERIAL_BUF_SIZE)) { return APP_FALSE; }
+    p_out[0] = '\0';
+    if (g_appBc95SimInfo.serialValid != APP_TRUE) { return APP_FALSE; }
+    (void)memcpy(p_out, g_appBc95SimInfo.serial, APP_NBIOT_SIM_SERIAL_BUF_SIZE);
+    return APP_TRUE;
+}
+#else /* APP_BC95_SIM_INFO_LOG_ENABLE disabled: cache removed, getters always fail */
+
+uint8_t App_NBIoTGetSimIccid(char *p_out, size_t outSize)
+{
+    (void)outSize;
+    if (p_out != NULL) { p_out[0] = '\0'; }
+    return APP_FALSE;
+}
+
+uint8_t App_NBIoTGetSimMdnEst(char *p_out, size_t outSize)
+{
+    (void)outSize;
+    if (p_out != NULL) { p_out[0] = '\0'; }
+    return APP_FALSE;
+}
+
+uint8_t App_NBIoTGetSimSerial(char *p_out, size_t outSize)
+{
+    (void)outSize;
+    if (p_out != NULL) { p_out[0] = '\0'; }
+    return APP_FALSE;
+}
+#endif /* APP_BC95_SIM_INFO_LOG_ENABLE */
 
 static int16_t App_Bc95AtCentibelToDbm(int32_t centibel);
 
@@ -3728,7 +4025,7 @@ static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
                                      APP_NBIOT_AT_NORESP_RETRY_MAX);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "%s %s send fail (status=%d)", p_logPrefix, p_cmdLabel, (int)status);
+        APP_LOGE("NBIOT", "%s %s send fail. rxLen=%u (status=%d)", p_logPrefix, p_cmdLabel, (unsigned)rxLen, (int)status);
         return status;
     }
 
@@ -4017,7 +4314,7 @@ static AppStatus_t App_NbiotRunBoardAttachVerificationSequence(void)
     AppStatus_t status;
     static const AppBc95SeqStep_t kAttachVerifyPreSeq[] =
     {
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NBAND_SET,       APP_BC95_AT_RX_TIMEOUT_MS, "AT+NBAND=" APP_BC95_PLATFORM_NBAND_STRING },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NBAND_SET,       APP_BC95_AT_RX_TIMEOUT_MS, "AT+NBAND=" APP_BC95_PLATFORM_LGU_NBAND_STRING },
         { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_CPSMS_QUERY,     APP_BC95_AT_RX_TIMEOUT_MS, "AT+CPSMS?" },
         /*
          * NCCID/CIMI/IMEI/CGATT는 NRB 직후 service-ready 이전 타이밍에서는
@@ -4069,14 +4366,14 @@ static AppStatus_t App_NbiotRunBoardProvisioningSequence(void)
 {
     static const AppBc95SeqStep_t kProvisionSeq[] =
     {
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QLWSERVERIP_SET_BS,        APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP=BS,..." },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QLWSERVERIP_SET_LWM2M,     APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP=LWM2M,..." },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_SET_0,   APP_BC95_AT_RX_TIMEOUT_MS, "AT+QBOOTSTRAPHOLDOFF=0" },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QLWEPNS_SET,               APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWEPNS=1,..." },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QLWMBSPS_SET,              APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWMBSPS=..." },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QREGSWT_SET_1,             APP_BC95_AT_RX_TIMEOUT_MS, "AT+QREGSWT=1" },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_ON,    APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCONFIG=AUTOCONNECT,TRUE" },
-        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_QLWSERVERIP_QUERY,         APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP?" },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_LGU_QLWSERVERIP_SET_BS,        APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP=BS,..." },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_LGU_QLWSERVERIP_SET_LWM2M,    APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP=LWM2M,..." },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_LGU_QBOOTSTRAPHOLDOFF_SET_0,  APP_BC95_AT_RX_TIMEOUT_MS, "AT+QBOOTSTRAPHOLDOFF=0" },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_LGU_QLWEPNS_SET,              APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWEPNS=1,..." },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_LGU_QLWMBSPS_SET,             APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWMBSPS=..." },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QREGSWT_SET_1,                APP_BC95_AT_RX_TIMEOUT_MS, "AT+QREGSWT=1" },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_ON,       APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCONFIG=AUTOCONNECT,TRUE" },
+        { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_QLWSERVERIP_QUERY,            APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP?" },
         { APP_BC95_SEQ_STEP_REBOOT,           NULL,                                       0u,                        "AT+NRB" }
     };
 
@@ -4240,7 +4537,7 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
     return APP_STATUS_OK;
 }
 
-AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage, uint8_t allowMgmtPiggyback)
+AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
 {
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
     /* 시험 7 전용: 실제 모뎀 측정/시간동기/플랫폼 전송을 전부 건너뛰고 시나리오만 진행 */
@@ -4309,46 +4606,10 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage, uint8_t all
     }
 #endif
 
-    if (allowMgmtPiggyback != APP_TRUE)
-    {
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] mgmt piggyback disabled for this wake");
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] done");
         return APP_STATUS_OK;
-    }
 
-    (void)memset(&mgmtSendResult, 0, sizeof(mgmtSendResult));
-#ifdef NBIOT_SUPPORT_DNS
-    mgmtStatus = App_NBIoTTransmitUdpInternal("[[MgmtTx/Piggyback]]",
-                                              APP_MGMT_SERVER_DOMAIN,
-                                              APP_MGMT_SERVER_PORT,
-                                              deleteStorage,
-                                              APP_FALSE,
-                                              NULL,
-                                              APP_TRUE,
-                                              &mgmtSendResult);
-#else
-    mgmtStatus = App_NBIoTTransmitUdpInternal("[[MgmtTx/Piggyback]]",
-                                              APP_MGMT_SERVER_IP,
-                                              APP_MGMT_SERVER_PORT,
-                                              deleteStorage,
-                                              APP_FALSE,
-                                              NULL,
-                                              APP_TRUE,
-                                              &mgmtSendResult);
-#endif
-
-#if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
-    (void)memset(&sessionMetrics, 0, sizeof(sessionMetrics));
-    sessionMetrics.dnsElapsedMs    = mgmtSendResult.dnsElapsedMs;
-    sessionMetrics.dnsAttempts     = mgmtSendResult.dnsAttempts;
-    sessionMetrics.udpSendAttempts = mgmtSendResult.udpSendAttempts;
-    sessionMetrics.extremeWeak     = App_CommIsExtremeWeak();
-    App_CommApplyServiceSessionCost(&sessionMetrics);
-    App_CommParamRecompose();
-#endif
-
-    APP_LOGN("NBIOT", "[[ServicePlatformWake]] done");
-    return APP_STATUS_OK;
 #endif
 #endif
 }
@@ -7080,6 +7341,10 @@ AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo)
     }
     App_Bc95PrintBcd("IMSI", appImsiBcd, (uint32_t)APP_BC95_IMSI_BCD_BYTES);
     App_Bc95PrintDecoded("IMSI", appImsiBcd, (uint32_t)APP_BC95_IMSI_BCD_BYTES);
+
+#if (APP_BC95_SIM_INFO_LOG_ENABLE == APP_TRUE)
+    App_Bc95LogSimInfo(appImsiBcd);
+#endif
 
     /* ----- Options에 반영 (IMEI 8B + IMSI 8B = 16B) ----- */
     if (bSaveInfo == APP_TRUE)

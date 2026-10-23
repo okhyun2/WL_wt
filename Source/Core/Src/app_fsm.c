@@ -620,8 +620,7 @@ static AppStatus_t App_FsmRunTxWakeTracks(uint8_t deleteOnServiceTx)
 
     if (g_appFsmRtcServiceTxWakePending == APP_TRUE)
     {
-        (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx,
-                                                (g_appFsmRtcMgmtTxWakePending == APP_TRUE) ? APP_FALSE : APP_TRUE);
+        (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx);
 
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
         if ((g_appFsmRtcMgmtTxWakePending == APP_TRUE) &&
@@ -637,12 +636,6 @@ static AppStatus_t App_FsmRunTxWakeTracks(uint8_t deleteOnServiceTx)
     if (g_appFsmRtcMgmtTxWakePending == APP_TRUE)
     {
         (void)App_NBIoTMgmtSocketWakeTrack(APP_TRUE);
-    }
-
-    if ((g_appFsmRtcServiceTxWakePending != APP_TRUE) &&
-        (g_appFsmRtcMgmtTxWakePending != APP_TRUE))
-    {
-        (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx, APP_TRUE);
     }
 
     return APP_STATUS_OK;

@@ -38,7 +38,7 @@ typedef enum
 /**
  * define print log level. print >= defined_level
  */ 
-#if APP_BUILD_IS_PRODUCTION == (APP_TRUE)
+#if APP_LOG_STRIP_VERBOSE == (APP_TRUE)
 #define APP_LOG_LEVEL (APP_LOG_LEVEL_E_NOTICE)
 #else
 #define APP_LOG_LEVEL (APP_LOG_LEVEL_E_INFO)
@@ -107,7 +107,7 @@ AppStatus_t App_LogPrintf(AppLogLevel_t level, const char *p_module, const char 
  */
 AppStatus_t App_LogHexDump(AppLogLevel_t level, const char *p_module, const uint8_t *p_data, uint16_t length);
 
-#if (APP_BUILD_IS_PRODUCTION == APP_TRUE)
+#if (APP_LOG_STRIP_VERBOSE == APP_TRUE)
  #if APP_LOG_LEVEL == (APP_LOG_LEVEL_E_TRACE)
     #define APP_LOGT(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_TRACE, (module), (fmt), ##__VA_ARGS__)
     #define APP_LOGD(module, fmt, ...)    App_LogPrintf(APP_LOG_LEVEL_DEBUG, (module), (fmt), ##__VA_ARGS__)
