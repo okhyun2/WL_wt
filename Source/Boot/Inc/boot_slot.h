@@ -8,8 +8,8 @@ extern "C" {
 #include <stdint.h>
 
 #define BOOT_SLOT1_ADDR                        (0x08002000u)
-#define BOOT_SLOT2_ADDR                        (0x08010000u)
-#define BOOT_SLOT_SIZE_BYTES                   (56u * 1024u)
+#define BOOT_SLOT_SIZE_BYTES                   (112u * 1024u) //Flash:128KB
+//#define BOOT_SLOT_SIZE_BYTES                   (176u * 1024u) //Flash:192KB
 #define BOOT_SRAM_START                        (0x20000000u)
 #define BOOT_SRAM_END                          (0x20005000u)
 

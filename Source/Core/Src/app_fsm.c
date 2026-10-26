@@ -638,6 +638,14 @@ static AppStatus_t App_FsmRunTxWakeTracks(uint8_t deleteOnServiceTx)
         (void)App_NBIoTMgmtSocketWakeTrack(APP_TRUE);
     }
 
+    /* NFC 요청 등으로 service/mgmt 어느 쪽도 pending 이 아닌 wake: service 1회 전송 */
+    if ((g_appFsmRtcServiceTxWakePending != APP_TRUE) &&
+        (g_appFsmRtcMgmtTxWakePending != APP_TRUE))
+    {
+        (void)App_NBIoTServicePlatformWakeTrack(deleteOnServiceTx);
+    }
+
+
     return APP_STATUS_OK;
 }
 

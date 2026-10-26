@@ -67,6 +67,7 @@
 #define APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_OFF "AT+NCONFIG=AUTOCONNECT,FALSE\r\n"
 #define APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_ON  "AT+NCONFIG=AUTOCONNECT,TRUE\r\n"
 #define APP_BC95_AT_CMD_NCONFIG_CELL_RESELECTION_ON "AT+NCONFIG=CELL_RESELECTION,TRUE\r\n"
+#define APP_BC95_AT_CMD_NCONFIG_SCRAMBLEING  "AT+NCONFIG=CR_0354_0338_SCRAMBLING,TRUE\r\n"
 #define APP_BC95_AT_CMD_QREGSWT_SET_1        "AT+QREGSWT=1\r\n"
 #define APP_BC95_AT_CMD_QREGSWT_SET_2        "AT+QREGSWT=2\r\n"
 #define APP_BC95_AT_CMD_QLWFOTAIND_OFF       "AT+QLWFOTAIND=0\r\n"
@@ -150,6 +151,15 @@
 #define APP_BC95_NET_REGISTERING_STUCK_RECOVERY_MAX (1u)
 #define APP_BC95_NET_REGISTERING_STUCK_MIN_POLLS (8u)
 #define APP_BC95_NET_REGISTERING_STUCK_MIN_POLLS_FAST_RECOVERY (4u)
+#define APP_NBIOT_NVM_WRITE_GAP_MS           (100u)
+#define APP_NBIOT_NCONFIG_QUERY_SETTLE_MS    (500u)
+/* CFUN=0 재전송 간격 단축: detach 처리 중 모듈은 바쁘므로 300ms idle-gap 후 재시도 */
+#define APP_NBIOT_POWEROFF_CFUN0_RETRY_DELAY_MS (1000u)
+/* NCONFIG? 응답 ~500B@9600bps ~= 520ms + 마진.
+ * 255B 스냅샷 캡으로 최종 OK는 구조적으로 못 받아 timeout 경로로 skip 판정하므로
+ * 전체 응답을 기다릴 필요가 없다 - 부팅당 1.5s 절감 */
+#define APP_NBIOT_NCONFIG_QUERY_RX_TIMEOUT_MS (1500u)
+#define APP_NBIOT_SILENCE_REBOOT_EXTRA_WAIT_MS (3000u)
 
 #define APP_NBIOT_LOG_PREATTACH         "[PreAttach]"
 #define APP_NBIOT_LOG_DNS               "[DNS]"
@@ -212,9 +222,22 @@ static uint8_t g_appBc95WakeCme524GraceUsed = APP_FALSE;
 static uint8_t g_appBc95WakeSkipPreAttachNetResetOnce = APP_FALSE;
 static uint8_t g_appBc95Cme524AttachRecheckCount = 0u;
 static uint32_t g_appBc95LastRecoverableCmeTick = 0u;
+/* "rxLen=0 완전 침묵" 감지 스위치: boot-config sequence 동안만 활성 */
+static uint8_t g_appBc95SilenceAbortEnable  = APP_FALSE;
+static uint8_t g_appBc95TotalSilenceDetected = APP_FALSE;
+/* AT+NCONFIG? 응답은 256B를 초과(실측 len=255+TRUNC)하므로 전용 대형 버퍼 사용 */
+static uint8_t g_appBc95NcfgQueryBuf[1024];
 
 /* UDP seq 단조 증가 카운터 (stale URC 매칭 방지) */
 static uint8_t g_appBc95UdpSeqCounter = 0u;
+
+static AppStatus_t App_Bc95AtIcasePrefixMatch(const char *p_text, const char *p_token, uint16_t tokenLen);
+static uint8_t App_Bc95AtNconfigTokenHasValue(const char *p_resp, const char *p_key, const char *p_value);
+static AppStatus_t App_Bc95AtNconfigSyncIfNeeded(const char *p_key1, const char *p_val1,
+                                                 const char *p_cmd1, const char *p_label1,
+                                                 const char *p_key2, const char *p_val2,
+                                                 const char *p_cmd2, const char *p_label2);
+static AppStatus_t App_NbiotRunBootConfigurationSequenceCore(void);
 
 #ifdef DEBUG
 typedef struct
@@ -304,12 +327,6 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_
 /* ============================================================
  *  SIM info log: PLMN / MDN(est) / ICCID / modem FW (log only)
  * ============================================================ */
-#ifndef APP_BC95_SIM_INFO_LOG_ENABLE
-#define APP_BC95_SIM_INFO_LOG_ENABLE        (APP_TRUE)
-#endif
-
-#if (APP_BC95_SIM_INFO_LOG_ENABLE == APP_TRUE)
-
 #define APP_BC95_SIM_INFO_IMSI_DIGITS       (15u)
 #define APP_BC95_SIM_INFO_PLMN_LEN          (5u)
 #define APP_BC95_SIM_INFO_PLMN_LGUP         "45006"
@@ -574,29 +591,6 @@ uint8_t App_NBIoTGetSimSerial(char *p_out, size_t outSize)
     (void)memcpy(p_out, g_appBc95SimInfo.serial, APP_NBIOT_SIM_SERIAL_BUF_SIZE);
     return APP_TRUE;
 }
-#else /* APP_BC95_SIM_INFO_LOG_ENABLE disabled: cache removed, getters always fail */
-
-uint8_t App_NBIoTGetSimIccid(char *p_out, size_t outSize)
-{
-    (void)outSize;
-    if (p_out != NULL) { p_out[0] = '\0'; }
-    return APP_FALSE;
-}
-
-uint8_t App_NBIoTGetSimMdnEst(char *p_out, size_t outSize)
-{
-    (void)outSize;
-    if (p_out != NULL) { p_out[0] = '\0'; }
-    return APP_FALSE;
-}
-
-uint8_t App_NBIoTGetSimSerial(char *p_out, size_t outSize)
-{
-    (void)outSize;
-    if (p_out != NULL) { p_out[0] = '\0'; }
-    return APP_FALSE;
-}
-#endif /* APP_BC95_SIM_INFO_LOG_ENABLE */
 
 static int16_t App_Bc95AtCentibelToDbm(int32_t centibel);
 
@@ -1764,6 +1758,63 @@ AppBc95AtStatus_t App_Bc95AtCheckResponse(const char *p_resp, int32_t *p_cmeErrO
 }
 
 /* ============================================================
+ *  RAW RX 디버그 덤프 (임시 진단용 - 끝나면 APP_FALSE로)
+ * ============================================================ */
+#define APP_NBIOT_AT_RAW_RX_DEBUG   APP_FALSE
+
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+static void App_Bc95AtLogRawRx(const char *p_tag,
+                               const uint8_t *p_buf,
+                               uint16_t len)
+{
+    char     text[400];
+    uint16_t i;
+    uint16_t out = 0u;
+    uint16_t dumpLen = len;
+    static const char kHex[] = "0123456789ABCDEF";
+
+    if (dumpLen > 96u)
+    {
+        dumpLen = 96u;   /* 스택 보호: 앞 96바이트만 덤프 */
+    }
+
+    for (i = 0u; (i < dumpLen) && (out < (uint16_t)(sizeof(text) - 8u)); i++)
+    {
+        uint8_t b = p_buf[i];
+        if (b == (uint8_t)'\r')
+        {
+            text[out++] = '\\'; text[out++] = 'r';
+        }
+        else if (b == (uint8_t)'\n')
+        {
+            text[out++] = '\\'; text[out++] = 'n';
+        }
+        else if (b == (uint8_t)'\\')
+        {
+            text[out++] = '\\'; text[out++] = '\\';
+        }
+        else if ((b >= 0x20u) && (b <= 0x7Eu))
+        {
+            text[out++] = (char)b;
+        }
+        else
+        {
+            text[out++] = '\\'; text[out++] = 'x';
+            text[out++] = kHex[(b >> 4) & 0x0Fu];
+            text[out++] = kHex[b & 0x0Fu];
+        }
+    }
+    text[out] = '\0';
+
+    APP_LOGN("NBIOT", "RAW %s len=%u%s [%s]",
+             (p_tag != NULL) ? p_tag : "rx",
+             (unsigned)len,
+             (len > dumpLen) ? "+TRUNC" : "",
+             text);
+}
+#endif
+
+/* ============================================================
  *  UART IT 기반 가변 길이 AT 응답 수신
  * ============================================================ */
 static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
@@ -1828,6 +1879,9 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
             {
                 p_buffer[curLen] = (uint8_t)'\0';
             }
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+            App_Bc95AtLogRawRx("err", p_buffer, curLen);
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
             App_Bc95AtFinishRxIt(p_huart);
             if (p_rxLengthOut != NULL) *p_rxLengthOut = curLen;
             return APP_STATUS_UART_RX_FAILED;
@@ -1866,6 +1920,9 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
                 {
                     p_buffer[safeLen] = (uint8_t)'\0';
                 }
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+            App_Bc95AtLogRawRx("ok", p_buffer, safeLen);
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
                 if (p_rxLengthOut != NULL) *p_rxLengthOut = safeLen;
                 return APP_STATUS_OK;
             }
@@ -1882,10 +1939,16 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
             if ((App_Bc95AtLineQueueHasFinalResponse(&lineQueue) == APP_TRUE) ||
                 (App_Bc95AtIsResponseTerminated((const uint8_t *)rxSnapshot, safeLen) == APP_TRUE))
             {
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+            App_Bc95AtLogRawRx("full-ok", p_buffer, safeLen);
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
                 APP_LOGI("NBIOT", "Response completed at full buffer (rxLen=%u)",
                          (unsigned)safeLen);
                 return APP_STATUS_OK;
             }
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+            App_Bc95AtLogRawRx("full-to", p_buffer, safeLen);
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
             return APP_STATUS_UART_TIMEOUT;
         }
 
@@ -1904,10 +1967,16 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
             if ((App_Bc95AtLineQueueHasFinalResponse(&lineQueue) == APP_TRUE) ||
                 (App_Bc95AtIsResponseTerminated((const uint8_t *)rxSnapshot, safeLen) == APP_TRUE))
             {
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+            App_Bc95AtLogRawRx("latel-ok", p_buffer, safeLen);
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
                 APP_LOGI("NBIOT", "Late-detected response on timeout (rxLen=%u)",
                          (unsigned)safeLen);
                 return APP_STATUS_OK;
             }
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+            App_Bc95AtLogRawRx("timeout", p_buffer, safeLen);
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
             return APP_STATUS_UART_TIMEOUT;
         }
 
@@ -2014,6 +2083,10 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
     {
         if (g_appBc95AtRxContext.error == APP_TRUE)
         {
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+            App_Bc95AtLogRawRx("banner-err", (const uint8_t *)g_appBc95AtRxBuf,
+                               (uint16_t)g_appBc95AtRxContext.receivedLength);
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
             return APP_STATUS_UART_RX_FAILED;
         }
@@ -2027,6 +2100,10 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
             }
             (void)App_Bc95AtCopySnapshot(g_appBc95AtRxBuf, curLen, rxSnapshot, (uint16_t)sizeof(rxSnapshot));
             App_Bc95AtLineQueueFeed(&lineQueue, rxSnapshot, curLen);
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+            App_Bc95AtLogRawRx("banner+", (const uint8_t *)&rxSnapshot[lastCheckedLen],
+                               (uint16_t)(curLen - lastCheckedLen));
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
 
             if ((App_Bc95AtLineQueueContainsSubstring(&lineQueue, APP_BC95_BOOT_BANNER) == APP_TRUE) ||
                 (strstr(rxSnapshot, APP_BC95_BOOT_BANNER) != NULL))
@@ -2041,6 +2118,10 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
                     }
                     (void)App_Bc95AtCopySnapshot(g_appBc95AtRxBuf, curLen, rxSnapshot, (uint16_t)sizeof(rxSnapshot));
                     App_Bc95AtLineQueueFeed(&lineQueue, rxSnapshot, curLen);
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+                    App_Bc95AtLogRawRx("banner+", (const uint8_t *)&rxSnapshot[lastCheckedLen],
+                               (uint16_t)(curLen - lastCheckedLen));
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
                     if ((App_Bc95AtLineQueueHasFinalResponse(&lineQueue) == APP_TRUE) ||
                         (App_Bc95AtFindOkBoundary(rxSnapshot) != NULL)) break;
                     APP_WWDGFeed();
@@ -2051,6 +2132,10 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
                 {
                     g_appBc95AtRxBuf[curLen] = (uint8_t)'\0';
                 }
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+                App_Bc95AtLogRawRx("banner-ok", (const uint8_t *)g_appBc95AtRxBuf,
+                                   (uint16_t)g_appBc95AtRxContext.receivedLength);
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
                 APP_LOGD("NBIOT", "Boot banner detected (len=%u)", (unsigned)curLen);
                 return APP_STATUS_OK;
             }
@@ -2059,6 +2144,10 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
 
         if (curLen >= bufferCap)
         {
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+            App_Bc95AtLogRawRx("banner-full", (const uint8_t *)g_appBc95AtRxBuf,
+                               (uint16_t)g_appBc95AtRxContext.receivedLength);
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
             return APP_STATUS_UART_TIMEOUT;
         }
@@ -2069,6 +2158,10 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
             __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE,
                                   UART_CLEAR_OREF | UART_CLEAR_FEF |
                                   UART_CLEAR_NEF | UART_CLEAR_PEF);
+#if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
+            App_Bc95AtLogRawRx("banner-to", (const uint8_t *)g_appBc95AtRxBuf,
+                               (uint16_t)g_appBc95AtRxContext.receivedLength);
+#endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
             return APP_STATUS_UART_TIMEOUT;
         }
         APP_WWDGFeed();
@@ -3504,6 +3597,15 @@ static AppStatus_t App_Bc95AtSendWithRetry(const char *p_cmd, uint8_t *p_rxBuf,
         status = App_Bc95AtSendCommand(p_cmd, p_rxBuf, rxBufSize, rxTimeoutMs, p_rxLenOut);
         if (status == APP_STATUS_OK) return APP_STATUS_OK;
 
+        if ((g_appBc95SilenceAbortEnable == APP_TRUE) &&
+            (status == APP_STATUS_UART_TIMEOUT) &&
+            ((p_rxLenOut == NULL) || (*p_rxLenOut == 0u)))
+        {
+            g_appBc95TotalSilenceDetected = APP_TRUE;
+            APP_LOGW("NBIOT", "cmd(%s) total silence (rxLen=0) -> abort retries", p_cmd);
+            return status;
+        }
+
         if ((status == APP_STATUS_UART_RX_FAILED) ||
             (status == APP_STATUS_UART_TX_FAILED) ||
             (status == APP_STATUS_UART_TIMEOUT))
@@ -4041,6 +4143,179 @@ static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
     return APP_STATUS_OK;
 }
 
+static uint8_t App_Bc95AtIcasePrefixMatch(const char *p_text, const char *p_token, uint16_t tokenLen)
+{
+    uint16_t i;
+
+    if ((p_text == NULL) || (p_token == NULL)) return APP_FALSE;
+
+    for (i = 0u; i < tokenLen; i++)
+    {
+        char a = p_text[i];
+        char b = p_token[i];
+
+        if ((a >= 'A') && (a <= 'Z')) a = (char)(a + ('a' - 'A'));
+        if ((b >= 'A') && (b <= 'Z')) b = (char)(b + ('a' - 'A'));
+        if (a != b) return APP_FALSE;
+    }
+    return APP_TRUE;
+}
+
+static uint8_t App_Bc95AtNconfigTokenHasValue(const char *p_resp,
+                                              const char *p_key,
+                                              const char *p_value)
+{
+    size_t   keyLen;
+    size_t   valLen;
+    const char *p_pos;
+
+    if ((p_resp == NULL) || (p_key == NULL) || (p_value == NULL)) return APP_FALSE;
+
+    keyLen = strlen(p_key);
+    valLen = strlen(p_value);
+    if ((keyLen == 0u) || (valLen == 0u)) return APP_FALSE;
+
+    p_pos = p_resp;
+    while ((p_pos = strstr(p_pos, p_key)) != NULL)
+    {
+        const char *p_colon = p_pos + keyLen;
+
+        while ((*p_colon == ' ') || (*p_colon == '\t') ||
+               (*p_colon == '\r') || (*p_colon == '\n'))
+        {
+            p_colon++;
+        }
+        /* 실측: 응답 포맷은 "+NCONFIG:KEY,VALUE" - 구분자는 콤마(콜론도 허용) */
+        if ((*p_colon == ':') || (*p_colon == ','))
+        {
+            const char *p_val = p_colon + 1u;
+            char boundary;
+
+            while ((*p_val == ' ') || (*p_val == '\t')) p_val++;
+            if (App_Bc95AtIcasePrefixMatch(p_val, p_value, (uint16_t)valLen) == APP_TRUE)
+            {
+                boundary = p_val[valLen];
+                if ((boundary == '\0') || (boundary == '\r') || (boundary == '\n') ||
+                    (boundary == ',')  || (boundary == ' ')  || (boundary == '\t'))
+                {
+                    return APP_TRUE;
+                }
+            }
+        }
+        p_pos += keyLen;
+    }
+    return APP_FALSE;
+}
+
+/*
+ * NCONFIG 쓰기 idempotent화 (v2):
+ *  1) AT+NCONFIG? 를 전용 640B 버퍼로 수신 (응답이 256B 초과 - 실측)
+ *  2) OK 뿐 아니라 timeout+부분수신(rxLen>0)에서도 토큰 판정
+ *     (AUTOCONNECT는 응답 첫 줄이라 부분 수신만으로 판정 가능)
+ *  3) 이미 원하는 값이면 NVM 쓰기 생략 (크래시 지점 우회 + 플래시 수명 절감)
+ *  4) 모든 TX 전에 500ms 정적 지연 - 응답 꼬리가 흐르는 동안 보낸 AT 입력을
+ *     모듈이 드랍하는 것이 실측되었으므로(set TX 직후 len=20 잔여 꼬리 + 이후 침묵),
+ *     스트림이 끝난 뒤에만 명령을 보낸다
+ *  5) query 실패/키 미발견이면 기존대로 set 진행 (conservative fallback)
+ */
+/*
+ * NCONFIG 동기화 (v3) - 쿼리 1회로 두 키를 모두 판정:
+ *  1) AT+NCONFIG? 를 전용 640B 버퍼로 "수신하고 그 같은 버퍼를" 파싱
+ *     (수신 버퍼 != 파싱 버퍼면 스킵이 절대 발동하지 않음 - v2 실측)
+ *  2) OK 뿐 아니라 timeout+부분수신(rxLen>0)에서도 파싱
+ *     (AUTOCONNECT는 응답 첫 줄이라 부분 수신만으로 판정 가능)
+ *  3) 판정 결과를 로그로 명시: already -> skip / not confirmed -> will set
+ *  4) 필요한 set만 수행. 둘 다 스킵이면 NVM 쓰기 0회 - 웨지 지점 우회
+ *  5) 모든 TX 전 500ms+100ms 정적 - 응답 꼬리가 흐르는 중 AT 입력은 모듈이 드랍(실측)
+ *  6) query 자체 실패 시 기존대로 둘 다 set (conservative fallback)
+ */
+static AppStatus_t App_Bc95AtNconfigSyncIfNeeded(const char *p_key1, const char *p_val1,
+                                                 const char *p_cmd1, const char *p_label1,
+                                                 const char *p_key2, const char *p_val2,
+                                                 const char *p_cmd2, const char *p_label2)
+{
+    AppStatus_t status;
+    uint16_t rxLen = 0u;
+    uint16_t safeLen;
+    uint8_t  need1 = APP_TRUE;
+    uint8_t  need2 = APP_TRUE;
+
+    APP_LOGN("NBIOT", "[[BootTrack]] TX AT+NCONFIG? (sync)");
+    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_NCONFIG_QUERY,
+                                   g_appBc95NcfgQueryBuf,   /* 수신 = 파싱 같은 버퍼 */
+                                   (uint16_t)sizeof(g_appBc95NcfgQueryBuf),
+                                   APP_NBIOT_NCONFIG_QUERY_RX_TIMEOUT_MS,
+                                   &rxLen);
+    APP_LOGN("NBIOT", "[[BootTrack]] NCONFIG? rx status=%d rxLen=%u",
+             (int)status, (unsigned)rxLen);
+
+    if ((status == APP_STATUS_OK) ||
+        ((status == APP_STATUS_UART_TIMEOUT) && (rxLen > 0u)))
+    {
+        safeLen = (rxLen < (uint16_t)(sizeof(g_appBc95NcfgQueryBuf) - 1u))
+                      ? rxLen : (uint16_t)(sizeof(g_appBc95NcfgQueryBuf) - 1u);
+        g_appBc95NcfgQueryBuf[safeLen] = (uint8_t)'\0';
+
+        if (App_Bc95AtNconfigTokenHasValue((const char *)g_appBc95NcfgQueryBuf,
+                                           p_key1, p_val1) == APP_TRUE)
+        {
+            APP_LOGN("NBIOT", "[[BootTrack]] %s already %s -> skip set", p_label1, p_val1);
+            need1 = APP_FALSE;
+        }
+        else
+        {
+            APP_LOGW("NBIOT", "[[BootTrack]] %s not confirmed (rxLen=%u) -> will set",
+                     p_label1, (unsigned)rxLen);
+        }
+
+        if (App_Bc95AtNconfigTokenHasValue((const char *)g_appBc95NcfgQueryBuf,
+                                           p_key2, p_val2) == APP_TRUE)
+        {
+            APP_LOGN("NBIOT", "[[BootTrack]] %s already %s -> skip set", p_label2, p_val2);
+            need2 = APP_FALSE;
+        }
+        else
+        {
+            APP_LOGW("NBIOT", "[[BootTrack]] %s not confirmed (rxLen=%u) -> will set",
+                     p_label2, (unsigned)rxLen);
+        }
+    }
+    else
+    {
+        APP_LOGW("NBIOT", "[[BootTrack]] AT+NCONFIG? query failed (status=%d rxLen=%u) -> will set both",
+                 (int)status, (unsigned)rxLen);
+    }
+
+    if ((need1 == APP_FALSE) && (need2 == APP_FALSE))
+    {
+        /* NVM 쓰기 0회: 웨지 지점(쓰기 직후)에 아예 진입하지 않는다 */
+        App_Bc95AtDelayWithFeed(APP_NBIOT_NCONFIG_QUERY_SETTLE_MS);
+        return APP_STATUS_OK;
+    }
+
+    /* 응답 꼬리가 모두 흐른 뒤 set을 보낸다 (TX-during-TX 드랍 방지) */
+    App_Bc95AtDelayWithFeed(APP_NBIOT_NCONFIG_QUERY_SETTLE_MS);
+    App_Bc95AtDelayWithFeed(APP_NBIOT_NVM_WRITE_GAP_MS);
+
+    if (need1 == APP_TRUE)
+    {
+        status = App_Bc95AtSendSimpleOkCommand(p_cmd1,
+                                               APP_BC95_AT_RX_TIMEOUT_MS,
+                                               p_label1,
+                                               "[[BootTrack]]");
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    }
+    if (need2 == APP_TRUE)
+    {
+        status = App_Bc95AtSendSimpleOkCommand(p_cmd2,
+                                               APP_BC95_AT_RX_TIMEOUT_MS,
+                                               p_label2,
+                                               "[[BootTrack]]");
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    }
+    return APP_STATUS_OK;
+}
+
 static AppStatus_t App_Bc95AtSendBestEffortQuery(const char *p_cmd,
                                                  uint32_t rxTimeoutMs,
                                                  const char *p_cmdLabel,
@@ -4288,7 +4563,7 @@ static AppStatus_t App_Bc95AtSendRebootBestEffort(void)
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_NbiotRunBootConfigurationSequence(void)
+static AppStatus_t App_NbiotRunBootConfigurationSequenceCore(void)
 {
     AppStatus_t status;
     static const AppBc95SeqStep_t kBootCfgSeq[] =
@@ -4296,17 +4571,61 @@ static AppStatus_t App_NbiotRunBootConfigurationSequence(void)
         { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_QGMR_QUERY,                APP_BC95_AT_RX_TIMEOUT_MS, "AT+QGMR" },
         { APP_BC95_SEQ_STEP_BESTEFFORT_OK,    APP_BC95_AT_CMD_QLWFOTAIND_OFF,            APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWFOTAIND=0" },
         { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QREGSWT_SET_2,             APP_BC95_AT_RX_TIMEOUT_MS, "AT+QREGSWT=2" },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_OFF,   APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCONFIG=AUTOCONNECT,FALSE" },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NCONFIG_CELL_RESELECTION_ON, APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCONFIG=CELL_RESELECTION,TRUE" },
-        { APP_BC95_SEQ_STEP_REBOOT,           NULL,                                       0u,                        "AT+NRB" }
+        /* NVM debug */
+        /*
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_ON,    APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCONFIG=AUTOCONNECT,TRUE" },
+        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NCONFIG_SCRAMBLEING,       APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCONFIG=CR_0354_0338_SCRAMBLING,TRUE" },
+        */
     };
 
     status = App_Bc95AtWaitUntilReady(APP_BC95_BOOT_WAIT_BANNER_MS + APP_BC95_USIM_READY_TIMEOUT_MS);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    return App_Bc95AtRunSequence(kBootCfgSeq,
-                                 (uint32_t)(sizeof(kBootCfgSeq) / sizeof(kBootCfgSeq[0])),
-                                 "[[BootTrack]]");
+    status = App_Bc95AtRunSequence(kBootCfgSeq,
+                                   (uint32_t)(sizeof(kBootCfgSeq) / sizeof(kBootCfgSeq[0])),
+                                   "[[BootTrack]]");
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    status = App_Bc95AtNconfigSyncIfNeeded(
+                 "AUTOCONNECT", "FALSE",
+                 APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_OFF, "AT+NCONFIG=AUTOCONNECT,FALSE",
+                 "CELL_RESELECTION", "TRUE",
+                 APP_BC95_AT_CMD_NCONFIG_CELL_RESELECTION_ON, "AT+NCONFIG=CELL_RESELECTION,TRUE");
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    return App_Bc95AtSendRebootBestEffort();
+}
+
+/*
+ * rxLen=0 완전 침묵(모듈 hang) 감지 시:
+ *  - retry/soft recovery 생략 (재전송으로 살아날 가능성 없음)
+ *  - 즉시 GPIO 전원 리파워 후 boot-config sequence 1회 재실행
+ *  - 리파워 직후 지연 없음: Core 첫 단계 WaitUntilReady가 boot banner(10s+15s)를 담당
+ */
+static AppStatus_t App_NbiotRunBootConfigurationSequence(void)
+{
+    AppStatus_t status;
+
+    g_appBc95SilenceAbortEnable  = APP_TRUE;
+    g_appBc95TotalSilenceDetected = APP_FALSE;
+
+    status = App_NbiotRunBootConfigurationSequenceCore();
+    g_appBc95SilenceAbortEnable = APP_FALSE;
+
+    if ((status != APP_STATUS_OK) && (g_appBc95TotalSilenceDetected == APP_TRUE))
+    {
+        APP_LOGW("NBIOT", "[[BootTrack]] modem total silence detected -> immediate power cycle, retry boot config once");
+
+        App_HwNbiotPowerCycle();
+        (void)App_NBIoTAtInit();
+        g_appBc95TotalSilenceDetected = APP_FALSE;
+
+        g_appBc95SilenceAbortEnable = APP_TRUE;
+        status = App_NbiotRunBootConfigurationSequenceCore();
+        g_appBc95SilenceAbortEnable = APP_FALSE;
+    }
+
+    return status;
 }
 
 static AppStatus_t App_NbiotRunBoardAttachVerificationSequence(void)
@@ -4362,15 +4681,219 @@ static AppStatus_t App_NbiotRunBoardAttachVerificationSequence(void)
     return APP_STATUS_OK;
 }
 
+/* ============================================================
+ *  LG U+ platform 파라미터 동기화: 읽기 -> 비교 -> 다를 때만 쓰기
+ *  (Application Note: 매 부팅마다 쓰면 모듈 메모리 손상 우려)
+ * ============================================================ */
+#ifndef APP_BC95_PLATFORM_LGU_SERVCODE_STRING
+#error "APP_BC95_PLATFORM_LGU_SERVCODE_STRING is not defined (app_build_config.h)"
+#endif
+#ifndef APP_BC95_PLATFORM_LGU_MODEL_STRING
+#error "APP_BC95_PLATFORM_LGU_MODEL_STRING is not defined (app_build_config.h)"
+#endif
+
+#define APP_BC95_LGU_SERVERIP_BS_TEXT \
+    APP_BC95_PLATFORM_LGU_BOOTSTRAP_MODE "," APP_BC95_PLATFORM_LGU_SERVER_IP_STRING "," APP_BC95_PLATFORM_LGU_SERVER_PORT_STRING
+#define APP_BC95_LGU_SERVERIP_LWM2M_TEXT \
+    APP_BC95_PLATFORM_LGU_LWM2M_MODE "," APP_BC95_PLATFORM_LGU_SERVER_IP_STRING "," APP_BC95_PLATFORM_LGU_SERVER_PORT_STRING
+#define APP_BC95_LGU_HOLDOFF_PREFIX          "+QBOOTSTRAPHOLDOFF:"
+#define APP_BC95_LGU_CMP_BUF_SIZE            (72u)
+#define APP_BC95_LGU_MBSPS_PARAM_BUF_SIZE    (64u)
+#define APP_BC95_LGU_MBSPS_CMD_BUF_SIZE      (80u)
+#define APP_BC95_LGU_ICCID_TAIL_LEN          (6u)
+
+/* 조회 후 응답에서 '"' 를 제거(in-place). 조회 실패 시 APP_FALSE */
+static uint8_t App_NbiotQueryNormalized(const char *p_queryCmd)
+{
+    uint16_t rxLen = 0u;
+    size_t r;
+    size_t w = 0u;
+
+    if (App_Bc95AtSendCommand(p_queryCmd,
+                              g_appBc95AtRxBuf,
+                              (uint16_t)sizeof(g_appBc95AtRxBuf),
+                              APP_BC95_AT_RX_TIMEOUT_MS,
+                              &rxLen) != APP_STATUS_OK)
+    {
+        return APP_FALSE;
+    }
+
+    /* 방어: 응답 길이 기준으로 NUL 종단을 보장 */
+    if (rxLen >= (uint16_t)sizeof(g_appBc95AtRxBuf))
+    {
+        rxLen = (uint16_t)(sizeof(g_appBc95AtRxBuf) - 1u);
+    }
+    g_appBc95AtRxBuf[rxLen] = 0u;
+
+    for (r = 0u; r < (size_t)rxLen; r++)
+    {
+        if (g_appBc95AtRxBuf[r] != (uint8_t)'"')
+        {
+            g_appBc95AtRxBuf[w++] = g_appBc95AtRxBuf[r];
+        }
+    }
+    g_appBc95AtRxBuf[w] = 0u;
+    return APP_TRUE;
+}
+
+/* 정규화된 응답에 p_text('"' 제거 후)가 줄 끝까지 정확히 일치해 포함되는지 확인 */
+static uint8_t App_NbiotRxHas(const char *p_text)
+{
+    char needle[APP_BC95_LGU_CMP_BUF_SIZE];
+    const char *p_hit;
+    size_t w = 0u;
+    char tail;
+
+    for (; *p_text != '\0'; p_text++)
+    {
+        if (*p_text == '"') { continue; }
+        if (w >= (sizeof(needle) - 1u)) { return APP_FALSE; }
+        needle[w++] = *p_text;
+    }
+    if (w == 0u) { return APP_FALSE; }
+    needle[w] = '\0';
+
+    p_hit = strstr((const char *)g_appBc95AtRxBuf, needle);
+    if (p_hit == NULL) { return APP_FALSE; }
+
+    tail = p_hit[w];
+    return ((tail == '\0') || (tail == '\r') || (tail == '\n')) ? APP_TRUE : APP_FALSE;
+}
+
+/* "+QBOOTSTRAPHOLDOFF: 0" 인지 확인 (1800 등은 FALSE) */
+static uint8_t App_NbiotRxHoldoffIsZero(void)
+{
+    const char *p_pos = strstr((const char *)g_appBc95AtRxBuf, APP_BC95_LGU_HOLDOFF_PREFIX);
+
+    if (p_pos == NULL) { return APP_FALSE; }
+    p_pos += (sizeof(APP_BC95_LGU_HOLDOFF_PREFIX) - 1u);
+    while ((*p_pos == ' ') || (*p_pos == '\t')) { p_pos++; }
+    if (*p_pos != '0') { return APP_FALSE; }
+    return ((p_pos[1] >= '0') && (p_pos[1] <= '9')) ? APP_FALSE : APP_TRUE;
+}
+
+/* ICCID 파싱값의 마지막 6자리. 숫자가 아니면 APP_FALSE */
+static uint8_t App_NbiotIccidTail6(char *p_out, size_t outSize)
+{
+    char iccid[APP_NBIOT_SIM_ICCID_BUF_SIZE];
+    size_t len;
+    uint8_t i;
+    char ch;
+
+    if ((p_out == NULL) || (outSize < (APP_BC95_LGU_ICCID_TAIL_LEN + 1u))) { return APP_FALSE; }
+    if (App_NBIoTGetSimIccid(iccid, sizeof(iccid)) != APP_TRUE) { return APP_FALSE; }
+
+    len = strlen(iccid);
+    if (len < APP_BC95_LGU_ICCID_TAIL_LEN) { return APP_FALSE; }
+
+    for (i = 0u; i < APP_BC95_LGU_ICCID_TAIL_LEN; i++)
+    {
+        ch = iccid[len - APP_BC95_LGU_ICCID_TAIL_LEN + i];
+        if ((ch < '0') || (ch > '9')) { return APP_FALSE; }
+        p_out[i] = ch;
+    }
+    p_out[APP_BC95_LGU_ICCID_TAIL_LEN] = '\0';
+    return APP_TRUE;
+}
+
+/* "<servcode>,<serial>,<mdn>,<iccid6>,<model>" */
+static AppStatus_t App_NbiotBuildMbspsParams(char *p_out, size_t outSize)
+{
+    char serial[APP_NBIOT_SIM_SERIAL_BUF_SIZE];
+    char mdn[APP_NBIOT_SIM_MDN_BUF_SIZE];
+    char tail6[APP_BC95_LGU_ICCID_TAIL_LEN + 1u];
+    int n;
+
+    if (App_NBIoTGetSimSerial(serial, sizeof(serial)) != APP_TRUE)
+    {
+        APP_LOGW("NBIOT", "[[BootTrack]] MBSPS serial n/a (ICCID must be 19 digits)");
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+    if (App_NBIoTGetSimMdnEst(mdn, sizeof(mdn)) != APP_TRUE)
+    {
+        APP_LOGW("NBIOT", "[[BootTrack]] MBSPS mdn n/a (PLMN != 45006 or IMSI read fail)");
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+    if (App_NbiotIccidTail6(tail6, sizeof(tail6)) != APP_TRUE)
+    {
+        APP_LOGW("NBIOT", "[[BootTrack]] MBSPS iccid tail n/a");
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    n = snprintf(p_out, outSize, "%s,%s,%s,%s,%s",
+                 APP_BC95_PLATFORM_LGU_SERVCODE_STRING,
+                 serial,
+                 mdn,
+                 tail6,
+                 APP_BC95_PLATFORM_LGU_MODEL_STRING);
+    APP_RETURN_IF_FALSE((n > 0) && ((size_t)n < outSize), APP_STATUS_INVALID_PARAM);
+    return APP_STATUS_OK;
+}
+
+static AppStatus_t App_NbiotApplyParam(uint8_t same, const char *p_setCmd, const char *p_label)
+{
+    if (same == APP_TRUE)
+    {
+        APP_LOGN("NBIOT", "[[BootTrack]] %s same -> skip write", p_label);
+        return APP_STATUS_OK;
+    }
+    return App_Bc95AtSendSimpleOkCommand(p_setCmd, APP_BC95_AT_RX_TIMEOUT_MS, p_label, "[[BootTrack]]");
+}
+
+static AppStatus_t App_NbiotSyncPlatformParams(void)
+{
+    AppStatus_t status;
+    uint8_t serverQueryOk;
+    uint8_t bsSame;
+    uint8_t lwSame;
+    uint8_t same;
+    char params[APP_BC95_LGU_MBSPS_PARAM_BUF_SIZE];
+    char cmd[APP_BC95_LGU_MBSPS_CMD_BUF_SIZE];
+    int n;
+
+    /* 이 시점에는 ReadIdentity가 아직 안 불렸으므로 SIM 캐시(ICCID/MDN/Serial)를 먼저 채운다. */
+    (void)App_NBIoTReadIdentity(APP_FALSE);
+
+    /* SERVERIP: 조회 1회, 쓰기 전에 두 비교를 모두 끝낸다(쓰기가 응답 버퍼를 덮어씀). */
+    serverQueryOk = App_NbiotQueryNormalized(APP_BC95_AT_CMD_QLWSERVERIP_QUERY);
+    bsSame = (serverQueryOk == APP_TRUE) ? App_NbiotRxHas(APP_BC95_LGU_SERVERIP_BS_TEXT)    : APP_FALSE;
+    lwSame = (serverQueryOk == APP_TRUE) ? App_NbiotRxHas(APP_BC95_LGU_SERVERIP_LWM2M_TEXT) : APP_FALSE;
+
+    status = App_NbiotApplyParam(bsSame, APP_BC95_AT_CMD_LGU_QLWSERVERIP_SET_BS, "AT+QLWSERVERIP=BS,...");
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+    status = App_NbiotApplyParam(lwSame, APP_BC95_AT_CMD_LGU_QLWSERVERIP_SET_LWM2M, "AT+QLWSERVERIP=LWM2M,...");
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    /* BOOTSTRAPHOLDOFF */
+    same = (App_NbiotQueryNormalized(APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_QUERY) == APP_TRUE) ? App_NbiotRxHoldoffIsZero() : APP_FALSE;
+    status = App_NbiotApplyParam(same, APP_BC95_AT_CMD_LGU_QBOOTSTRAPHOLDOFF_SET_0, "AT+QBOOTSTRAPHOLDOFF=0");
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    /* EPNS */
+    same = (App_NbiotQueryNormalized(APP_BC95_AT_CMD_QLWEPNS_QUERY) == APP_TRUE) ? App_NbiotRxHas(APP_BC95_PLATFORM_LGU_EPNS_STRING) : APP_FALSE;
+    status = App_NbiotApplyParam(same, APP_BC95_AT_CMD_LGU_QLWEPNS_SET, "AT+QLWEPNS=1,...");
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    /* MBSPS: SIM 정보로 런타임 조립. 정보가 없으면 쓰지 않고 모뎀 기존값 유지 */
+    status = App_NbiotBuildMbspsParams(params, sizeof(params));
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("NBIOT", "[[BootTrack]] MBSPS skipped (status=%d), keep modem value", (int)status);
+        return APP_STATUS_OK;
+    }
+    n = snprintf(cmd, sizeof(cmd), "AT+QLWMBSPS=%s\r\n", params);
+    APP_RETURN_IF_FALSE((n > 0) && ((size_t)n < sizeof(cmd)), APP_STATUS_INVALID_PARAM);
+    APP_LOGN("NBIOT", "[[BootTrack]] MBSPS params: %s", params);
+
+    same = (App_NbiotQueryNormalized(APP_BC95_AT_CMD_QLWMBSPS_QUERY) == APP_TRUE) ? App_NbiotRxHas(params) : APP_FALSE;
+    return App_NbiotApplyParam(same, cmd, "AT+QLWMBSPS=...");
+}
+
 static AppStatus_t App_NbiotRunBoardProvisioningSequence(void)
 {
+    AppStatus_t status;
     static const AppBc95SeqStep_t kProvisionSeq[] =
     {
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_LGU_QLWSERVERIP_SET_BS,        APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP=BS,..." },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_LGU_QLWSERVERIP_SET_LWM2M,    APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP=LWM2M,..." },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_LGU_QBOOTSTRAPHOLDOFF_SET_0,  APP_BC95_AT_RX_TIMEOUT_MS, "AT+QBOOTSTRAPHOLDOFF=0" },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_LGU_QLWEPNS_SET,              APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWEPNS=1,..." },
-        { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_LGU_QLWMBSPS_SET,             APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWMBSPS=..." },
         { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_QREGSWT_SET_1,                APP_BC95_AT_RX_TIMEOUT_MS, "AT+QREGSWT=1" },
         { APP_BC95_SEQ_STEP_REQUIRED_OK,      APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_ON,       APP_BC95_AT_RX_TIMEOUT_MS, "AT+NCONFIG=AUTOCONNECT,TRUE" },
         { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_QLWSERVERIP_QUERY,            APP_BC95_AT_RX_TIMEOUT_MS, "AT+QLWSERVERIP?" },
@@ -4378,6 +4901,9 @@ static AppStatus_t App_NbiotRunBoardProvisioningSequence(void)
     };
 
     APP_LOGN("NBIOT", "[[BootTrack]] start board provisioning sequence");
+    status = App_NbiotSyncPlatformParams();
+    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
     return App_Bc95AtRunSequence(kProvisionSeq,
                                  (uint32_t)(sizeof(kProvisionSeq) / sizeof(kProvisionSeq[0])),
                                  "[[BootTrack]]");
@@ -4729,9 +5255,19 @@ static AppBc95AtStatus_t App_Bc95AtParseQlwevtind(const char *p_resp, int *p_eve
     return APP_BC95_AT_OK;
 }
 
+/* 노트 1.3: +QLWEVTIND:0=등록 완료, :3=object 10250 observe 완료 -> :3 이후 UL/DL 가능.
+ * APP_FALSE 로 두면 예전처럼 0 또는 3 에서 준비 완료로 본다. */
+#ifndef APP_BC95_PLATFORM_READY_REQUIRE_OBSERVE
+#define APP_BC95_PLATFORM_READY_REQUIRE_OBSERVE   (APP_TRUE)
+#endif
+
 static uint8_t App_Bc95AtPlatformEventIsReady(int eventType)
 {
+#if (APP_BC95_PLATFORM_READY_REQUIRE_OBSERVE == APP_TRUE)
+    return (eventType == 3) ? APP_TRUE : APP_FALSE;
+#else
     return ((eventType == 0) || (eventType == 3)) ? APP_TRUE : APP_FALSE;
+#endif
 }
 
 static uint8_t App_Bc95AtPlatformEventNeedsRegisterRetry(int eventType)
@@ -5210,6 +5746,12 @@ static AppStatus_t App_NbiotCarrierPerformHwReset(void)
     return APP_STATUS_OK;
 }
 
+/* CGATT=0 OK 후 ready/home/CGATT=1 유지는 실측상 detach가 아예 안 먹히는 stuck 상태:
+ * 4회(약5s) 폴링은 대기 낭비 - 2회로 단축하고 CFUN=0으로 조기 전환 */
+#ifndef APP_NBIOT_DETACH_GRACE_POLL_MAX
+#define APP_NBIOT_DETACH_GRACE_POLL_MAX   (2u)
+#endif
+
 static AppStatus_t App_NbiotCarrierWaitForCereg0(uint32_t timeoutMs)
 {
     AppStatus_t status;
@@ -5244,7 +5786,7 @@ static AppStatus_t App_NbiotCarrierWaitForCereg0(uint32_t timeoutMs)
                 (snapshot.cgattState == 1u))
             {
                 readyHomeCgatt1Streak++;
-                if (readyHomeCgatt1Streak >= APP_NBIOT_DETACH_READY_STUCK_POLL_MAX)
+                if (readyHomeCgatt1Streak >= APP_NBIOT_DETACH_GRACE_POLL_MAX)   /* grace 4->2: stuck 조기 포기 */
                 {
                     APP_LOGW("NBIOT",
                              APP_NBIOT_REPORT_LOG_DETACH
@@ -7342,9 +7884,7 @@ AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo)
     App_Bc95PrintBcd("IMSI", appImsiBcd, (uint32_t)APP_BC95_IMSI_BCD_BYTES);
     App_Bc95PrintDecoded("IMSI", appImsiBcd, (uint32_t)APP_BC95_IMSI_BCD_BYTES);
 
-#if (APP_BC95_SIM_INFO_LOG_ENABLE == APP_TRUE)
     App_Bc95LogSimInfo(appImsiBcd);
-#endif
 
     /* ----- Options에 반영 (IMEI 8B + IMSI 8B = 16B) ----- */
     if (bSaveInfo == APP_TRUE)
@@ -7657,10 +8197,27 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
             goto force_power_off;
         }
 
-        cfunMinStatus = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CFUN_SET_MIN,
-                                                      APP_BC95_AT_RX_TIMEOUT_MS,
-                                                      "AT+CFUN=0",
-                                                      APP_NBIOT_REPORT_LOG_POWEROFF);
+        /* CFUN=0 재전송 간격 3s->1s: detach 처리 중 바쁜 모듈에 3s 대기는 무의미(실측:
+         * 1회째 3s 무응답, 2회째 즉답 CME 51). 1초 후 1회 재전송, 총 2회 시도 */
+        {
+            uint16_t cfun0RxLen = 0u;
+
+            cfunMinStatus = App_Bc95AtSendCommand(APP_BC95_AT_CMD_CFUN_SET_MIN,
+                                                  g_appBc95AtRxBuf,
+                                                  (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                                  APP_BC95_AT_RX_TIMEOUT_MS,
+                                                  &cfun0RxLen);
+            if ((cfunMinStatus != APP_STATUS_OK) ||
+                (App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL) != APP_BC95_AT_OK))
+            {
+                App_Bc95AtDelayWithFeed(APP_NBIOT_POWEROFF_CFUN0_RETRY_DELAY_MS);
+                cfunMinStatus = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CFUN_SET_MIN,
+                                                              APP_BC95_AT_RX_TIMEOUT_MS,
+                                                              "AT+CFUN=0",
+                                                              APP_NBIOT_REPORT_LOG_POWEROFF);
+            }
+        }
+
         App_NBIoTDetachNoteOutcome(cfunMinStatus);
         if (cfunMinStatus != APP_STATUS_OK)
         {

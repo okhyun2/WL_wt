@@ -74,8 +74,8 @@ extern "C" {
 #endif
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/* 128KB flash layout (bootloader + single application) */
-#define APP_FLASH_TARGET_SIZE_BYTES                 (128u * 1024u)
+/* flash layout (bootloader + single application) */
+#define APP_FLASH_TARGET_SIZE_BYTES                 (128u * 1024u) //128KB:128u*1024u, 192KB:192u*1024u
 #define APP_BOOTLOADER_BASE_ADDR                    (0x08000000u)
 #define APP_BOOTLOADER_SIZE_BYTES                   (8u * 1024u)
 #define APP_IMAGE_BASE_ADDR                         (0x08002000u)
@@ -107,8 +107,7 @@ extern "C" {
 #define APP_BC95_PLATFORM_LGU_LWM2M_MODE            "LWM2M"
 #define APP_BC95_PLATFORM_LGU_EPNS_STRING           "ASN_CSE-S-8ec0d193b5-ADJ1"
 #define APP_BC95_PLATFORM_LGU_SERVCODE_STRING       "ADJ1"
-//#define APP_BC95_PLATFORM_LGU_MODEL_STRING        "ACO-WT-NB26"
-#define APP_BC95_PLATFORM_LGU_MODEL_STRING          "G-ATN-BN3" //TODO temporty
+#define APP_BC95_PLATFORM_LGU_MODEL_STRING          "ACO-WT-NB26"
 #define APP_BC95_PLATFORM_LGU_MBSPS_STRING          "ADJ1,4323800010,01226680136,919592,KSJ_WT-NB23" //QLWMBSPS:<serv_code>,<ser_no>,<ctn>,<iccid>,<model>
 #define APP_BC95_PLATFORM_LGU_NBAND_STRING          "5"
 
@@ -144,10 +143,7 @@ extern "C" {
 
 #define APP_DEBUG_UART_TIMEOUT_MS                   (100u)
 #define APP_DEBUG_CONSOLE_RX_LINE_SIZE              (64u)
-#define APP_DEBUG_CONSOLE_TX_BUFFER_SIZE            (192u)
-#define APP_DEBUG_CONSOLE_PROMPT                    "wl> "
 #define APP_DEBUG_CONSOLE_EOL                       "\r\n"
-#define APP_DEBUG_CONSOLE_BANNER                    "WaterLink WaterTerminal Debug Console"
 #define APP_LOG_BUFFER_SIZE                         (192u)
 #define APP_LOG_HEXDUMP_BYTES_PER_LINE              (16u)
 
@@ -156,7 +152,7 @@ extern "C" {
 
 /* APP_TRUE: APP_LOGT/D/I 호출과 포맷 문자열을 빌드에서 제거(flash 절감). SWD 핀 설정과 무관. 검증용 빌드는 APP_FALSE. */
 #ifndef APP_LOG_STRIP_VERBOSE
-#define APP_LOG_STRIP_VERBOSE                       (APP_FALSE) //PRODUCTION:APP_TRUE
+#define APP_LOG_STRIP_VERBOSE                       (APP_TRUE) //PRODUCTION:APP_TRUE
 #endif
 
 #ifdef DEBUG

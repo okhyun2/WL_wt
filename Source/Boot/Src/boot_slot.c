@@ -8,7 +8,8 @@ typedef void (*BootJumpFunction_t)(void);
 
 uint32_t BootSlotGetAddress(uint32_t slotId)
 {
-    return (slotId == 2u) ? BOOT_SLOT2_ADDR : BOOT_SLOT1_ADDR;
+    (void)slotId;
+    return BOOT_SLOT1_ADDR;
 }
 
 uint8_t BootSlotIsValid(uint32_t baseAddress)
@@ -35,6 +36,13 @@ uint8_t BootSlotIsValid(uint32_t baseAddress)
     pHeader = (const BootImageHeader_t *)(baseAddress + BOOT_IMAGE_HEADER_OFFSET);
 
     if (pHeader->magicNumber != BOOT_MAGIC_NUMBER)
+    {
+        return 0u;
+    }
+
+    /* firmwareSize가 쓰레기 값이면 CRC 계산이 flash 밖을 읽을 수 있음 */
+    if ((pHeader->firmwareSize < (BOOT_IMAGE_HEADER_OFFSET + sizeof(BootImageHeader_t))) ||
+        (pHeader->firmwareSize > BOOT_SLOT_SIZE_BYTES))
     {
         return 0u;
     }

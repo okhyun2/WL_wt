@@ -8,7 +8,8 @@ extern "C" {
 #include "stm32l0xx_hal.h"
 #include <stdint.h>
 
-#define BOOT_INFO_ADDR                         (0x0801E000u)
+#define BOOT_INFO_ADDR                         (0x0801E000u) //Flash:128KB
+//#define BOOT_INFO_ADDR                         (0x0802E000u) //Flash:192KB
 #define BOOT_INFO_MAGIC                        (0x44554254u)
 #define BOOT_INFO_VERSION                      (0x00010000u)
 
