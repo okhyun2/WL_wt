@@ -108,7 +108,7 @@ extern "C" {
 #define APP_BC95_PLATFORM_LGU_EPNS_STRING           "ASN_CSE-S-8ec0d193b5-ADJ1"
 #define APP_BC95_PLATFORM_LGU_SERVCODE_STRING       "ADJ1"
 #define APP_BC95_PLATFORM_LGU_MODEL_STRING          "ACO-WT-NB26"
-#define APP_BC95_PLATFORM_LGU_MBSPS_STRING          "ADJ1,4323800010,01226680136,919592,KSJ_WT-NB23" //QLWMBSPS:<serv_code>,<ser_no>,<ctn>,<iccid>,<model>
+#define APP_BC95_PLATFORM_LGU_MBSPS_STRING          "ADJ1,4323800010,01226680136,919592,ACO-WT-NB26" //QLWMBSPS:<serv_code>,<ser_no>,<ctn>,<iccid>,<model>
 #define APP_BC95_PLATFORM_LGU_NBAND_STRING          "5"
 
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
@@ -152,7 +152,7 @@ extern "C" {
 
 /* APP_TRUE: APP_LOGT/D/I 호출과 포맷 문자열을 빌드에서 제거(flash 절감). SWD 핀 설정과 무관. 검증용 빌드는 APP_FALSE. */
 #ifndef APP_LOG_STRIP_VERBOSE
-#define APP_LOG_STRIP_VERBOSE                       (APP_TRUE) //PRODUCTION:APP_TRUE
+#define APP_LOG_STRIP_VERBOSE                       (APP_TRUE) //TODO PRODUCTION:APP_TRUE
 #endif
 
 #ifdef DEBUG
