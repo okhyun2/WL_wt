@@ -75,11 +75,13 @@ extern "C" {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /* flash layout (bootloader + single application) */
+/*
 #define APP_FLASH_TARGET_SIZE_BYTES                 (128u * 1024u) //128KB:128u*1024u, 192KB:192u*1024u
 #define APP_BOOTLOADER_BASE_ADDR                    (0x08000000u)
 #define APP_BOOTLOADER_SIZE_BYTES                   (8u * 1024u)
 #define APP_IMAGE_BASE_ADDR                         (0x08002000u)
 #define APP_IMAGE_NAME                              "app"
+*/
 
 #define APP_FW_VERSION_MAJOR                        (0u)
 #define APP_FW_VERSION_MINOR                        (10u)
@@ -103,11 +105,13 @@ extern "C" {
 /* BC95-GV board-aligned platform provisioning defaults */
 #define APP_BC95_PLATFORM_LGU_SERVER_IP_STRING      "lbk.onem2mstp.uplus.co.kr"
 #define APP_BC95_PLATFORM_LGU_SERVER_PORT_STRING    "5783"
-#define APP_BC95_PLATFORM_LGU_BOOTSTRAP_MODE        "BS"
-#define APP_BC95_PLATFORM_LGU_LWM2M_MODE            "LWM2M"
-#define APP_BC95_PLATFORM_LGU_EPNS_STRING           "ASN_CSE-S-8ec0d193b5-ADJ1"
-#define APP_BC95_PLATFORM_LGU_SERVCODE_STRING       "ADJ1"
-#define APP_BC95_PLATFORM_LGU_MODEL_STRING          "ACO-WT-NB26"
+//#define APP_BC95_PLATFORM_LGU_SERVER_IP_STRING      "mef.onem2mstp.uplus.co.kr"
+//#define APP_BC95_PLATFORM_LGU_SERVER_PORT_STRING    "443"
+#define APP_BC95_PLATFORM_LGU_BOOTSTRAP_MODE        "BS"            //fix
+#define APP_BC95_PLATFORM_LGU_LWM2M_MODE            "LWM2M"         //fix
+#define APP_BC95_PLATFORM_LGU_EPNS_STRING           "ASN_CSE-S-8ec0d193b5-ADJ1"     //fix. service-reg-code
+#define APP_BC95_PLATFORM_LGU_SERVCODE_STRING       "ADJ1"          //fix. service-code
+#define APP_BC95_PLATFORM_LGU_MODEL_STRING          "ACO-WT-NB26"     //fix. device name
 #define APP_BC95_PLATFORM_LGU_MBSPS_STRING          "ADJ1,4323800010,01226680136,919592,ACO-WT-NB26" //QLWMBSPS:<serv_code>,<ser_no>,<ctn>,<iccid>,<model>
 #define APP_BC95_PLATFORM_LGU_NBAND_STRING          "5"
 
@@ -152,14 +156,14 @@ extern "C" {
 
 /* APP_TRUE: APP_LOGT/D/I 호출과 포맷 문자열을 빌드에서 제거(flash 절감). SWD 핀 설정과 무관. 검증용 빌드는 APP_FALSE. */
 #ifndef APP_LOG_STRIP_VERBOSE
-#define APP_LOG_STRIP_VERBOSE                       (APP_TRUE) //TODO PRODUCTION:APP_TRUE
+#define APP_LOG_STRIP_VERBOSE                       (APP_FALSE) //TODO debug:APP_FALSE, PRODUCTION:APP_TRUE
 #endif
 
 #ifdef DEBUG
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE) //org
 #else
-#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org
-//#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
+//#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org
+#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #endif
 
 #define SUPPORT_EEPROM

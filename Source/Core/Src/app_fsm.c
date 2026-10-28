@@ -4094,9 +4094,31 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                                                               APP_FSM_BOOT_METER_TYPE);
                     }
 
-                    APP_LOGN("FSM", "[[BootLiveTx]] force first boot send (mgmt only)");
+                    /* 부팅 전송도 플랫폼 등록 + service 플랫폼 TX를 함께 수행:
+                     * - 첫 부팅에 LwM2M 등록/전송을 검증해두면 이후 service 주기 실패 원인을
+                     *   부팅 1회에서 조기 확정할 수 있다.
+                     * - 등록 실패(CME 4 등)여도 service wake track이 mgmt piggyback을
+                     *   보장하므로(Combined diff) 데이터는 반드시 흐른다.
+                     * - mgmt 전송은 기존과 동일하게 항상 수행된다.
+                     */
+                    APP_LOGN("FSM", "[[BootLiveTx]] force first boot send (platform+mgmt)");
 
                     g_appFsmNbiotBusyWindow = APP_TRUE;
+                    {
+                        AppStatus_t platformStatus;
+
+                        /* 부팅 wake에서만 piggyback 생략: 직후 자체 mgmt 전송이 담당.
+                         * 정기 service wake에는 영향 없도록 호출 후 즉시 해제. */
+                        (void)App_NBIoTSetBootPiggybackSkip(APP_TRUE);
+                        platformStatus = App_NBIoTServicePlatformWakeTrack(APP_FALSE);
+                        (void)App_NBIoTSetBootPiggybackSkip(APP_FALSE);
+ 
+                        if (platformStatus != APP_STATUS_OK)
+                        {
+                            APP_LOGW("FSM", "[[BootLiveTx]] platform track failed status=%d -> mgmt UDP still follows", (int)platformStatus);
+                        }
+                    }
+
                     mgmtTxStatus = App_NBIoTTransmitMgmtLiveRecord(&bootLiveRecord);
                     g_appFsmNbiotBusyWindow = APP_FALSE;
 

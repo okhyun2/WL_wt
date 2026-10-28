@@ -17,7 +17,7 @@
 #include "app_aux.h"
 #include "app_selftest.h"
 
-#define APP_NBIOT_AT_RAW_RX_DEBUG   APP_TRUE //TODO. PRODUCT: APP_FALSE
+#define APP_NBIOT_AT_RAW_RX_DEBUG   APP_FALSE //TODO. debug:APP_TRUE, PRODUCT: APP_FALSE
 
 
 #define APP_BC95_AT_CMD_PING          "AT\r\n"
@@ -71,6 +71,7 @@
 #define APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_ON  "AT+NCONFIG=AUTOCONNECT,TRUE\r\n"
 #define APP_BC95_AT_CMD_NCONFIG_CELL_RESELECTION_ON "AT+NCONFIG=CELL_RESELECTION,TRUE\r\n"
 #define APP_BC95_AT_CMD_NCONFIG_SCRAMBLEING  "AT+NCONFIG=CR_0354_0338_SCRAMBLING,TRUE\r\n"
+#define APP_BC95_AT_CMD_QREGSWT_QUERY        "AT+QREGSWT?\r\n"
 #define APP_BC95_AT_CMD_QREGSWT_SET_1        "AT+QREGSWT=1\r\n"
 #define APP_BC95_AT_CMD_QREGSWT_SET_2        "AT+QREGSWT=2\r\n"
 #define APP_BC95_AT_CMD_QLWFOTAIND_OFF       "AT+QLWFOTAIND=0\r\n"
@@ -127,7 +128,7 @@
 /* fast-path: 부팅 직후 AUTOCONNECT=TRUE + NRB로 LwM2M 엔진이 자기 등록을 시작하므로
  * EVTIND(0/3) 도착을 기다린다. 실측 11:40 로그에서 2.5s 만에 timeout -> QLWSREGIND=CME4 실패였으므로
  * 10s로 확장 (observe 요구 정책 REQUIRE_OBSERVE 그대로 유지) */
-#define APP_BC95_PLATFORM_FAST_PATH_TIMEOUT_MS (10000u)
+#define APP_BC95_PLATFORM_FAST_PATH_TIMEOUT_MS (10*60*1000u)
 #define APP_BC95_PLATFORM_REGISTER_RETRY_MAX  (2u)
 #define APP_BC95_PLATFORM_SEND_RETRY_MAX      (3u)
 #define APP_BC95_PLATFORM_RETRY_BACKOFF_MS    (1000u)
@@ -5156,6 +5157,14 @@ static AppStatus_t App_NbiotRunPostProvisionFinalizeSequence(void)
 
 static AppStatus_t App_NbiotRunPlatformPreflight(void)
 {
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NCONFIG_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+NCONFIG?",
+                                        "[[ServicePlatformWake]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QREGSWT_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+QREGSWT?",
+                                        "[[ServicePlatformWake]]");
     (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QLWSERVERIP_QUERY,
                                         APP_BC95_AT_RX_TIMEOUT_MS,
                                         "AT+QLWSERVERIP?",
@@ -5172,6 +5181,23 @@ static AppStatus_t App_NbiotRunPlatformPreflight(void)
                                         APP_BC95_AT_RX_TIMEOUT_MS,
                                         "AT+QBOOTSTRAPHOLDOFF?",
                                         "[[ServicePlatformWake]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_CEREG_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+CEREG?",
+                                        "[[ServicePlatformWake]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_CGATT_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+CGATT?",
+                                        "[[ServicePlatformWake]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_CGPADDR_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+CGPADDR",
+                                        "[[ServicePlatformWake]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NUESTATS_RADIO,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+NUESTATS",
+                                        "[[ServicePlatformWake]]");
+
     return APP_STATUS_OK;
 }
 
@@ -5195,6 +5221,19 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     APP_LOGN("NBIOT", "[[BootTrack]] done (board-aligned provisioning flow)");
+    return APP_STATUS_OK;
+}
+
+/* 부팅 컨텍스트 piggyback 생략 플래그:
+ * 부팅 wake는 fsm에서 ServicePlatformWakeTrack 직후 자체 mgmt 전송
+ * (App_NBIoTTransmitMgmtLiveRecord)을 이미 수행하므로 piggyback은 순수 중복.
+ * 정기 service wake는 플래그가 APP_FALSE라 기존대로 piggyback을 수행한다.
+ * 시그니처 변경 없이 static 플래그 + setter로 처리(기존 호출부 영향 없음). */
+static uint8_t s_appNbiotBootPiggybackSkip = APP_FALSE;
+
+AppStatus_t App_NBIoTSetBootPiggybackSkip(uint8_t enable)
+{
+    s_appNbiotBootPiggybackSkip = enable;
     return APP_STATUS_OK;
 }
 
@@ -5235,18 +5274,25 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
     status = App_Bc95AtPlatformRegister();
     if (status != APP_STATUS_OK)
     {
-        APP_LOGW("NBIOT", "[[ServiceTx]] platform register failed (status=%d)", (int)status);
-        return status;
+        /* 플랫폼 등록 실패도 mgmt UDP 전송은 계속 수행한다:
+         * mgmt는 일반 소켓 경로라 등록과 무관하며, 이 wake의 전송 자체를
+         * 날리는 것보다 배터리/네트워크 효율이 좋다. */
+        APP_LOGW("NBIOT", "[[ServiceTx]] platform register failed (status=%d) -> continue with mgmt UDP", (int)status);
     }
-
-    status = App_NBIoTTransmitPlatformInternal("[[ServiceTx]]",
-                                               deleteStorage,
-                                               APP_FALSE,
-                                               NULL);
-    if (status != APP_STATUS_OK)
+    else
     {
-        APP_LOGW("NBIOT", "[[ServiceTx]] platform transmit failed (status=%d)", (int)status);
-        return status;
+        status = App_NBIoTTransmitPlatformInternal("[[ServiceTx]]",
+                                                   deleteStorage,
+                                                   APP_FALSE,
+                                                   NULL);
+        if (status != APP_STATUS_OK)
+        {
+            APP_LOGW("NBIOT", "[[ServiceTx]] platform transmit failed (status=%d) -> continue with mgmt UDP", (int)status);
+        }
+        else
+        {
+            /* service 플랫폼 TX 성공 시에만 여기 도달 (등록+전송 모두 OK) */
+        }
     }
 
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
@@ -5267,7 +5313,19 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
     }
 #endif
 
-        APP_LOGN("NBIOT", "[[ServicePlatformWake]] mgmt piggyback disabled for this wake");
+        /* mgmt piggyback 활성화: service 플랫폼 TX(성공/실패 무관) 후
+         * 같은 wake에서 mgmt UDP를 함께 전송한다.
+         * (등록 실패 시에도 mgmt는 소켓 경로라 전송 가능 - 이번 로그 실측) */
+        if (s_appNbiotBootPiggybackSkip == APP_TRUE)
+        {
+            /* 부팅 wake: piggyback 생략 - 직후 fsm의 부팅 mgmt 전송이 담당 */
+            APP_LOGN("NBIOT", "[[ServicePlatformWake]] mgmt piggyback skipped (boot tx follows)");
+        }
+        else
+        {
+            mgmtStatus = App_NBIoTTransmitMgmtUdp(deleteStorage);
+            APP_LOGN("NBIOT", "[[ServicePlatformWake]] mgmt piggyback status=%d", (int)mgmtStatus);
+        }
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] done");
         return APP_STATUS_OK;
 
@@ -5589,11 +5647,13 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
 
     for (attempt = 1u; attempt <= APP_BC95_PLATFORM_REGISTER_RETRY_MAX; attempt++)
     {
-        status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QLWSREGIND_REGISTER,
+        /*
+        status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QLWSREGIND_REGISTER, //on manual mode, start register
                                                APP_BC95_AT_RX_TIMEOUT_MS,
                                                "AT+QLWSREGIND=0",
                                                "[[ServicePlatformWake]]");
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+        */
 
         needRegisterRetry = APP_FALSE;
         status = App_Bc95AtWaitForPlatformReadyWithPolicy(APP_BC95_PLATFORM_EVENT_TIMEOUT_MS,

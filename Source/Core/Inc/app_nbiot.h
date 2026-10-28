@@ -375,6 +375,7 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage);
 AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage);
 AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage);
 AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage);
+AppStatus_t App_NBIoTSetBootPiggybackSkip(uint8_t enable);
 AppStatus_t App_NBIoTTransmitServiceLiveRecord(const AppMeterStorageRecord_t *p_record);
 AppStatus_t App_NBIoTTransmitMgmtLiveRecord(const AppMeterStorageRecord_t *p_record);
 AppStatus_t App_NBIoTTransmitUdp(void);
