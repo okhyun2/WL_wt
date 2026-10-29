@@ -17,7 +17,7 @@
 #include "app_aux.h"
 #include "app_selftest.h"
 
-#define APP_NBIOT_AT_RAW_RX_DEBUG   APP_TRUE //TODO. debug:APP_TRUE, PRODUCT: APP_FALSE
+#define APP_NBIOT_AT_RAW_RX_DEBUG   APP_FALSE //TODO. debug:APP_TRUE, PRODUCT: APP_FALSE
 
 
 #define APP_BC95_AT_CMD_PING          "AT\r\n"
@@ -1844,7 +1844,11 @@ static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len)
         {
             char lineBuf[48];
             uint16_t copyLen = 0u;
-            uint16_t j = (uint16_t)(i + APP_BC95_AT_QLWEVTIND_PREFIX_LEN);
+            /* 접두어(+QLWEVTIND:)부터 복사한다. ParseQlwevtind 는 strstr 로
+             * 접두어를 요구하므로, 숫자만 건네면 APP_BC95_AT_ERR_NO_PREFIX 로
+             * 항상 실패해 스캔 경로(경로 1/2/3)의 캡처가 전무했다
+             * (boot14/15 실측: RAW 혼입 수신된 :4 가 마스크에 누락). */
+            uint16_t j = i;
             while ((j < len) && (copyLen < (sizeof(lineBuf) - 1u)) &&
                    (p_buf[j] != '\r') && (p_buf[j] != '\n'))
             {
@@ -1910,8 +1914,22 @@ static void App_Bc95AtUrcMonitorFeedIsr(uint8_t byteValue)
     }
     else
     {
-        s_bc95UrcMonitor.matchIdx =
-            (byteValue == (uint8_t)prefix[0]) ? 1u : 0u;
+        /* 리싱크 내성: 명령 시작 시점의 모니터 해제(abort)+플러시로 URC 선두
+         * 바이트(예: '+')가 유실될 수 있다(boot14 실측: :4 만 래치 누락).
+         * 접두어 문자가 모두 고유하므로, 현재 바이트가 접두어 내 어느 위치와
+         * 일치하는지 뒤에서부터 찾아 그 다음 위치부터 재개한다 - 선두 유실에도
+         * 매칭이 살아난다. 최대 11회 비교, ISR 비용 미미. */
+        uint8_t j = APP_BC95_AT_QLWEVTIND_PREFIX_LEN;
+        s_bc95UrcMonitor.matchIdx = 0u;
+        while (j > 0u)
+        {
+            j--;
+            if (byteValue == (uint8_t)prefix[j])
+            {
+                s_bc95UrcMonitor.matchIdx = (uint8_t)(j + 1u);
+                break;
+            }
+        }
     }
 }
 
