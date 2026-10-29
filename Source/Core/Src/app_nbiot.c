@@ -288,7 +288,6 @@ static AppStatus_t App_Bc95AtWaitForLinePrefix(const char *p_prefix,
                                                 char *p_rxSnapshot,
                                                 uint16_t snapshotSize);
 static AppBc95AtStatus_t App_Bc95AtParseQlwevtind(const char *p_resp, int *p_eventType);
-static uint8_t App_Bc95AtPlatformEventIsReady(int eventType);
 static uint8_t App_Bc95AtPlatformEventNeedsRegisterRetry(int eventType);
 static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, uint8_t *p_needRegisterRetry);
 static AppStatus_t App_Bc95AtRunShortCampProbe(AppBc95NetStatus_t *p_status);
@@ -307,6 +306,9 @@ static void App_Bc95AtDelayWithFeed(uint32_t ms);
 static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 
+static int s_bc95LastEVTIND = -1;
+static void App_Bc95AtUpdateEVTINDLatch(const char *p_line);
+static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len);
 /* ============================================================
  *  Pre-attach radio power check (AT+NUESTATS) + deferred abort
  * ============================================================ */
@@ -707,6 +709,23 @@ static void App_Bc95AtLogRawRx(const char *p_tag,
                                const uint8_t *p_buf,
                                uint16_t len)
 {
+    /* EVTIND 조기 도착 래치 캡처 (경로 1):
+     * 모든 수신은 이 RAW 로그를 drain보다 먼저 통과한다. 부팅 트랙(자가진단/계량기
+     * 프로브) 동안 도착하는 +QLWEVTIND:0/3/8 URC를 여기서 래치해 유실을 막는다.
+     * 주의: 이 함수는 APP_NBIOT_AT_RAW_RX_DEBUG 플래그로 감싸져 있으므로,
+     * 플래그 FALSE 빌드에서는 (경로 2/3) drain 전후 스캔이 백업. */
+    {
+        char evtScan[160];
+        uint16_t scanLen = (len < (uint16_t)(sizeof(evtScan) - 1u)) ? len : (uint16_t)(sizeof(evtScan) - 1u);
+        uint16_t k;
+        for (k = 0u; k < scanLen; k++)
+        {
+            evtScan[k] = (char)p_buf[k];
+        }
+        evtScan[scanLen] = '\0';
+        App_Bc95AtScanBufferForEVTIND(evtScan, scanLen);
+    }
+
     char     text[400];
     uint16_t i;
     uint16_t out = 0u;
@@ -1705,6 +1724,63 @@ static uint8_t App_Bc95AtLineQueueHasFinalResponse(const AppBc95AtLineQueue_t *p
 }
 
 /* ============================================================
+ *  URC 모니터 (근본 해결 - ISR 레벨 EVTIND 래치)
+ *    문제: FinishRxIt 이 명령 완료마다 HAL_UART_AbortReceive_IT 로 수신을
+ *          끊고, 다음 명령이 나오기 전까지 재무장이 없다. 부팅 트랙의
+ *          자가진단(수 초) 동안은 active==FALSE 이므로
+ *          App_Bc95AtOnUartRxCompleteIsr 이 조기 반환하며 HW RX 레지스터
+ *          1~2바이트만 남고 URC 전체가 오버런 유실된다(boot10 실측:
+ *          :0/:3/:8 이 RAW 에도 도달하지 못함).
+ *    해결: 명령 공백에도 1바이트 수신 IT 를 항상 유지하고, ISR 에서
+ *          바이트 단위 FSM 으로 "+QLWEVTIND:" URC 만 골라 래치한다.
+ *          로그/큐 처리 없는 최소 ISR 비용, 다른 URC 는 무시.
+ * ============================================================ */
+typedef struct
+{
+    UART_HandleTypeDef *p_huart;
+    uint8_t            byte;       /* 1바이트 IT 수신 대상 버퍼 */
+    volatile uint8_t   armed;      /* 모니터 무장 상태(ISR 에서 참조) */
+    uint8_t            matchIdx;   /* 접두어 매칭 진행 인덱스 */
+    uint8_t            inNumber;   /* 이벤트 번호 파싱 중 */
+    uint16_t           number;     /* 파싱 중인 이벤트 번호 */
+} App_Bc95AtUrcMonitor_t;
+
+static App_Bc95AtUrcMonitor_t s_bc95UrcMonitor;
+static volatile uint8_t s_bc95LatchIsrPending = 0u;
+/* 지금까지 본 EVTIND 종류의 비트마스크(bit n = EVTIND:n 관측).
+ * 마지막 값(last)만 저장하면 :0(등록완료)이 :3/:8에 덮여 유실되므로
+ * ready 판정은 마스크 기준으로 한다. */
+static volatile uint16_t s_bc95EVTINDSeenMask = 0u; /* ISR 래치 갱신 표지(메인 루프 로그용) */
+
+static void App_Bc95AtArmUrcMonitor(UART_HandleTypeDef *p_huart)
+{
+    if (p_huart == NULL)
+    {
+        return;
+    }
+    s_bc95UrcMonitor.p_huart = p_huart;
+    s_bc95UrcMonitor.armed   = APP_TRUE;
+    if (HAL_UART_Receive_IT(p_huart, &s_bc95UrcMonitor.byte, 1u) != HAL_OK)
+    {
+        s_bc95UrcMonitor.armed = APP_FALSE;
+    }
+}
+
+static void App_Bc95AtDisarmUrcMonitor(UART_HandleTypeDef *p_huart)
+{
+    if ((p_huart == NULL) || (s_bc95UrcMonitor.armed == APP_FALSE))
+    {
+        return;
+    }
+    if ((s_bc95UrcMonitor.p_huart != NULL) && (s_bc95UrcMonitor.p_huart != p_huart))
+    {
+        return;
+    }
+    (void)HAL_UART_AbortReceive_IT(p_huart);
+    s_bc95UrcMonitor.armed = APP_FALSE;
+}
+
+/* ============================================================
  *  RX 컨텍스트 종료 (경쟁 조건 방지를 위한 통합 헬퍼)
  *    - active 를 먼저 false 로 만든 뒤 abort 호출 → ISR 이
  *      추가 IT 등록을 못 하도록 보장
@@ -1715,6 +1791,9 @@ static void App_Bc95AtFinishRxIt(UART_HandleTypeDef *p_huart)
     if (p_huart != NULL)
     {
         (void)HAL_UART_AbortReceive_IT(p_huart);
+        /* 근본 해결: 명령 없는 공백(자가진단/계량기 프로브 등)에도
+         * 1바이트 URC 모니터를 유지해 EVTIND 의 HW 레벨 유실을 막는다. */
+        App_Bc95AtArmUrcMonitor(p_huart);
     }
 }
 
@@ -1728,8 +1807,6 @@ static void App_Bc95AtFinishRxIt(UART_HandleTypeDef *p_huart)
  * fast-path가 시간초과 -> QLWSREGIND=0(자동 모드에서 CME 4)로 빠졌다.
  * DrainRxLine이 라인을 버리기 전 EVTIND를 스캔해 마지막 이벤트를 래치하고,
  * fast-path 대기 직전 래치 검사로 즉시 준비완료 판정한다. */
-static int s_bc95LastEVTIND = -1;
-
 static void App_Bc95AtUpdateEVTINDLatch(const char *p_line)
 {
     int eventType = -1;
@@ -1774,6 +1851,59 @@ static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len)
                 i = j;  /* 이벤트 값은 숫자 하나뿐이므로 건너뜀 */
             }
         }
+    }
+}
+
+/* ISR 바이트 단위 FSM: "+QLWEVTIND:<n>" 만 골라 래치. ISR 안에서
+ * 로그/문자열 함수를 부르지 않는다(비용 최소화). */
+static void App_Bc95AtUrcMonitorFeedIsr(uint8_t byteValue)
+{
+    const char *prefix = APP_BC95_AT_QLWEVTIND_PREFIX;
+
+    if (s_bc95UrcMonitor.inNumber != 0u)
+    {
+        if ((byteValue >= (uint8_t)'0') && (byteValue <= (uint8_t)'9'))
+        {
+            s_bc95UrcMonitor.number = (uint16_t)((s_bc95UrcMonitor.number * 10u) +
+                                                 (uint16_t)(byteValue - (uint8_t)'0'));
+            if (s_bc95UrcMonitor.number > 999u)
+            {
+                /* 비정상적으로 긴 번호 - FSM 리셋 */
+                s_bc95UrcMonitor.inNumber = 0u;
+                s_bc95UrcMonitor.matchIdx = 0u;
+                s_bc95UrcMonitor.number   = 0u;
+            }
+            return;
+        }
+        if ((byteValue == '\r') || (byteValue == '\n'))
+        {
+            s_bc95LastEVTIND = (int)s_bc95UrcMonitor.number;
+            if (s_bc95UrcMonitor.number < 16u)
+            {
+                s_bc95EVTINDSeenMask |= (uint16_t)(1u << s_bc95UrcMonitor.number);
+            }
+            s_bc95LatchIsrPending = 1u;
+        }
+        s_bc95UrcMonitor.inNumber = 0u;
+        s_bc95UrcMonitor.matchIdx = 0u;
+        s_bc95UrcMonitor.number   = 0u;
+        return;
+    }
+
+    if (byteValue == (uint8_t)prefix[s_bc95UrcMonitor.matchIdx])
+    {
+        s_bc95UrcMonitor.matchIdx++;
+        if (s_bc95UrcMonitor.matchIdx >= APP_BC95_AT_QLWEVTIND_PREFIX_LEN)
+        {
+            s_bc95UrcMonitor.matchIdx = 0u;
+            s_bc95UrcMonitor.inNumber = 1u;
+            s_bc95UrcMonitor.number   = 0u;
+        }
+    }
+    else
+    {
+        s_bc95UrcMonitor.matchIdx =
+            (byteValue == (uint8_t)prefix[0]) ? 1u : 0u;
     }
 }
 
@@ -2004,6 +2134,7 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
         UART_CLEAR_NEF  | UART_CLEAR_PEF);
     __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
 
+    App_Bc95AtDisarmUrcMonitor(p_huart);
     halStatus = HAL_UART_Receive_IT(p_huart, &p_buffer[0], 1u);
     if (halStatus != HAL_OK)
     {
@@ -2051,6 +2182,8 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
             safeLen = g_appBc95AtRxContext.bufferSize;
         }
         safeLen = App_Bc95AtCopySnapshot(p_buffer, safeLen, rxSnapshot, (uint16_t)sizeof(rxSnapshot));
+        /* EVTIND 래치 (경로 3): AT 명령 응답 대기 중 혼입 URC 캡처 */
+        App_Bc95AtScanBufferForEVTIND(rxSnapshot, safeLen);
         App_Bc95AtLineQueueFeed(&lineQueue, rxSnapshot, safeLen);
 
         if ((App_Bc95AtLineQueueHasFinalResponse(&lineQueue) == APP_TRUE) ||
@@ -2220,6 +2353,7 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
                           UART_CLEAR_NEF | UART_CLEAR_PEF);
     __HAL_UART_SEND_REQ(APP_UART_NBIOT_HANDLE, UART_RXDATA_FLUSH_REQUEST);
 
+    App_Bc95AtDisarmUrcMonitor(APP_UART_NBIOT_HANDLE);
     halStatus = HAL_UART_Receive_IT(APP_UART_NBIOT_HANDLE, &g_appBc95AtRxBuf[0], 1u);
     if (halStatus != HAL_OK)
     {
@@ -3284,9 +3418,22 @@ void App_Bc95AtOnUartRxCompleteIsr(UART_HandleTypeDef *p_huart)
     HAL_StatusTypeDef halStatus;
     uint16_t nextIndex;
 
-    if ((p_huart == NULL) || (g_appBc95AtRxContext.active != APP_TRUE)) return;
-    if (p_huart != g_appBc95AtRxContext.p_huart) return;
+    if (p_huart == NULL) return;
 
+    /* 명령 진행 중이 아니면(자가진단/계량기 프로브 등) URC 모니터로
+     * 래치하고 즉시 재무장 - RX 무무장 공백을 없앤다. */
+    if ((g_appBc95AtRxContext.active != APP_TRUE) ||
+        (p_huart != g_appBc95AtRxContext.p_huart))
+    {
+        if ((s_bc95UrcMonitor.armed == APP_TRUE) &&
+            (p_huart == s_bc95UrcMonitor.p_huart))
+        {
+            App_Bc95AtUrcMonitorFeedIsr(s_bc95UrcMonitor.byte);
+            (void)HAL_UART_Receive_IT(p_huart, &s_bc95UrcMonitor.byte, 1u);
+        }
+        return;
+    }
+ 
     nextIndex = (uint16_t)(g_appBc95AtRxContext.receivedLength + 1u);
     g_appBc95AtRxContext.receivedLength = nextIndex;
 
@@ -3305,9 +3452,25 @@ void App_Bc95AtOnUartRxCompleteIsr(UART_HandleTypeDef *p_huart)
 
 void App_Bc95AtOnUartErrorIsr(UART_HandleTypeDef *p_huart)
 {
-    if ((p_huart == NULL) || (g_appBc95AtRxContext.active != APP_TRUE)) return;
-    if (p_huart != g_appBc95AtRxContext.p_huart) return;
+    uint8_t monitorWasArmed = APP_FALSE;
 
+    if (p_huart == NULL) return;
+
+    if ((g_appBc95AtRxContext.active == APP_TRUE) &&
+        (p_huart == g_appBc95AtRxContext.p_huart))
+    {
+        /* 활성 RX 컨텍스트의 에러 - 기존 처리 유지(아래) */
+    }
+    else if ((s_bc95UrcMonitor.armed == APP_TRUE) &&
+             (p_huart == s_bc95UrcMonitor.p_huart))
+    {
+        monitorWasArmed = APP_TRUE;
+    }
+    else
+    {
+        return;
+    }
+ 
 #ifdef DEBUG
     g_appBc95AtRxErrorInfo.errorCode    = p_huart->ErrorCode;
     g_appBc95AtRxErrorInfo.errorAtIndex = g_appBc95AtRxContext.receivedLength;
@@ -3318,7 +3481,17 @@ void App_Bc95AtOnUartErrorIsr(UART_HandleTypeDef *p_huart)
                           UART_CLEAR_OREF | UART_CLEAR_FEF |
                           UART_CLEAR_NEF  | UART_CLEAR_PEF);
     __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
-    g_appBc95AtRxContext.error = APP_TRUE;
+
+    if (monitorWasArmed == APP_TRUE)
+    {
+        /* 모니터 모드 에러: HAL 이 수신을 중단했으므로 즉시 재무장 */
+        s_bc95UrcMonitor.armed = APP_FALSE;
+        App_Bc95AtArmUrcMonitor(p_huart);
+    }
+    else
+    {
+        g_appBc95AtRxContext.error = APP_TRUE;
+    }
 }
 
 /* ============================================================
@@ -5442,6 +5615,7 @@ static AppStatus_t App_Bc95AtWaitForLinePrefix(const char *p_prefix,
                           UART_CLEAR_NEF  | UART_CLEAR_PEF);
     __HAL_UART_SEND_REQ(APP_UART_NBIOT_HANDLE, UART_RXDATA_FLUSH_REQUEST);
 
+    App_Bc95AtDisarmUrcMonitor(APP_UART_NBIOT_HANDLE);
     halStatus = HAL_UART_Receive_IT(APP_UART_NBIOT_HANDLE, &g_appBc95AtRxBuf[0], 1u);
     if (halStatus != HAL_OK)
     {
@@ -5469,6 +5643,8 @@ static AppStatus_t App_Bc95AtWaitForLinePrefix(const char *p_prefix,
         safeLen = App_Bc95AtCopySnapshot(g_appBc95AtRxBuf, curLen,
                                          (p_rxSnapshot != NULL) ? p_rxSnapshot : (char *)g_appBc95AtRxBuf,
                                          snapshotSize);
+        /* EVTIND 래치 (경로 2): 대기 중 수신 라인에서 URC 캡처 */
+        App_Bc95AtScanBufferForEVTIND((p_rxSnapshot != NULL) ? p_rxSnapshot : (char *)g_appBc95AtRxBuf, safeLen);
         App_Bc95AtLineQueueFeed(&lineQueue,
                                 (p_rxSnapshot != NULL) ? p_rxSnapshot : (char *)g_appBc95AtRxBuf,
                                 safeLen);
@@ -5508,18 +5684,23 @@ static AppBc95AtStatus_t App_Bc95AtParseQlwevtind(const char *p_resp, int *p_eve
 }
 
 /* 노트 1.3: +QLWEVTIND:0=등록 완료, :3=object 10250 observe 완료 -> :3 이후 UL/DL 가능.
- * APP_FALSE 로 두면 예전처럼 0 또는 3 에서 준비 완료로 본다. */
-#ifndef APP_BC95_PLATFORM_READY_REQUIRE_OBSERVE
-#define APP_BC95_PLATFORM_READY_REQUIRE_OBSERVE   (APP_TRUE)
-#endif
+ * 0 && 3 에서 준비 완료로 본다. */
 
-static uint8_t App_Bc95AtPlatformEventIsReady(int eventType)
+/* 래치 마스크 기준 ready 판정: EVTIND 4(모뎀 초기화), 0(부트스트랩 완료),
+ * 3(등록 완료) 세 이벤트가 모두 관측되었을 때만 준비완료로 인정한다.
+ * 마지막 값(last) 하나만 보면 앞선 이벤트가 뒤 이벤트에 덮여 유실되므로
+ * 관측 이력 비트마스크로 판정한다. (8은 준비완료 조건에 불필요) */
+#define APP_BC95_AT_EVTIND_READY_MASK  ((uint16_t)0x0019u) /* bit4|bit3|bit0 */
+
+static uint8_t App_Bc95AtEVTINDMaskReady(uint16_t seenMask)
 {
-#if (APP_BC95_PLATFORM_READY_REQUIRE_OBSERVE == APP_TRUE)
+    return ((seenMask & APP_BC95_AT_EVTIND_READY_MASK) ==
+            APP_BC95_AT_EVTIND_READY_MASK) ? APP_TRUE : APP_FALSE;
+}
+
+uint8_t App_Bc95AtPlatformEventIsReady(int eventType)
+{
     return (eventType == 3) ? APP_TRUE : APP_FALSE;
-#else
-    return ((eventType == 0) || (eventType == 3)) ? APP_TRUE : APP_FALSE;
-#endif
 }
 
 static uint8_t App_Bc95AtPlatformEventNeedsRegisterRetry(int eventType)
@@ -5695,7 +5876,17 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     /* EVTIND 조기 도착 래치 검사: 부팅 트랙 동안 이미 EVTIND:3(observe 완료) 또는
      * EVTIND:0(등록 완료)이 도착해 있으면 fast-path 대기 없이 즉시 준비완료 처리.
      * (READY_REQUIRE_OBSERVE 정책을 따른다) */
-    if (App_Bc95AtPlatformEventIsReady(s_bc95LastEVTIND) == APP_TRUE)
+    if (s_bc95LatchIsrPending != 0u)
+    {
+        APP_LOGN("NBIOT", "[[EVTIND-latch]] ISR monitor captured last=%d mask=0x%04X",
+                 s_bc95LastEVTIND, s_bc95EVTINDSeenMask);
+        s_bc95LatchIsrPending = 0u;
+    }
+    /* last 값 하나만 보면 앞선 이벤트(0/3)가 뒤 이벤트(8)에 덮혀 유실된다
+     * (boot11/12 실측). 4,0,3 세 이벤트가 모두 관측되었으면 즉시
+     * 준비완료로 판정한다. */
+    if ((App_Bc95AtPlatformEventIsReady(s_bc95LastEVTIND) == APP_TRUE) ||
+        (App_Bc95AtEVTINDMaskReady(s_bc95EVTINDSeenMask) == APP_TRUE))
     {
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] fast path hit (pre-registered EVTIND=%d)",
                  s_bc95LastEVTIND);
@@ -5717,6 +5908,8 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     /* fast-path에서 못 받은 경우: 이번 wake 기준으로 래치를 리셋해
      * 등록 재시도 후의 새로운 EVTIND만 신뢰한다 */
     s_bc95LastEVTIND = -1;
+    s_bc95EVTINDSeenMask = 0u;
+    s_bc95LatchIsrPending = 0u;
  
     for (attempt = 1u; attempt <= APP_BC95_PLATFORM_REGISTER_RETRY_MAX; attempt++)
     {
@@ -6333,6 +6526,7 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
     g_appBc95AtRxContext.error          = APP_FALSE;
     g_appBc95AtRxContext.active         = APP_TRUE;
 
+    App_Bc95AtDisarmUrcMonitor(APP_UART_NBIOT_HANDLE);
     halStatus = HAL_UART_Receive_IT(APP_UART_NBIOT_HANDLE, &g_appBc95AtRxBuf[0], 1u);
     if (halStatus != HAL_OK)
     {
@@ -6955,6 +7149,10 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
                           UART_CLEAR_OREF | UART_CLEAR_FEF |
                           UART_CLEAR_NEF  | UART_CLEAR_PEF);
 
+    /* URC 모니터가 RX IT 를 쥐고 있으면 HAL_UART_Receive_IT 가 HAL_BUSY 로
+     * 실패한다(boot12 실측: "NSOSTR wait: RX_IT start fail (2)"). NSOSTR 응답
+     * 대기를 시작하기 전에 모니터를 해제해 IT 를 이 컨텍스트에 넘긴다. */
+    App_Bc95AtDisarmUrcMonitor(APP_UART_NBIOT_HANDLE);
     halStatus = HAL_UART_Receive_IT(APP_UART_NBIOT_HANDLE,
                                     &g_appBc95AtRxBuf[rxLen], 1u);
     if (halStatus != HAL_OK)
