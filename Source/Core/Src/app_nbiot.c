@@ -5915,7 +5915,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     if ((App_Bc95AtPlatformEventIsReady(s_bc95LastEVTIND) == APP_TRUE) ||
         (App_Bc95AtEVTINDMaskReady(s_bc95EVTINDSeenMask) == APP_TRUE))
     {
-        APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch captured(4:0:3). Ready!");
+        APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch captured(4:0:3). Ready UL/DL");
         return APP_STATUS_OK;
     }
  
