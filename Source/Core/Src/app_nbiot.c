@@ -239,6 +239,14 @@ static uint8_t g_appBc95NcfgQueryBuf[1024];
 /* UDP seq 단조 증가 카운터 (stale URC 매칭 방지) */
 static uint8_t g_appBc95UdpSeqCounter = 0u;
 
+/* service(플랫폼) 전송 통계: mgmt 트레일러(tag 0xD3)에 실어 보고한다.
+ * - serviceTxAttempts: QLWULDATAEX 전송 시도 누적(성공/실패 무관)
+ * - serviceAckCount  : CON 성공 URC(+QLWULDATASTATUS:4) 수신 누적
+ * mgmt 전송(부팅 live 전송 포함)에 실려 보고된 뒤 0으로 리셋된다 -
+ * 트레일러 값은 "직전 mgmt 보고 이후의 service 전송 결과"를 뜻한다. */  
+static volatile uint32_t s_appNbiotServiceTxAttempts = 0u;
+static volatile uint32_t s_appNbiotServiceAckCount   = 0u;
+
 static AppStatus_t App_Bc95AtIcasePrefixMatch(const char *p_text, const char *p_token, uint16_t tokenLen);
 static uint8_t App_Bc95AtNconfigTokenHasValue(const char *p_resp, const char *p_key, const char *p_value);
 static AppStatus_t App_Bc95AtNconfigSyncIfNeeded(const char *p_key1, const char *p_val1,
@@ -305,6 +313,7 @@ static uint8_t App_Bc95AtNextUdpSeq(void);
 static void App_Bc95AtDelayWithFeed(uint32_t ms);
 static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
+static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 
 static int s_bc95LastEVTIND = -1;
 static void App_Bc95AtUpdateEVTINDLatch(const char *p_line);
@@ -1213,6 +1222,7 @@ static AppStatus_t App_NbiotBuildMeterPacket(const char *p_logTag,
     AppStatus_t status;
     AppStatus_t envAppendStatus;
     AppStatus_t diagAppendStatus;
+    AppStatus_t statAppendStatus;
     AppMeterServerFormatOptions_t opt;
     AppMeterServerFormatResult_t buildResult;
     uint8_t effectiveDeleteStorage;
@@ -1266,6 +1276,15 @@ static AppStatus_t App_NbiotBuildMeterPacket(const char *p_logTag,
             APP_LOGW("NBIOT",
                      "%s selftest trailer skipped (status=%d, len=%u)",
                      p_logTag, (int)diagAppendStatus, (unsigned int)buildResult.packetLength);
+        }
+
+        /* selftest 트레일러(0xD2) 뒤: service 전송 통계 트레일러(tag 0xD3) */
+        statAppendStatus = App_NbiotAppendMgmtServiceStatTrailer(p_packet, packetCapacity, &buildResult);
+        if (statAppendStatus != APP_STATUS_OK)
+        {
+            APP_LOGW("NBIOT",
+                     "%s service-stat trailer skipped (status=%d, len=%u)",
+                     p_logTag, (int)statAppendStatus, (unsigned int)buildResult.packetLength);
         }
     }
 
@@ -1403,6 +1422,54 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_
     (void)p_result;
     return APP_STATUS_OK;
 #endif
+}
+ 
+/* mgmt 트레일러 tag 0xD3: service(플랫폼) 전송 통계
+ * payload(2바이트): attempts U8, ack(QLWULDATASTATUS:4) U8
+ * 각 카운터는 255에서 포화(모듈러 래핑 없음) - 1바이트 보고 형식. */
+static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result)
+{
+    uint16_t cursor;
+    uint8_t stat[APP_MGMT_TX_SERVICE_STAT_PAYLOAD_LEN];
+
+    APP_RETURN_IF_FALSE((p_packet != NULL) && (p_result != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(p_result->packetLength >= 3u, APP_STATUS_INVALID_PARAM);
+
+    /* 기존 checksum 위치부터 다시 덮어쓴다 (selftest 트레일러 0xD2 뒤에 이어 붙임) */
+    cursor = (uint16_t)(p_result->packetLength - 1u);
+
+    APP_RETURN_IF_FALSE(((uint32_t)cursor + 2u + APP_MGMT_TX_SERVICE_STAT_PAYLOAD_LEN + 1u) <= packetCapacity,
+                        APP_STATUS_BUFFER_OVERFLOW);
+
+    /* 255 포화: 1바이트 필드이므로 값을 넘기지 않고 최댓값에 고정 */
+    stat[0] = (s_appNbiotServiceTxAttempts > 255u) ? 255u : (uint8_t)s_appNbiotServiceTxAttempts;
+    stat[1] = (s_appNbiotServiceAckCount   > 255u) ? 255u : (uint8_t)s_appNbiotServiceAckCount;
+
+    p_packet[cursor++] = APP_MGMT_TX_SERVICE_STAT_TAG;
+    p_packet[cursor++] = APP_MGMT_TX_SERVICE_STAT_PAYLOAD_LEN;
+    (void)memcpy(&p_packet[cursor], stat, sizeof(stat));
+    cursor = (uint16_t)(cursor + sizeof(stat));
+
+    /* length = byte[2]부터 checksum 직전까지 */
+    p_packet[1] = (uint8_t)(cursor - 2u);
+    p_result->checksum = App_NbiotChecksum8(p_packet, 2u, cursor);
+    p_packet[cursor++] = p_result->checksum;
+
+    p_result->payloadLength = p_packet[1];
+    p_result->packetLength  = cursor;
+
+    APP_LOGI("NBIOT",
+             "[[MgmtTx]] service-stat trailer appended tx=%u ack=%u len=%u",
+             (unsigned int)stat[0],
+             (unsigned int)stat[1],
+             (unsigned int)p_result->packetLength);
+
+    /* 보고 완료 - 다음 mgmt 보고까지의 구간 통계를 위해 리셋한다.
+     * (패킷에는 이미 값이 복사되어 있으므로 리셋이 전송 내용에 영향 없음) */
+    s_appNbiotServiceTxAttempts = 0u;
+    s_appNbiotServiceAckCount   = 0u;
+
+    return APP_STATUS_OK;
 }
 
 static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result)
@@ -5415,14 +5482,6 @@ static AppStatus_t App_NbiotRunPostProvisionFinalizeSequence(void)
 
 static AppStatus_t App_NbiotRunPlatformPreflight(void)
 {
-    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NCONFIG_QUERY,
-                                        APP_BC95_AT_RX_TIMEOUT_MS,
-                                        "AT+NCONFIG?",
-                                        "[[ServicePlatformWake]]");
-    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QREGSWT_QUERY,
-                                        APP_BC95_AT_RX_TIMEOUT_MS,
-                                        "AT+QREGSWT?",
-                                        "[[ServicePlatformWake]]");
     (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QLWSERVERIP_QUERY,
                                         APP_BC95_AT_RX_TIMEOUT_MS,
                                         "AT+QLWSERVERIP?",
@@ -5438,6 +5497,16 @@ static AppStatus_t App_NbiotRunPlatformPreflight(void)
     (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QBOOTSTRAPHOLDOFF_QUERY,
                                         APP_BC95_AT_RX_TIMEOUT_MS,
                                         "AT+QBOOTSTRAPHOLDOFF?",
+                                        "[[ServicePlatformWake]]");
+//Debug
+/*
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_NCONFIG_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+NCONFIG?",
+                                        "[[ServicePlatformWake]]");
+    (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_QREGSWT_QUERY,
+                                        APP_BC95_AT_RX_TIMEOUT_MS,
+                                        "AT+QREGSWT?",
                                         "[[ServicePlatformWake]]");
     (void)App_Bc95AtSendBestEffortQuery(APP_BC95_AT_CMD_CEREG_QUERY,
                                         APP_BC95_AT_RX_TIMEOUT_MS,
@@ -5455,6 +5524,7 @@ static AppStatus_t App_NbiotRunPlatformPreflight(void)
                                         APP_BC95_AT_RX_TIMEOUT_MS,
                                         "AT+NUESTATS",
                                         "[[ServicePlatformWake]]");
+*/
 
     return APP_STATUS_OK;
 }
@@ -5708,6 +5778,16 @@ static AppBc95AtStatus_t App_Bc95AtParseQlwevtind(const char *p_resp, int *p_eve
         return APP_BC95_AT_ERR_FORMAT;
     }
     return APP_BC95_AT_OK;
+}
+
+static void App_NbiotServiceTxStatCount(void)
+{
+    s_appNbiotServiceTxAttempts++;
+}
+
+static void App_NbiotServiceAckStatCount(void)
+{
+    s_appNbiotServiceAckCount++;
 }
 
 /* 노트 1.3: +QLWEVTIND:0=등록 완료, :3=object 10250 observe 완료 -> :3 이후 UL/DL 가능.
@@ -6009,6 +6089,8 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
                                    (uint16_t)sizeof(g_appBc95AtRxBuf),
                                    APP_BC95_AT_RX_TIMEOUT_MS,
                                    &rxLen);
+    /* 전송 시도 통계 (mgmt 트레일러 tag 0xD3 보고용) */
+    App_NbiotServiceTxStatCount();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
     APP_RETURN_IF_FALSE(atStatus == APP_BC95_AT_OK, APP_STATUS_FATAL);
@@ -6028,6 +6110,12 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
         if (App_Bc95AtParseQlwuldataStatus((const char *)g_appBc95AtRxBuf, &qlwStatus, &qlwSeq) == APP_BC95_AT_OK)
         {
             APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWULDATASTATUS=%d seq=%d", qlwStatus, qlwSeq);
+            if (qlwStatus == 4)
+            {
+                /* CON 성공 URC 수신 통계 (mgmt 트레일러 tag 0xD3 보고용) */
+                App_NbiotServiceAckStatCount();
+            }
+
             if ((qlwStatus == 4) && ((qlwSeq < 0) || (qlwSeq == (int)seqNum)))
             {
                 return APP_STATUS_OK;

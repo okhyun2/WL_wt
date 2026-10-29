@@ -225,6 +225,9 @@ extern "C" {
 #define APP_MGMT_TX_APPEND_SELFTEST_ENABLE          (APP_TRUE)
 #define APP_MGMT_TX_SELFTEST_TAG                    (0xD2u)
 #define APP_MGMT_TX_SELFTEST_PAYLOAD_LEN            (7u)
+#define APP_MGMT_TX_APPEND_SERVICE_STAT_ENABLE      (APP_TRUE)
+#define APP_MGMT_TX_SERVICE_STAT_TAG                (0xD3u)
+#define APP_MGMT_TX_SERVICE_STAT_PAYLOAD_LEN        (2u)
 
 /* NFC production hardening */
 #define APP_NFC_MASTER_KEY_BYTES                      { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C }
