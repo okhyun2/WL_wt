@@ -17,7 +17,7 @@
 #include "app_aux.h"
 #include "app_selftest.h"
 
-#define APP_NBIOT_AT_RAW_RX_DEBUG   APP_FALSE //TODO. debug:APP_TRUE, PRODUCT: APP_FALSE
+#define APP_NBIOT_AT_RAW_RX_DEBUG   APP_TRUE //TODO. debug:APP_TRUE, PRODUCT: APP_FALSE
 
 
 #define APP_BC95_AT_CMD_PING          "AT\r\n"
@@ -85,7 +85,8 @@
 #define APP_BC95_AT_CMD_LGU_QLWSERVERIP_SET_BS   "AT+QLWSERVERIP=" APP_BC95_PLATFORM_LGU_BOOTSTRAP_MODE "," APP_BC95_PLATFORM_LGU_SERVER_IP_STRING "," APP_BC95_PLATFORM_LGU_SERVER_PORT_STRING "\r\n"
 #define APP_BC95_AT_CMD_LGU_QLWSERVERIP_SET_LWM2M "AT+QLWSERVERIP=" APP_BC95_PLATFORM_LGU_LWM2M_MODE "," APP_BC95_PLATFORM_LGU_SERVER_IP_STRING "," APP_BC95_PLATFORM_LGU_SERVER_PORT_STRING "\r\n"
 #define APP_BC95_AT_CMD_LGU_QBOOTSTRAPHOLDOFF_SET_0 "AT+QBOOTSTRAPHOLDOFF=0\r\n"
-#define APP_BC95_AT_CMD_LGU_QLWEPNS_SET      "AT+QLWEPNS=1," APP_BC95_PLATFORM_LGU_EPNS_STRING "\r\n"
+#define APP_BC95_AT_CMD_LGU_QLWEPNS_MANU_SET      "AT+QLWEPNS=1," APP_BC95_PLATFORM_LGU_EPNS_STRING "\r\n"
+#define APP_BC95_AT_CMD_LGU_QLWEPNS_AUTO_SET      "AT+QLWEPNS=0," APP_BC95_PLATFORM_LGU_SERVCODE_STRING "\r\n"
 #define APP_BC95_AT_CMD_LGU_QLWMBSPS_SET     "AT+QLWMBSPS=" APP_BC95_PLATFORM_LGU_MBSPS_STRING "\r\n"
 #define APP_BC95_AT_CMD_CSQ                  "AT+CSQ\r\n"
 
@@ -4948,7 +4949,8 @@ static AppStatus_t App_NbiotBuildMbspsParams(char *p_out, size_t outSize)
 
     n = snprintf(p_out, outSize, "%s,%s,%s,%s,%s",
                  APP_BC95_PLATFORM_LGU_SERVCODE_STRING,
-                 serial,
+                 APP_BC95_PLATFORM_LGU_SERIAL_STRING,
+                 //serial,
                  mdn,
                  tail6,
                  APP_BC95_PLATFORM_LGU_MODEL_STRING);
@@ -5004,7 +5006,7 @@ static AppStatus_t App_NbiotSyncPlatformParams(void)
 
     /* EPNS */
     same = (App_NbiotQueryNormalized(APP_BC95_AT_CMD_QLWEPNS_QUERY) == APP_TRUE) ? App_NbiotRxHas(APP_BC95_PLATFORM_LGU_EPNS_STRING) : APP_FALSE;
-    status = App_NbiotApplyParam(same, APP_BC95_AT_CMD_LGU_QLWEPNS_SET, "AT+QLWEPNS=1,...");
+    status = App_NbiotApplyParam(same, APP_BC95_AT_CMD_LGU_QLWEPNS_AUTO_SET, "AT+QLWEPNS=0,...");
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     /* MBSPS: SIM 정보로 런타임 조립. 정보가 없으면 쓰지 않고 모뎀 기존값 유지 */
