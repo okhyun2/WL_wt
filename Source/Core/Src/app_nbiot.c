@@ -1750,7 +1750,9 @@ static volatile uint8_t s_bc95LatchIsrPending = 0u;
 /* 지금까지 본 EVTIND 종류의 비트마스크(bit n = EVTIND:n 관측).
  * 마지막 값(last)만 저장하면 :0(등록완료)이 :3/:8에 덮여 유실되므로
  * ready 판정은 마스크 기준으로 한다. */
-static volatile uint16_t s_bc95EVTINDSeenMask = 0u; /* ISR 래치 갱신 표지(메인 루프 로그용) */
+static volatile uint16_t s_bc95EVTINDSeenMask = 0u;
+/* 요약 시점에 이미 로그를 남긴 이벤트 비트마스크(ISR 캡처분 중복 로그 방지) */
+static uint16_t s_bc95LoggedMask = 0u; /* ISR 래치 갱신 표지(메인 루프 로그용) */
 
 static void App_Bc95AtArmUrcMonitor(UART_HandleTypeDef *p_huart)
 {
@@ -1816,7 +1818,6 @@ static void App_Bc95AtUpdateEVTINDLatch(const char *p_line)
     }
     if (App_Bc95AtParseQlwevtind(p_line, &eventType) == APP_BC95_AT_OK)
     {
-        s_bc95LastEVTIND = eventType;
         /* 스캔 경로(RAW 혼입/루프 스캔)로 수신된 URC도 관측 이력에 반영한다.
          * 명령 진행 중 도착한 URC는 ISR 모니터를 지나지 않으므로, 이 갱신이
          * 없으면 mask에서 해당 이벤트 비트가 누락된다(boot13 실측:
@@ -1825,7 +1826,7 @@ static void App_Bc95AtUpdateEVTINDLatch(const char *p_line)
         {
             s_bc95EVTINDSeenMask |= (uint16_t)(1u << eventType);
         }
-        APP_LOGN("NBIOT", "[[EVTIND-latch]] event=%d captured", eventType);
+        s_bc95LastEVTIND = eventType;
     }
 }
 
@@ -5904,7 +5905,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
      * (READY_REQUIRE_OBSERVE 정책을 따른다) */
     if (s_bc95LatchIsrPending != 0u)
     {
-        APP_LOGN("NBIOT", "[[EVTIND-latch]] ISR monitor captured last=%d mask=0x%04X",
+        APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch ISR monitor captured last=%d mask=0x%04X",
                  s_bc95LastEVTIND, s_bc95EVTINDSeenMask);
         s_bc95LatchIsrPending = 0u;
     }
@@ -5914,8 +5915,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     if ((App_Bc95AtPlatformEventIsReady(s_bc95LastEVTIND) == APP_TRUE) ||
         (App_Bc95AtEVTINDMaskReady(s_bc95EVTINDSeenMask) == APP_TRUE))
     {
-        APP_LOGN("NBIOT", "[[ServicePlatformWake]] fast path hit (pre-registered EVTIND=%d)",
-                 s_bc95LastEVTIND);
+        APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch captured(4:0:3). Ready!");
         return APP_STATUS_OK;
     }
  
