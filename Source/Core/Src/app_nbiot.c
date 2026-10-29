@@ -1817,6 +1817,14 @@ static void App_Bc95AtUpdateEVTINDLatch(const char *p_line)
     if (App_Bc95AtParseQlwevtind(p_line, &eventType) == APP_BC95_AT_OK)
     {
         s_bc95LastEVTIND = eventType;
+        /* 스캔 경로(RAW 혼입/루프 스캔)로 수신된 URC도 관측 이력에 반영한다.
+         * 명령 진행 중 도착한 URC는 ISR 모니터를 지나지 않으므로, 이 갱신이
+         * 없으면 mask에서 해당 이벤트 비트가 누락된다(boot13 실측:
+         * :0/:4 가 RAW 혼입 수신됐는데 mask=0x0108 로 비트0/4 누락). */
+        if ((eventType >= 0) && (eventType < 16))
+        {
+            s_bc95EVTINDSeenMask |= (uint16_t)(1u << eventType);
+        }
         APP_LOGN("NBIOT", "[[EVTIND-latch]] event=%d captured", eventType);
     }
 }
@@ -5957,8 +5965,14 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
     APP_RETURN_IF_FALSE((p_data != NULL) && (length > 0u), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE(seqNum > 0u, APP_STATUS_INVALID_PARAM);
 
+    /* LGU 커스텀 FW 문법(BC95-GV LG U+ Application Note v1.0.3 §1.5):
+     *   AT+QLWULDATAEX=<object>,<length>,<data>,<mode>[,<seq_num>]
+     * 표준 BC95-G 문법(<length> 선두)과 달리 <object>가 첫 인자다.
+     * object 0 = 10250(UL/DL 데이터 컨테이너), 1 = 26241(펌웨어).
+     * 표준 문법으로 보내면 +CME ERROR: 50(incorrect parameters) 발생
+     * (boot12 실측 3/3 실패). */
     printed = snprintf(appBc95AtCmdTxBuf, sizeof(appBc95AtCmdTxBuf),
-                       "AT+QLWULDATAEX=%u,",
+                       "AT+QLWULDATAEX=0,%u,",
                        (unsigned)length);
     APP_RETURN_IF_FALSE((printed > 0) && ((uint32_t)printed < sizeof(appBc95AtCmdTxBuf)), APP_STATUS_INVALID_PARAM);
     App_Bc95AtBytesToHex(p_data, length, &appBc95AtCmdTxBuf[(uint32_t)printed]);
@@ -5969,7 +5983,7 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
                         (unsigned)seqNum);
     APP_RETURN_IF_FALSE((printed > 0) && ((uint32_t)printed < sizeof(appBc95AtCmdTxBuf)), APP_STATUS_INVALID_PARAM);
 
-    APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWULDATAEX send len=%u seq=%u mode=0x0100",
+    APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWULDATAEX send obj=0 len=%u seq=%u mode=0x0100 (LGU syntax)",
              (unsigned)length,
              (unsigned)seqNum);
     status = App_Bc95AtSendCommand(appBc95AtCmdTxBuf,
