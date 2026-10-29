@@ -129,7 +129,7 @@
 /* fast-path: 부팅 직후 AUTOCONNECT=TRUE + NRB로 LwM2M 엔진이 자기 등록을 시작하므로
  * EVTIND(0/3) 도착을 기다린다. 실측 11:40 로그에서 2.5s 만에 timeout -> QLWSREGIND=CME4 실패였으므로
  * 10s로 확장 (observe 요구 정책 REQUIRE_OBSERVE 그대로 유지) */
-#define APP_BC95_PLATFORM_FAST_PATH_TIMEOUT_MS (10*60*1000u)
+#define APP_BC95_PLATFORM_FAST_PATH_TIMEOUT_MS (2*60*1000u) //best: 60sec
 #define APP_BC95_PLATFORM_REGISTER_RETRY_MAX  (2u)
 #define APP_BC95_PLATFORM_SEND_RETRY_MAX      (3u)
 #define APP_BC95_PLATFORM_RETRY_BACKOFF_MS    (1000u)
@@ -1721,6 +1721,62 @@ static void App_Bc95AtFinishRxIt(UART_HandleTypeDef *p_huart)
 /* ============================================================
  *  RX 라인 드레인 (송신 직전 호출)
  * ============================================================ */
+/* EVTIND 조기 도착 래치:
+ * 부팅 트랙(자가진단/계량기 프로브, 수 초) 동안 LwM2M 엔진의 EVTIND:0/3/8 URC가
+ * 모뎀에서 먼저 도착할 수 있다. 기존 로직은 ServicePlatformWake의 fast-path 대기가
+ * 시작될 때 DrainRxLine으로 수신 버퍼를 비우므로, 그 전에 도착한 EVTIND는 유실되어
+ * fast-path가 시간초과 -> QLWSREGIND=0(자동 모드에서 CME 4)로 빠졌다.
+ * DrainRxLine이 라인을 버리기 전 EVTIND를 스캔해 마지막 이벤트를 래치하고,
+ * fast-path 대기 직전 래치 검사로 즉시 준비완료 판정한다. */
+static int s_bc95LastEVTIND = -1;
+
+static void App_Bc95AtUpdateEVTINDLatch(const char *p_line)
+{
+    int eventType = -1;
+    if ((p_line == NULL) || (p_line[0] == '\0'))
+    {
+        return;
+    }
+    if (App_Bc95AtParseQlwevtind(p_line, &eventType) == APP_BC95_AT_OK)
+    {
+        s_bc95LastEVTIND = eventType;
+        APP_LOGN("NBIOT", "[[EVTIND-latch]] event=%d captured", eventType);
+    }
+}
+
+static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len)
+{
+    uint16_t i;
+    if ((p_buf == NULL) || (len == 0u))
+    {
+        return;
+    }
+    /* 라인 단위로 훑어 EVTIND 접두어를 찾는다(버퍼 내 NUL 보존 가정 없음) */
+    for (i = 0u; (i + APP_BC95_AT_QLWEVTIND_PREFIX_LEN) <= len; i++)
+    {
+        if (strncmp(&p_buf[i], APP_BC95_AT_QLWEVTIND_PREFIX,
+                    APP_BC95_AT_QLWEVTIND_PREFIX_LEN) == 0)
+        {
+            char lineBuf[48];
+            uint16_t copyLen = 0u;
+            uint16_t j = (uint16_t)(i + APP_BC95_AT_QLWEVTIND_PREFIX_LEN);
+            while ((j < len) && (copyLen < (sizeof(lineBuf) - 1u)) &&
+                   (p_buf[j] != '\r') && (p_buf[j] != '\n'))
+            {
+                lineBuf[copyLen++] = p_buf[j];
+                j++;
+            }
+            lineBuf[copyLen] = '\0';
+            /* 뒤에 숫자가 있는지 확인 후 래치 갱신 */
+            if (copyLen > 0u)
+            {
+                App_Bc95AtUpdateEVTINDLatch(lineBuf);
+                i = j;  /* 이벤트 값은 숫자 하나뿐이므로 건너뜀 */
+            }
+        }
+    }
+}
+
 static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
 {
     uint32_t guardMs;
@@ -5365,6 +5421,7 @@ static AppStatus_t App_Bc95AtWaitForLinePrefix(const char *p_prefix,
     APP_RETURN_IF_FALSE((p_prefix != NULL) && (p_prefix[0] != '\0'), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((snapshotSize > 0u), APP_STATUS_INVALID_PARAM);
 
+    App_Bc95AtScanBufferForEVTIND(g_appBc95AtRxBuf, (uint16_t)sizeof(g_appBc95AtRxBuf));
     App_Bc95AtDrainRxLine(APP_UART_NBIOT_HANDLE, 30u);
     (void)memset(g_appBc95AtRxBuf, 0, sizeof(g_appBc95AtRxBuf));
     if (p_rxSnapshot != NULL)
@@ -5635,6 +5692,16 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     uint8_t needRegisterRetry = APP_FALSE;
     uint32_t attempt;
 
+    /* EVTIND 조기 도착 래치 검사: 부팅 트랙 동안 이미 EVTIND:3(observe 완료) 또는
+     * EVTIND:0(등록 완료)이 도착해 있으면 fast-path 대기 없이 즉시 준비완료 처리.
+     * (READY_REQUIRE_OBSERVE 정책을 따른다) */
+    if (App_Bc95AtPlatformEventIsReady(s_bc95LastEVTIND) == APP_TRUE)
+    {
+        APP_LOGN("NBIOT", "[[ServicePlatformWake]] fast path hit (pre-registered EVTIND=%d)",
+                 s_bc95LastEVTIND);
+        return APP_STATUS_OK;
+    }
+ 
     status = App_Bc95AtWaitForPlatformReadyWithPolicy(APP_BC95_PLATFORM_FAST_PATH_TIMEOUT_MS,
                                                       &needRegisterRetry);
     if (status == APP_STATUS_OK)
@@ -5647,15 +5714,17 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
         return status;
     }
 
+    /* fast-path에서 못 받은 경우: 이번 wake 기준으로 래치를 리셋해
+     * 등록 재시도 후의 새로운 EVTIND만 신뢰한다 */
+    s_bc95LastEVTIND = -1;
+ 
     for (attempt = 1u; attempt <= APP_BC95_PLATFORM_REGISTER_RETRY_MAX; attempt++)
     {
-        /*
         status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QLWSREGIND_REGISTER, //on manual mode, start register
                                                APP_BC95_AT_RX_TIMEOUT_MS,
                                                "AT+QLWSREGIND=0",
                                                "[[ServicePlatformWake]]");
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-        */
 
         needRegisterRetry = APP_FALSE;
         status = App_Bc95AtWaitForPlatformReadyWithPolicy(APP_BC95_PLATFORM_EVENT_TIMEOUT_MS,
