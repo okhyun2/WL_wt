@@ -110,8 +110,7 @@ extern "C" {
 #define APP_BC95_PLATFORM_LGU_BOOTSTRAP_MODE        "BS"            //fix
 #define APP_BC95_PLATFORM_LGU_LWM2M_MODE            "LWM2M"         //fix
 #define APP_BC95_PLATFORM_LGU_EPNS_STRING           "ASN_CSE-D-8931f40c9a-ADJ1"
-//#define APP_BC95_PLATFORM_LGU_SERIAL_STRING         "00000000000002132125"  //TODO debug
-#define APP_BC95_PLATFORM_LGU_SERIAL_STRING         "00000000007726000007"  //TODO debug
+//#define APP_BC95_PLATFORM_LGU_SERIAL_STRING         "02132120"  //debug
 #define APP_BC95_PLATFORM_LGU_SERVCODE_STRING       "ADJ1"          //fix. service-code
 #define APP_BC95_PLATFORM_LGU_MODEL_STRING          "ACO-WT-NB26"     //fix. device name
 #define APP_BC95_PLATFORM_LGU_MBSPS_STRING          "ADJ1,4323800010,01226680136,919592,ACO-WT-NB26" //QLWMBSPS:<serv_code>,<ser_no>,<ctn>,<iccid>,<model>

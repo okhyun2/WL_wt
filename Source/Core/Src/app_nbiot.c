@@ -5307,8 +5307,8 @@ static AppStatus_t App_NbiotBuildMbspsParams(char *p_out, size_t outSize)
 
     n = snprintf(p_out, outSize, "%s,%s,%s,%s,%s",
                  APP_BC95_PLATFORM_LGU_SERVCODE_STRING,
-                 APP_BC95_PLATFORM_LGU_SERIAL_STRING,
-                 //serial,
+                 //APP_BC95_PLATFORM_LGU_SERIAL_STRING, //debug
+                 serial,
                  mdn,
                  tail6,
                  APP_BC95_PLATFORM_LGU_MODEL_STRING);
@@ -5363,7 +5363,8 @@ static AppStatus_t App_NbiotSyncPlatformParams(void)
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     /* EPNS */
-    same = (App_NbiotQueryNormalized(APP_BC95_AT_CMD_QLWEPNS_QUERY) == APP_TRUE) ? App_NbiotRxHas(APP_BC95_PLATFORM_LGU_EPNS_STRING) : APP_FALSE;
+    //same = (App_NbiotQueryNormalized(APP_BC95_AT_CMD_QLWEPNS_QUERY) == APP_TRUE) ? App_NbiotRxHas(APP_BC95_PLATFORM_LGU_EPNS_STRING) : APP_FALSE;
+    same = APP_FALSE; //default use auto mode.
     status = App_NbiotApplyParam(same, APP_BC95_AT_CMD_LGU_QLWEPNS_AUTO_SET, "AT+QLWEPNS=0,...");
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
