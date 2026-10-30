@@ -1552,6 +1552,13 @@ static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t pac
  *  PowerOff Fast-Bail: 모듈 무응답 연속 감지
  * ============================================================ */
 /* [ADD] 파일 상단, static 헬퍼 선언들 근처에 추가 */
+/* [ADD] 개설(추적) 중인 UDP 소켓 비트마스크: bit N = 소켓 id N (MAX=6).
+ * 근거: LGU 커스텀 FW는 열려있지 않은 소켓 NSOCL에 +CME ERROR: 530 반환 (10/30 실측:
+ * detach 소켓정리 7회 -> 530 7회, "sock clean c=0 ac=0 sf=0 of=7" 대응).
+ * 개설된 소켓에만 NSOCL을 보내기 위해 추적. 소켓 수명은 세션 내부이므로
+ * modem reset 시 AtInit에서 0으로 리셋. */
+static uint32_t s_nbiotUdpSocketOpenMask = 0u;
+
 static uint8_t s_nbiotDetachNoRespStreak = 0u;
 
 #ifndef APP_NBIOT_DETACH_NORESP_BAIL_THRESHOLD
@@ -6994,6 +7001,9 @@ AppStatus_t App_Bc95AtCreateUdpSocket(uint16_t localPort, int32_t *p_socketOut)
     }
 
     *p_socketOut = (int32_t)parsedSock;
+    /* [ADD] 개설 성공 소켓 추적 (범위 밖 id는 미추적) */
+    if (parsedSock <= APP_BC95_UDP_SOCKET_ID_MAX)
+        s_nbiotUdpSocketOpenMask |= ((uint32_t)1u << parsedSock);
     APP_LOGD("NBIOT", "UDP socket created: %ld", (long)parsedSock);
     return APP_STATUS_OK;
 }
@@ -7462,6 +7472,9 @@ static AppStatus_t App_Bc95AtCloseSocketInternal(int32_t socketId,
         return APP_STATUS_FATAL;
     }
     APP_LOGD("NBIOT", "UDP socket closed: %ld", (long)socketId);
+    /* [ADD] 닫기 성공 -> 추적 해제 */
+    if ((socketId >= 0) && (socketId <= APP_BC95_UDP_SOCKET_ID_MAX))
+        s_nbiotUdpSocketOpenMask &= ~((uint32_t)1u << socketId);
     return APP_STATUS_OK;
 }
 
@@ -7478,11 +7491,16 @@ void App_Bc95AtCloseAllSockets(void)
     uint32_t sendFailCount = 0u;
     uint32_t otherFailCount = 0u;
 
-    APP_LOGI("NBIOT", "close sockets 0..%d", APP_BC95_UDP_SOCKET_ID_MAX);
+    APP_LOGI("NBIOT", "close sockets 0..%d (open mask=0x%02lx)",
+             APP_BC95_UDP_SOCKET_ID_MAX, (unsigned long)s_nbiotUdpSocketOpenMask);
     for (sid = 0; sid <= APP_BC95_UDP_SOCKET_ID_MAX; sid++)
     {
         AppStatus_t closeStatus;
         AppBc95AtStatus_t atStatus = APP_BC95_AT_OK;
+
+        /* [ADD] 미개설 소켓은 NSOCL 생략 (LGU FW 530 예방) */
+        if ((s_nbiotUdpSocketOpenMask & ((uint32_t)1u << sid)) == 0u)
+            continue;
 
         closeStatus = App_Bc95AtCloseSocketInternal((int32_t)sid, APP_TRUE, &atStatus);
         if (closeStatus == APP_STATUS_OK)
@@ -7491,9 +7509,12 @@ void App_Bc95AtCloseAllSockets(void)
         }
         else if ((closeStatus == APP_STATUS_FATAL) &&
                  ((atStatus == APP_BC95_AT_ERR_AT_ERROR) ||
-                  (atStatus == APP_BC95_AT_ERR_NO_OK)))
+                  (atStatus == APP_BC95_AT_ERR_NO_OK) ||
+                  (atStatus == APP_BC95_AT_ERR_CME_ERROR)))  /* [ADD] CME 530=이미 닫힘(LGU FW) */
         {
             alreadyClosedCount++;
+            /* [ADD] 마스크가 실제보다 낙관적이었던 경우 정합성 복구 */
+            s_nbiotUdpSocketOpenMask &= ~((uint32_t)1u << sid);
         }
         else if ((closeStatus == APP_STATUS_UART_RX_FAILED) ||
                  (closeStatus == APP_STATUS_UART_TX_FAILED) ||
@@ -8103,6 +8124,7 @@ AppStatus_t App_NBIoTAtInit(void)
      */
 
     g_appBc95UdpSeqCounter = 0u;
+    s_nbiotUdpSocketOpenMask = 0u;  /* [ADD] 모뎀 리셋 후 소켓 전무 -> 추적 리셋 */
     g_appBc95UsimFatal = APP_FALSE;
     g_appBc95AtInitialized = APP_TRUE;
 #ifdef NBIoT_SIMULATION_CODE
