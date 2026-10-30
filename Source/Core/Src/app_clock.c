@@ -58,8 +58,19 @@ AppStatus_t App_ClockBootStartLsiFirst(void)
     APP_RETURN_IF_HAL_ERROR(HAL_RCCEx_PeriphCLKConfig(&periphClk), APP_STATUS_CLOCK_VERIFY_FAILED);
 
     /* LSE는 켜기만 하고 대기하지 않음: 준비 여부는 이후 백그라운드 폴링이 확인 */
+#if (APP_CLOCK_LSE_BYPASS_ENABLE == APP_TRUE)
+    /* RV3032 CLKOUT(32.768kHz)을 외부 클럭으로 받는 bypass 모드.
+       LSEBYP는 LSE가 꺼진 상태(LSEON=0)에서만 쓸 수 있고, 직전 RTC 소스를
+       LSI로 확정하는 과정에서 백업도메인이 리셋되어 LSEON=0이 보장됨.
+       bypass는 발진 기동이 필요 없어 LSERDY가 즉시 세트됨 */
+    __HAL_RCC_LSE_CONFIG(RCC_LSE_BYPASS);
+#else
+    /* 내부 크리스털 발진: drive 설정 후 켜기만 함.
+       크리스털로 되돌릴 때 백업도메인에 남아있는 LSEBYP를 먼저 해제(LSEON=0에서만 쓰기 가능) */
+    CLEAR_BIT(RCC->CSR, RCC_CSR_LSEBYP);
     __HAL_RCC_LSEDRIVE_CONFIG(APP_CLOCK_LSE_DRIVE);
     SET_BIT(RCC->CSR, RCC_CSR_LSEON);
+#endif
 
     g_lseBgAttemptActive  = APP_TRUE;
     g_lseBgAttemptStartMs = HAL_GetTick();

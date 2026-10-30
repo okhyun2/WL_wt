@@ -134,6 +134,9 @@ extern "C" {
 #define APP_CLOCK_FLASH_LATENCY_BOOT                FLASH_LATENCY_0
 #define APP_CLOCK_LSE_NOMINAL_HZ                    (32768u)
 #define APP_CLOCK_LSE_DRIVE                         RCC_LSEDRIVE_MEDIUMHIGH
+/* RV3032 CLKOUT(32.768kHz)을 LSE 소스로 사용: APP_TRUE=LSE bypass(외부 클럭 입력),
+   APP_FALSE=보드 크리스털 발진(기존 동작). bypass에서는 LSEDRV가 무의미함 */
+#define APP_CLOCK_LSE_BYPASS_ENABLE                 (APP_FALSE) //TODO . board update -> APP_TRUE
 #define APP_CLOCK_LSI_NOMINAL_HZ                    (APP_CLOCK_LSE_NOMINAL_HZ)
 #define APP_CLOCK_SYSTICK_HZ                        (1000u)
 #define APP_CLOCK_LSE_READY_TIMEOUT_MS              (8000u)
@@ -162,9 +165,9 @@ extern "C" {
 #endif
 
 #ifdef DEBUG
-#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE) //org
+#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE) //org. ins timestamp
 #else
-//#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org
+//#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org. del timestamp
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
 #endif
 

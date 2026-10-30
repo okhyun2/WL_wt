@@ -5568,6 +5568,17 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
 {
     AppStatus_t status;
 
+    /* [EVTIND 누락 대책] 세션(부팅/wake) 시작 시 EVTIND 래치를 리셋한다.
+     * 모듈 전원은 매 세션 꺼졌다 켜지므로 이전 세션의 래치(last/mask,
+     * 예: mask=0x0119)는 무효하다. 리셋이 없으면 fast-path가 stale 마스크로
+     * 즉시 통과해 NRB 후 엔진 재등록(EVTIND 4,0,3,8 버스트)이 끝나기 전에
+     * service 전송이 나갈 수 있다. 2026-10-30 12:09 실측:
+     * stale ready -> seq7~9 전송 중 policy abort, 모뎀은 4,0,0 만 출력
+     * (:3/:8 미발생)인데 FW는 이를 감지하지 못했다. */
+    s_bc95LastEVTIND      = -1;
+    s_bc95EVTINDSeenMask  = 0u;
+    s_bc95LatchIsrPending = 0u;
+
     APP_LOGN("NBIOT", "[[BootTrack]] start cold-boot reset/provision flow");
     status = App_NbiotRunBootConfigurationSequence();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
