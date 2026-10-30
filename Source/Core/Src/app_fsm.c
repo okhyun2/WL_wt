@@ -2888,9 +2888,43 @@ static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void)
 {
     AppStatus_t status;
     uint8_t periodHours;
+    /* [재앵커 억제] 재초기화가 기존 미래 due를 폐기하는 것을 막는다.
+     * ~10분마다 EnsureInitializedCommon 재진입 시 PlanBootstrap이 next를
+     * 재계산해 기존 due를 버리는 실측(19:04:59->19:22:55->19:32:54->...)
+     * 을 차단한다. 주기/spread 무변경 + 기존 due 미도달 조건에서만 억제. */
+    uint8_t  hadArmedDue      = APP_FALSE;
+    uint32_t savedDueDateKey  = 0u;
+    uint32_t savedDueMsOfDay  = 0u;
+    uint8_t  savedPeriodHours = 0u;
+    uint32_t savedSpreadMaxMs = 0u;
+    AppDateTime_t now;
+    uint32_t nowDateKey;
+    uint32_t nowMsOfDay;
 
     status = App_FsmMgmtTxScheduleLoadPeriod(&periodHours);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if ((g_appFsmMgmtTxSchedule.initialized == APP_TRUE) &&
+        (g_appFsmMgmtTxSchedule.enabled     == APP_TRUE))
+    {
+        savedDueDateKey  = g_appFsmMgmtTxSchedule.nextDueDateKey;
+        savedDueMsOfDay  = g_appFsmMgmtTxSchedule.nextDueMsOfDay;
+        savedPeriodHours = g_appFsmMgmtTxSchedule.periodHours;
+        savedSpreadMaxMs = g_appFsmMgmtTxSchedule.configuredSpreadMaxMs;
+
+        if (RTC_GetTime(&now) == APP_STATUS_OK)
+        {
+            nowDateKey = App_FsmMeterScheduleDateKey(&now);
+            nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+            /* 기존 due가 아직 미래면 무장 상태로 기록 */
+            if (App_FsmScheduleIsDueOrPast(savedDueDateKey, savedDueMsOfDay,
+                                           nowDateKey, nowMsOfDay) != APP_TRUE)
+            {
+                hadArmedDue = APP_TRUE;
+            }
+        }
+    }
+
     status = App_FsmTxScheduleEnsureInitializedCommon(&g_appFsmMgmtTxSchedule,
                                                       periodHours,
                                                       APP_FSM_TX_DEVICE_SPREAD_MAX_MS,
@@ -2906,8 +2940,29 @@ static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void)
                                                     );
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
+    if ((hadArmedDue == APP_TRUE) &&
+        (savedPeriodHours == g_appFsmMgmtTxSchedule.periodHours) &&
+        (savedSpreadMaxMs == g_appFsmMgmtTxSchedule.configuredSpreadMaxMs) &&
+        ((g_appFsmMgmtTxSchedule.nextDueDateKey != savedDueDateKey) ||
+         (g_appFsmMgmtTxSchedule.nextDueMsOfDay != savedDueMsOfDay)))
+    {
+        APP_LOGN("FSM",
+                 "[[MgmtTxSchedule]] re-anchor suppressed, keep armed due=%lu %02lu:%02lu:%02lu (planned=%lu %02lu:%02lu:%02lu)",
+                 (unsigned long)savedDueDateKey,
+                 (unsigned long)(savedDueMsOfDay / 3600000u),
+                 (unsigned long)((savedDueMsOfDay % 3600000u) / 60000u),
+                 (unsigned long)((savedDueMsOfDay % 60000u) / 1000u),
+                 (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
+                 (unsigned long)(g_appFsmMgmtTxSchedule.nextDueMsOfDay / 3600000u),
+                 (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
+                 (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 60000u) / 1000u));
+        g_appFsmMgmtTxSchedule.nextDueDateKey = savedDueDateKey;
+        g_appFsmMgmtTxSchedule.nextDueMsOfDay = savedDueMsOfDay;
+    }
+
     status = App_FsmMgmtTxScheduleApplyServiceGapGuard();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
     return APP_STATUS_OK;
 }
 

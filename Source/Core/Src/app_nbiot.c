@@ -5698,8 +5698,13 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
         }
         else
         {
-            mgmtStatus = App_NBIoTTransmitMgmtUdp(deleteStorage);
-            APP_LOGN("NBIOT", "[[ServicePlatformWake]] mgmt piggyback status=%d", (int)mgmtStatus);
+            /* [독립 스케줄] 정기 service 웨이크에서는 mgmt를 편승 전송하지 않는다.
+             * mgmt 전송 경로: 부팅 live 전송 + MgmtTxSchedule due(별도/동시 due 웨이크).
+             * (종래 piggyback은 service 세션의 cost abort가 mgmt 공백으로 직결됨:
+             *  2026-10-30 로그 - cost=5 abort 구간에서 mgmt 80분 이상 전송 없음.
+             *  abort 시 mgmt 보류는 FSM의 carryPendingAfterAbort 경로가 담당) */
+            mgmtStatus = APP_STATUS_OK;
+            APP_LOGN("NBIOT", "[[ServicePlatformWake]] mgmt piggyback disabled (independent schedule)");
         }
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] done");
         return APP_STATUS_OK;
