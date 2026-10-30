@@ -318,6 +318,7 @@ static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint
 static int s_bc95LastEVTIND = -1;
 static void App_Bc95AtUpdateEVTINDLatch(const char *p_line);
 static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len);
+static uint8_t App_Bc95AtEVTINDMaskReadyFallbackOnly(uint16_t seenMask);
 /* ============================================================
  *  Pre-attach radio power check (AT+NUESTATS) + deferred abort
  * ============================================================ */
@@ -2219,12 +2220,15 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
     APP_RETURN_IF_FALSE((p_buffer != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((bufferSize > 1u), APP_STATUS_INVALID_PARAM);
 
-    (void)memset(p_buffer, 0, bufferSize);
-    if (p_rxLengthOut != NULL) *p_rxLengthOut = 0u;
-
     /* EVTIND 조기 도착 래치 캡처 (경로 6 - 명령 시작 전 잔량 스캔):
-     * 이전 명령 응답이 폐기되며 버퍼에 남은 URC 혼입분을 버리기 전에 회수한다
-     * (boot20 실측: preflight 중 NCONFIG? 등 status=13 폐기 구간 URC 유실). */
+     * [v17 FIX] 스캔은 반드시 memset 전에 실행한다. 기존 순서는
+     * memset(p_buffer)이 g_appBc95AtRxContext.p_buffer(=동일 버퍼
+     * g_appBc95AtRxBuf)를 먼저 0으로 지워버려 스캔이 항상 빈 버퍼를
+     * 읽는 no-op였다. 실측(10:21:08 세션): ev=4가 활성 CEREG 응답 버퍼
+     * 꼬리에 합쳐 도착한 뒤 다음 명령 시작 memset으로 소멸해
+     * mask=0x0109(비트4 누락) -> platform-ready wait timeout.
+     * 이전 명령 응답이 폐기되며 버퍼에 남은 URC 혼입분을 버리기 전에
+     * 회수한다(boot20 실측: preflight 중 status=13 폐기 구간 URC 유실). */
     if ((g_appBc95AtRxContext.p_buffer != NULL) &&
         (g_appBc95AtRxContext.active != APP_TRUE) &&
         (g_appBc95AtRxContext.receivedLength > 0u))
@@ -2232,6 +2236,9 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
         App_Bc95AtScanBufferForEVTIND((const char *)g_appBc95AtRxContext.p_buffer,
                                       g_appBc95AtRxContext.receivedLength);
     }
+
+    (void)memset(p_buffer, 0, bufferSize);
+    if (p_rxLengthOut != NULL) *p_rxLengthOut = 0u;
 
     g_appBc95AtRxContext.p_huart        = p_huart;
     g_appBc95AtRxContext.p_buffer       = p_buffer;
@@ -2449,10 +2456,8 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
     APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((APP_UART_NBIOT_HANDLE != NULL), APP_STATUS_INVALID_PARAM);
 
-    (void)memset(g_appBc95AtRxBuf, 0, sizeof(g_appBc95AtRxBuf));
-    bufferCap = (uint16_t)(sizeof(g_appBc95AtRxBuf) - 1u);
-
-    /* EVTIND 래치 (경로 6): 부트 대기 시작 전 이전 버퍼 잔량 회수 */
+    /* EVTIND 래치 (경로 6): 부트 대기 시작 전 이전 버퍼 잔량 회수
+     * [v17 FIX] memset 전에 스캔(UartReceiveResponse와 동일 순서 버그) */
     if ((g_appBc95AtRxContext.p_buffer != NULL) &&
         (g_appBc95AtRxContext.active != APP_TRUE) &&
         (g_appBc95AtRxContext.receivedLength > 0u))
@@ -2460,6 +2465,9 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
         App_Bc95AtScanBufferForEVTIND((const char *)g_appBc95AtRxContext.p_buffer,
                                       g_appBc95AtRxContext.receivedLength);
     }
+
+    (void)memset(g_appBc95AtRxBuf, 0, sizeof(g_appBc95AtRxBuf));
+    bufferCap = (uint16_t)(sizeof(g_appBc95AtRxBuf) - 1u);
 
     g_appBc95AtRxContext.p_huart        = APP_UART_NBIOT_HANDLE;
     g_appBc95AtRxContext.p_buffer       = g_appBc95AtRxBuf;
@@ -5725,15 +5733,10 @@ static AppStatus_t App_Bc95AtWaitForLinePrefix(const char *p_prefix,
     {
         p_rxSnapshot[0] = '\0';
     }
-
-    /* EVTIND 래치 (경로 6): prefix 대기 시작 전 이전 버퍼 잔량 회수 */
-    if ((g_appBc95AtRxContext.p_buffer != NULL) &&
-        (g_appBc95AtRxContext.active != APP_TRUE) &&
-        (g_appBc95AtRxContext.receivedLength > 0u))
-    {
-        App_Bc95AtScanBufferForEVTIND((const char *)g_appBc95AtRxContext.p_buffer,
-                                      g_appBc95AtRxContext.receivedLength);
-    }
+    /* [v17 FIX] 기존의 두 번째 잔량 스캔 블록은 삭제: 함수 선두 스캔이
+     * 이미 memset/DrainRxLine 전에 실행되어(올바른 순서) 동일 버퍼를
+     * 커버하며, 이 위치의 스캔은 memset 뒤라 항상 빈 버퍼를 읽는
+     * no-op였다. */
 
     g_appBc95AtRxContext.p_huart        = APP_UART_NBIOT_HANDLE;
     g_appBc95AtRxContext.p_buffer       = g_appBc95AtRxBuf;
@@ -5837,8 +5840,35 @@ static void App_NbiotServiceSuccessStatCount(void)
 
 static uint8_t App_Bc95AtEVTINDMaskReady(uint16_t seenMask)
 {
-    return ((seenMask & APP_BC95_AT_EVTIND_READY_MASK) ==
-            APP_BC95_AT_EVTIND_READY_MASK) ? APP_TRUE : APP_FALSE;
+    if ((seenMask & APP_BC95_AT_EVTIND_READY_MASK) ==
+        APP_BC95_AT_EVTIND_READY_MASK)
+    {
+        return APP_TRUE;
+    }
+    /* [v17 ADD] 폴백 판정: :0(등록 완료) 이후 :3(observe 완료) 또는
+     * :8(등록 갱신)이 하나라도 관측되면 엔진이 등록을 넘어 진행한 것이므로
+     * UL/DL 준비완료로 본다. 근거(노트 1.3 + 10:21:08 세션 실측):
+     * ev=4가 응답 버퍼 꼬리에 합쳐 유실되어 mask=0x0109가 되어도
+     * 0/3/8 관측 이력만으로 ready 판정이 가능해 platform-ready
+     * wait timeout(300초) 및 UL 스킵을 막는다. ev=4는 등록 과정의
+     * 중간 이벤트라 단독으로는 UL/DL 개시 조건이 아니다. */
+    return (((seenMask & 0x0001u) != 0u) &&
+            (((seenMask & 0x0008u) != 0u) ||
+             ((seenMask & 0x0100u) != 0u))) ? APP_TRUE : APP_FALSE;
+}
+
+/* [v17 ADD] 폴백 규칙만으로 ready가 되는지 (기본 0x0019 규칙은 미충족).
+ * pre-check 로그에서 폴백 진입을 구분해 찍기 위한 보조 함수. */
+static uint8_t App_Bc95AtEVTINDMaskReadyFallbackOnly(uint16_t seenMask)
+{
+    if ((seenMask & APP_BC95_AT_EVTIND_READY_MASK) ==
+        APP_BC95_AT_EVTIND_READY_MASK)
+    {
+        return APP_FALSE;
+    }
+    return (((seenMask & 0x0001u) != 0u) &&
+            (((seenMask & 0x0008u) != 0u) ||
+             ((seenMask & 0x0100u) != 0u))) ? APP_TRUE : APP_FALSE;
 }
 
 uint8_t App_Bc95AtPlatformEventIsReady(int eventType)
@@ -6031,7 +6061,18 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     if ((App_Bc95AtPlatformEventIsReady(s_bc95LastEVTIND) == APP_TRUE) ||
         (App_Bc95AtEVTINDMaskReady(s_bc95EVTINDSeenMask) == APP_TRUE))
     {
-        APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch captured(4:0:3). Ready UL/DL");
+        /* [v17 ADD] 기본 규칙(4:0:3) 충족이 아니라 폴백(0+(3|8))으로
+         * 진입한 경우를 로그에서 구분한다: ev=4 유실 복구 경로의
+         * 실측 추적용 (마스크가 0x0119가 아닌데 ready로 진입한 세션) */
+        if (App_Bc95AtEVTINDMaskReadyFallbackOnly(s_bc95EVTINDSeenMask) == APP_TRUE)
+        {
+            APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch captured(0:3|8 fallback) mask=0x%04X. Ready UL/DL",
+                     s_bc95EVTINDSeenMask);
+        }
+        else
+        {
+            APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch captured(4:0:3). Ready UL/DL");
+        }
         return APP_STATUS_OK;
     }
  
@@ -6055,12 +6096,9 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
  
     for (attempt = 1u; attempt <= APP_BC95_PLATFORM_REGISTER_RETRY_MAX; attempt++)
     {
-        status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_QLWSREGIND_REGISTER, //on manual mode, start register
-                                               APP_BC95_AT_RX_TIMEOUT_MS,
-                                               "AT+QLWSREGIND=0",
-                                               "[[ServicePlatformWake]]");
-        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
+        APP_LOGN("NBIOT", "[[ServicePlatformWake]] auto bootstrap mode: waiting engine EVTIND (attempt %lu/%lu)",
+                 (unsigned long)attempt,
+                 (unsigned long)APP_BC95_PLATFORM_REGISTER_RETRY_MAX);
         needRegisterRetry = APP_FALSE;
         status = App_Bc95AtWaitForPlatformReadyWithPolicy(APP_BC95_PLATFORM_EVENT_TIMEOUT_MS,
                                                           &needRegisterRetry);
