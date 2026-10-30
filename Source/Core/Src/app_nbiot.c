@@ -6088,7 +6088,9 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
         }
         else
         {
-            APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch captured(4:0:3). Ready UL/DL");
+            /* [관측성] 실제 관측값을 출력해 bit0(EVTIND:0) 누락 웨이크를 즉시 식별 */
+            APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch captured(last=%d mask=0x%04X). Ready UL/DL",
+                     s_bc95LastEVTIND, s_bc95EVTINDSeenMask);
         }
         return APP_STATUS_OK;
     }
@@ -6235,6 +6237,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
     uint8_t seqNum;
     uint8_t effectiveDeleteStorage;
     uint32_t sendAttempt;
+    uint32_t registerFailCount = 0u;
 
     APP_RETURN_IF_FALSE((p_logTag != NULL), APP_STATUS_INVALID_PARAM);
 
@@ -6266,6 +6269,10 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
                      (unsigned long)sendAttempt,
                      (unsigned long)APP_BC95_PLATFORM_SEND_RETRY_MAX,
                      (int)status);
+            if (status == APP_STATUS_UART_TIMEOUT)
+            {
+                registerFailCount++;
+            }
         }
         else
         {
@@ -6294,6 +6301,38 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
             App_Bc95AtDelayWithFeed(APP_BC95_PLATFORM_RETRY_BACKOFF_MS);
         }
     }
+
+    /* [에스컬레이션] register가 3회 연속 status=13으로 실패한 경우, 동일 대기를
+     * 더 반복해도 결과가 같다는 실측(2026-10-30 001035~001941, 약 15분 소모)이므로
+     * 모뎀을 NRB로 리셋한 뒤 register+send를 1회 재시도한다.
+     * (App_Bc95AtSendRebootBestEffort가 banner+USIM ready까지 대기하며,
+     *  이후 register 내부에서 엔진 재등록 EVTIND를 기다린다. 성공 시
+     *  아래 autotune 판정이 성공으로 기록된다.) */
+    if ((status != APP_STATUS_OK) && (registerFailCount == APP_BC95_PLATFORM_SEND_RETRY_MAX))
+    {
+        APP_LOGW("NBIOT",
+                 "%s register failed %lu/%lu (last status=%d) -> escalate NRB reset + 1 retry",
+                 p_logTag,
+                 (unsigned long)registerFailCount,
+                 (unsigned long)APP_BC95_PLATFORM_SEND_RETRY_MAX,
+                 (int)status);
+        if (App_Bc95AtSendRebootBestEffort() != APP_STATUS_OK)
+        {
+            APP_LOGW("NBIOT", "%s escalate NRB failed -> keep original failure (status=%d)",
+                     p_logTag, (int)status);
+        }
+        else
+        {
+            seqNum = App_Bc95AtNextUdpSeq();
+            status = App_Bc95AtPlatformRegister();
+            if (status == APP_STATUS_OK)
+            {
+                status = App_Bc95AtPlatformSendAndConfirm(packet, buildResult.packetLength, seqNum);
+            }
+            APP_LOGN("NBIOT", "%s escalate retry status=%d", p_logTag, (int)status);
+        }
+    }
+
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
     if (status != APP_STATUS_OK)
     {
