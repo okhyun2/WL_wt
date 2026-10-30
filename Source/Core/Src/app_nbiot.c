@@ -2020,6 +2020,16 @@ static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
     __HAL_UART_CLEAR_FLAG(p_huart,
                           UART_CLEAR_OREF | UART_CLEAR_FEF |
                           UART_CLEAR_NEF  | UART_CLEAR_PEF);
+
+    /* [보완3] 플러시 전에 HW 수신기(RDR)에 남은 바이트를 구제해 URC 모니터에
+     * 먹인다 - abort 와 flush 사이에 남은 EVTIND 선두/본체 바이트가 플러시로
+     * 버려지는 것(boot14 실측, resync 주석의 선두 유실)을 줄인다.
+     * ISR 이 먼저 가져갔으면 RXNE 가 이미 클리어되어 무동작(이중 소비 없음). */
+    if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_RXNE) != RESET)
+    {
+        App_Bc95AtUrcMonitorFeedIsr((uint8_t)(p_huart->Instance->RDR & 0xFFu));
+    }
+
     __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
 
     g_appBc95AtRxContext.error = APP_FALSE;
@@ -3558,7 +3568,12 @@ void App_Bc95AtOnUartRxCompleteIsr(UART_HandleTypeDef *p_huart)
             (p_huart == s_bc95UrcMonitor.p_huart))
         {
             App_Bc95AtUrcMonitorFeedIsr(s_bc95UrcMonitor.byte);
-            (void)HAL_UART_Receive_IT(p_huart, &s_bc95UrcMonitor.byte, 1u);
+            if (HAL_UART_Receive_IT(p_huart, &s_bc95UrcMonitor.byte, 1u) != HAL_OK)
+            {
+                /* [보완4] 재무장 실패 시 armed 를 끈다 - 실패가 반영되지 않으면
+                 * armed=TRUE 인 채 모니터가 죽어 공백 구간 EVTIND가 전부 유실된다. */
+                s_bc95UrcMonitor.armed = APP_FALSE;
+            }
         }
         return;
     }
@@ -3566,7 +3581,15 @@ void App_Bc95AtOnUartRxCompleteIsr(UART_HandleTypeDef *p_huart)
     nextIndex = (uint16_t)(g_appBc95AtRxContext.receivedLength + 1u);
     g_appBc95AtRxContext.receivedLength = nextIndex;
 
-    if (nextIndex >= g_appBc95AtRxContext.bufferSize) return;
+    if (nextIndex >= g_appBc95AtRxContext.bufferSize)
+    {
+        /* [보완2] 버퍼 만료로 수신 체인이 끊기면 그 뒤 바이트(NCONFIG? 실측 255B+
+         * 초과분과 그 뒤에 붙는 EVTIND)가 전부 유실된다. 응답 캡처를 종료하고
+         * URC 모니터로 우회해 EVTIND만이라도 래치한다(응답 파싱은 수신분으로 가능). */
+        g_appBc95AtRxContext.active = APP_FALSE;
+        App_Bc95AtArmUrcMonitor(p_huart);
+        return;
+    }
 
     /* active 한 번 더 확인 (메인 루프에서 finish 한 경우 IT 재등록 금지) */
     if (g_appBc95AtRxContext.active != APP_TRUE) return;
@@ -3575,7 +3598,19 @@ void App_Bc95AtOnUartRxCompleteIsr(UART_HandleTypeDef *p_huart)
                                     &g_appBc95AtRxContext.p_buffer[nextIndex], 1u);
     if (halStatus != HAL_OK)
     {
-        g_appBc95AtRxContext.error = APP_TRUE;
+        /* [보완1] 재무장 실패 시 1회 재시도. 그래도 실패하면 응답 캡처를 종료하고
+         * URC 모니터로 전환한다 - 조용히 죽은 RX 체인 뒤로 도착하는 EVTIND가
+         * 전부 버려지는 것을 막는다(모뎀은 체인 사망과 무관하게 출력을 계속함).
+         * 실측(2026-10-30 001035 wake): 버스트 중 :4/:3/:8 만 래치(mask=0x0118),
+         * :0 만 유실 - 응답 완료 직후 체인 사망 구간에서 URC가 통째로 버려지는 패턴. */
+        halStatus = HAL_UART_Receive_IT(p_huart,
+                                        &g_appBc95AtRxContext.p_buffer[nextIndex], 1u);
+        if (halStatus != HAL_OK)
+        {
+            g_appBc95AtRxContext.error    = APP_TRUE;
+            g_appBc95AtRxContext.active   = APP_FALSE;
+            App_Bc95AtArmUrcMonitor(p_huart);
+        }
     }
 }
 
@@ -6264,11 +6299,13 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
         status = App_Bc95AtPlatformRegister();
         if (status != APP_STATUS_OK)
         {
-            APP_LOGW("NBIOT", "%s platform register failed on attempt %lu/%lu (status=%d)",
+            APP_LOGW("NBIOT",
+                     "%s platform register failed on attempt %lu/%lu (status=%d, evtind last=%d mask=0x%04X)",
                      p_logTag,
                      (unsigned long)sendAttempt,
                      (unsigned long)APP_BC95_PLATFORM_SEND_RETRY_MAX,
-                     (int)status);
+                     (int)status,
+                     s_bc95LastEVTIND, s_bc95EVTINDSeenMask);
             if (status == APP_STATUS_UART_TIMEOUT)
             {
                 registerFailCount++;
