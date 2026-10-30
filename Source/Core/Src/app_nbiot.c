@@ -241,11 +241,11 @@ static uint8_t g_appBc95UdpSeqCounter = 0u;
 
 /* service(플랫폼) 전송 통계: mgmt 트레일러(tag 0xD3)에 실어 보고한다.
  * - serviceTxAttempts: QLWULDATAEX 전송 시도 누적(성공/실패 무관)
- * - serviceAckCount  : CON 성공 URC(+QLWULDATASTATUS:4) 수신 누적
+ * - serviceSuccessCount  : CON 성공 URC(+QLWULDATASTATUS:4) 수신 누적
  * mgmt 전송(부팅 live 전송 포함)에 실려 보고된 뒤 0으로 리셋된다 -
  * 트레일러 값은 "직전 mgmt 보고 이후의 service 전송 결과"를 뜻한다. */  
 static volatile uint32_t s_appNbiotServiceTxAttempts = 0u;
-static volatile uint32_t s_appNbiotServiceAckCount   = 0u;
+static volatile uint32_t s_appNbiotServiceSuccessCount   = 0u;
 
 static AppStatus_t App_Bc95AtIcasePrefixMatch(const char *p_text, const char *p_token, uint16_t tokenLen);
 static uint8_t App_Bc95AtNconfigTokenHasValue(const char *p_resp, const char *p_key, const char *p_value);
@@ -1443,7 +1443,7 @@ static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint
 
     /* 255 포화: 1바이트 필드이므로 값을 넘기지 않고 최댓값에 고정 */
     stat[0] = (s_appNbiotServiceTxAttempts > 255u) ? 255u : (uint8_t)s_appNbiotServiceTxAttempts;
-    stat[1] = (s_appNbiotServiceAckCount   > 255u) ? 255u : (uint8_t)s_appNbiotServiceAckCount;
+    stat[1] = (s_appNbiotServiceSuccessCount   > 255u) ? 255u : (uint8_t)s_appNbiotServiceSuccessCount;
 
     p_packet[cursor++] = APP_MGMT_TX_SERVICE_STAT_TAG;
     p_packet[cursor++] = APP_MGMT_TX_SERVICE_STAT_PAYLOAD_LEN;
@@ -1467,7 +1467,7 @@ static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint
     /* 보고 완료 - 다음 mgmt 보고까지의 구간 통계를 위해 리셋한다.
      * (패킷에는 이미 값이 복사되어 있으므로 리셋이 전송 내용에 영향 없음) */
     s_appNbiotServiceTxAttempts = 0u;
-    s_appNbiotServiceAckCount   = 0u;
+    s_appNbiotServiceSuccessCount   = 0u;
 
     return APP_STATUS_OK;
 }
@@ -2215,6 +2215,17 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
     (void)memset(p_buffer, 0, bufferSize);
     if (p_rxLengthOut != NULL) *p_rxLengthOut = 0u;
 
+    /* EVTIND 조기 도착 래치 캡처 (경로 6 - 명령 시작 전 잔량 스캔):
+     * 이전 명령 응답이 폐기되며 버퍼에 남은 URC 혼입분을 버리기 전에 회수한다
+     * (boot20 실측: preflight 중 NCONFIG? 등 status=13 폐기 구간 URC 유실). */
+    if ((g_appBc95AtRxContext.p_buffer != NULL) &&
+        (g_appBc95AtRxContext.active != APP_TRUE) &&
+        (g_appBc95AtRxContext.receivedLength > 0u))
+    {
+        App_Bc95AtScanBufferForEVTIND((const char *)g_appBc95AtRxContext.p_buffer,
+                                      g_appBc95AtRxContext.receivedLength);
+    }
+
     g_appBc95AtRxContext.p_huart        = p_huart;
     g_appBc95AtRxContext.p_buffer       = p_buffer;
     g_appBc95AtRxContext.bufferSize     = (uint16_t)(bufferSize - 1u);
@@ -2433,6 +2444,15 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
 
     (void)memset(g_appBc95AtRxBuf, 0, sizeof(g_appBc95AtRxBuf));
     bufferCap = (uint16_t)(sizeof(g_appBc95AtRxBuf) - 1u);
+
+    /* EVTIND 래치 (경로 6): 부트 대기 시작 전 이전 버퍼 잔량 회수 */
+    if ((g_appBc95AtRxContext.p_buffer != NULL) &&
+        (g_appBc95AtRxContext.active != APP_TRUE) &&
+        (g_appBc95AtRxContext.receivedLength > 0u))
+    {
+        App_Bc95AtScanBufferForEVTIND((const char *)g_appBc95AtRxContext.p_buffer,
+                                      g_appBc95AtRxContext.receivedLength);
+    }
 
     g_appBc95AtRxContext.p_huart        = APP_UART_NBIOT_HANDLE;
     g_appBc95AtRxContext.p_buffer       = g_appBc95AtRxBuf;
@@ -5699,6 +5719,15 @@ static AppStatus_t App_Bc95AtWaitForLinePrefix(const char *p_prefix,
         p_rxSnapshot[0] = '\0';
     }
 
+    /* EVTIND 래치 (경로 6): prefix 대기 시작 전 이전 버퍼 잔량 회수 */
+    if ((g_appBc95AtRxContext.p_buffer != NULL) &&
+        (g_appBc95AtRxContext.active != APP_TRUE) &&
+        (g_appBc95AtRxContext.receivedLength > 0u))
+    {
+        App_Bc95AtScanBufferForEVTIND((const char *)g_appBc95AtRxContext.p_buffer,
+                                      g_appBc95AtRxContext.receivedLength);
+    }
+
     g_appBc95AtRxContext.p_huart        = APP_UART_NBIOT_HANDLE;
     g_appBc95AtRxContext.p_buffer       = g_appBc95AtRxBuf;
     g_appBc95AtRxContext.bufferSize     = (uint16_t)(sizeof(g_appBc95AtRxBuf) - 1u);
@@ -5785,9 +5814,9 @@ static void App_NbiotServiceTxStatCount(void)
     s_appNbiotServiceTxAttempts++;
 }
 
-static void App_NbiotServiceAckStatCount(void)
+static void App_NbiotServiceSuccessStatCount(void)
 {
-    s_appNbiotServiceAckCount++;
+    s_appNbiotServiceSuccessCount++;
 }
 
 /* 노트 1.3: +QLWEVTIND:0=등록 완료, :3=object 10250 observe 완료 -> :3 이후 UL/DL 가능.
@@ -6113,7 +6142,7 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
             if (qlwStatus == 4)
             {
                 /* CON 성공 URC 수신 통계 (mgmt 트레일러 tag 0xD3 보고용) */
-                App_NbiotServiceAckStatCount();
+                App_NbiotServiceSuccessStatCount();
             }
 
             if ((qlwStatus == 4) && ((qlwSeq < 0) || (qlwSeq == (int)seqNum)))
