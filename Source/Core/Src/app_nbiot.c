@@ -1828,7 +1828,90 @@ static volatile uint8_t s_bc95LatchIsrPending = 0u;
 static volatile uint16_t s_bc95EVTINDSeenMask = 0u;
 /* 요약 시점에 이미 로그를 남긴 이벤트 비트마스크(ISR 캡처분 중복 로그 방지) */
 static uint16_t s_bc95LoggedMask = 0u; /* ISR 래치 갱신 표지(메인 루프 로그용) */
+/* [2단계-1차] HW 수신 오류 카운터: 유실 원인(오버런 유무) 실증용.
+ * drain 시작 시 플래그 폴링으로 적산하고, ISR 모니터 분기에서는 ORE 발견 즉시
+ * 클리어(자동복구)하며 적산한다. register 실패/래치 캡처 로그에 함께 출력되며
+ * 카운터는 세션 누적이므로 웨이크 간 증가분으로 판독한다. */
+static volatile uint32_t s_bc95RxErrOreCount = 0u;
+static volatile uint32_t s_bc95RxErrFeCount  = 0u;
+static volatile uint32_t s_bc95RxErrNeCount  = 0u;
+static volatile uint32_t s_bc95RxErrPeCount  = 0u;
 
+/* ============================================================
+ *  [2단계-2차] URC 모니터 idle-DMA 전환 (ORE 증가 확정 후 적용 권장)
+ *    - 공백 구간(명령 미진행) 수신을 1바이트 IT -> idle-line DMA 로 전환.
+ *      버스트 URC(EVTIND 4줄)는 ISR 개입 없이 HW가 연속 수신하므로
+ *      ISR 지연 유발 오버런(ORE)에 의한 EVTIND 유실이 근본 제거된다.
+ *    - 응답 캡처 체인(명령 진행 중 1바이트 IT)은 유지: 명령 시작 시
+ *      DMA 수신분을 구제-스캔한 뒤 중단하고, 명령 종료(FinishRxIt)에서 재무장.
+ *    - DMA1_Channel3 은 코드에서 직접 초기화하므로 CubeMX .ioc 수정 불필요.
+ *    - DMA 채널 NVIC 인터럽트는 의도적으로 enable 하지 않는다(stm32l0xx_it.c 에
+ *      핸들러가 없어 TC/HT 인터럽트 발생 시 Default_Handler 행 hang 위험).
+ *      대신 수신 완료 판정은 UART IDLE 이벤트(UART IRQ 기존 경로)와
+ *      DisarmUrcMonitor 의 CNDTR 기반 구제-스캔이 담당한다.
+ * ============================================================ */
+#define APP_BC95_AT_RX_DMA_BUF_SIZE        (256u)
+/* [초안-검증필수] LPUART1_RX 의 DMA1 CSELR 요청 코드(DMA_REQUEST_5 임시값).
+ * CubeMX에서 LPUART1_RX 에 DMA(RX, DMA1_Channel3)를 추가하면 자동 생성되는
+ * Init.Request 값을 그대로 복사하는 것이 가장 확실하다. 잘못된 값은 CH3 가
+ * 다른 주변장치 요청에 매핑되어 RX DMA 가 전혀 동작하지 않는다(벤치에서
+ * EVTIND 래치 전무로 즉시 확인됨 - 침묵 고장이 아님). */
+#ifndef APP_BC95_RX_DMA_REQUEST
+#define APP_BC95_RX_DMA_REQUEST            (DMA_REQUEST_5)
+#endif
+
+static DMA_HandleTypeDef s_bc95RxDmaHandle;
+static uint8_t           s_bc95RxDmaBuf[APP_BC95_AT_RX_DMA_BUF_SIZE];
+static volatile uint8_t  s_bc95RxDmaArmed     = 0u;
+static volatile uint32_t s_bc95RxDmaRearmFail = 0u;
+
+/* DMA 수신분 EVTIND 스캔: len = 이미 수신된 바이트 수 */
+static void App_Bc95AtRxDmaScanAndLatch(uint16_t len)
+{
+    uint16_t safeLen;
+
+    if (len == 0u)
+    {
+        return;
+    }
+    safeLen = (len > (uint16_t)APP_BC95_AT_RX_DMA_BUF_SIZE)
+              ? (uint16_t)APP_BC95_AT_RX_DMA_BUF_SIZE : len;
+    App_Bc95AtScanBufferForEVTIND((const char *)s_bc95RxDmaBuf, safeLen);
+}
+
+/* idle-DMA (재)기동: 실패 시 disarm + 카운터 (재무장 실패 은폐 방지) */
+static void App_Bc95AtRxDmaStart(void)
+{
+    if (HAL_UARTEx_ReceiveToIdle_DMA(s_bc95UrcMonitor.p_huart,
+                                     s_bc95RxDmaBuf,
+                                     APP_BC95_AT_RX_DMA_BUF_SIZE) != HAL_OK)
+    {
+        s_bc95RxDmaArmed       = APP_FALSE;
+        s_bc95UrcMonitor.armed = APP_FALSE;
+        s_bc95RxDmaRearmFail++;
+    }
+}
+
+/* RxEvent 콜백(idle/HT/TC): 수신분 EVTIND 래치 후 즉시 재무장 */
+static void App_Bc95AtRxDmaRxEventCb(UART_HandleTypeDef *huart, uint16_t Size)
+{
+    if ((huart != APP_UART_NBIOT_HANDLE) || (s_bc95RxDmaArmed != APP_TRUE))
+    {
+        return;
+    }
+    App_Bc95AtRxDmaScanAndLatch(Size);
+    App_Bc95AtRxDmaStart();
+}
+
+#if (USE_HAL_UART_REGISTER_CALLBACKS == 1U)
+/* 등록형 콜백: ArmUrcMonitor 에서 HAL_UART_RegisterRxEventCallback 로 등록한다 */
+#else
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+    App_Bc95AtRxDmaRxEventCb(huart, Size);
+}
+#endif
+ 
 static void App_Bc95AtArmUrcMonitor(UART_HandleTypeDef *p_huart)
 {
     if (p_huart == NULL)
@@ -1836,11 +1919,42 @@ static void App_Bc95AtArmUrcMonitor(UART_HandleTypeDef *p_huart)
         return;
     }
     s_bc95UrcMonitor.p_huart = p_huart;
-    s_bc95UrcMonitor.armed   = APP_TRUE;
-    if (HAL_UART_Receive_IT(p_huart, &s_bc95UrcMonitor.byte, 1u) != HAL_OK)
+    if (s_bc95RxDmaArmed == APP_TRUE)
     {
-        s_bc95UrcMonitor.armed = APP_FALSE;
+        return;
     }
+    if (s_bc95RxDmaHandle.Instance == NULL)
+    {
+        /* [2단계-2차] DMA1 + LPUART1_RX 채널 1회 초기화.
+         * STM32L0 DMA는 CSELR 매핑이므로 Init.Request 값이 곧 채널 요청 선택이다. */
+        __HAL_RCC_DMA1_CLK_ENABLE();
+        (void)memset(&s_bc95RxDmaHandle, 0, sizeof(s_bc95RxDmaHandle));
+        s_bc95RxDmaHandle.Instance                 = DMA1_Channel3;
+        s_bc95RxDmaHandle.Init.Request             = APP_BC95_RX_DMA_REQUEST;
+        s_bc95RxDmaHandle.Init.Direction           = DMA_PERIPH_TO_MEMORY;
+        s_bc95RxDmaHandle.Init.PeriphInc           = DMA_PINC_DISABLE;
+        s_bc95RxDmaHandle.Init.MemInc              = DMA_MINC_ENABLE;
+        s_bc95RxDmaHandle.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+        s_bc95RxDmaHandle.Init.MemDataAlignment    = DMA_MDATAALIGN_BYTE;
+        s_bc95RxDmaHandle.Init.Mode                = DMA_NORMAL;
+        s_bc95RxDmaHandle.Init.Priority            = DMA_PRIORITY_VERY_HIGH;
+        if (HAL_DMA_Init(&s_bc95RxDmaHandle) != HAL_OK)
+        {
+            s_bc95UrcMonitor.armed = APP_FALSE;
+            return;
+        }
+        __HAL_LINKDMA(p_huart, hdmarx, s_bc95RxDmaHandle);
+#if (USE_HAL_UART_REGISTER_CALLBACKS == 1U)
+        if (HAL_UART_RegisterRxEventCallback(p_huart, App_Bc95AtRxDmaRxEventCb) != HAL_OK)
+        {
+            s_bc95UrcMonitor.armed = APP_FALSE;
+            return;
+        }
+#endif
+    }
+    s_bc95UrcMonitor.armed = APP_TRUE;
+    s_bc95RxDmaArmed       = APP_TRUE;
+    App_Bc95AtRxDmaStart();
 }
 
 static void App_Bc95AtDisarmUrcMonitor(UART_HandleTypeDef *p_huart)
@@ -1853,8 +1967,16 @@ static void App_Bc95AtDisarmUrcMonitor(UART_HandleTypeDef *p_huart)
     {
         return;
     }
-    (void)HAL_UART_AbortReceive_IT(p_huart);
+    /* [2단계-2차] 중단 전 DMA 수신분을 스캔해 EVTIND를 구제한다 -
+     * 명령 직전에 도착한 URC가 기존 1바이트 모니터/플러시 경계에서
+     * 유실되던 boot14/boot20 패턴을 DMA 버퍼 째로 회수한다. */
+    App_Bc95AtRxDmaScanAndLatch(
+        (uint16_t)(APP_BC95_AT_RX_DMA_BUF_SIZE -
+                   s_bc95RxDmaHandle.Instance->CNDTR));
+    (void)HAL_UART_AbortReceive(p_huart);
+
     s_bc95UrcMonitor.armed = APP_FALSE;
+    s_bc95RxDmaArmed       = APP_FALSE;
 }
 
 /* ============================================================
@@ -2012,10 +2134,17 @@ static void App_Bc95AtUrcMonitorFeedIsr(uint8_t byteValue)
 static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
 {
     uint32_t guardMs;
+    uint8_t  rescueIdx;
 
     if (p_huart == NULL) return;
 
     App_Bc95AtFinishRxIt(p_huart);
+
+    /* [2단계-1차] 클리어 전 오류 플래그 적산 - 유실 웨이크에서 ORE 유무 실증 */
+    if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_ORE) != RESET) { s_bc95RxErrOreCount++; }
+    if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_FE)  != RESET) { s_bc95RxErrFeCount++;  }
+    if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_NE)  != RESET) { s_bc95RxErrNeCount++;  }
+    if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_PE)  != RESET) { s_bc95RxErrPeCount++;  }
 
     __HAL_UART_CLEAR_FLAG(p_huart,
                           UART_CLEAR_OREF | UART_CLEAR_FEF |
@@ -2025,8 +2154,15 @@ static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
      * 먹인다 - abort 와 flush 사이에 남은 EVTIND 선두/본체 바이트가 플러시로
      * 버려지는 것(boot14 실측, resync 주석의 선두 유실)을 줄인다.
      * ISR 이 먼저 가져갔으면 RXNE 가 이미 클리어되어 무동작(이중 소비 없음). */
-    if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_RXNE) != RESET)
+    /* [2단계-1차] 1바이트 -> 최대 16바이트 루프 확장: 오버런 직전 RDR에
+     * 여러 바이트가 쌓인 경우에도 EVTIND 본체 전체가 살아난다.
+     * ISR 이 먼저 가져갔으면 RXNE 가 클리어되어 즉시 종료(이중 소비 없음). */
+    for (rescueIdx = 0u; rescueIdx < 16u; rescueIdx++)
     {
+        if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_RXNE) == RESET)
+        {
+            break;
+        }
         App_Bc95AtUrcMonitorFeedIsr((uint8_t)(p_huart->Instance->RDR & 0xFFu));
     }
 
@@ -3567,12 +3703,13 @@ void App_Bc95AtOnUartRxCompleteIsr(UART_HandleTypeDef *p_huart)
         if ((s_bc95UrcMonitor.armed == APP_TRUE) &&
             (p_huart == s_bc95UrcMonitor.p_huart))
         {
-            App_Bc95AtUrcMonitorFeedIsr(s_bc95UrcMonitor.byte);
-            if (HAL_UART_Receive_IT(p_huart, &s_bc95UrcMonitor.byte, 1u) != HAL_OK)
+            /* [2단계-2차] 공백 구간 수신은 idle-DMA 가 담당한다.
+             * 1바이트 IT 는 DMA 와 충돌하므로 여기서 재무장하지 않는다.
+             * ORE 카운트/복구(2단계-1차)만 유지한다. */
+            if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_ORE) != RESET)
             {
-                /* [보완4] 재무장 실패 시 armed 를 끈다 - 실패가 반영되지 않으면
-                 * armed=TRUE 인 채 모니터가 죽어 공백 구간 EVTIND가 전부 유실된다. */
-                s_bc95UrcMonitor.armed = APP_FALSE;
+                s_bc95RxErrOreCount++;
+                __HAL_UART_CLEAR_FLAG(p_huart, UART_CLEAR_OREF);
             }
         }
         return;
@@ -6124,8 +6261,10 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
         else
         {
             /* [관측성] 실제 관측값을 출력해 bit0(EVTIND:0) 누락 웨이크를 즉시 식별 */
-            APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch captured(last=%d mask=0x%04X). Ready UL/DL",
-                     s_bc95LastEVTIND, s_bc95EVTINDSeenMask);
+            APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch captured(last=%d mask=0x%04X, ore=%lu fe=%lu). Ready UL/DL",
+                     s_bc95LastEVTIND, s_bc95EVTINDSeenMask,
+                     (unsigned long)s_bc95RxErrOreCount,
+                     (unsigned long)s_bc95RxErrFeCount);
         }
         return APP_STATUS_OK;
     }
@@ -6300,12 +6439,14 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
         if (status != APP_STATUS_OK)
         {
             APP_LOGW("NBIOT",
-                     "%s platform register failed on attempt %lu/%lu (status=%d, evtind last=%d mask=0x%04X)",
+                     "%s platform register failed on attempt %lu/%lu (status=%d, evtind last=%d mask=0x%04X, ore=%lu fe=%lu)",
                      p_logTag,
                      (unsigned long)sendAttempt,
                      (unsigned long)APP_BC95_PLATFORM_SEND_RETRY_MAX,
                      (int)status,
-                     s_bc95LastEVTIND, s_bc95EVTINDSeenMask);
+                     s_bc95LastEVTIND, s_bc95EVTINDSeenMask,
+                     (unsigned long)s_bc95RxErrOreCount,
+                     (unsigned long)s_bc95RxErrFeCount);
             if (status == APP_STATUS_UART_TIMEOUT)
             {
                 registerFailCount++;
