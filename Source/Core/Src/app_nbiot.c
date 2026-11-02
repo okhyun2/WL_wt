@@ -5737,6 +5737,24 @@ static AppStatus_t App_NbiotRunPlatformPreflight(void)
     return APP_STATUS_OK;
 }
 
+/* [mgmt-only wake] mgmt 전용 웨이크에서 bootstrap/프로비저닝/EVTIND 등록 대기를
+ * 생략한다. FSM wakeup 경로에서 service 웨이크 보류 플래그가 없을 때만 세우며,
+ * service 웨이크/부팅/동시 due 웨이크는 기존 풀 코스를 유지한다.
+ * 실측(2026-10-30 주말 로그): 순수 mgmt 웨이크 63회 중위 47s 중 mgmt UDP 본 전송은
+ * 약 3s. provisioning(QREGSWT=1 + AT+NCONFIG=AUTOCONNECT,TRUE 재설정 + QLWSERVERIP/
+ * MBSPS 쓰기 + NRB)과 post-provision finalize(settle + EVTIND srv-ready 대기 +
+ * reattach 대기)는 LwM2M bootstrap 전용 단계라 raw UDP mgmt 전송에 불필요하다.
+ * 부팅 설정 시퀀스(AUTOCONNECT=FALSE + NRB)는 유지한다 - NRB 후 NVM의 AUTOCONNECT가
+ * FALSE로 남아 이 세션(그리고 다음 전원온)에서 LwM2M 엔진이 자기 등록(bootstrap)을
+ * 시작하지 않는다. 다음 service 웨이크의 provisioning이 다시 TRUE로 복원한다. */
+static uint8_t s_appNbiotMgmtOnlyWake = APP_FALSE;
+
+AppStatus_t App_NBIoTSetMgmtOnlyWake(uint8_t enable)
+{
+    s_appNbiotMgmtOnlyWake = enable;
+    return APP_STATUS_OK;
+}
+
 AppStatus_t App_NBIoTColdBootResetTrack(void)
 {
     AppStatus_t status;
@@ -5753,6 +5771,26 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
     s_bc95LatchIsrPending = 0u;
 
     APP_LOGN("NBIOT", "[[BootTrack]] start cold-boot reset/provision flow");
+
+    if (s_appNbiotMgmtOnlyWake == APP_TRUE)
+    {
+        /* [mgmt-only wake] 경량 경로:
+         *  - 유지: 부팅 설정(AUTOCONNECT=FALSE + NRB) -> LwM2M 엔진 기동 억제,
+         *          attach(App_NBIoTCarrierAttachMandatory, raw UDP에 필수)
+         *  - 생략: provisioning(QREGSWT=1 + AUTOCONNECT=TRUE 재설정 + NRB)과
+         *          post-provision finalize(settle + EVTIND srv-ready 대기 + reattach).
+         *          bootstrap/등록 대기가 mgmt 웨이크에서 아예 발생하지 않는다. */
+        APP_LOGN("NBIOT", "[[BootTrack]] mgmt-only wake: provisioning/finalize skipped (bootstrap disabled)");
+        status = App_NbiotRunBootConfigurationSequence();
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+        status = App_NbiotRunBoardAttachVerificationSequence();
+        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+        APP_LOGN("NBIOT", "[[BootTrack]] done (mgmt-only light path)");
+        return APP_STATUS_OK;
+    }
+
     status = App_NbiotRunBootConfigurationSequence();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 

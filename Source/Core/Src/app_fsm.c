@@ -4208,6 +4208,14 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                  */
                 APP_LOGN("FSM", "[[BootTrack]] wakeup -> run same cold-boot reset/provision track as board boot");
 
+                /* [mgmt-only wake] service 웨이크 보류 플래그가 모두 없으면 mgmt 전용
+                 * 웨이크로 보고 ColdBootResetTrack 내 provisioning/finalize
+                 * (bootstrap 등록 + EVTIND 대기)를 생략시킨다.
+                 * service/부팅/동시 due 웨이크는 플래그가 내려가 기존 풀 코스를 유지한다.
+                 * 플래그는 트랙 실행 후 즉시 해제해 다음 세션에 영향을 주지 않는다. */
+                (void)App_NBIoTSetMgmtOnlyWake(
+                    ((g_appFsmRtcServiceTxWakePending != APP_TRUE) &&
+                     (g_appFsmRtcTxWakePending        != APP_TRUE)) ? APP_TRUE : APP_FALSE);
                 trackStatus = App_NBIoTColdBootResetTrack();
                 if (trackStatus != APP_STATUS_OK)
                 {
@@ -4217,6 +4225,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 g_appFsmNbiotBusyWindow = APP_TRUE;
                 (void)App_FsmRunTxWakeTracks(deleteOnServiceTx);
                 g_appFsmNbiotBusyWindow = APP_FALSE;
+                (void)App_NBIoTSetMgmtOnlyWake(APP_FALSE);
             }
 
             APP_RETURN_IF_FALSE(App_NBIoTCarrierPowerOffMandatory() == APP_STATUS_OK, APP_STATUS_FATAL);
