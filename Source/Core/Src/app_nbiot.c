@@ -1839,6 +1839,115 @@ static volatile uint32_t s_bc95RxErrNeCount  = 0u;
 static volatile uint32_t s_bc95RxErrPeCount  = 0u;
 
 /* ============================================================
+ *  [INSTR] EVTIND 이벤트 추적 링버퍼 (진단 전용, 동작 변경 없음)
+ *    - 어느 경로(ISR/DMA/라인스캔/구제스캔)가 언제 이벤트를 캡처했는지 기록
+ *    - Add 는 ISR 안전(PRIMASK, 로그 호출 없음). Dump 는 메인 컨텍스트 전용
+ * ============================================================ */
+#define APP_BC95_TRC_DEPTH        (32u)   /* 2의 거듭제곱 */
+#define APP_BC95_TRC_KIND_EVT     (0u)    /* val = EVTIND 번호 */
+#define APP_BC95_TRC_KIND_DMA     (1u)    /* val = DMA idle 수신 바이트 수 */
+#define APP_BC95_TRC_KIND_RESCUE  (2u)    /* val = Disarm 시 CNDTR 구제 바이트 수 */
+#define APP_BC95_TRC_KIND_MARK    (3u)    /* val = 마커 ID */
+#define APP_BC95_TRC_SRC_NONE     (0u)
+#define APP_BC95_TRC_SRC_ISR      (1u)    /* 1바이트 모니터 FSM */
+#define APP_BC95_TRC_SRC_DMA      (2u)    /* RxEvent 콜백 */
+#define APP_BC95_TRC_SRC_LINE     (3u)    /* 라인/버퍼 스캔 (UpdateEVTINDLatch) */
+#define APP_BC95_TRC_SRC_RESCUE   (4u)    /* Disarm CNDTR 구제 스캔 */
+#define APP_BC95_TRC_SRC_COUNT    (5u)
+#define APP_BC95_TRC_MARK_LATCHRESET (1)
+
+typedef struct
+{
+    uint32_t tick;
+    int16_t  val;
+    uint16_t mask;     /* 기록 시점의 s_bc95EVTINDSeenMask */
+    uint8_t  kind;
+    uint8_t  src;
+    uint8_t  dup;      /* EVT: 이미 mask 에 있던 이벤트를 다시 캡처 */
+    uint8_t  pad;
+} AppBc95EvtTrace_t;
+
+static AppBc95EvtTrace_t s_bc95Trc[APP_BC95_TRC_DEPTH];
+static volatile uint32_t s_bc95TrcHead = 0u;
+static uint32_t          s_bc95TrcDumped = 0u;
+static volatile uint8_t  s_bc95TrcSrcHint = 0u;
+static volatile uint16_t s_bc95TrcSrcCnt[APP_BC95_TRC_SRC_COUNT];
+static volatile uint16_t s_bc95TrcDupCnt = 0u;
+
+static void App_Bc95EvtTraceAdd(uint8_t kind, uint8_t src, int16_t val, uint8_t dup)
+{
+    uint32_t primask = __get_PRIMASK();
+    uint32_t idx;
+
+    __disable_irq();
+    if ((kind == APP_BC95_TRC_KIND_EVT) && (dup != 0u))
+    {
+        /* 중복 캡처: 링 범람 방지를 위해 저장하지 않고 카운터만 증가 */
+        if (src < APP_BC95_TRC_SRC_COUNT) { s_bc95TrcSrcCnt[src]++; }
+        s_bc95TrcDupCnt++;
+        __set_PRIMASK(primask);
+        return;
+    }
+    idx = s_bc95TrcHead & (APP_BC95_TRC_DEPTH - 1u);
+    s_bc95Trc[idx].tick = HAL_GetTick();
+    s_bc95Trc[idx].val  = val;
+    s_bc95Trc[idx].mask = s_bc95EVTINDSeenMask;
+    s_bc95Trc[idx].kind = kind;
+    s_bc95Trc[idx].src  = src;
+    s_bc95Trc[idx].dup  = dup;
+    s_bc95Trc[idx].pad  = 0u;
+    s_bc95TrcHead++;
+    if (kind == APP_BC95_TRC_KIND_EVT)
+    {
+        if (src < APP_BC95_TRC_SRC_COUNT) { s_bc95TrcSrcCnt[src]++; }
+        if (dup != 0u) { s_bc95TrcDupCnt++; }
+    }
+    __set_PRIMASK(primask);
+}
+
+/* 메인 컨텍스트 전용(로그 호출). 마지막 Dump 이후 기록분만 출력하고 커서를 전진 */
+static void App_Bc95EvtTraceDump(const char *p_tag)
+{
+    static const char *const kKind[] = { "EVT", "DMA", "RESCUE", "MARK" };
+    static const char *const kSrc[]  = { "-", "ISR", "DMA", "LINE", "RESCUE" };
+    uint32_t head = s_bc95TrcHead;
+    uint32_t from = s_bc95TrcDumped;
+    uint32_t lost = 0u;
+    uint32_t i;
+
+    if ((head - from) > APP_BC95_TRC_DEPTH)
+    {
+        lost = (head - from) - APP_BC95_TRC_DEPTH;
+        from = head - APP_BC95_TRC_DEPTH;
+    }
+    APP_LOGN("NBIOT",
+             "[[EvtTrace]] %s n=%lu lost=%lu last=%d mask=0x%04X cnt(isr=%u dma=%u line=%u rescue=%u dup=%u) ore=%lu fe=%lu",
+             p_tag,
+             (unsigned long)(head - from), (unsigned long)lost,
+             s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask,
+             (unsigned int)s_bc95TrcSrcCnt[APP_BC95_TRC_SRC_ISR],
+             (unsigned int)s_bc95TrcSrcCnt[APP_BC95_TRC_SRC_DMA],
+             (unsigned int)s_bc95TrcSrcCnt[APP_BC95_TRC_SRC_LINE],
+             (unsigned int)s_bc95TrcSrcCnt[APP_BC95_TRC_SRC_RESCUE],
+             (unsigned int)s_bc95TrcDupCnt,
+             (unsigned long)s_bc95RxErrOreCount,
+             (unsigned long)s_bc95RxErrFeCount);
+    for (i = from; i != head; i++)
+    {
+        const AppBc95EvtTrace_t *p_e = &s_bc95Trc[i & (APP_BC95_TRC_DEPTH - 1u)];
+        APP_LOGN("NBIOT", "[[EvtTrace]]  t=%lu.%03lu %s src=%s v=%d%s mask=0x%04X",
+                 (unsigned long)(p_e->tick / 1000u), (unsigned long)(p_e->tick % 1000u),
+                 (p_e->kind < 4u) ? kKind[p_e->kind] : "?",
+                 (p_e->src < APP_BC95_TRC_SRC_COUNT) ? kSrc[p_e->src] : "?",
+                 (int)p_e->val,
+                 (p_e->dup != 0u) ? " DUP" : "",
+                 (unsigned int)p_e->mask);
+    }
+    s_bc95TrcDumped = head;
+}
+
+
+/* ============================================================
  *  [2단계-2차] URC 모니터 idle-DMA 전환 (ORE 증가 확정 후 적용 권장)
  *    - 공백 구간(명령 미진행) 수신을 1바이트 IT -> idle-line DMA 로 전환.
  *      버스트 URC(EVTIND 4줄)는 ISR 개입 없이 HW가 연속 수신하므로
@@ -1900,7 +2009,13 @@ static void App_Bc95AtRxDmaRxEventCb(UART_HandleTypeDef *huart, uint16_t Size)
     {
         return;
     }
+    if (Size != 0u)
+    {
+        App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_DMA, APP_BC95_TRC_SRC_DMA, (int16_t)Size, 0u);
+    }
+    s_bc95TrcSrcHint = APP_BC95_TRC_SRC_DMA;
     App_Bc95AtRxDmaScanAndLatch(Size);
+    s_bc95TrcSrcHint = APP_BC95_TRC_SRC_NONE;
     App_Bc95AtRxDmaStart();
 }
 
@@ -1971,9 +2086,17 @@ static void App_Bc95AtDisarmUrcMonitor(UART_HandleTypeDef *p_huart)
     /* [2단계-2차] 중단 전 DMA 수신분을 스캔해 EVTIND를 구제한다 -
      * 명령 직전에 도착한 URC가 기존 1바이트 모니터/플러시 경계에서
      * 유실되던 boot14/boot20 패턴을 DMA 버퍼 째로 회수한다. */
-    App_Bc95AtRxDmaScanAndLatch(
-        (uint16_t)(APP_BC95_AT_RX_DMA_BUF_SIZE -
-                   s_bc95RxDmaHandle.Instance->CNDTR));
+    {
+        uint16_t rescueLen = (uint16_t)(APP_BC95_AT_RX_DMA_BUF_SIZE -
+                                        s_bc95RxDmaHandle.Instance->CNDTR);
+        if (rescueLen != 0u)
+        {
+            App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_RESCUE, APP_BC95_TRC_SRC_RESCUE, (int16_t)rescueLen, 0u);
+        }
+        s_bc95TrcSrcHint = APP_BC95_TRC_SRC_RESCUE;
+        App_Bc95AtRxDmaScanAndLatch(rescueLen);
+        s_bc95TrcSrcHint = APP_BC95_TRC_SRC_NONE;
+    }
     (void)HAL_UART_AbortReceive(p_huart);
 
     s_bc95UrcMonitor.armed = APP_FALSE;
@@ -2024,12 +2147,19 @@ static void App_Bc95AtUpdateEVTINDLatch(const char *p_line)
             /* [FIX-EVTIND-2] Cortex-M0+ 에서 |= 는 load-modify-store 라 비원자적이다.
              * DMA RxEvent(UART IRQ)와 메인 루프 스캔 경로가 같은 mask 를 갱신하므로 보호한다. */
             uint32_t primask = __get_PRIMASK();
+            uint16_t prevMask;
             __disable_irq();
+            prevMask = s_bc95EVTINDSeenMask;
             if ((eventType >= 0) && (eventType < 16))
             {
                 s_bc95EVTINDSeenMask |= (uint16_t)(1u << eventType);
             }
             s_bc95LastEVTIND = eventType;
+            App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_EVT,
+                                (s_bc95TrcSrcHint != 0u) ? s_bc95TrcSrcHint : APP_BC95_TRC_SRC_LINE,
+                                (int16_t)eventType,
+                                (uint8_t)(((eventType >= 0) && (eventType < 16) &&
+                                           ((prevMask & (uint16_t)(1u << eventType)) != 0u)) ? 1u : 0u));
             __set_PRIMASK(primask);
         }
     }
@@ -2095,11 +2225,16 @@ static void App_Bc95AtUrcMonitorFeedIsr(uint8_t byteValue)
         }
         if ((byteValue == '\r') || (byteValue == '\n'))
         {
+            uint16_t prevMaskIsr = s_bc95EVTINDSeenMask;
             s_bc95LastEVTIND = (int)s_bc95UrcMonitor.number;
             if (s_bc95UrcMonitor.number < 16u)
             {
                 s_bc95EVTINDSeenMask |= (uint16_t)(1u << s_bc95UrcMonitor.number);
             }
+            App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_EVT, APP_BC95_TRC_SRC_ISR,
+                                (int16_t)s_bc95UrcMonitor.number,
+                                (uint8_t)(((s_bc95UrcMonitor.number < 16u) &&
+                                           ((prevMaskIsr & (uint16_t)(1u << s_bc95UrcMonitor.number)) != 0u)) ? 1u : 0u));
             s_bc95LatchIsrPending = 1u;
         }
         s_bc95UrcMonitor.inNumber = 0u;
@@ -6159,7 +6294,8 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
             continue;
         }
 
-        APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWEVTIND=%d", eventType);
+        APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWEVTIND=%d (last=%d mask=0x%04X)",
+                 eventType, s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask);
         if (App_Bc95AtPlatformEventIsReady(eventType) == APP_TRUE)
         {
             return APP_STATUS_OK;
@@ -6198,6 +6334,7 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
     }
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] EVTIND state at timeout last=%d mask=0x%04X",
              s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask);
+    App_Bc95EvtTraceDump("wait-timeout");
 
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] platform-ready wait timeout%s",
              (bootstrapSeen == APP_TRUE) ? " after bootstrap-complete" : "");
@@ -6332,6 +6469,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
                      (unsigned long)s_bc95RxErrOreCount,
                      (unsigned long)s_bc95RxErrFeCount);
         }
+        App_Bc95EvtTraceDump("register-immediate");
         return APP_STATUS_OK;
     }
  
@@ -6340,6 +6478,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     if (status == APP_STATUS_OK)
     {
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] already-registered fast path hit");
+        App_Bc95EvtTraceDump("register-fastpath");
         return APP_STATUS_OK;
     }
     if ((status != APP_STATUS_UART_TIMEOUT) && (status != APP_STATUS_FATAL))
@@ -6352,6 +6491,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     s_bc95LastEVTIND = -1;
     s_bc95EVTINDSeenMask = 0u;
     s_bc95LatchIsrPending = 0u;
+    App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, APP_BC95_TRC_MARK_LATCHRESET, 0u);
  
     for (attempt = 1u; attempt <= APP_BC95_PLATFORM_REGISTER_RETRY_MAX; attempt++)
     {
@@ -6363,6 +6503,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
                                                           &needRegisterRetry);
         if (status == APP_STATUS_OK)
         {
+            App_Bc95EvtTraceDump("register-retry-ok");
             return APP_STATUS_OK;
         }
 
