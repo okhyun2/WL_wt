@@ -317,6 +317,7 @@ static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint
 
 static int s_bc95LastEVTIND = -1;
 static void App_Bc95AtUpdateEVTINDLatch(const char *p_line);
+static uint8_t App_Bc95AtEVTINDMaskReady(uint16_t seenMask);
 static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len);
 static uint8_t App_Bc95AtEVTINDMaskReadyFallbackOnly(uint16_t seenMask);
 /* ============================================================
@@ -2019,11 +2020,18 @@ static void App_Bc95AtUpdateEVTINDLatch(const char *p_line)
          * 명령 진행 중 도착한 URC는 ISR 모니터를 지나지 않으므로, 이 갱신이
          * 없으면 mask에서 해당 이벤트 비트가 누락된다(boot13 실측:
          * :0/:4 가 RAW 혼입 수신됐는데 mask=0x0108 로 비트0/4 누락). */
-        if ((eventType >= 0) && (eventType < 16))
         {
-            s_bc95EVTINDSeenMask |= (uint16_t)(1u << eventType);
+            /* [FIX-EVTIND-2] Cortex-M0+ 에서 |= 는 load-modify-store 라 비원자적이다.
+             * DMA RxEvent(UART IRQ)와 메인 루프 스캔 경로가 같은 mask 를 갱신하므로 보호한다. */
+            uint32_t primask = __get_PRIMASK();
+            __disable_irq();
+            if ((eventType >= 0) && (eventType < 16))
+            {
+                s_bc95EVTINDSeenMask |= (uint16_t)(1u << eventType);
+            }
+            s_bc95LastEVTIND = eventType;
+            __set_PRIMASK(primask);
         }
-        s_bc95LastEVTIND = eventType;
     }
 }
 
@@ -6127,6 +6135,16 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
         uint32_t remain = timeoutMs - (HAL_GetTick() - startTick);
         uint32_t chunk = (remain > 5000u) ? 5000u : remain;
 
+        /* [FIX-EVTIND-1] 대기 루프는 수신 줄 하나(eventType==3)만 보고 ready 를 판정했다.
+         * 스캔 경로가 mask 를 이미 ready 로 만들어도 보지 않아 FAST_PATH 타임아웃(120s)을
+         * 모두 소진한 뒤 래치가 리셋되어 이력이 버려졌다. 매 반복마다 mask 로 재판정한다. */
+        if (App_Bc95AtEVTINDMaskReady(s_bc95EVTINDSeenMask) == APP_TRUE)
+        {
+            APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch ready in wait loop (last=%d mask=0x%04X)",
+                     s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask);
+            return APP_STATUS_OK;
+        }
+
         status = App_Bc95AtWaitForLinePrefix(APP_BC95_AT_QLWEVTIND_PREFIX,
                                              chunk,
                                              rxSnapshot,
@@ -6170,6 +6188,16 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
             return APP_STATUS_FATAL;
         }
     }
+
+    /* [FIX-EVTIND-1b] 마지막 chunk 이후에도 mask 로 한 번 더 판정하고, 실패하면 상태를 남긴다. */
+    if (App_Bc95AtEVTINDMaskReady(s_bc95EVTINDSeenMask) == APP_TRUE)
+    {
+        APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch ready at wait end (last=%d mask=0x%04X)",
+                 s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask);
+        return APP_STATUS_OK;
+    }
+    APP_LOGW("NBIOT", "[[ServicePlatformWake]] EVTIND state at timeout last=%d mask=0x%04X",
+             s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask);
 
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] platform-ready wait timeout%s",
              (bootstrapSeen == APP_TRUE) ? " after bootstrap-complete" : "");
