@@ -1839,6 +1839,80 @@ static volatile uint32_t s_bc95RxErrNeCount  = 0u;
 static volatile uint32_t s_bc95RxErrPeCount  = 0u;
 
 /* ============================================================
+ *  [PROBE] RX blind-window instrumentation (diagnostic only, no behavior change)
+ *    - all variables are updated from main context only (no ISR access)
+ * ============================================================ */
+#define APP_BC95_TRC_MARK_PROBE_BLIND_RXNE (33)
+#define APP_BC95_TRC_MARK_PROBE_BLIND_ORE  (34)
+
+static volatile uint32_t s_probeCmds;
+static volatile uint32_t s_probeDmaOnAtDrain;
+static volatile uint32_t s_probeDmaOffAtDrain;
+static volatile uint32_t s_probeDmaFlagMismatch;
+static volatile uint32_t s_probeDisarmDmaOff;
+static volatile uint32_t s_probeBlindOre;
+static volatile uint32_t s_probeBlindRxne;
+static volatile uint32_t s_probeSplitSuspect;
+static volatile uint32_t s_probeBlindLastMs;
+static volatile uint32_t s_probeBlindMaxMs;
+static volatile uint32_t s_probeDrainTick;
+static volatile uint32_t s_probeBaud;
+static volatile uint8_t  s_probeBlindLastByte;
+
+static uint8_t App_Bc95RxProbeTailIsPartialUrc(const char *p_buf, uint16_t len)
+{
+    uint16_t plen = (uint16_t)APP_BC95_AT_QLWEVTIND_PREFIX_LEN;
+    uint16_t k;
+    uint16_t i;
+    uint16_t j;
+
+    /* (a) buffer ends with a leading part of "+QLWEVTIND:" */
+    for (k = 1u; (k < plen) && (k <= len); k++)
+    {
+        if (memcmp(&p_buf[len - k], APP_BC95_AT_QLWEVTIND_PREFIX, k) == 0)
+        {
+            return 1u;
+        }
+    }
+    /* (b) full prefix present but no CR/LF after it */
+    for (i = 0u; ((uint32_t)i + plen) <= len; i++)
+    {
+        if (memcmp(&p_buf[i], APP_BC95_AT_QLWEVTIND_PREFIX, plen) == 0)
+        {
+            j = (uint16_t)(i + plen);
+            while ((j < len) && (p_buf[j] != '\r') && (p_buf[j] != '\n'))
+            {
+                j++;
+            }
+            if (j >= len)
+            {
+                return 1u;
+            }
+        }
+    }
+    return 0u;
+}
+
+static void App_Bc95RxProbeDump(const char *p_where)
+{
+    APP_LOGN("NBIOT", "[[RxProbe]] %s cmds=%lu dma(on/off/mis)=%lu/%lu/%lu disarmOff=%lu",
+             p_where,
+             (unsigned long)s_probeCmds,
+             (unsigned long)s_probeDmaOnAtDrain,
+             (unsigned long)s_probeDmaOffAtDrain,
+             (unsigned long)s_probeDmaFlagMismatch,
+             (unsigned long)s_probeDisarmDmaOff);
+    APP_LOGN("NBIOT", "[[RxProbe]] blind(ore/rxne)=%lu/%lu lastB=0x%02X blindMs(last/max)=%lu/%lu split=%lu baud=%lu",
+             (unsigned long)s_probeBlindOre,
+             (unsigned long)s_probeBlindRxne,
+             (unsigned int)s_probeBlindLastByte,
+             (unsigned long)s_probeBlindLastMs,
+             (unsigned long)s_probeBlindMaxMs,
+             (unsigned long)s_probeSplitSuspect,
+             (unsigned long)s_probeBaud);
+}
+
+/* ============================================================
  *  [INSTR] EVTIND 이벤트 추적 링버퍼 (진단 전용, 동작 변경 없음)
  *    - 어느 경로(ISR/DMA/라인스캔/구제스캔)가 언제 이벤트를 캡처했는지 기록
  *    - Add 는 ISR 안전(PRIMASK, 로그 호출 없음). Dump 는 메인 컨텍스트 전용
@@ -2089,6 +2163,17 @@ static void App_Bc95AtDisarmUrcMonitor(UART_HandleTypeDef *p_huart)
     {
         uint16_t rescueLen = (uint16_t)(APP_BC95_AT_RX_DMA_BUF_SIZE -
                                         s_bc95RxDmaHandle.Instance->CNDTR);
+        /* [PROBE-3] DMA hardware state at Disarm, and suspected split URC in the rescued bytes */
+        if ((s_bc95RxDmaHandle.Instance->CCR & DMA_CCR_EN) == 0u)
+        {
+            s_probeDisarmDmaOff++;
+        }
+        if ((rescueLen != 0u) &&
+            (App_Bc95RxProbeTailIsPartialUrc((const char *)s_bc95RxDmaBuf, rescueLen) != 0u))
+        {
+            s_probeSplitSuspect++;
+        }
+
         if (rescueLen != 0u)
         {
             App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_RESCUE, APP_BC95_TRC_SRC_RESCUE, (int16_t)rescueLen, 0u);
@@ -2288,6 +2373,24 @@ static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
     if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_FE)  != RESET) { s_bc95RxErrFeCount++;  }
     if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_NE)  != RESET) { s_bc95RxErrNeCount++;  }
     if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_PE)  != RESET) { s_bc95RxErrPeCount++;  }
+
+    /* [PROBE-1] right after FinishRxIt (abort): is the DMA channel really enabled? flag says armed. */
+    s_probeDrainTick = HAL_GetTick();
+    if (s_probeDrainTick == 0u) { s_probeDrainTick = 1u; }
+    s_probeCmds++;
+    if ((s_bc95RxDmaHandle.Instance != NULL) &&
+        ((s_bc95RxDmaHandle.Instance->CCR & DMA_CCR_EN) != 0u))
+    {
+        s_probeDmaOnAtDrain++;
+    }
+    else
+    {
+        s_probeDmaOffAtDrain++;
+        if (s_bc95RxDmaArmed == APP_TRUE)
+        {
+            s_probeDmaFlagMismatch++;
+        }
+    }
 
     __HAL_UART_CLEAR_FLAG(p_huart,
                           UART_CLEAR_OREF | UART_CLEAR_FEF |
@@ -2536,6 +2639,31 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
     g_appBc95AtRxContext.completed      = APP_FALSE;
     g_appBc95AtRxContext.error          = APP_FALSE;
     g_appBc95AtRxContext.active         = APP_TRUE;
+
+    /* [PROBE-2] just before arming RX: bytes that arrived after DrainRxLine and sit in RDR/ORE (FLUSH discards them next) */
+    if (s_probeDrainTick != 0u)
+    {
+        uint32_t probeBlindMs = HAL_GetTick() - s_probeDrainTick;
+
+        s_probeDrainTick = 0u;
+        s_probeBlindLastMs = probeBlindMs;
+        s_probeBaud = p_huart->Init.BaudRate;
+        if (probeBlindMs > s_probeBlindMaxMs)
+        {
+            s_probeBlindMaxMs = probeBlindMs;
+        }
+        if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_ORE) != RESET)
+        {
+            s_probeBlindOre++;
+            App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, APP_BC95_TRC_MARK_PROBE_BLIND_ORE, 0u);
+        }
+        if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_RXNE) != RESET)
+        {
+            s_probeBlindRxne++;
+            s_probeBlindLastByte = (uint8_t)(p_huart->Instance->RDR & 0xFFu);
+            App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, APP_BC95_TRC_MARK_PROBE_BLIND_RXNE, 0u);
+        }
+    }
 
     __HAL_UART_CLEAR_FLAG(p_huart,
         UART_CLEAR_OREF | UART_CLEAR_FEF |
@@ -6335,6 +6463,7 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] EVTIND state at timeout last=%d mask=0x%04X",
              s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask);
     App_Bc95EvtTraceDump("wait-timeout");
+    App_Bc95RxProbeDump("wait-timeout");
 
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] platform-ready wait timeout%s",
              (bootstrapSeen == APP_TRUE) ? " after bootstrap-complete" : "");
@@ -6470,6 +6599,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
                      (unsigned long)s_bc95RxErrFeCount);
         }
         App_Bc95EvtTraceDump("register-immediate");
+        App_Bc95RxProbeDump("register-immediate");
         return APP_STATUS_OK;
     }
  
@@ -6479,6 +6609,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     {
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] already-registered fast path hit");
         App_Bc95EvtTraceDump("register-fastpath");
+        App_Bc95RxProbeDump("register-fastpath");
         return APP_STATUS_OK;
     }
     if ((status != APP_STATUS_UART_TIMEOUT) && (status != APP_STATUS_FATAL))
@@ -6504,6 +6635,7 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
         if (status == APP_STATUS_OK)
         {
             App_Bc95EvtTraceDump("register-retry-ok");
+            App_Bc95RxProbeDump("register-retry-ok");
             return APP_STATUS_OK;
         }
 
