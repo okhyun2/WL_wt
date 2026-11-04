@@ -2668,6 +2668,7 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeout
     uint16_t frameLen = 0u;
     uint8_t  frameBuf[APP_BC95_NNMI_LATCH_MAX];
     char     hexLog[(APP_BC95_NNMI_LATCH_MAX * 2u) + 1u];
+    char     waitLineBuf[APP_BC95_AT_RX_BUF_SIZE];
     uint16_t i;
 
     APP_LOGI("NBIOT", "[[ServicePlatformWake]] wait service ACK(+NNMI) timeout=%lu ms poll=%lu ms",
@@ -2712,7 +2713,14 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeout
             }
             return APP_STATUS_OK;
         }
-        App_Bc95AtDelayWithFeed(pollMs);
+        /* [v19 NNMI 유실 방지 2026-11-04] 기존 DelayWithFeed(poll) 동안은
+         * Receive_IT가 비활성이라 +NNMI 바이트가 HW에 쌓이다 ORE로 유실됐다.
+         * 라인 대기로 전환해 대기 시간 전체를 수신 가능 구간으로 만든다.
+         * WaitForLinePrefix는 (1) 선두에서 잔량 스캔→drain (2) 대기 중 모든 라인에서
+         * EVTIND/NNMI 래치 스캔을 수행하므로, NNMI 라인은 도착 즉시 래치되고
+         * 래치 카운터 폴링(위)이 회수한다. 타임아웃은 외부 while이 담당. */
+        (void)App_Bc95AtWaitForLinePrefix(APP_BC95_AT_NNMI_PREFIX, pollMs,
+                                          waitLineBuf, (uint16_t)sizeof(waitLineBuf));
     }
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] service ACK(+NNMI) timeout (platform OK seq=%u, app ACK absent)", (unsigned)seqNum);
     return APP_STATUS_OK;
@@ -7192,6 +7200,14 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
         atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
         APP_RETURN_IF_FALSE(atStatus == APP_BC95_AT_OK, APP_STATUS_FATAL);
+        /* [v19 NNMI 유실 방지 2026-11-04] STATUS 폴링 응답 버퍼에 혼입한 +NNMI를
+         * 폐기 전에 회수한다. 서버 DL 응답은 STATUS 쿼리 창에 먼저 도착할 수 있고
+         * 이 버퍼는 다음 폴링에서 덮어써지므로, 여기서 스캔하지 않으면 유실된다
+         * (실측: platform OK seq=3 후 app ACK absent — 모뎀은 수신, f/w만 미래치).
+         * ScanBufferForEVTIND가 EVTIND와 NNMI를 함께 스캔한다. */
+        App_Bc95AtScanBufferForEVTIND((const char *)g_appBc95AtRxBuf,
+                                      (rxLen < (uint16_t)sizeof(g_appBc95AtRxBuf)) ? rxLen : ((uint16_t)sizeof(g_appBc95AtRxBuf) - 1u));
+
         if (App_Bc95AtParseQlwuldataStatus((const char *)g_appBc95AtRxBuf, &qlwStatus, &qlwSeq) == APP_BC95_AT_OK)
         {
             APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWULDATASTATUS=%d seq=%d", qlwStatus, qlwSeq);
