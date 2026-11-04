@@ -119,6 +119,14 @@
 
 #define APP_BC95_AT_CMD_QLWSREGIND_REGISTER  "AT+QLWSREGIND=0\r\n"
 #define APP_BC95_AT_CMD_QLWULDATASTATUS_QUERY "AT+QLWULDATASTATUS?\r\n"
+/* [NNMI 래치 2026-11-04] 서비스 서버 애플리케이션 ACK는 LwM2M DL로 푸시된다
+ * (BC95-GV LG U+ App Note v1.0.3 §1.5: "+NNMI:<len>,<hex>" — 별도 읽기 명령 없음).
+ * QLWULDATASTATUS=4는 플랫폼(CoAP) 1차 ACK일 뿐이며, 서버 ACK는 +NNMI URC로만 확인.
+ * EVTIND와 동일한 3-경로(응답 혼입 스캔 / DMA 잔량 스캔 / 폴링 강제 스캔)로 래치한다. */
+#define APP_BC95_AT_NNMI_PREFIX              "+NNMI:"
+#define APP_BC95_AT_NNMI_PREFIX_LEN          (6u)
+#define APP_BC95_NNMI_LATCH_MAX              (64u)   /* 래치 보관 최대 바이트 */
+#define APP_BC95_NNMI_LINE_MAX               (160u)  /* +NNMI:<len>,<hex> 라인 최대 (2*64+여유) */
 #define APP_BC95_AT_QLWEVTIND_PREFIX         "+QLWEVTIND:"
 #define APP_BC95_AT_QLWEVTIND_PREFIX_LEN     (11u)
 #define APP_BC95_AT_QLWULDATASTATUS_PREFIX   "+QLWULDATASTATUS:"
@@ -320,6 +328,18 @@ static void App_Bc95AtUpdateEVTINDLatch(const char *p_line);
 static uint8_t App_Bc95AtEVTINDMaskReady(uint16_t seenMask);
 static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len);
 static uint8_t App_Bc95AtEVTINDMaskReadyFallbackOnly(uint16_t seenMask);
+
+/* --- NNMI 래치 상태 (main/IRQ 혼재 쓰기 → PRIMASK 보호) --- */
+static volatile uint32_t s_bc95NnmiCount   = 0u;   /* 신규 NNMI 라인 누적(중복 제외) */
+static volatile uint16_t s_bc95LastNnmiLen = 0u;   /* 래치된 프레임 길이(0=없음) */
+static uint8_t  s_bc95LastNnmiBuf[APP_BC95_NNMI_LATCH_MAX];
+static char     s_bc95NnmiLastLine[APP_BC95_NNMI_LINE_MAX];  /* 중복 라인 제거용 */
+static uint16_t s_bc95NnmiDmaScanPos = 0u;         /* DMA 버퍼 순차 스캔 커서 */
+static void App_Bc95AtUpdateNnmiLatch(const char *p_line);
+static void App_Bc95AtScanBufferForNnmi(const char *p_buf, uint16_t len);
+static void App_Bc95AtNnmiScanDmaBuf(void);
+static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum);
+
 /* ============================================================
  *  Pre-attach radio power check (AT+NUESTATS) + deferred abort
  * ============================================================ */
@@ -2281,6 +2301,8 @@ static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len)
     {
         return;
     }
+    /* [NNMI] EVTIND 스캔과 동일한 경로(응답 혼입/ DMA 잔량)에서 NNMI도 함께 회수 */
+    App_Bc95AtScanBufferForNnmi(p_buf, len);
     /* 라인 단위로 훑어 EVTIND 접두어를 찾는다(버퍼 내 NUL 보존 가정 없음) */
     for (i = 0u; (i + APP_BC95_AT_QLWEVTIND_PREFIX_LEN) <= len; i++)
     {
@@ -2310,6 +2332,200 @@ static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len)
         }
     }
 }
+
+/* [NNMI] 라인 파서: "+NNMI:<len>,<hex>" → 바이트 래치.
+ * RxEvent 콜백(UART IRQ)에서도 호출되므로 래치 갱신은 PRIMASK 보호(FIX-EVTIND-2와 동일).
+ * 중복 라인은 마지막 라인과 비교해 무시 — DMA 재스캔/응답 버퍼 반복 스캔 중복 방지.
+ * DMA 버퍼 경계에서 URC가 갈라지는 경우는 미회수(기존 EVTIND 스캔과 동일 한계). */
+static void App_Bc95AtUpdateNnmiLatch(const char *p_line)
+{
+    const char *p_data;
+    long parsedLen;
+    int hexLen;
+    int byteIdx;
+    uint8_t decoded[APP_BC95_NNMI_LATCH_MAX];
+
+    if ((p_line == NULL) || (p_line[0] == '\0'))
+    {
+        return;
+    }
+    p_data = strstr(p_line, APP_BC95_AT_NNMI_PREFIX);
+    if (p_data == NULL)
+    {
+        return;
+    }
+    p_data += APP_BC95_AT_NNMI_PREFIX_LEN;
+    parsedLen = strtol(p_data, (char **)&p_data, 10);   /* <len> */
+    if ((parsedLen <= 0) || (parsedLen > (long)APP_BC95_NNMI_LATCH_MAX))
+    {
+        return;   /* 비정상 길이 — 무시 */
+    }
+    if (p_data[0] != ',')
+    {
+        return;
+    }
+    p_data++;
+    hexLen = 0;
+    while ((p_data[hexLen] != '\0') && (p_data[hexLen] != '\r') && (p_data[hexLen] != '\n'))
+    {
+        hexLen++;
+    }
+    if (hexLen < (int)(2 * parsedLen))
+    {
+        return;   /* 데이터 잘림 — 불완전 라인 폐기(이후 스캔에서 완성본 회수) */
+    }
+    byteIdx = 0;
+    while (byteIdx < (int)parsedLen)
+    {
+        char hexPair[3];
+        hexPair[0] = p_data[2 * byteIdx];
+        hexPair[1] = p_data[(2 * byteIdx) + 1];
+        hexPair[2] = '\0';
+        decoded[byteIdx] = (uint8_t)strtoul(hexPair, NULL, 16);
+        byteIdx++;
+    }
+
+    {
+        uint32_t primask = __get_PRIMASK();
+        __disable_irq();
+        if ((s_bc95NnmiLastLine[0] != '\0') &&
+            (strncmp(p_line, s_bc95NnmiLastLine, APP_BC95_NNMI_LINE_MAX) == 0))
+        {
+            if (primask == 0u) { __enable_irq(); }
+            return;   /* 동일 라인 재스캔 — 무시 */
+        }
+        (void)strncpy(s_bc95NnmiLastLine, p_line, APP_BC95_NNMI_LINE_MAX - 1u);
+        s_bc95NnmiLastLine[APP_BC95_NNMI_LINE_MAX - 1u] = '\0';
+        (void)memcpy((void *)s_bc95LastNnmiBuf, decoded, (uint32_t)parsedLen);
+        s_bc95LastNnmiLen = (uint16_t)parsedLen;
+        s_bc95NnmiCount++;
+        if (primask == 0u) { __enable_irq(); }
+    }
+}
+
+/* [NNMI] 버퍼 스캐너: EVTIND 스캐너와 동일 구조, 접두어만 +NNMI: */
+static void App_Bc95AtScanBufferForNnmi(const char *p_buf, uint16_t len)
+{
+    uint16_t i;
+    if ((p_buf == NULL) || (len == 0u))
+    {
+        return;
+    }
+    for (i = 0u; (i + APP_BC95_AT_NNMI_PREFIX_LEN) <= len; i++)
+    {
+        if (strncmp(&p_buf[i], APP_BC95_AT_NNMI_PREFIX, APP_BC95_AT_NNMI_PREFIX_LEN) == 0)
+        {
+            char lineBuf[APP_BC95_NNMI_LINE_MAX];
+            uint16_t copyLen = 0u;
+            uint16_t j = i;
+            while ((j < len) && (copyLen < (sizeof(lineBuf) - 1u)) &&
+                   (p_buf[j] != '\r') && (p_buf[j] != '\n'))
+            {
+                lineBuf[copyLen++] = p_buf[j];
+                j++;
+            }
+            lineBuf[copyLen] = '\0';
+            if (copyLen > APP_BC95_AT_NNMI_PREFIX_LEN)
+            {
+                App_Bc95AtUpdateNnmiLatch(lineBuf);
+                i = j;   /* 라인 끝까지 건너뜀 (hex 데이터 재매칭 방지) */
+            }
+        }
+    }
+}
+
+/* [NNMI] 대기 루프용 강제 스캔: idle-DMA 버퍼 신규 유입분만 순차 스캔.
+ * RxEvent(idle) 콜백이 놓치는 구간(바이트 연속 유입 중)까지 커버. */
+static void App_Bc95AtNnmiScanDmaBuf(void)
+{
+    uint16_t len;
+    if ((s_bc95RxDmaHandle.Instance == NULL) || (s_bc95RxDmaArmed != APP_TRUE))
+    {
+        return;
+    }
+    len = (uint16_t)(APP_BC95_AT_RX_DMA_BUF_SIZE - s_bc95RxDmaHandle.Instance->CNDTR);
+    if (len > (uint16_t)APP_BC95_AT_RX_DMA_BUF_SIZE)
+    {
+        len = (uint16_t)APP_BC95_AT_RX_DMA_BUF_SIZE;
+    }
+    if (len > s_bc95NnmiDmaScanPos)
+    {
+        App_Bc95AtScanBufferForNnmi((const char *)s_bc95RxDmaBuf, len);
+        s_bc95NnmiDmaScanPos = len;
+    }
+    else if (len < s_bc95NnmiDmaScanPos)
+    {
+        /* DMA 재무장(랩어라운드): 커서/중복라인 캐시 리셋 */
+        s_bc95NnmiDmaScanPos = 0u;
+        {
+            uint32_t primask = __get_PRIMASK();
+            __disable_irq();
+            s_bc95NnmiLastLine[0] = '\0';
+            if (primask == 0u) { __enable_irq(); }
+        }
+        if (len > 0u)
+        {
+            App_Bc95AtScanBufferForNnmi((const char *)s_bc95RxDmaBuf, len);
+            s_bc95NnmiDmaScanPos = len;
+        }
+    }
+}
+
+/* [NNMI] 서비스 서버 ACK 대기 (2차 ACK): QLWULDATASTATUS=4(1차, 플랫폼 CoAP) 이후 호출.
+ * 서버 응답은 +NNMI 푸시이므로 NSORF 폴링이 아닌 래치 카운터 폴링으로 대기(문서 §1.5).
+ * 타임아웃 시에도 전송 자체는 성공(STATUS=4)이므로 OK 반환 — 재전송에 의한 이중화 방지. */
+static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum)
+{
+#if (APP_POLICY_WAIT_SERVICE_ACK_ENABLE != APP_TRUE)
+    (void)seqNum;
+    APP_LOGW("NBIOT", "[[ServicePlatformWake]] skip service ACK(+NNMI) wait");
+    return APP_STATUS_OK;
+#else
+    uint32_t startTick;
+    uint32_t beforeCount = s_bc95NnmiCount;
+    uint16_t frameLen = 0u;
+    uint8_t  frameBuf[APP_BC95_NNMI_LATCH_MAX];
+    char     hexLog[(APP_BC95_NNMI_LATCH_MAX * 2u) + 1u];
+    uint16_t i;
+
+    APP_LOGI("NBIOT", "[[ServicePlatformWake]] wait service ACK(+NNMI) timeout=%u ms poll=%u ms",
+             (unsigned)APP_POLICY_SERVICE_ACK_NNMI_TIMEOUT_MS,
+             (unsigned)APP_POLICY_SERVER_ACK_POLL_MS);
+    startTick = HAL_GetTick();
+    while ((HAL_GetTick() - startTick) < APP_POLICY_SERVICE_ACK_NNMI_TIMEOUT_MS)
+    {
+        APP_WWDGFeed();
+        App_Bc95AtNnmiScanDmaBuf();   /* idle-DMA 신규분 강제 스캔 */
+        if (s_bc95NnmiCount != beforeCount)
+        {
+            /* 래치 소비 — IRQ 보호 복사 */
+            uint32_t primask = __get_PRIMASK();
+            __disable_irq();
+            frameLen = s_bc95LastNnmiLen;
+            if (frameLen > (uint16_t)APP_BC95_NNMI_LATCH_MAX)
+            {
+                frameLen = (uint16_t)APP_BC95_NNMI_LATCH_MAX;
+            }
+            (void)memcpy(frameBuf, (const void *)s_bc95LastNnmiBuf, (uint32_t)frameLen);
+            s_bc95LastNnmiLen = 0u;
+            if (primask == 0u) { __enable_irq(); }
+
+            for (i = 0u; (i < frameLen) && (((i * 2u) + 2u) < sizeof(hexLog)); i++)
+            {
+                (void)snprintf(&hexLog[i * 2u], 3u, "%02X", (unsigned)frameBuf[i]);
+            }
+            hexLog[i * 2u] = '\0';
+            APP_LOGN("NBIOT", "[[ServicePlatformWake]] service ACK received len=%u data=%s",
+                     (unsigned)frameLen, hexLog);
+            return APP_STATUS_OK;
+        }
+        App_Bc95AtDelayWithFeed(APP_POLICY_SERVER_ACK_POLL_MS);
+    }
+    APP_LOGW("NBIOT", "[[ServicePlatformWake]] service ACK(+NNMI) timeout (platform OK seq=%u, app ACK absent)", (unsigned)seqNum);
+    return APP_STATUS_OK;
+#endif
+}
+
 
 /* ISR 바이트 단위 FSM: "+QLWEVTIND:<n>" 만 골라 래치. ISR 안에서
  * 로그/문자열 함수를 부르지 않는다(비용 최소화). */
@@ -6768,7 +6984,9 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
 
             if ((qlwStatus == 4) && ((qlwSeq < 0) || (qlwSeq == (int)seqNum)))
             {
-                return APP_STATUS_OK;
+                /* 1차 ACK(플랫폼 CoAP) 확인. 서버 애플리케이션 ACK는 +NNMI 푸시이므로
+                 * 래치 폴링으로 대기한다(문서 §1.5 — NSORF 폴링은 raw UDP 전용). */
+                return App_Bc95AtWaitServiceAckNnmi(seqNum);
             }
             if ((qlwStatus == 2) || (qlwStatus == 3) || (qlwStatus == 5))
             {
@@ -8350,12 +8568,8 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
         }
         else
         {
-#if (APP_POLICY_TEST_MODE_SKIP_SERVER_ACK_WAIT == APP_TRUE)
-            APP_LOGW("NBIOT", "%s Test mode: skip %s ACK wait/timeout", p_logTag, p_ackPath);
-#else
             APP_LOGI("NBIOT", "%s wait %s ACK timeout=%lu ms poll=%lu ms", p_logTag, p_ackPath, (unsigned long)ackTimeoutMs, (unsigned long)ackPollMs);
             status = App_Bc95AtWaitUdpAck(socketId, ackTimeoutMs, ackPollMs);
-#endif
         }
     }
     else if ((status == APP_STATUS_OK) && (waitServerAck != APP_TRUE))

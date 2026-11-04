@@ -316,9 +316,11 @@ extern "C" {
 #define APP_POLICY_WAIT_SERVICE_ACK_ENABLE         (APP_TRUE)  /* [[ServiceTx]] service 서버 UDP ACK 대기 */
 /* 런타임 마스터 스위치(옵션 ackWaitEnabled)의 컴파일 기본값 — 어느 경로든 하나라도 켜졌으면 기본 TRUE */
 #define APP_POLICY_WAIT_ACK_DEFAULT                (((APP_POLICY_WAIT_MGMT_ACK_ENABLE == APP_TRUE) || (APP_POLICY_WAIT_SERVICE_ACK_ENABLE == APP_TRUE)) ? (APP_TRUE) : (APP_FALSE))
-#define APP_POLICY_TEST_MODE_SKIP_SERVER_ACK_WAIT  (APP_TRUE)
-#define APP_POLICY_SERVER_ACK_TIMEOUT_MS           (10000u)
+#define APP_POLICY_SERVER_ACK_TIMEOUT_MS           (30000u) //10000u default
 #define APP_POLICY_SERVER_ACK_POLL_MS              (500u)
+/* [NNMI] 서비스 서버 애플리케이션 ACK(+NNMI) 대기 시간 — QLWULDATASTATUS=4(1차 ACK) 이후.
+ * 서버가 DL 응답을 생성해 단말 +NNMI로 도달하기까지의 상한. 0이 아닌 값 유지 필요. */
+#define APP_POLICY_SERVICE_ACK_NNMI_TIMEOUT_MS     (30000u) //10000u default
 #define APP_POLICY_SERVER_ACK_READ_BYTES           (64u)
 #define APP_POLICY_DEFAULT_SERVER_ACK_TIMEOUT_SEC  (APP_POLICY_SERVER_ACK_TIMEOUT_MS / 1000u)
 #define APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS   (APP_POLICY_SERVER_ACK_POLL_MS / 100u)
