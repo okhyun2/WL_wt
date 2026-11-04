@@ -343,6 +343,7 @@ static void App_Bc95AtUpdateNnmiLatch(const char *p_line);
 static void App_Bc95AtScanBufferForNnmi(const char *p_buf, uint16_t len);
 static void App_Bc95AtNnmiScanDmaBuf(void);
 static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeoutMs, uint32_t pollMs);
+static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len);
 
 /* [v19 NNMI 래치 리셋 2026-11-04] 중복라인 캐시/스캔 커서/래치 길이를 세션 단위로 리셋.
  * 근본 원인: s_bc95NnmiLastLine(중복 판정 캐시)이 wake 사이에 유지되어, 운영 중
@@ -2674,6 +2675,103 @@ static void App_Bc95AtNnmiScanDmaBuf(void)
 /* [NNMI] 서비스 서버 ACK 대기 (2차 ACK): QLWULDATASTATUS=4(1차, 플랫폼 CoAP) 이후 호출.
  * 서버 응답은 +NNMI 푸시이므로 NSORF 폴링이 아닌 래치 카운터 폴링으로 대기(문서 §1.5).
  * 타임아웃 시에도 전송 자체는 성공(STATUS=4)이므로 OK 반환 — 재전송에 의한 이중화 방지. */
+/* ============================================================================
+ * [DL 명령 실행 2026-11-04] +NNMI로 수신한 A3 명령 프레임의 실제 동작 수행
+ *   0x50 reset  : 단말 리셋(6.5) — 시스템 소프트 리셋 지연 수행(로그 플러시 시간 확보)
+ *   0x51 period : 주기 변경(6.6) — payload [측정h][보고h] → 옵션 저장(NVM) 후 반영
+ *   0x52 spread : 보고 시간간격 분산(6.7) — payload [분산h] → 옵션 저장(NVM) 후 반영
+ * 프레임은 App_DlAckClassifyFrame(헤더/msgLen/checksum)을 통과한 것만 전달된다.
+ * 실행 결과는 APP_LOGN으로 남기며, period/spread 저장 실패 시에도 수신 자체는
+ * ack 카운트된다(수신-실행 분리).
+ * ========================================================================== */
+#define APP_DL_CMD_RESET                      (0x50u)
+#define APP_DL_CMD_PERIOD                     (0x51u)
+#define APP_DL_CMD_SPREAD                     (0x52u)
+#define APP_DL_CMD_RESET_DELAY_MS             (1500u)   /* 로그 플러시 후 리셋 */
+
+static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len)
+{
+    uint8_t cmd = 0u;
+    AppMeterServerFormatOptions_t opt;
+    AppStatus_t optStatus;
+
+    if (App_DlAckClassifyFrame(p_frame, len, &cmd) != APP_STATUS_OK)
+    {
+        return;   /* 분류 실패 프레임은 실행하지 않는다(카운트만) */
+    }
+
+    switch (cmd)
+    {
+        case APP_DL_CMD_RESET:
+            APP_LOGN("NBIOT", "[[DlCmd]] reset(6.5) requested -> system reset in %u ms",
+                     (unsigned)APP_DL_CMD_RESET_DELAY_MS);
+            App_Bc95AtDelayWithFeed(APP_DL_CMD_RESET_DELAY_MS);
+            HAL_NVIC_SystemReset();   /* 반환 없음 */
+            break;   /* 도달하지 않음(방어) */
+
+        case APP_DL_CMD_PERIOD:
+            if (len < 6u)
+            {
+                APP_LOGW("NBIOT", "[[DlCmd]] period(6.6) payload short (len=%u) -> ignore", (unsigned)len);
+                break;
+            }
+            optStatus = App_MeterServerOptionsLoad(&opt);
+            if ((optStatus != APP_STATUS_OK) && (optStatus != APP_STATUS_NOT_INITIALIZED))
+            {
+                APP_LOGW("NBIOT", "[[DlCmd]] period(6.6) options load fail (%d) -> ignore", (int)optStatus);
+                break;
+            }
+            opt.meteringPeriodHours = p_frame[3];   /* 측정 주기(h) */
+            opt.reportingPeriodHours = p_frame[4];  /* 보고 주기(h) */
+            if (App_MeterServerOptionsSave(&opt) == APP_STATUS_OK)
+            {
+                APP_LOGN("NBIOT", "[[DlCmd]] period(6.6) applied meter=%uh report=%uh (saved)",
+                         (unsigned)opt.meteringPeriodHours, (unsigned)opt.reportingPeriodHours);
+            }
+            else
+            {
+                APP_LOGW("NBIOT", "[[DlCmd]] period(6.6) save FAILED (meter=%uh report=%uh)",
+                         (unsigned)opt.meteringPeriodHours, (unsigned)opt.reportingPeriodHours);
+            }
+            break;
+
+        case APP_DL_CMD_SPREAD:
+            if (len < 5u)
+            {
+                APP_LOGW("NBIOT", "[[DlCmd]] spread(6.7) payload short (len=%u) -> ignore", (unsigned)len);
+                break;
+            }
+            optStatus = App_MeterServerOptionsLoad(&opt);
+            if ((optStatus != APP_STATUS_OK) && (optStatus != APP_STATUS_NOT_INITIALIZED))
+            {
+                APP_LOGW("NBIOT", "[[DlCmd]] spread(6.7) options load fail (%d) -> ignore", (int)optStatus);
+                break;
+            }
+            opt.reportingSpreadHours = p_frame[3];  /* 분산 간격(h) */
+            if (opt.reportingSpreadHours > opt.reportingPeriodHours)
+            {
+                opt.reportingSpreadHours = opt.reportingPeriodHours;   /* 명세 규칙: 보고주기 이하 */
+            }
+            if (App_MeterServerOptionsSave(&opt) == APP_STATUS_OK)
+            {
+                APP_LOGN("NBIOT", "[[DlCmd]] spread(6.7) applied spread=%uh (saved)",
+                         (unsigned)opt.reportingSpreadHours);
+            }
+            else
+            {
+                APP_LOGW("NBIOT", "[[DlCmd]] spread(6.7) save FAILED (spread=%uh)",
+                         (unsigned)opt.reportingSpreadHours);
+            }
+            break;
+
+        default:
+            /* 미등록 cmd — App_DlAckNameOf로 로그만 남긴다(카운트는 이미 됨) */
+            APP_LOGN("NBIOT", "[[DlCmd]] unhandled cmd=0x%02X(%s) len=%u",
+                     (unsigned)cmd, App_DlAckNameOf(cmd), (unsigned)len);
+            break;
+    }
+}
+
 static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeoutMs, uint32_t pollMs)
 {
 #if (APP_POLICY_WAIT_SERVICE_ACK_ENABLE != APP_TRUE)
@@ -2719,6 +2817,8 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeout
                 uint8_t ackCmd = 0u;
                 if (App_DlAckClassifyFrame(frameBuf, frameLen, &ackCmd) == APP_STATUS_OK)
                 {
+                    /* [DL 명령 실행] 분류 통과 프레임 = 실제 명령 - 즉시 수행 */
+                    App_DlCmdExecute(frameBuf, frameLen);
                     APP_LOGN("NBIOT", "[[ServicePlatformWake]] service ACK received len=%u cmd=0x%02X(%s) data=%s",
                              (unsigned)frameLen, (unsigned)ackCmd, App_DlAckNameOf(ackCmd), hexLog);
                 }
