@@ -8741,9 +8741,12 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     {
         return status;
     }
-    waitServerAck = App_NbiotResolveWaitServerAck(&opt);
-    ackTimeoutMs = App_MeterServerOptionsGetAckTimeoutMs(&opt);
-    ackPollMs = App_MeterServerOptionsGetAckPollMs(&opt);
+    waitServerAck = ((isMgmtPath != APP_FALSE) ? App_NbiotResolveWaitServerAck(&opt)
+                                               : App_NbiotResolveWaitServiceAck(&opt));
+    ackTimeoutMs = ((isMgmtPath != APP_FALSE) ? App_MeterServerOptionsGetAckTimeoutMs(&opt)
+                                              : ((uint32_t)opt.svcAckTimeoutSec * 1000u));
+    ackPollMs = ((isMgmtPath != APP_FALSE) ? App_MeterServerOptionsGetAckPollMs(&opt)
+                                           : ((uint32_t)opt.svcAckPoll100Ms * 100u));
 
     /* 1) DNS */
     result.lastStage = APP_BC95_UDP_STAGE_RESOLVE;
@@ -8842,7 +8845,18 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
 #endif
 
 #if ((APP_POLICY_WAIT_MGMT_ACK_ENABLE == APP_TRUE) || (APP_POLICY_WAIT_SERVICE_ACK_ENABLE == APP_TRUE))
-    if ((status == APP_STATUS_OK) && (waitServerAck == APP_TRUE))
+    if ((status == APP_STATUS_OK) && (waitServerAck != APP_TRUE) &&
+        ((isMgmtPath != APP_FALSE) ? (APP_POLICY_WAIT_MGMT_ACK_ENABLE != APP_TRUE)
+                                   : (APP_POLICY_WAIT_SERVICE_ACK_ENABLE != APP_TRUE)))
+    {
+        /* [ACK 독립 제어 2026-11-04] 컴파일 타임 스위치로 이 경로의 ACK 대기가
+         * 꺼진 경우를 명시적으로 스킵한다. MGMT=FALSE/SERVICE=TRUE 설정에서
+         * mgmt raw 경로는 ackWaitEnabled 기본값(FALSE)이라 여기로 진입해
+         * "wait mgmt ACK" 대기 없이 즉시 통과된다(로그 한 줄로 증거 남김). */
+        APP_LOGW("NBIOT", "%s policy: skip %s ACK wait (compile-time path disabled)",
+                 p_logTag, (isMgmtPath != APP_FALSE) ? "mgmt" : "service");
+    }
+    else if ((status == APP_STATUS_OK) && (waitServerAck == APP_TRUE))
     {
         const char *p_ackPath = (isMgmtPath != APP_FALSE) ? "mgmt" : "service";
         uint8_t ackPathEnabled = (isMgmtPath != APP_FALSE)
@@ -8860,7 +8874,8 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     }
     else if ((status == APP_STATUS_OK) && (waitServerAck != APP_TRUE))
     {
-        APP_LOGW("NBIOT", "%s runtime policy: skip ACK wait", p_logTag);
+        APP_LOGW("NBIOT", "%s policy: skip %s ACK wait (runtime disabled)",
+                 p_logTag, (isMgmtPath != APP_FALSE) ? "mgmt" : "service");
     }
 #endif
 
