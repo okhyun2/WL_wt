@@ -338,7 +338,7 @@ static uint16_t s_bc95NnmiDmaScanPos = 0u;         /* DMA 버퍼 순차 스캔 �
 static void App_Bc95AtUpdateNnmiLatch(const char *p_line);
 static void App_Bc95AtScanBufferForNnmi(const char *p_buf, uint16_t len);
 static void App_Bc95AtNnmiScanDmaBuf(void);
-static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum);
+static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeoutMs, uint32_t pollMs);
 
 /* ============================================================
  *  Pre-attach radio power check (AT+NUESTATS) + deferred abort
@@ -1325,6 +1325,15 @@ static uint8_t App_NbiotResolveWaitServerAck(const AppMeterServerFormatOptions_t
     return App_MeterServerOptionsValidate((AppMeterServerFormatOptions_t *)p_options) == APP_STATUS_OK
            ? p_options->ackWaitEnabled
            : (uint8_t)APP_POLICY_WAIT_ACK_DEFAULT;
+}
+
+/* [ACK 분리 2026-11-04] service 경로용 런타임 스위치 — service 전용 필드 사용 */
+static uint8_t App_NbiotResolveWaitServiceAck(const AppMeterServerFormatOptions_t *p_options)
+{
+    APP_RETURN_IF_FALSE(p_options != NULL, (uint8_t)APP_POLICY_WAIT_SERVICE_ACK_ENABLE);
+    return App_MeterServerOptionsValidate((AppMeterServerFormatOptions_t *)p_options) == APP_STATUS_OK
+           ? p_options->svcAckWaitEnabled
+           : (uint8_t)APP_POLICY_WAIT_SERVICE_ACK_ENABLE;
 }
 
 static void App_HwNbiotPowerCycle(void)
@@ -2474,7 +2483,7 @@ static void App_Bc95AtNnmiScanDmaBuf(void)
 /* [NNMI] 서비스 서버 ACK 대기 (2차 ACK): QLWULDATASTATUS=4(1차, 플랫폼 CoAP) 이후 호출.
  * 서버 응답은 +NNMI 푸시이므로 NSORF 폴링이 아닌 래치 카운터 폴링으로 대기(문서 §1.5).
  * 타임아웃 시에도 전송 자체는 성공(STATUS=4)이므로 OK 반환 — 재전송에 의한 이중화 방지. */
-static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum)
+static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeoutMs, uint32_t pollMs)
 {
 #if (APP_POLICY_WAIT_SERVICE_ACK_ENABLE != APP_TRUE)
     (void)seqNum;
@@ -2488,11 +2497,10 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum)
     char     hexLog[(APP_BC95_NNMI_LATCH_MAX * 2u) + 1u];
     uint16_t i;
 
-    APP_LOGI("NBIOT", "[[ServicePlatformWake]] wait service ACK(+NNMI) timeout=%u ms poll=%u ms",
-             (unsigned)APP_POLICY_SERVICE_ACK_NNMI_TIMEOUT_MS,
-             (unsigned)APP_POLICY_SERVER_ACK_POLL_MS);
+    APP_LOGI("NBIOT", "[[ServicePlatformWake]] wait service ACK(+NNMI) timeout=%lu ms poll=%lu ms",
+             (unsigned long)timeoutMs, (unsigned long)pollMs);
     startTick = HAL_GetTick();
-    while ((HAL_GetTick() - startTick) < APP_POLICY_SERVICE_ACK_NNMI_TIMEOUT_MS)
+    while ((HAL_GetTick() - startTick) < timeoutMs)
     {
         APP_WWDGFeed();
         App_Bc95AtNnmiScanDmaBuf();   /* idle-DMA 신규분 강제 스캔 */
@@ -2519,7 +2527,7 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum)
                      (unsigned)frameLen, hexLog);
             return APP_STATUS_OK;
         }
-        App_Bc95AtDelayWithFeed(APP_POLICY_SERVER_ACK_POLL_MS);
+        App_Bc95AtDelayWithFeed(pollMs);
     }
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] service ACK(+NNMI) timeout (platform OK seq=%u, app ACK absent)", (unsigned)seqNum);
     return APP_STATUS_OK;
@@ -6985,8 +6993,33 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
             if ((qlwStatus == 4) && ((qlwSeq < 0) || (qlwSeq == (int)seqNum)))
             {
                 /* 1차 ACK(플랫폼 CoAP) 확인. 서버 애플리케이션 ACK는 +NNMI 푸시이므로
-                 * 래치 폴링으로 대기한다(문서 §1.5 — NSORF 폴링은 raw UDP 전용). */
-                return App_Bc95AtWaitServiceAckNnmi(seqNum);
+                 * 래치 폴링으로 대기한다(문서 §1.5 — NSORF 폴링은 raw UDP 전용).
+                 * 타임아웃/폴은 런타임 service 전용 옵션(svcAck*)에서 조회. */
+                {
+                    AppMeterServerFormatOptions_t ackOpt;
+                    AppStatus_t ackStatus = App_MeterServerOptionsLoad(&ackOpt);
+                    uint32_t svcTimeoutMs = (uint32_t)APP_POLICY_SERVICE_ACK_NNMI_TIMEOUT_MS;
+                    uint32_t svcPollMs = (uint32_t)APP_POLICY_SERVER_ACK_POLL_MS;
+                    uint8_t svcEn = APP_TRUE;
+                    if ((ackStatus == APP_STATUS_OK) || (ackStatus == APP_STATUS_NOT_INITIALIZED))
+                    {
+                        if (App_NbiotResolveWaitServiceAck(&ackOpt) == APP_TRUE)
+                        {
+                            svcTimeoutMs = (uint32_t)ackOpt.svcAckTimeoutSec * 1000u;
+                            svcPollMs = (uint32_t)ackOpt.svcAckPoll100Ms * 100u;
+                        }
+                        else
+                        {
+                            svcEn = APP_FALSE;
+                        }
+                    }
+                    if (svcEn != APP_TRUE)
+                    {
+                        APP_LOGW("NBIOT", "[[ServicePlatformWake]] policy: skip service ACK(+NNMI) wait (runtime disabled)");
+                        return APP_STATUS_OK;
+                    }
+                    return App_Bc95AtWaitServiceAckNnmi(seqNum, svcTimeoutMs, svcPollMs);
+                }
             }
             if ((qlwStatus == 2) || (qlwStatus == 3) || (qlwStatus == 5))
             {

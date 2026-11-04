@@ -41,9 +41,16 @@ typedef struct
     uint8_t reportingPeriodHours;
     uint8_t managementReportingPeriodHours; /* 0: disabled, otherwise same enum as reportingPeriodHours */
     uint8_t reportingSpreadHours;           /* 0: legacy/default spread, otherwise <= reportingPeriodHours */
-    uint8_t ackWaitEnabled;                 /* 0:disable, 1:enable */
-    uint8_t ackTimeoutSec;                  /* 1..255 sec */
-    uint8_t ackPoll100Ms;                   /* 100ms unit, 1..255 */
+    /* [ACK 분리 2026-11-04] 기존 단일 ack* 필드를 mgmt/service 쌍으로 분리.
+     * 구버전 호환: 기존 ackWaitEnabled 등 3필드는 'mgmt' 값으로 취급하고
+     * NFC 런타임 오버라이드(paramPolicySet/ackStatusGet)는 mgmt 쪽에만 적용한다
+     * (서버 ACK 폴링을 NFC로 제어하던 기존 동작 보존). */
+    uint8_t ackWaitEnabled;                 /* 0:disable, 1:enable (= mgmt, 구버전 호환) */
+    uint8_t ackTimeoutSec;                  /* 1..255 sec (= mgmt) */
+    uint8_t ackPoll100Ms;                   /* 100ms unit, 1..255 (= mgmt) */
+    uint8_t svcAckWaitEnabled;              /* service 전용: 0:disable, 1:enable */
+    uint8_t svcAckTimeoutSec;               /* service 전용: 1..255 sec */
+    uint8_t svcAckPoll100Ms;                /* service 전용: 100ms unit, 1..255 */
     uint8_t deleteAfterSend;                /* 0:mark sent only, 1:delete after success */
     uint8_t nightOnly;        /* 0=상시, 1=야간전용 전송 */
     uint8_t nightStartHour;   /* 0~23 */
