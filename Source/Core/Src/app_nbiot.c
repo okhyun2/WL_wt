@@ -8296,49 +8296,117 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
 
     APP_RETURN_IF_FALSE(socketId >= 0, APP_STATUS_INVALID_PARAM);
 
-    startTick = HAL_GetTick();
-    while ((HAL_GetTick() - startTick) < timeoutMs)
+    /* [ACK 경로별 기능 2026-11-04]
+     * mgmt    : NSORF 폴링(소켓 수신 버퍼 조회) — raw UDP 서버의 직접 응답을 확인.
+     * service : NSORF 폴링 + NNMI 래치 카운터 폴링 병행 — raw 폴백 경로라도 서버
+     *           응답이 LwM2M DL(+NNMI)로 푸시될 수 있으므로 래치 변화로도 ACK를
+     *           판정한다. service 성공 시 DL-ACK(cmd별) 카운트도 함께 증가.
+     * 두 경로 모두 수신 라인 스캔에서 NNMI/EVTIND를 회수해 유실을 방지한다. */
     {
-        APP_WWDGFeed();
-
-        printed = snprintf(appBc95AtCmdTxBuf, sizeof(appBc95AtCmdTxBuf),
-                           APP_BC95_AT_CMD_NSORF_FMT,
-                           (long)socketId,
-                           (unsigned)APP_POLICY_SERVER_ACK_READ_BYTES);
-        APP_RETURN_IF_FALSE((printed > 0) && ((uint32_t)printed < sizeof(appBc95AtCmdTxBuf)), APP_STATUS_INVALID_PARAM);
-
-        rxLen = 0u;
-        status = App_Bc95AtSendCommand(appBc95AtCmdTxBuf,
-                                       g_appBc95AtRxBuf,
-                                       (uint16_t)sizeof(g_appBc95AtRxBuf),
-                                       APP_BC95_SOCKET_TIMEOUT_MS,
-                                       &rxLen);
-        if (status == APP_STATUS_OK)
+        uint32_t beforeNnmiCount = s_bc95NnmiCount;
+        uint8_t  servicePath = (APP_POLICY_WAIT_MGMT_ACK_ENABLE == APP_TRUE) ? APP_FALSE : APP_TRUE;
+        /* mgmt/service 스위치가 둘 다 TRUE인 경우: 컴파일타임 정보로는 경로를
+         * 알 수 없으므로 호출부의 isMgmtPath 분기에서 이미 걸러져 들어온다.
+         * (TransmitUdpInternal의 ackPathEnabled 검사) 여기서는 스위치 조합으로
+         * service 모드 여부만 추정한다. */
+        if ((APP_POLICY_WAIT_SERVICE_ACK_ENABLE == APP_TRUE) &&
+            (APP_POLICY_WAIT_MGMT_ACK_ENABLE != APP_TRUE))
         {
-            cmeErr = 0;
-            atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
-            if (atStatus == APP_BC95_AT_OK)
+            servicePath = APP_TRUE;    /* service 전용: NNMI 병행 판정 활성 */
+        }
+
+        startTick = HAL_GetTick();
+        while ((HAL_GetTick() - startTick) < timeoutMs)
+        {
+            APP_WWDGFeed();
+
+            printed = snprintf(appBc95AtCmdTxBuf, sizeof(appBc95AtCmdTxBuf),
+                               APP_BC95_AT_CMD_NSORF_FMT,
+                               (long)socketId,
+                               (unsigned)APP_POLICY_SERVER_ACK_READ_BYTES);
+            APP_RETURN_IF_FALSE((printed > 0) && ((uint32_t)printed < sizeof(appBc95AtCmdTxBuf)), APP_STATUS_INVALID_PARAM);
+
+            rxLen = 0u;
+            status = App_Bc95AtSendCommand(appBc95AtCmdTxBuf,
+                                           g_appBc95AtRxBuf,
+                                           (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                           APP_BC95_SOCKET_TIMEOUT_MS,
+                                           &rxLen);
+            if (status == APP_STATUS_OK)
             {
-                ackPayloadLen = 0u;
-                if (App_Bc95AtParseNsorfForSocket((const char *)g_appBc95AtRxBuf,
-                                                  (int)socketId,
-                                                  &ackPayloadLen) == APP_BC95_AT_OK)
+                cmeErr = 0;
+                atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
+                if (atStatus == APP_BC95_AT_OK)
                 {
-                    APP_LOGI("NBIOT", "Server ACK received (sock=%ld, bytes=%u)",
-                             (long)socketId,
-                             (unsigned)ackPayloadLen);
+                    ackPayloadLen = 0u;
+                    if (App_Bc95AtParseNsorfForSocket((const char *)g_appBc95AtRxBuf,
+                                                      (int)socketId,
+                                                      &ackPayloadLen) == APP_BC95_AT_OK)
+                    {
+                        /* [ACK 경로별 기능] 응답 본문에 A3 프레임이 있으면
+                         * service 경로 DL-ACK 카운트에 반영 */
+                        if (servicePath == APP_TRUE)
+                        {
+                            uint8_t frameCmd = 0u;
+                            uint16_t scanStart = 0u;
+                            /* g_appBc95AtRxBuf에서 A3 프레임 탐색(선형, 최대 RX_BUF) */
+                            for (scanStart = 0u; scanStart + 4u <= rxLen; scanStart++)
+                            {
+                                if (g_appBc95AtRxBuf[scanStart] == 0xA3u)
+                                {
+                                    uint8_t frameLen = g_appBc95AtRxBuf[scanStart + 1u];
+                                    if ((frameLen + 3u) <= (rxLen - scanStart))
+                                    {
+                                        if (App_DlAckClassifyFrame(&g_appBc95AtRxBuf[scanStart],
+                                                                   (uint16_t)(frameLen + 3u),
+                                                                   &frameCmd) == APP_STATUS_OK)
+                                        {
+                                            App_DlAckCountFrame(&g_appBc95AtRxBuf[scanStart],
+                                                                (uint16_t)(frameLen + 3u),
+                                                                APP_TRUE);
+                                            APP_LOGN("NBIOT", "Server ACK frame cmd=0x%02X(%s) bytes=%u",
+                                                     (unsigned)frameCmd, App_DlAckNameOf(frameCmd),
+                                                     (unsigned)ackPayloadLen);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        APP_LOGI("NBIOT", "Server ACK received (sock=%ld, bytes=%u%s)",
+                                 (long)socketId,
+                                 (unsigned)ackPayloadLen,
+                                 (servicePath == APP_TRUE) ? ", svc-path" : "");
+                        return APP_STATUS_OK;
+                    }
+                }
+            }
+
+
+            /* [ACK 경로별 기능] service 경로: NSORF 대기 중에도 DL 응답이
+             * +NNMI로 푸시되면 래치 카운터 변화로 ACK 판정(DL-ACK 카운트는
+             * 래치 수신 시점에 이미 App_DlAckCountFrame에서 증가함) */
+            if (servicePath == APP_TRUE)
+            {
+                App_Bc95AtNnmiScanDmaBuf();
+                if (s_bc95NnmiCount != beforeNnmiCount)
+                {
+                    APP_LOGN("NBIOT", "Server ACK via +NNMI latch (svc-path) count=%lu->%lu",
+                             (unsigned long)beforeNnmiCount,
+                             (unsigned long)s_bc95NnmiCount);
                     return APP_STATUS_OK;
                 }
             }
+
+            App_Bc95AtDelayWithFeed(pollMs);
         }
 
-        App_Bc95AtDelayWithFeed(pollMs);
+        APP_LOGW("NBIOT", "Server ACK timeout (sock=%ld, timeout=%lums%s)",
+                 (long)socketId,
+                 (unsigned long)timeoutMs,
+                 (servicePath == APP_TRUE) ? ", svc-path" : "");
+        return APP_STATUS_UART_TIMEOUT;
     }
-
-    APP_LOGW("NBIOT", "Server ACK timeout (sock=%ld, timeout=%lums)",
-             (long)socketId,
-             (unsigned long)timeoutMs);
-    return APP_STATUS_UART_TIMEOUT;
 #endif
 }
 
