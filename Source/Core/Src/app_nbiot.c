@@ -343,7 +343,7 @@ static void App_Bc95AtUpdateNnmiLatch(const char *p_line);
 static void App_Bc95AtScanBufferForNnmi(const char *p_buf, uint16_t len);
 static void App_Bc95AtNnmiScanDmaBuf(void);
 static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeoutMs, uint32_t pollMs);
-static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len);
+static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len, uint8_t isServicePath);
 
 /* [v19 NNMI 래치 리셋 2026-11-04] 중복라인 캐시/스캔 커서/래치 길이를 세션 단위로 리셋.
  * 근본 원인: s_bc95NnmiLastLine(중복 판정 캐시)이 wake 사이에 유지되어, 운영 중
@@ -2688,8 +2688,12 @@ static void App_Bc95AtNnmiScanDmaBuf(void)
 #define APP_DL_CMD_PERIOD                     (0x51u)
 #define APP_DL_CMD_SPREAD                     (0x52u)
 #define APP_DL_CMD_RESET_DELAY_MS             (1500u)   /* 로그 플러시 후 리셋 */
+/* [mgmt reserved 2026-11-04] mgmt 전용 cmd 예약 영역 0x60~0x7F — 향후 확장용.
+ * 등록은 App_DlAckRegisterCmd(cmd, "이름"), 동작은 case 추가로 확장. */
+#define APP_DL_CMD_MGMT_RESERVED_MIN          (0x60u)
+#define APP_DL_CMD_MGMT_RESERVED_MAX          (0x7Fu)
 
-static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len)
+static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len, uint8_t isServicePath)
 {
     uint8_t cmd = 0u;
     AppMeterServerFormatOptions_t opt;
@@ -2765,7 +2769,13 @@ static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len)
             break;
 
         default:
-            /* 미등록 cmd — App_DlAckNameOf로 로그만 남긴다(카운트는 이미 됨) */
+            if ((cmd >= APP_DL_CMD_MGMT_RESERVED_MIN) && (cmd <= APP_DL_CMD_MGMT_RESERVED_MAX))
+            {
+                /* [mgmt reserved] 예약 영역 cmd - 동작 미정의, 로그만 남기고 무동작 */
+                APP_LOGN("NBIOT", "[[DlCmd]] mgmt reserved cmd=0x%02X(%s) len=%u -> no-op",
+                         (unsigned)cmd, App_DlAckNameOf(cmd), (unsigned)len);
+                break;
+            }
             APP_LOGN("NBIOT", "[[DlCmd]] unhandled cmd=0x%02X(%s) len=%u",
                      (unsigned)cmd, App_DlAckNameOf(cmd), (unsigned)len);
             break;
@@ -2818,7 +2828,7 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeout
                 if (App_DlAckClassifyFrame(frameBuf, frameLen, &ackCmd) == APP_STATUS_OK)
                 {
                     /* [DL 명령 실행] 분류 통과 프레임 = 실제 명령 - 즉시 수행 */
-                    App_DlCmdExecute(frameBuf, frameLen);
+                    App_DlCmdExecute(frameBuf, frameLen, APP_TRUE);
                     APP_LOGN("NBIOT", "[[ServicePlatformWake]] service ACK received len=%u cmd=0x%02X(%s) data=%s",
                              (unsigned)frameLen, (unsigned)ackCmd, App_DlAckNameOf(ackCmd), hexLog);
                 }
@@ -8443,13 +8453,13 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                                                       (int)socketId,
                                                       &ackPayloadLen) == APP_BC95_AT_OK)
                     {
-                        /* [ACK 경로별 기능] 응답 본문에 A3 프레임이 있으면
-                         * service 경로 DL-ACK 카운트에 반영 */
-                        if (servicePath == APP_TRUE)
+                        /* [포맷 통일 2026-11-04] NSORF 응답 본문의 A3 프레임은
+                         * mgmt/service 공용으로 동일 동작(명령 실행)을 수행한다.
+                         * 카운트는 service 경로만 반영(mgmt는 통계 불필요).
+                         * mgmt 전용 cmd(0x60~0x7F reserved)는 no-op 로그. */
                         {
                             uint8_t frameCmd = 0u;
                             uint16_t scanStart = 0u;
-                            /* g_appBc95AtRxBuf에서 A3 프레임 탐색(선형, 최대 RX_BUF) */
                             for (scanStart = 0u; scanStart + 4u <= rxLen; scanStart++)
                             {
                                 if (g_appBc95AtRxBuf[scanStart] == 0xA3u)
@@ -8461,12 +8471,20 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                                                                    (uint16_t)(frameLen + 3u),
                                                                    &frameCmd) == APP_STATUS_OK)
                                         {
-                                            App_DlAckCountFrame(&g_appBc95AtRxBuf[scanStart],
-                                                                (uint16_t)(frameLen + 3u),
-                                                                APP_TRUE);
-                                            APP_LOGN("NBIOT", "Server ACK frame cmd=0x%02X(%s) bytes=%u",
+                                            if (servicePath == APP_TRUE)
+                                            {
+                                                App_DlAckCountFrame(&g_appBc95AtRxBuf[scanStart],
+                                                                    (uint16_t)(frameLen + 3u),
+                                                                    APP_TRUE);
+                                            }
+                                            App_DlCmdExecute(&g_appBc95AtRxBuf[scanStart],
+                                                             (uint16_t)(frameLen + 3u),
+                                                             servicePath);
+                                            APP_LOGN("NBIOT", "Server ACK frame cmd=0x%02X(%s) bytes=%u path=%s",
+
                                                      (unsigned)frameCmd, App_DlAckNameOf(frameCmd),
-                                                     (unsigned)ackPayloadLen);
+                                                     (unsigned)ackPayloadLen,
+                                                     (servicePath == APP_TRUE) ? "svc" : "mgmt");
                                             break;
                                         }
                                     }
