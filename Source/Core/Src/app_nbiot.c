@@ -1301,10 +1301,10 @@ static AppStatus_t App_NbiotBuildMeterPacket(const char *p_logTag,
 
 static uint8_t App_NbiotResolveWaitServerAck(const AppMeterServerFormatOptions_t *p_options)
 {
-    APP_RETURN_IF_FALSE(p_options != NULL, (uint8_t)APP_POLICY_WAIT_SERVER_ACK_ENABLE);
+    APP_RETURN_IF_FALSE(p_options != NULL, (uint8_t)APP_POLICY_WAIT_ACK_DEFAULT);
     return App_MeterServerOptionsValidate((AppMeterServerFormatOptions_t *)p_options) == APP_STATUS_OK
            ? p_options->ackWaitEnabled
-           : (uint8_t)APP_POLICY_WAIT_SERVER_ACK_ENABLE;
+           : (uint8_t)APP_POLICY_WAIT_ACK_DEFAULT;
 }
 
 static void App_HwNbiotPowerCycle(void)
@@ -2111,7 +2111,18 @@ static void App_Bc95AtArmUrcMonitor(UART_HandleTypeDef *p_huart)
     s_bc95UrcMonitor.p_huart = p_huart;
     if (s_bc95RxDmaArmed == APP_TRUE)
     {
-        return;
+        /* [FIX-RX-2] A TRUE flag alone does not mean the DMA channel is enabled
+         * (FinishRxIt abort, HAL error abort). If it is really running, only resync
+         * the monitor flag (ErrorIsr clears it) and return; otherwise heal the stale
+         * flag and fall through to the normal DMA start. */
+        if ((s_bc95RxDmaHandle.Instance != NULL) &&
+            ((s_bc95RxDmaHandle.Instance->CCR & DMA_CCR_EN) != 0u))
+        {
+            s_bc95UrcMonitor.armed = APP_TRUE;
+            return;
+        }
+        App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, 35, 0u);
+        s_bc95RxDmaArmed = APP_FALSE;
     }
     if (s_bc95RxDmaHandle.Instance == NULL)
     {
@@ -2193,11 +2204,24 @@ static void App_Bc95AtDisarmUrcMonitor(UART_HandleTypeDef *p_huart)
  *    - active 를 먼저 false 로 만든 뒤 abort 호출 → ISR 이
  *      추가 IT 등록을 못 하도록 보장
  * ============================================================ */
+#ifndef APP_BC95_RX_DMA_RUNNING
+/* TRUE when the idle-DMA channel linked to this UART is really enabled */
+#define APP_BC95_RX_DMA_RUNNING(h) \
+    (((h)->hdmarx != NULL) && ((h)->hdmarx->Instance != NULL) && \
+     (((h)->hdmarx->Instance->CCR & DMA_CCR_EN) != 0u))
+#endif
+
 static void App_Bc95AtFinishRxIt(UART_HandleTypeDef *p_huart)
 {
     g_appBc95AtRxContext.active = APP_FALSE;
     if (p_huart != NULL)
     {
+        /* [FIX-RX-1] If the idle-DMA is really running it already owns the receiver:
+         * do not abort it (that opened the blind gap between commands). */
+        if (APP_BC95_RX_DMA_RUNNING(p_huart))
+        {
+            return;
+        }
         (void)HAL_UART_AbortReceive_IT(p_huart);
         /* 근본 해결: 명령 없는 공백(자가진단/계량기 프로브 등)에도
          * 1바이트 URC 모니터를 유지해 EVTIND 의 HW 레벨 유실을 막는다. */
@@ -2363,10 +2387,14 @@ static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
 {
     uint32_t guardMs;
     uint8_t  rescueIdx;
+    uint8_t  dmaOwnsRx;
 
     if (p_huart == NULL) return;
 
     App_Bc95AtFinishRxIt(p_huart);
+    /* [FIX-RX-4] After FinishRxIt the idle-DMA either kept running (no abort) or was
+     * restarted by it, so it owns the receiver: skip the RDR rescue and FLUSH below. */
+    dmaOwnsRx = APP_BC95_RX_DMA_RUNNING(p_huart) ? APP_TRUE : APP_FALSE;
 
     /* [2단계-1차] 클리어 전 오류 플래그 적산 - 유실 웨이크에서 ORE 유무 실증 */
     if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_ORE) != RESET) { s_bc95RxErrOreCount++; }
@@ -2405,14 +2433,19 @@ static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
      * ISR 이 먼저 가져갔으면 RXNE 가 클리어되어 즉시 종료(이중 소비 없음). */
     for (rescueIdx = 0u; rescueIdx < 16u; rescueIdx++)
     {
-        if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_RXNE) == RESET)
+        if ((dmaOwnsRx == APP_TRUE) ||
+            (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_RXNE) == RESET))
         {
             break;
         }
         App_Bc95AtUrcMonitorFeedIsr((uint8_t)(p_huart->Instance->RDR & 0xFFu));
     }
 
-    __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
+    /* [FIX-RX-4] With the DMA running, FLUSH would drop bytes the DMA should receive. */
+    if (dmaOwnsRx == APP_FALSE)
+    {
+        __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
+    }
 
     g_appBc95AtRxContext.error = APP_FALSE;
     guardMs = drainMs;
@@ -2607,10 +2640,14 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
     char     rxSnapshot[APP_BC95_AT_RX_BUF_SIZE];
     AppBc95AtLineQueue_t lineQueue;
     uint8_t  termSeen = APP_FALSE;
+    uint8_t  dmaWasRunning = APP_FALSE;
 
     APP_RETURN_IF_FALSE((p_huart != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((p_buffer != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((bufferSize > 1u), APP_STATUS_INVALID_PARAM);
+
+    /* [FIX-RX-5] snapshot at entry: TRUE when the idle-DMA owns the receiver */
+    dmaWasRunning = APP_BC95_RX_DMA_RUNNING(p_huart) ? APP_TRUE : APP_FALSE;
 
     /* EVTIND 조기 도착 래치 캡처 (경로 6 - 명령 시작 전 잔량 스캔):
      * [v17 FIX] 스캔은 반드시 memset 전에 실행한다. 기존 순서는
@@ -2657,7 +2694,9 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
             s_probeBlindOre++;
             App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, APP_BC95_TRC_MARK_PROBE_BLIND_ORE, 0u);
         }
-        if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_RXNE) != RESET)
+        /* [FIX-RX-5] Reading RDR here would steal a byte from the running DMA. */
+        if ((dmaWasRunning == APP_FALSE) &&
+            (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_RXNE) != RESET))
         {
             s_probeBlindRxne++;
             s_probeBlindLastByte = (uint8_t)(p_huart->Instance->RDR & 0xFFu);
@@ -2668,7 +2707,12 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
     __HAL_UART_CLEAR_FLAG(p_huart,
         UART_CLEAR_OREF | UART_CLEAR_FEF |
         UART_CLEAR_NEF  | UART_CLEAR_PEF);
-    __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
+    /* [FIX-RX-5] FLUSH only when the DMA was not running. Disarm below stops the DMA
+     * and rescues its data (EVTIND scan), so nothing needs flushing in that case. */
+    if (dmaWasRunning == APP_FALSE)
+    {
+        __HAL_UART_SEND_REQ(p_huart, UART_RXDATA_FLUSH_REQUEST);
+    }
 
     App_Bc95AtDisarmUrcMonitor(p_huart);
     halStatus = HAL_UART_Receive_IT(p_huart, &p_buffer[0], 1u);
@@ -7731,7 +7775,7 @@ static AppBc95AtStatus_t App_Bc95AtParseNsorfForSocket(const char *p_resp,
 
 static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, uint32_t pollMs)
 {
-#if (APP_POLICY_WAIT_SERVER_ACK_ENABLE != APP_TRUE)
+#if ((APP_POLICY_WAIT_MGMT_ACK_ENABLE != APP_TRUE) && (APP_POLICY_WAIT_SERVICE_ACK_ENABLE != APP_TRUE))
     (void)socketId;
     (void)timeoutMs;
     (void)pollMs;
@@ -8162,7 +8206,8 @@ void App_Bc95AtCloseAllSockets(void)
 AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
                                   const char *p_host, uint16_t port,
                                   const uint8_t *p_data, uint16_t length,
-                                  AppBc95UdpResult_t *p_result)
+                                  AppBc95UdpResult_t *p_result,
+                                  uint8_t isMgmtPath)
 {
     AppStatus_t status;
     AppMeterServerFormatOptions_t opt;
@@ -8292,19 +8337,30 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     }
 #endif
 
-#if (APP_POLICY_WAIT_SERVER_ACK_ENABLE == APP_TRUE)
+#if ((APP_POLICY_WAIT_MGMT_ACK_ENABLE == APP_TRUE) || (APP_POLICY_WAIT_SERVICE_ACK_ENABLE == APP_TRUE))
     if ((status == APP_STATUS_OK) && (waitServerAck == APP_TRUE))
     {
+        const char *p_ackPath = (isMgmtPath != APP_FALSE) ? "mgmt" : "service";
+        uint8_t ackPathEnabled = (isMgmtPath != APP_FALSE)
+                                 ? (uint8_t)APP_POLICY_WAIT_MGMT_ACK_ENABLE
+                                 : (uint8_t)APP_POLICY_WAIT_SERVICE_ACK_ENABLE;
+        if (ackPathEnabled != APP_TRUE)
+        {
+            APP_LOGW("NBIOT", "%s policy: skip %s ACK wait (path disabled)", p_logTag, p_ackPath);
+        }
+        else
+        {
 #if (APP_POLICY_TEST_MODE_SKIP_SERVER_ACK_WAIT == APP_TRUE)
-        APP_LOGW("NBIOT", "%s Test mode: skip server ACK wait/timeout", p_logTag);
+            APP_LOGW("NBIOT", "%s Test mode: skip %s ACK wait/timeout", p_logTag, p_ackPath);
 #else
-        APP_LOGI("NBIOT", "%s wait server ACK timeout=%lu ms poll=%lu ms", p_logTag, (unsigned long)ackTimeoutMs, (unsigned long)ackPollMs);
-        status = App_Bc95AtWaitUdpAck(socketId, ackTimeoutMs, ackPollMs);
+            APP_LOGI("NBIOT", "%s wait %s ACK timeout=%lu ms poll=%lu ms", p_logTag, p_ackPath, (unsigned long)ackTimeoutMs, (unsigned long)ackPollMs);
+            status = App_Bc95AtWaitUdpAck(socketId, ackTimeoutMs, ackPollMs);
 #endif
+        }
     }
     else if ((status == APP_STATUS_OK) && (waitServerAck != APP_TRUE))
     {
-        APP_LOGW("NBIOT", "%s runtime policy: skip server ACK wait", p_logTag);
+        APP_LOGW("NBIOT", "%s runtime policy: skip ACK wait", p_logTag);
     }
 #endif
 
@@ -9183,7 +9239,8 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                                                 uint8_t unsentOnly,
                                                 const AppMeterStorageRecord_t *p_liveRecord,
                                                 uint8_t appendSelfTestToMgmt,
-                                                AppBc95UdpResult_t *p_sendResultOut)
+                                                AppBc95UdpResult_t *p_sendResultOut,
+                                                uint8_t isMgmtPath)
 {
     AppStatus_t status;
     AppBc95UdpResult_t sendResult;
@@ -9211,7 +9268,8 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                                        port,
                                        packet,
                                        buildResult.packetLength,
-                                       &sendResult);
+                                       &sendResult,
+                                      (isMgmtPath != APP_FALSE) ? APP_TRUE : APP_FALSE);
         if (p_sendResultOut != NULL)
         {
             *p_sendResultOut = sendResult;
@@ -9321,36 +9379,36 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
 AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL, APP_FALSE);
 #else
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL, APP_FALSE);
 #endif
 }
 
 AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL, APP_TRUE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL, APP_TRUE, NULL, APP_TRUE);
 #else
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL, APP_TRUE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, deleteStorage, APP_FALSE, NULL, APP_TRUE, NULL, APP_TRUE);
 #endif
 }
 
 AppStatus_t App_NBIoTTransmitServiceLiveRecord(const AppMeterStorageRecord_t *p_record)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL, APP_FALSE);
 #else
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL, APP_FALSE);
 #endif
 }
 
 AppStatus_t App_NBIoTTransmitMgmtLiveRecord(const AppMeterStorageRecord_t *p_record)
 {
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_TRUE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_DOMAIN, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_TRUE, NULL, APP_FALSE);
 #else
-    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_TRUE, NULL);
+    return App_NBIoTTransmitUdpInternal("[[MgmtTx]]", APP_MGMT_SERVER_IP, APP_MGMT_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_TRUE, NULL, APP_FALSE);
 #endif
 }
 

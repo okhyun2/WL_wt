@@ -254,7 +254,8 @@ void         App_Bc95AtCloseAllSockets(void);
 AppStatus_t  App_Bc95AtUdpSendOnce(const char *p_logTag,
                                    const char *p_host, uint16_t port,
                                    const uint8_t *p_data, uint16_t length,
-                                   AppBc95UdpResult_t *p_result);
+                                   AppBc95UdpResult_t *p_result,
+                                   uint8_t isMgmtPath);
 
 /* ============================================================
  *  시간 정보 (네트워크 → RTC 동기화)

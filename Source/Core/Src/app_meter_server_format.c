@@ -106,7 +106,7 @@ AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_opti
     }
 
     p_options->ackWaitEnabled = App_MeterServerOptionsNormalizeBinaryFlag(originalAckWait,
-                                                                          (uint8_t)APP_POLICY_WAIT_SERVER_ACK_ENABLE);
+                                                                          (uint8_t)APP_POLICY_WAIT_ACK_DEFAULT);
     p_options->ackTimeoutSec = (originalAckTimeoutSec != 0u)
                                ? originalAckTimeoutSec
                                : (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_TIMEOUT_SEC;
@@ -251,7 +251,7 @@ void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options)
     p_options->reportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS;
     p_options->managementReportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_MANAGEMENT_REPORTING_PERIOD_HOURS;
     p_options->reportingSpreadHours = (uint8_t)APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS;
-    p_options->ackWaitEnabled = (uint8_t)APP_POLICY_WAIT_SERVER_ACK_ENABLE;
+    p_options->ackWaitEnabled = (uint8_t)APP_POLICY_WAIT_ACK_DEFAULT;
     p_options->ackTimeoutSec = (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_TIMEOUT_SEC;
     p_options->ackPoll100Ms = (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS;
     p_options->deleteAfterSend = (uint8_t)APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS;
