@@ -384,6 +384,18 @@ AppStatus_t App_NBIoTTransmitUdp(void);
 
 AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime);
 
+/* ----------------------------------------------------------------------------
+ * [DL-ACK 분류 2026-11-04] service/mgmt 공용 DL ACK 루틴
+ * 프레임: [0xA3][msgLen][cmd][payload...][checksum]. mgmt 추가 ack 명령은
+ * App_DlAckRegisterCmd로 등록. ack가 없는 명령은 카운트 없이 타임아웃 종료.
+ * -------------------------------------------------------------------------- */
+void        App_DlAckInit(void);
+AppStatus_t App_DlAckRegisterCmd(uint8_t cmd, const char *p_name);
+AppStatus_t App_DlAckClassifyFrame(const uint8_t *p_frame, uint16_t len, uint8_t *p_cmdOut);
+void        App_DlAckCountFrame(const uint8_t *p_frame, uint16_t len, uint8_t isServicePath);
+uint32_t    App_DlAckGetCount(uint8_t cmd);
+const char *App_DlAckNameOf(uint8_t cmd);
+
 #ifdef __cplusplus
 }
 #endif

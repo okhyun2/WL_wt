@@ -229,7 +229,7 @@ extern "C" {
 #define APP_MGMT_TX_SELFTEST_PAYLOAD_LEN            (7u)
 #define APP_MGMT_TX_APPEND_SERVICE_STAT_ENABLE      (APP_TRUE)
 #define APP_MGMT_TX_SERVICE_STAT_TAG                (0xD3u)
-#define APP_MGMT_TX_SERVICE_STAT_PAYLOAD_LEN        (2u)
+#define APP_MGMT_TX_SERVICE_STAT_PAYLOAD_LEN        (3u)  
 
 /* NFC production hardening */
 #define APP_NFC_MASTER_KEY_BYTES                      { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C }
@@ -312,7 +312,7 @@ extern "C" {
 /* [ACK 정책 분리 2026-11-04] 기존 APP_POLICY_WAIT_SERVER_ACK_ENABLE는
    ServiceTx/MgmtTx 공용 UDP ACK 대기 플래그였음(단일 App_Bc95AtUdpSendOnce 공유).
    경로별 제어를 위해 둘로 분리 — 기본값은 기존 동작 보존(둘 다 TRUE). */
-#define APP_POLICY_WAIT_MGMT_ACK_ENABLE            (APP_TRUE)  /* [[MgmtTx]] mgmt 서버 UDP ACK 대기 */
+#define APP_POLICY_WAIT_MGMT_ACK_ENABLE            (APP_FALSE)  /* [[MgmtTx]] mgmt 서버 UDP ACK 대기 */
 #define APP_POLICY_WAIT_SERVICE_ACK_ENABLE         (APP_TRUE)  /* [[ServiceTx]] service 서버 UDP ACK 대기 */
 /* 런타임 마스터 스위치(옵션 ackWaitEnabled)의 컴파일 기본값 — 어느 경로든 하나라도 켜졌으면 기본 TRUE */
 #define APP_POLICY_WAIT_ACK_DEFAULT                (((APP_POLICY_WAIT_MGMT_ACK_ENABLE == APP_TRUE) || (APP_POLICY_WAIT_SERVICE_ACK_ENABLE == APP_TRUE)) ? (APP_TRUE) : (APP_FALSE))

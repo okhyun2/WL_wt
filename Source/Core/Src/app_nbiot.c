@@ -254,6 +254,10 @@ static uint8_t g_appBc95UdpSeqCounter = 0u;
  * 트레일러 값은 "직전 mgmt 보고 이후의 service 전송 결과"를 뜻한다. */  
 static volatile uint32_t s_appNbiotServiceTxAttempts = 0u;
 static volatile uint32_t s_appNbiotServiceSuccessCount   = 0u;
+/* [DL-ACK 카운트 2026-11-04] 서버 애플리케이션 ACK(+NNMI) 수신 누적 -
+ * mgmt 트레일러(tag 0xD3) 3바째 확장용: service(시도/성공/ack) 보고.
+ * ACK가 오지 않는 명령은 카운트 없이 타임아웃으로 정상 종료(ack 부재 허용). */
+static volatile uint32_t s_appNbiotServiceAppAckCount = 0u;
 
 static AppStatus_t App_Bc95AtIcasePrefixMatch(const char *p_text, const char *p_token, uint16_t tokenLen);
 static uint8_t App_Bc95AtNconfigTokenHasValue(const char *p_resp, const char *p_key, const char *p_value);
@@ -1475,6 +1479,8 @@ static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint
     /* 255 포화: 1바이트 필드이므로 값을 넘기지 않고 최댓값에 고정 */
     stat[0] = (s_appNbiotServiceTxAttempts > 255u) ? 255u : (uint8_t)s_appNbiotServiceTxAttempts;
     stat[1] = (s_appNbiotServiceSuccessCount   > 255u) ? 255u : (uint8_t)s_appNbiotServiceSuccessCount;
+    /* [DL-ACK] stat[2] = 서버 애플리케이션 ACK(+NNMI) 수신 수 */
+    stat[2] = (s_appNbiotServiceAppAckCount > 255u) ? 255u : (uint8_t)s_appNbiotServiceAppAckCount;
 
     p_packet[cursor++] = APP_MGMT_TX_SERVICE_STAT_TAG;
     p_packet[cursor++] = APP_MGMT_TX_SERVICE_STAT_PAYLOAD_LEN;
@@ -1490,15 +1496,17 @@ static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint
     p_result->packetLength  = cursor;
 
     APP_LOGI("NBIOT",
-             "[[MgmtTx]] service-stat trailer appended tx=%u ack=%u len=%u",
+             "[[MgmtTx]] service-stat trailer appended tx=%u ok=%u ack=%u len=%u",
              (unsigned int)stat[0],
              (unsigned int)stat[1],
+             (unsigned int)stat[2],
              (unsigned int)p_result->packetLength);
 
     /* 보고 완료 - 다음 mgmt 보고까지의 구간 통계를 위해 리셋한다.
      * (패킷에는 이미 값이 복사되어 있으므로 리셋이 전송 내용에 영향 없음) */
     s_appNbiotServiceTxAttempts = 0u;
     s_appNbiotServiceSuccessCount   = 0u;
+    s_appNbiotServiceAppAckCount = 0u;
 
     return APP_STATUS_OK;
 }
@@ -2342,6 +2350,169 @@ static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len)
     }
 }
 
+/* ============================================================================
+ * [DL-ACK 분류 2026-11-04] service/mgmt 공용 DL ACK 분류·카운트 루틴
+ * 프레임 구조: [0xA3][msgLen][cmd][payload...][checksum]
+ *   - msgLen = cmd + payload 길이 (전체 길이 - 3)
+ *   - checksum = header부터 payload까지 합산 하위 8비트
+ * +NNMI로 수신되는 모든 프레임(대기 중 여부 무관, unsolicited 포함)을
+ * 수신 시점에 1회 검증·분류해 cmd별 카운터에 누적한다. service와 mgmt가
+ * 같은 테이블을 공유하며, mgmt 쪽 추가 ack 명령은 App_DlAckRegisterCmd로
+ * 등록만 하면 카운트된다. A3 프레임이 아닌 응답(예: 에코 페이로드)은
+ * 분류되지 않고 카운트되지 않는다(ack 부재 = 정상 경로).
+ * ========================================================================== */
+#define APP_DL_ACK_TABLE_MAX                (8u)
+#define APP_DL_ACK_NAME_MAX                 (12u)
+#define APP_DL_ACK_FRAME_HEADER             (0xA3u)
+
+typedef struct
+{
+    uint8_t           cmd[APP_DL_ACK_TABLE_MAX];
+    char              name[APP_DL_ACK_TABLE_MAX][APP_DL_ACK_NAME_MAX];
+    volatile uint32_t count[APP_DL_ACK_TABLE_MAX];
+    uint8_t           used;
+} AppDlAckTable_t;
+
+static AppDlAckTable_t s_appDlAckTable;
+static uint8_t         s_appDlAckInitDone = 0u;
+
+/* 기본 등록(service): 6.5 리셋 / 6.6 주기 변경 / 6.7 보고 시간간격 분산.
+ * mgmt 명령은 부팅 초기화 시점에 App_DlAckRegisterCmd로 추가 등록한다. */
+void App_DlAckInit(void)
+{
+    (void)memset((void *)&s_appDlAckTable, 0, sizeof(s_appDlAckTable));
+    s_appDlAckInitDone = 1u;
+    (void)App_DlAckRegisterCmd(0x50u, "reset");
+    (void)App_DlAckRegisterCmd(0x51u, "period");
+    (void)App_DlAckRegisterCmd(0x52u, "spread");
+}
+
+AppStatus_t App_DlAckRegisterCmd(uint8_t cmd, const char *p_name)
+{
+    uint8_t i;
+
+    if (s_appDlAckInitDone == 0u)
+    {
+        /* 재귀 방지: Init 내부 등록은 initDone 선행 설정으로 직접 통과 */
+        App_DlAckInit();
+    }
+    if (p_name == NULL)
+    {
+        return APP_STATUS_INVALID_PARAM;
+    }
+    for (i = 0u; i < s_appDlAckTable.used; i++)
+    {
+        if (s_appDlAckTable.cmd[i] == cmd)
+        {
+            (void)strncpy(s_appDlAckTable.name[i], p_name, APP_DL_ACK_NAME_MAX - 1u);
+            s_appDlAckTable.name[i][APP_DL_ACK_NAME_MAX - 1u] = '\0';
+            return APP_STATUS_OK;   /* 재등록 = 이름 갱신 (카운트 유지) */
+        }
+    }
+    if (s_appDlAckTable.used >= APP_DL_ACK_TABLE_MAX)
+    {
+        return APP_STATUS_BUFFER_OVERFLOW;
+    }
+    s_appDlAckTable.cmd[s_appDlAckTable.used] = cmd;
+    (void)strncpy(s_appDlAckTable.name[s_appDlAckTable.used], p_name, APP_DL_ACK_NAME_MAX - 1u);
+    s_appDlAckTable.name[s_appDlAckTable.used][APP_DL_ACK_NAME_MAX - 1u] = '\0';
+    s_appDlAckTable.used++;
+    return APP_STATUS_OK;
+}
+
+/* 프레임 구조 검증 + cmd 추출. 유효하지 않으면 오류 반환(카운트 안 함). */
+AppStatus_t App_DlAckClassifyFrame(const uint8_t *p_frame, uint16_t len, uint8_t *p_cmdOut)
+{
+    uint16_t i;
+    uint8_t  checksum = 0u;
+
+    if ((p_frame == NULL) || (p_cmdOut == NULL) || (len < 4u))
+    {
+        return APP_STATUS_INVALID_PARAM;   /* 최소: header+msgLen+cmd+checksum */
+    }
+    if (p_frame[0] != APP_DL_ACK_FRAME_HEADER)
+    {
+        return APP_STATUS_INVALID_PARAM;   /* A3 프레임 아님 (에코/기타 응답) */
+    }
+    if (p_frame[1] != (uint8_t)(len - 3u))
+    {
+        return APP_STATUS_INVALID_PARAM;   /* msgLen 불일치 (절단/변형) */
+    }
+    for (i = 0u; i < (uint16_t)(len - 1u); i++)
+    {
+        checksum = (uint8_t)(checksum + p_frame[i]);
+    }
+    if (checksum != p_frame[len - 1u])
+    {
+        return APP_STATUS_INVALID_PARAM;   /* checksum 오류 */
+    }
+    *p_cmdOut = p_frame[2];
+    return APP_STATUS_OK;
+}
+
+/* 수신 프레임 1회 카운트. 분류 실패 시 무시.
+ * isServicePath=APP_TRUE일 때만 service appAck 총계에도 누적한다 -
+ * mgmt 경로에서 호출하면 cmd별 카운트만 올라가고 service 통계는 불변.
+ * IRQ 컨텍스트에서 호출될 수 있으므로 PRIMASK 보호(기존 래치 패턴 동일). */
+void App_DlAckCountFrame(const uint8_t *p_frame, uint16_t len, uint8_t isServicePath)
+{
+    uint8_t  cmd = 0u;
+    uint8_t  i;
+    uint32_t primask;
+
+    if (s_appDlAckInitDone == 0u)
+    {
+        App_DlAckInit();
+    }
+    if (App_DlAckClassifyFrame(p_frame, len, &cmd) != APP_STATUS_OK)
+    {
+        return;
+    }
+    primask = __get_PRIMASK();
+    __disable_irq();
+    for (i = 0u; i < s_appDlAckTable.used; i++)
+    {
+        if (s_appDlAckTable.cmd[i] == cmd)
+        {
+            s_appDlAckTable.count[i]++;
+            break;
+        }
+    }
+    if (isServicePath == APP_TRUE)
+    {
+        s_appNbiotServiceAppAckCount++;
+    }
+    if (primask == 0u) { __enable_irq(); }
+}
+
+uint32_t App_DlAckGetCount(uint8_t cmd)
+{
+    uint8_t i;
+
+    for (i = 0u; i < s_appDlAckTable.used; i++)
+    {
+        if (s_appDlAckTable.cmd[i] == cmd)
+        {
+            return s_appDlAckTable.count[i];
+        }
+    }
+    return 0u;
+}
+
+const char *App_DlAckNameOf(uint8_t cmd)
+{
+    uint8_t i;
+
+    for (i = 0u; i < s_appDlAckTable.used; i++)
+    {
+        if (s_appDlAckTable.cmd[i] == cmd)
+        {
+            return s_appDlAckTable.name[i];
+        }
+    }
+    return "n/a";
+}
+
 /* [NNMI] 라인 파서: "+NNMI:<len>,<hex>" → 바이트 래치.
  * RxEvent 콜백(UART IRQ)에서도 호출되므로 래치 갱신은 PRIMASK 보호(FIX-EVTIND-2와 동일).
  * 중복 라인은 마지막 라인과 비교해 무시 — DMA 재스캔/응답 버퍼 반복 스캔 중복 방지.
@@ -2408,6 +2579,8 @@ static void App_Bc95AtUpdateNnmiLatch(const char *p_line)
         (void)memcpy((void *)s_bc95LastNnmiBuf, decoded, (uint32_t)parsedLen);
         s_bc95LastNnmiLen = (uint16_t)parsedLen;
         s_bc95NnmiCount++;
+        /* [DL-ACK] cmd별 분리 카운트 — service/mgmt 공용, 대기 중이 아니어도 집계 */
+        App_DlAckCountFrame(decoded, (uint16_t)parsedLen, APP_TRUE);
         if (primask == 0u) { __enable_irq(); }
     }
 }
@@ -2523,8 +2696,20 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeout
                 (void)snprintf(&hexLog[i * 2u], 3u, "%02X", (unsigned)frameBuf[i]);
             }
             hexLog[i * 2u] = '\0';
-            APP_LOGN("NBIOT", "[[ServicePlatformWake]] service ACK received len=%u data=%s",
-                     (unsigned)frameLen, hexLog);
+            {
+                uint8_t ackCmd = 0u;
+                if (App_DlAckClassifyFrame(frameBuf, frameLen, &ackCmd) == APP_STATUS_OK)
+                {
+                    APP_LOGN("NBIOT", "[[ServicePlatformWake]] service ACK received len=%u cmd=0x%02X(%s) data=%s",
+                             (unsigned)frameLen, (unsigned)ackCmd, App_DlAckNameOf(ackCmd), hexLog);
+                }
+                else
+                {
+                    /* A3 프레임이 아닌 응답(에코 등) — 카운트 없이 원본만 기록 */
+                    APP_LOGN("NBIOT", "[[ServicePlatformWake]] service ACK received len=%u cmd=n/a data=%s",
+                             (unsigned)frameLen, hexLog);
+                }
+            }
             return APP_STATUS_OK;
         }
         App_Bc95AtDelayWithFeed(pollMs);
