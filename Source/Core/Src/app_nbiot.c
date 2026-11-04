@@ -344,6 +344,24 @@ static void App_Bc95AtScanBufferForNnmi(const char *p_buf, uint16_t len);
 static void App_Bc95AtNnmiScanDmaBuf(void);
 static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeoutMs, uint32_t pollMs);
 
+/* [v19 NNMI 래치 리셋 2026-11-04] 중복라인 캐시/스캔 커서/래치 길이를 세션 단위로 리셋.
+ * 근본 원인: s_bc95NnmiLastLine(중복 판정 캐시)이 wake 사이에 유지되어, 운영 중
+ * 이전 wake와 동일한 DL 응답 프레임(같은 명령의 동일 ACK/에코)이 도착하면
+ * 재스캔 중복으로 판정되어 래치 카운터가 증가하지 않는다. 부팅 직후는 캐시가
+ * 비어 있어 항상 정상(실측: 부팅 직후 DL은 회수), 운영 wake에서는 동일 프레임이
+ * 전부 유실됐다. DMA 스캔 커서도 이전 wake 값으로 남아 신규 유입분 판정이
+ * 어긋날 수 있어 함께 리셋한다. s_bc95NnmiCount는 단조 유지(대기 루프가
+ * 변화분만 소비)하므로 리셋하지 않는다. */
+static void App_Bc95AtNnmiLatchReset(void)
+{
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    s_bc95NnmiLastLine[0] = 0;
+    s_bc95LastNnmiLen = 0u;
+    s_bc95NnmiDmaScanPos = 0u;
+    if (primask == 0u) { __enable_irq(); }
+}
+
 /* ============================================================
  *  Pre-attach radio power check (AT+NUESTATS) + deferred abort
  * ============================================================ */
@@ -7174,6 +7192,9 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
                         (unsigned)seqNum);
     APP_RETURN_IF_FALSE((printed > 0) && ((uint32_t)printed < sizeof(appBc95AtCmdTxBuf)), APP_STATUS_INVALID_PARAM);
 
+    /* [v19 NNMI 유실 방지] 이번 UL 세션의 DL 응답은 이전 wake의 래치 캐시와
+     * 무관해야 한다: 동일 프레임 중복 판정 방지 (부팅 직후 세션만 정상이던 원인) */
+    App_Bc95AtNnmiLatchReset();
     APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWULDATAEX send obj=0 len=%u seq=%u mode=0x0100 (LGU syntax)",
              (unsigned)length,
              (unsigned)seqNum);
@@ -7187,6 +7208,11 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
     APP_RETURN_IF_FALSE(atStatus == APP_BC95_AT_OK, APP_STATUS_FATAL);
+
+    /* [v19 NNMI 유실 방지] UL 전송 응답 버퍼에 혼입한 +NNMI 회수:
+     * 서버가 STATUS 쿼리보다 먼저 DL 응답을 보내는 경우 대비 */
+    App_Bc95AtScanBufferForEVTIND((const char *)g_appBc95AtRxBuf,
+                                  (rxLen < (uint16_t)sizeof(g_appBc95AtRxBuf)) ? rxLen : ((uint16_t)sizeof(g_appBc95AtRxBuf) - 1u));
 
     startTick = HAL_GetTick();
     while ((HAL_GetTick() - startTick) < APP_BC95_PLATFORM_STATUS_TIMEOUT_MS)
