@@ -7076,19 +7076,45 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     s_bc95EVTINDSeenMask = 0u;
     s_bc95LatchIsrPending = 0u;
     App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, APP_BC95_TRC_MARK_LATCHRESET, 0u);
- 
+
+    /* [v18 EVTIND 재시도 재설계 2026-11-04]
+     * attempt 1 = 수동 대기(30s): fast-path 실패 직후의 마지막 수동 관측 기회.
+     * attempt 2 = NRB 리셋 후 재등록 대기: "동일 대기 반복은 무의미" 실측
+     *   (2026-10-30, 전송 단계에서 약 15분 소모로 확인)을 등록 재시도에도 일관 적용.
+     *   수동 대기는 상태를 바꾸는 동작이 없으므로 attempt 2부터는 모뎀 리셋으로
+     *   상태를 바꾼 뒤 엔진 재등록 EVTIND를 기다린다(전송 단계 에스컬레이션과
+     *   동일한 검증된 경로 - App_Bc95AtSendRebootBestEffort는 banner+USIM ready까지 대기).
+     * REGISTER_RETRY_MAX는 2 유지. attempt 2(NRB) 실패 시 여기서 확정 실패 반환하므로
+     * 전송 단계의 NRB 에스컬레이션(register 3회 연속 실패 조건)과 중복되지 않는다 —
+     * 이 함수가 OK를 못 돌려주면 전송이 시작되지 않아 registerFailCount가 3에
+     * 도달하지 않기 때문(send 루프는 register 성공 후에만 진입). */
+
     for (attempt = 1u; attempt <= APP_BC95_PLATFORM_REGISTER_RETRY_MAX; attempt++)
     {
-        APP_LOGN("NBIOT", "[[ServicePlatformWake]] auto bootstrap mode: waiting engine EVTIND (attempt %lu/%lu)",
+        {
+            APP_LOGW("NBIOT", "[[ServicePlatformWake]] attempt 1/2 passive wait failed -> escalate NRB reset + re-register (no repeat wait)");
+            if (App_Bc95AtSendRebootBestEffort() != APP_STATUS_OK)
+            {
+                APP_LOGW("NBIOT", "[[ServicePlatformWake]] attempt 2/2 NRB failed -> give up registration this wake");
+                return APP_STATUS_UART_TIMEOUT;
+            }
+            /* NRB 후 래치 리셋 — 재부팅 후의 새로운 EVTIND만 신뢰 */
+            s_bc95LastEVTIND = -1;
+            s_bc95EVTINDSeenMask = 0u;
+            s_bc95LatchIsrPending = 0u;
+            App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, APP_BC95_TRC_MARK_LATCHRESET, 0u);
+        }
+        APP_LOGN("NBIOT", "[[ServicePlatformWake]] auto bootstrap mode: waiting engine EVTIND (attempt %lu/%lu%s)",
                  (unsigned long)attempt,
-                 (unsigned long)APP_BC95_PLATFORM_REGISTER_RETRY_MAX);
+                 (unsigned long)APP_BC95_PLATFORM_REGISTER_RETRY_MAX,
+                 (attempt == 2u) ? ", post-NRB" : "");
         needRegisterRetry = APP_FALSE;
         status = App_Bc95AtWaitForPlatformReadyWithPolicy(APP_BC95_PLATFORM_EVENT_TIMEOUT_MS,
                                                           &needRegisterRetry);
         if (status == APP_STATUS_OK)
         {
-            App_Bc95EvtTraceDump("register-retry-ok");
-            App_Bc95RxProbeDump("register-retry-ok");
+            App_Bc95EvtTraceDump((attempt == 2u) ? "register-nrb-retry-ok" : "register-retry-ok");
+            App_Bc95RxProbeDump((attempt == 2u) ? "register-nrb-retry-ok" : "register-retry-ok");
             return APP_STATUS_OK;
         }
 
