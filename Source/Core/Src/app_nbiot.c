@@ -137,7 +137,11 @@
 /* fast-path: 부팅 직후 AUTOCONNECT=TRUE + NRB로 LwM2M 엔진이 자기 등록을 시작하므로
  * EVTIND(0/3) 도착을 기다린다. 실측 11:40 로그에서 2.5s 만에 timeout -> QLWSREGIND=CME4 실패였으므로
  * 10s로 확장 (observe 요구 정책 REQUIRE_OBSERVE 그대로 유지) */
-#define APP_BC95_PLATFORM_FAST_PATH_TIMEOUT_MS (2*60*1000u) //best: 60sec
+/* [2026-11-05 실측 기반 단축] 139세션 분석: 정상 세션 EVTIND 4→3(ready) 평균 2.0s,
+ * 최대(4→8) 24s. 비정상(3/8 미도래) 세션 5건은 120s 대기로도 회복 불가(NRB 필요).
+ * → fast-path 120s→30s 단축(최대 실측 24s + 마진 6s). 정상 무손실, 비정상 세션당
+ * 90s 절약(시간당 세션 수 증가에 따른 전체 회수율 개선). attempt2(NRB 후)도 동일 30s. */
+#define APP_BC95_PLATFORM_FAST_PATH_TIMEOUT_MS (30*1000u) //best: 30sec
 #define APP_BC95_PLATFORM_REGISTER_RETRY_MAX  (2u)
 #define APP_BC95_PLATFORM_SEND_RETRY_MAX      (3u)
 #define APP_BC95_PLATFORM_RETRY_BACKOFF_MS    (1000u)
@@ -8556,50 +8560,88 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                          * 카운트는 service 경로만 반영(mgmt는 통계 불필요).
                          * mgmt 전용 cmd(0x60~0x7F reserved)는 no-op 로그. */
                         {
-                            /* [NSORF hex 디코드 2026-11-05] 실측(11:17): 본 모뎀은 NSORF
-                             * 데이터를 hex 문자열("A3015050")로 준다 → 버퍼에 0xA3 바이트가
-                             * 존재하지 않아 기존 A3 바이트 스캔은 항상 실패. NSORF 데이터
-                             * 필드(4번째 콤마 뒤)를 찾아 hex 문자열을 바이트로 디코드한
-                             * 프레임을 대상으로 실행한다. */
+                            /* [NSORF hex 디코드 v3 2026-11-05] 본 모뎀은 NSORF 데이터를
+                             * hex 문자열("A3015050")로 준다 → 버퍼에 0xA3 바이트가 없어
+                             * 기존 스캔은 항상 실패. 데이터 필드를 찾아 hex 디코드한
+                             * 프레임으로 실행한다.
+                             * [v3 수정 2026-11-05 실측(11:51)] 콤마 카운트 방식은 "+NSONMI:1,4"
+                             * URC 접두의 콤마까지 섽나 4번째 콤마가 데이터 라인의 3번째
+                             * 필드(포트 뒤)에 걸려 디코드가 항상 실패(n=0). 라인 단위로
+                             * 바꿔 "+NSONMI"/"OK"가 아닌 유효 라인을 6필드 분해하고
+                             * 5번째 필드(인덱스 4, 데이터)를 디코드한다. */
                             uint8_t hexFrame[APP_BC95_NNMI_LATCH_MAX];
                             uint16_t hexFrameLen = 0u;
                             int hexDecoded = 0;
                             {
                                 const char *p_buf = (const char *)g_appBc95AtRxBuf;
-                                const char *p_dat = NULL;
-                                int commas = 0;
-                                for (uint16_t q = 0u; (q < rxLen) && (p_dat == NULL); q++)
+                                const char *p_line = p_buf;
+                                while ((p_line != NULL) && (hexDecoded == 0))
                                 {
-                                    if (p_buf[q] == ',')
+                                    const char *p_eol = strchr(p_line, '\n');
+                                    size_t lineLen = (p_eol != NULL) ? (size_t)(p_eol - p_line) : strlen(p_line);
+                                    char lineBuf[128];
+
+                                    if ((lineLen > 0u) && (lineLen < sizeof(lineBuf)))
                                     {
-                                        commas++;
-                                        if (commas == 4) { p_dat = &p_buf[q + 1]; }
+                                        (void)memcpy(lineBuf, p_line, lineLen);
+                                        lineBuf[lineLen] = '\0';
+                                        char *p_trim = lineBuf;
+                                        while ((*p_trim == '\r') || (*p_trim == ' ')) { p_trim++; }
+                                        size_t tl = strlen(p_trim);
+                                        while ((tl > 0u) && ((p_trim[tl - 1u] == '\r') || (p_trim[tl - 1u] == ' ')))
+                                        {
+                                            p_trim[--tl] = '\0';
+                                        }
+
+                                        /* URC 접두/OK/빈 라인 제외 — 데이터 라인만 6필드 분해 */
+                                        if ((tl >= 6u) && (p_trim[0] != '+') && (strncmp(p_trim, "OK", 2u) != 0))
+                                        {
+                                            int f = 0;
+                                            char *save = NULL;
+                                            char *tok = NULL;
+                                            char *fields[8];
+                                            for (f = 0; f < 8; f++) { fields[f] = NULL; }
+                                            f = 0;
+                                            tok = p_trim;
+                                            while ((tok != NULL) && (f < 8))
+                                            {
+                                                fields[f++] = tok;
+                                                char *c = strchr(tok, ',');
+                                                if (c == NULL) { break; }
+                                                *c = '\0';
+                                                tok = c + 1;
+                                            }
+                                            /* sock,ip,port,len,hexdata[,remain] — 5필드 이상 */
+                                            if ((f >= 5) && (fields[4] != NULL) && (fields[4][0] != '\0') &&
+                                                (strchr(fields[1], '.') != NULL))
+                                            {
+                                                const char *p_hex = fields[4];
+                                                uint16_t n = 0u;
+                                                while (((n * 2u) + 1u) < APP_BC95_NNMI_LATCH_MAX)
+                                                {
+                                                    char c1 = p_hex[n * 2u];
+                                                    char c2 = p_hex[(n * 2u) + 1u];
+                                                    int v1, v2;
+                                                    if ((c1 >= '0') && (c1 <= '9')) { v1 = c1 - '0'; }
+                                                    else if ((c1 >= 'A') && (c1 <= 'F')) { v1 = (c1 - 'A') + 10; }
+                                                    else if ((c1 >= 'a') && (c1 <= 'f')) { v1 = (c1 - 'a') + 10; }
+                                                    else { break; }
+                                                    if ((c2 >= '0') && (c2 <= '9')) { v2 = c2 - '0'; }
+                                                    else if ((c2 >= 'A') && (c2 <= 'F')) { v2 = (c2 - 'A') + 10; }
+                                                    else if ((c2 >= 'a') && (c2 <= 'f')) { v2 = (c2 - 'a') + 10; }
+                                                    else { break; }
+                                                    hexFrame[n] = (uint8_t)((v1 * 16) + v2);
+                                                    n++;
+                                                }
+                                                if (n > 0u)
+                                                {
+                                                    hexFrameLen = n;
+                                                    hexDecoded = 1;
+                                                }
+                                            }
+                                        }
                                     }
-                                }
-                                if (p_dat != NULL)
-                                {
-                                    uint16_t n = 0u;
-                                    while (((n * 2u) + 1u) < APP_BC95_NNMI_LATCH_MAX)
-                                    {
-                                        char c1 = p_dat[n * 2u];
-                                        char c2 = p_dat[(n * 2u) + 1u];
-                                        int v1, v2;
-                                        if ((c1 >= '0') && (c1 <= '9')) { v1 = c1 - '0'; }
-                                        else if ((c1 >= 'A') && (c1 <= 'F')) { v1 = (c1 - 'A') + 10; }
-                                        else if ((c1 >= 'a') && (c1 <= 'f')) { v1 = (c1 - 'a') + 10; }
-                                        else { break; }
-                                        if ((c2 >= '0') && (c2 <= '9')) { v2 = c2 - '0'; }
-                                        else if ((c2 >= 'A') && (c2 <= 'F')) { v2 = (c2 - 'A') + 10; }
-                                        else if ((c2 >= 'a') && (c2 <= 'f')) { v2 = (c2 - 'a') + 10; }
-                                        else { break; }
-                                        hexFrame[n] = (uint8_t)((v1 * 16) + v2);
-                                        n++;
-                                    }
-                                    if (n > 0u)
-                                    {
-                                        hexFrameLen = n;
-                                        hexDecoded = 1;
-                                    }
+                                    p_line = (p_eol != NULL) ? (p_eol + 1) : NULL;
                                 }
                             }
 
@@ -8611,8 +8653,11 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                             {
                                 if (p_scan[scanStart] == 0xA3u)
                                 {
-                                    uint8_t frameLen = g_appBc95AtRxBuf[scanStart + 1u];
-                                    if ((frameLen + 3u) <= (rxLen - scanStart))
+                                    /* [수정 2026-11-05] frameLen/범위는 스캔 대상(디코드 프레임)
+                                     * 기준 — 원본 AT 버퍼 참조 시 ASCII 문자값으로 해석되어
+                                     * 분류가 항상 차단됐다. */
+                                    uint8_t frameLen = p_scan[scanStart + 1u];
+                                    if ((frameLen + 3u) <= (scanLen - scanStart))
                                     {
                                         if (App_DlAckClassifyFrame(&p_scan[scanStart],
                                                                    (uint16_t)(frameLen + 3u),
