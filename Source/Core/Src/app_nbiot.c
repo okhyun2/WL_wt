@@ -249,6 +249,13 @@ static uint8_t g_appBc95TotalSilenceDetected = APP_FALSE;
 /* AT+NCONFIG? 응답은 256B를 초과(실측 len=255+TRUNC)하므로 전용 대형 버퍼 사용 */
 static uint8_t g_appBc95NcfgQueryBuf[1024];
 
+/* [NRB 최적화 1단계] 마지막 NCONFIG 동기화에서 실제 수행한 NVM set 횟수
+ * (0=이미 원하는 값 -> 부팅 NRB 생략 근거). 쿼리 실패 시 conservative set 2회. */
+static uint8_t g_appBc95NconfigSyncSetCount = 0u;
+/* [NRB 최적화 2단계] 이번 세션에 provisioning(QREGSWT=1+AUTOCONNECT=TRUE+NRB)을
+ * 실행했는지. TRUE로 남은 NVM을 전원 off 전에 FALSE로 되돌리기 위한 표시. */
+static uint8_t s_appNbiotProvisionedThisSession = APP_FALSE;
+
 /* UDP seq 단조 증가 카운터 (stale URC 매칭 방지) */
 static uint8_t g_appBc95UdpSeqCounter = 0u;
 
@@ -271,6 +278,7 @@ static AppStatus_t App_Bc95AtNconfigSyncIfNeeded(const char *p_key1, const char 
                                                  const char *p_key2, const char *p_val2,
                                                  const char *p_cmd2, const char *p_label2);
 static AppStatus_t App_Bc95AtNconfigSetTrueIfNeeded(void);
+static void App_NbiotSteerAutoconnectFalseAtPowerOff(void);
 static AppStatus_t App_NbiotRunBootConfigurationSequenceCore(void);
 
 #ifdef DEBUG
@@ -5896,6 +5904,11 @@ static AppStatus_t App_Bc95AtNconfigSyncIfNeeded(const char *p_key1, const char 
                  (int)status, (unsigned)rxLen);
     }
 
+    /* [NRB 최적화 1단계] 이번 동기화에서 실제 set한 키 개수(0=이미 원하는 값).
+     * 부팅 설정은 이 카운트가 0이면 NRB를 생략한다. */
+    g_appBc95NconfigSyncSetCount = (uint8_t)(((need1 == APP_TRUE) ? 1u : 0u) +
+                                             ((need2 == APP_TRUE) ? 1u : 0u));
+
     if ((need1 == APP_FALSE) && (need2 == APP_FALSE))
     {
         /* NVM 쓰기 0회: 웨지 지점(쓰기 직후)에 아예 진입하지 않는다 */
@@ -6209,6 +6222,16 @@ static AppStatus_t App_NbiotRunBootConfigurationSequenceCore(void)
                  "CELL_RESELECTION", "TRUE",
                  APP_BC95_AT_CMD_NCONFIG_CELL_RESELECTION_ON, "AT+NCONFIG=CELL_RESELECTION,TRUE");
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    /* [NRB 최적화 1단계] 모뎀은 세션 시작의 GPIO 전원 온에서 이미 리셋되므로
+     * NCONFIG 동기화에서 NVM set이 0회였다면(직전 세션 종료 스티어링 성공)
+     * 적용할 설정이 없어 NRB 없이 진행한다. set이 1회라도 있으면 기존대로
+     * NRB로 설정을 확정한다(쿼리 실패 -> conservative set 2회 -> NRB 유지). */
+    if (g_appBc95NconfigSyncSetCount == 0u)
+    {
+        APP_LOGN("NBIOT", "[[BootTrack]] NCONFIG already synced -> skip boot NRB (power-on reset applied)");
+        return APP_STATUS_OK;
+    }
 
     return App_Bc95AtSendRebootBestEffort();
 }
@@ -6544,6 +6567,11 @@ static AppStatus_t App_NbiotRunBoardProvisioningSequence(void)
     };
 
     APP_LOGN("NBIOT", "[[BootTrack]] start board provisioning sequence");
+
+    /* [NRB 최적화 2단계] provisioning 도달 = 세션 종료 시 NVM AUTOCONNECT가
+     * TRUE로 남는다 -> 전원 off 전 FALSE 스티어링 대상으로 표시 */
+    s_appNbiotProvisionedThisSession = APP_TRUE;
+
     status = App_NbiotSyncPlatformParams();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
@@ -6746,6 +6774,9 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
     s_bc95LastEVTIND      = -1;
     s_bc95EVTINDSeenMask  = 0u;
     s_bc95LatchIsrPending = 0u;
+
+    /* [NRB 최적화 2단계] provisioning 실행 플래그를 세션 시작 시 초기화 */
+    s_appNbiotProvisionedThisSession = APP_FALSE;
 
     APP_LOGN("NBIOT", "[[BootTrack]] start cold-boot reset/provision flow");
 
@@ -10492,6 +10523,68 @@ AppStatus_t App_NBIoTTransmitUdp(void)
     return App_NBIoTTransmitServiceUdp(APP_TRUE);
 }
 
+/*
+ * [NRB 최적화 2단계] 세션 종료 스티어링:
+ * provisioning이 남긴 NVM AUTOCONNECT=TRUE를 전원 off 전에 FALSE로 되돌려
+ * 다음 세션 부팅 설정의 NRB를 생략 가능하게 한다(best-effort).
+ *  - 스티어링 실패/미실행 시 다음 세션 부팅 sync가 기존 경로(FALSE set + NRB)로 회복
+ *  - CFUN=0 이후 AT는 응답하므로 쿼리/쓰기 가능(RF 명령만 불가)
+ */
+static void App_NbiotSteerAutoconnectFalseAtPowerOff(void)
+{
+    AppStatus_t status;
+    uint16_t rxLen = 0u;
+    uint16_t safeLen;
+
+    if (g_appBc95AtInitialized != APP_TRUE)
+    {
+        APP_LOGW("NBIOT", "[[PowerOff]] no AT ctx -> AUTOCONNECT steering skipped");
+        return;
+    }
+
+    APP_LOGN("NBIOT", "[[PowerOff]] TX AT+NCONFIG? (AUTOCONNECT steering)");
+    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_NCONFIG_QUERY,
+                                   g_appBc95NcfgQueryBuf,
+                                   (uint16_t)sizeof(g_appBc95NcfgQueryBuf),
+                                   APP_NBIOT_NCONFIG_QUERY_RX_TIMEOUT_MS,
+                                   &rxLen);
+    if ((status != APP_STATUS_OK) &&
+        !((status == APP_STATUS_UART_TIMEOUT) && (rxLen > 0u)))
+    {
+        APP_LOGW("NBIOT", "[[PowerOff]] NCONFIG? query failed (status=%d rxLen=%u) -> skip steering",
+                 (int)status, (unsigned)rxLen);
+        return;
+    }
+
+    safeLen = (rxLen < (uint16_t)(sizeof(g_appBc95NcfgQueryBuf) - 1u))
+                  ? rxLen : (uint16_t)(sizeof(g_appBc95NcfgQueryBuf) - 1u);
+    g_appBc95NcfgQueryBuf[safeLen] = (uint8_t)'\0';
+
+    if (App_Bc95AtNconfigTokenHasValue((const char *)g_appBc95NcfgQueryBuf,
+                                       "AUTOCONNECT", "TRUE") != APP_TRUE)
+    {
+        APP_LOGN("NBIOT", "[[PowerOff]] AUTOCONNECT not TRUE -> steering skipped");
+        return;
+    }
+
+    /* 응답 꼬리가 모두 흐른 뒤 set(부팅 sync와 동일한 TX-during-TX 드랍 방지) */
+    App_Bc95AtDelayWithFeed(APP_NBIOT_NCONFIG_QUERY_SETTLE_MS);
+    status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_OFF,
+                                           APP_BC95_AT_RX_TIMEOUT_MS,
+                                           "AT+NCONFIG=AUTOCONNECT,FALSE",
+                                           "[[PowerOff]]");
+    if (status == APP_STATUS_OK)
+    {
+        /* NVM 커밋 여유 후 전원 차단 */
+        App_Bc95AtDelayWithFeed(APP_NBIOT_NVM_WRITE_GAP_MS);
+        APP_LOGN("NBIOT", "[[PowerOff]] AUTOCONNECT steering done -> next session boot NRB skippable");
+    }
+    else
+    {
+        APP_LOGW("NBIOT", "[[PowerOff]] AUTOCONNECT steering failed (status=%d) -> next boot NRB runs", (int)status);
+    }
+}
+
 AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
 {
 #if (APP_NBIOT_MANDATORY_LAYER_ENABLE != APP_TRUE)
@@ -10610,6 +10703,15 @@ AppStatus_t App_NBIoTCarrierPowerOffMandatory(void)
         APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_POWEROFF
                  " no AT ctx -> direct off");
 
+    }
+
+    /* [NRB 최적화 2단계] 정상 종료 경로에서만 스티어링.
+     * dead 모듈 경로(goto force_power_off)는 AT 불가 -> 스킵되며
+     * 다음 세션 부팅 sync가 기존 경로로 회복한다. */
+    if (s_appNbiotProvisionedThisSession == APP_TRUE)
+    {
+        App_NbiotSteerAutoconnectFalseAtPowerOff();
+        s_appNbiotProvisionedThisSession = APP_FALSE;
     }
 
 force_power_off:   /* 라벨 */
