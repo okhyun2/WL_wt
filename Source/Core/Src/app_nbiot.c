@@ -1348,10 +1348,10 @@ static AppStatus_t App_NbiotBuildMeterPacket(const char *p_logTag,
 
 static uint8_t App_NbiotResolveWaitServerAck(const AppMeterServerFormatOptions_t *p_options)
 {
-    APP_RETURN_IF_FALSE(p_options != NULL, (uint8_t)APP_POLICY_WAIT_ACK_DEFAULT);
+    APP_RETURN_IF_FALSE(p_options != NULL, (uint8_t)APP_POLICY_WAIT_MGMT_ACK_ENABLE);
     return App_MeterServerOptionsValidate((AppMeterServerFormatOptions_t *)p_options) == APP_STATUS_OK
            ? p_options->ackWaitEnabled
-           : (uint8_t)APP_POLICY_WAIT_ACK_DEFAULT;
+           : (uint8_t)APP_POLICY_WAIT_MGMT_ACK_ENABLE;
 }
 
 /* [ACK 분리 2026-11-04] service 경로용 런타임 스위치 — service 전용 필드 사용 */
@@ -2405,6 +2405,7 @@ void App_DlAckInit(void)
 {
     (void)memset((void *)&s_appDlAckTable, 0, sizeof(s_appDlAckTable));
     s_appDlAckInitDone = 1u;
+    (void)App_DlAckRegisterCmd(0x10u, "ack");      /* [2026-11-05] 6.8 서버 ACK — 응답 확인용, 실행 없음 */
     (void)App_DlAckRegisterCmd(0x50u, "reset");
     (void)App_DlAckRegisterCmd(0x51u, "period");
     (void)App_DlAckRegisterCmd(0x52u, "spread");
@@ -7365,8 +7366,8 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
                 {
                     AppMeterServerFormatOptions_t ackOpt;
                     AppStatus_t ackStatus = App_MeterServerOptionsLoad(&ackOpt);
-                    uint32_t svcTimeoutMs = (uint32_t)APP_POLICY_SERVICE_ACK_NNMI_TIMEOUT_MS;
-                    uint32_t svcPollMs = (uint32_t)APP_POLICY_SERVER_ACK_POLL_MS;
+                    uint32_t svcTimeoutMs = (uint32_t)APP_POLICY_SERVICE_ACK_TIMEOUT_MS;
+                    uint32_t svcPollMs = (uint32_t)APP_POLICY_SERVICE_ACK_POLL_MS;
                     uint8_t svcEn = APP_TRUE;
                     if ((ackStatus == APP_STATUS_OK) || (ackStatus == APP_STATUS_NOT_INITIALIZED))
                     {
@@ -9697,6 +9698,10 @@ AppStatus_t App_NBIoTAtInit(void)
     s_nbiotUdpSocketOpenMask = 0u;  /* [ADD] 모뎀 리셋 후 소켓 전무 -> 추적 리셋 */
     g_appBc95UsimFatal = APP_FALSE;
     g_appBc95AtInitialized = APP_TRUE;
+    /* [DL-ACK 테이블 부팅 초기화 2026-11-05] 기존은 CountFrame/RegisterCmd의 lazy-init
+     * 의존(첫 프레임 수신 시 ISR 컨텍스트에서 memset/strncpy 실행 가능). 부팅 시점에
+     * 명시적으로 초기화해 태스크 컨텍스트에서 테이블을 구성한다. */
+    App_DlAckInit();
 #ifdef NBIoT_SIMULATION_CODE
     APP_LOGI("NBIOT", "Forcely err not initializedBC95 test..."); // NBIoT simulation test
     g_appBc95AtInitialized = APP_FALSE;

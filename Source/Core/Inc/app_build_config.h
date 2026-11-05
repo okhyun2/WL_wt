@@ -314,17 +314,20 @@ extern "C" {
    경로별 제어를 위해 둘로 분리 — 기본값은 기존 동작 보존(둘 다 TRUE). */
 #define APP_POLICY_WAIT_MGMT_ACK_ENABLE            (APP_TRUE)  /* [[MgmtTx]] mgmt 서버 ACK 대기 */
 #define APP_POLICY_WAIT_SERVICE_ACK_ENABLE         (APP_FALSE)  /* [[ServiceTx]] service 서버 ACK 대기 */
-/* 런타임 마스터 스위치(옵션 ackWaitEnabled)의 컴파일 기본값 — 어느 경로든 하나라도 켜졌으면 기본 TRUE */
-#define APP_POLICY_WAIT_ACK_DEFAULT                ((APP_POLICY_WAIT_MGMT_ACK_ENABLE == APP_TRUE) ? (APP_TRUE) : (APP_FALSE))
-#define APP_POLICY_SERVER_ACK_TIMEOUT_MS           (30000u) //10000u default
-#define APP_POLICY_SERVER_ACK_POLL_MS              (500u)
-/* [NNMI] 서비스 서버 애플리케이션 ACK(+NNMI) 대기 시간 — QLWULDATASTATUS=4(1차 ACK) 이후.
+/* [ACK 정책 상수 정리 2026-11-05] 경로별 2종 체계(MGMT / SERVICE)로 통합.
+ * 실측(2026-11-05): mgmt NSORF 수신은 폴링 1회차(220~250ms)에 완료, 정상 세션
+ * EVTIND 4→3 평균 2.0s → 타임아웃은 여유 있는 30s 유지(이상 세션은 NRB 에스컬레이션).
+ * 파생 DEFAULT_* 매크로는 사용처(옵션 기본값 초기화)에서 인라인 계산으로 대체하고 삭제.
+ * 이전 공용 마스터(옵션 기본용)도 삭제 — 옵션 기본값은 경로별 플래그를 직접 사용. */
+/* [MGMT 경로] raw UDP(NSOST→NSORF) ACK 대기 — WAIT_MGMT_ACK_ENABLE과 짝 */
+#define APP_POLICY_MGMT_ACK_TIMEOUT_MS             (30000u)
+#define APP_POLICY_MGMT_ACK_POLL_MS                (500u)
+/* [SERVICE 경로] 플랫폼 UL(QLWULDATAEX) 후 앱 ACK(+NNMI) 대기 — QLWULDATASTATUS=4(1차 ACK) 이후.
  * 서버가 DL 응답을 생성해 단말 +NNMI로 도달하기까지의 상한. 0이 아닌 값 유지 필요. */
-#define APP_POLICY_SERVICE_ACK_NNMI_TIMEOUT_MS     (30000u) //10000u default
-#define APP_POLICY_DEFAULT_SERVICE_ACK_TIMEOUT_SEC (APP_POLICY_SERVICE_ACK_NNMI_TIMEOUT_MS / 1000u)
+#define APP_POLICY_SERVICE_ACK_TIMEOUT_MS          (30000u)
+#define APP_POLICY_SERVICE_ACK_POLL_MS             (500u)
+/* 공용: NSORF 읽기 요청 바이트(경로 무관) */
 #define APP_POLICY_SERVER_ACK_READ_BYTES           (64u)
-#define APP_POLICY_DEFAULT_SERVER_ACK_TIMEOUT_SEC  (APP_POLICY_SERVER_ACK_TIMEOUT_MS / 1000u)
-#define APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS   (APP_POLICY_SERVER_ACK_POLL_MS / 100u)
 #define APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS     (0u) /* 0: legacy fixed spread fallback */
 #define APP_POLICY_REPORT_SPREAD_FALLBACK_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
 //TODO change serial number -> serial_bcd 5

@@ -106,21 +106,21 @@ AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_opti
     }
 
     p_options->ackWaitEnabled = App_MeterServerOptionsNormalizeBinaryFlag(originalAckWait,
-                                                                          (uint8_t)APP_POLICY_WAIT_ACK_DEFAULT);
+                                                                          (uint8_t)APP_POLICY_WAIT_MGMT_ACK_ENABLE);
     p_options->ackTimeoutSec = (originalAckTimeoutSec != 0u)
                                ? originalAckTimeoutSec
-                               : (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_TIMEOUT_SEC;
+                               : (uint8_t)(APP_POLICY_MGMT_ACK_TIMEOUT_MS / 1000u);
     p_options->ackPoll100Ms = (originalAckPoll100Ms != 0u)
                               ? originalAckPoll100Ms
-                              : (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS;
+                              : (uint8_t)(APP_POLICY_MGMT_ACK_POLL_MS / 100u);
     /* service 쌍 정규화: mgmt와 동일 규칙 (service 값이 0이면 기본값 폴백) */
     if (p_options->svcAckTimeoutSec == 0u)
     {
-        p_options->svcAckTimeoutSec = (uint8_t)APP_POLICY_DEFAULT_SERVICE_ACK_TIMEOUT_SEC;
+        p_options->svcAckTimeoutSec = (uint8_t)(APP_POLICY_SERVICE_ACK_TIMEOUT_MS / 1000u);
     }
     if (p_options->svcAckPoll100Ms == 0u)
     {
-        p_options->svcAckPoll100Ms = (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS;
+        p_options->svcAckPoll100Ms = (uint8_t)(APP_POLICY_MGMT_ACK_POLL_MS / 100u);
     }
     if (((uint32_t)p_options->svcAckPoll100Ms * 100u) > ((uint32_t)p_options->svcAckTimeoutSec * 1000u))
     {
@@ -265,12 +265,12 @@ void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options)
     p_options->reportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS;
     p_options->managementReportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_MANAGEMENT_REPORTING_PERIOD_HOURS;
     p_options->reportingSpreadHours = (uint8_t)APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS;
-    p_options->ackWaitEnabled = (uint8_t)APP_POLICY_WAIT_ACK_DEFAULT;
-    p_options->ackTimeoutSec = (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_TIMEOUT_SEC;
-    p_options->ackPoll100Ms = (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS;
+    p_options->ackWaitEnabled = (uint8_t)APP_POLICY_WAIT_MGMT_ACK_ENABLE;
+    p_options->ackTimeoutSec = (uint8_t)(APP_POLICY_MGMT_ACK_TIMEOUT_MS / 1000u);
+    p_options->ackPoll100Ms = (uint8_t)(APP_POLICY_MGMT_ACK_POLL_MS / 100u);
     p_options->svcAckWaitEnabled = (uint8_t)APP_POLICY_WAIT_SERVICE_ACK_ENABLE;
-    p_options->svcAckTimeoutSec = (uint8_t)APP_POLICY_DEFAULT_SERVICE_ACK_TIMEOUT_SEC;
-    p_options->svcAckPoll100Ms = (uint8_t)APP_POLICY_DEFAULT_SERVER_ACK_POLL_100MS;
+    p_options->svcAckTimeoutSec = (uint8_t)(APP_POLICY_SERVICE_ACK_TIMEOUT_MS / 1000u);
+    p_options->svcAckPoll100Ms = (uint8_t)(APP_POLICY_MGMT_ACK_POLL_MS / 100u);
     p_options->deleteAfterSend = (uint8_t)APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS;
     p_options->nightOnly      = APP_FALSE;
     p_options->nightStartHour = (uint8_t)APP_COMM_NIGHT_START_HOUR;
@@ -969,7 +969,7 @@ uint32_t App_MeterServerOptionsGetAckTimeoutMs(const AppMeterServerFormatOptions
     if (p_options == NULL)
     {
         App_ErrorRecord(APP_STATUS_INVALID_PARAM, __FILE__, __LINE__);
-        return APP_POLICY_SERVER_ACK_TIMEOUT_MS;
+        return APP_POLICY_MGMT_ACK_TIMEOUT_MS;
     }
 
     return ((uint32_t)p_options->ackTimeoutSec * 1000u);
@@ -980,7 +980,7 @@ uint32_t App_MeterServerOptionsGetAckPollMs(const AppMeterServerFormatOptions_t 
     if (p_options == NULL)
     {
         App_ErrorRecord(APP_STATUS_INVALID_PARAM, __FILE__, __LINE__);
-        return APP_POLICY_SERVER_ACK_POLL_MS;
+        return APP_POLICY_MGMT_ACK_POLL_MS;
     }
 
     return ((uint32_t)p_options->ackPoll100Ms * 100u);
