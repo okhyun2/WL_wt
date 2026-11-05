@@ -8556,26 +8556,75 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                          * 카운트는 service 경로만 반영(mgmt는 통계 불필요).
                          * mgmt 전용 cmd(0x60~0x7F reserved)는 no-op 로그. */
                         {
+                            /* [NSORF hex 디코드 2026-11-05] 실측(11:17): 본 모뎀은 NSORF
+                             * 데이터를 hex 문자열("A3015050")로 준다 → 버퍼에 0xA3 바이트가
+                             * 존재하지 않아 기존 A3 바이트 스캔은 항상 실패. NSORF 데이터
+                             * 필드(4번째 콤마 뒤)를 찾아 hex 문자열을 바이트로 디코드한
+                             * 프레임을 대상으로 실행한다. */
+                            uint8_t hexFrame[APP_BC95_NNMI_LATCH_MAX];
+                            uint16_t hexFrameLen = 0u;
+                            int hexDecoded = 0;
+                            {
+                                const char *p_buf = (const char *)g_appBc95AtRxBuf;
+                                const char *p_dat = NULL;
+                                int commas = 0;
+                                for (uint16_t q = 0u; (q < rxLen) && (p_dat == NULL); q++)
+                                {
+                                    if (p_buf[q] == ',')
+                                    {
+                                        commas++;
+                                        if (commas == 4) { p_dat = &p_buf[q + 1]; }
+                                    }
+                                }
+                                if (p_dat != NULL)
+                                {
+                                    uint16_t n = 0u;
+                                    while (((n * 2u) + 1u) < APP_BC95_NNMI_LATCH_MAX)
+                                    {
+                                        char c1 = p_dat[n * 2u];
+                                        char c2 = p_dat[(n * 2u) + 1u];
+                                        int v1, v2;
+                                        if ((c1 >= '0') && (c1 <= '9')) { v1 = c1 - '0'; }
+                                        else if ((c1 >= 'A') && (c1 <= 'F')) { v1 = (c1 - 'A') + 10; }
+                                        else if ((c1 >= 'a') && (c1 <= 'f')) { v1 = (c1 - 'a') + 10; }
+                                        else { break; }
+                                        if ((c2 >= '0') && (c2 <= '9')) { v2 = c2 - '0'; }
+                                        else if ((c2 >= 'A') && (c2 <= 'F')) { v2 = (c2 - 'A') + 10; }
+                                        else if ((c2 >= 'a') && (c2 <= 'f')) { v2 = (c2 - 'a') + 10; }
+                                        else { break; }
+                                        hexFrame[n] = (uint8_t)((v1 * 16) + v2);
+                                        n++;
+                                    }
+                                    if (n > 0u)
+                                    {
+                                        hexFrameLen = n;
+                                        hexDecoded = 1;
+                                    }
+                                }
+                            }
+
                             uint8_t frameCmd = 0u;
                             uint16_t scanStart = 0u;
-                            for (scanStart = 0u; scanStart + 4u <= rxLen; scanStart++)
+                            uint16_t scanLen = hexDecoded ? hexFrameLen : rxLen;
+                            const uint8_t *p_scan = hexDecoded ? hexFrame : g_appBc95AtRxBuf;
+                            for (scanStart = 0u; (scanStart + 4u) <= scanLen; scanStart++)
                             {
-                                if (g_appBc95AtRxBuf[scanStart] == 0xA3u)
+                                if (p_scan[scanStart] == 0xA3u)
                                 {
                                     uint8_t frameLen = g_appBc95AtRxBuf[scanStart + 1u];
                                     if ((frameLen + 3u) <= (rxLen - scanStart))
                                     {
-                                        if (App_DlAckClassifyFrame(&g_appBc95AtRxBuf[scanStart],
+                                        if (App_DlAckClassifyFrame(&p_scan[scanStart],
                                                                    (uint16_t)(frameLen + 3u),
                                                                    &frameCmd) == APP_STATUS_OK)
                                         {
                                             if (servicePath == APP_TRUE)
                                             {
-                                                App_DlAckCountFrame(&g_appBc95AtRxBuf[scanStart],
+                                                App_DlAckCountFrame(&p_scan[scanStart],
                                                                     (uint16_t)(frameLen + 3u),
                                                                     APP_TRUE);
                                             }
-                                            App_DlCmdExecute(&g_appBc95AtRxBuf[scanStart],
+                                            App_DlCmdExecute(&p_scan[scanStart],
                                                              (uint16_t)(frameLen + 3u),
                                                              servicePath);
                                             APP_LOGN("NBIOT", "Server ACK frame cmd=0x%02X(%s) bytes=%u path=%s",

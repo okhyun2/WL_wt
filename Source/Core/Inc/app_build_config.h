@@ -312,8 +312,8 @@ extern "C" {
 /* [ACK 정책 분리 2026-11-04] 기존 APP_POLICY_WAIT_SERVER_ACK_ENABLE는
    ServiceTx/MgmtTx 공용 UDP ACK 대기 플래그였음(단일 App_Bc95AtUdpSendOnce 공유).
    경로별 제어를 위해 둘로 분리 — 기본값은 기존 동작 보존(둘 다 TRUE). */
-#define APP_POLICY_WAIT_MGMT_ACK_ENABLE            (APP_TRUE)  /* [[MgmtTx]] mgmt 서버 UDP ACK 대기 */
-#define APP_POLICY_WAIT_SERVICE_ACK_ENABLE         (APP_FALSE)  /* [[ServiceTx]] service 서버 UDP ACK 대기 */
+#define APP_POLICY_WAIT_MGMT_ACK_ENABLE            (APP_TRUE)  /* [[MgmtTx]] mgmt 서버 ACK 대기 */
+#define APP_POLICY_WAIT_SERVICE_ACK_ENABLE         (APP_FALSE)  /* [[ServiceTx]] service 서버 ACK 대기 */
 /* 런타임 마스터 스위치(옵션 ackWaitEnabled)의 컴파일 기본값 — 어느 경로든 하나라도 켜졌으면 기본 TRUE */
 #define APP_POLICY_WAIT_ACK_DEFAULT                ((APP_POLICY_WAIT_MGMT_ACK_ENABLE == APP_TRUE) ? (APP_TRUE) : (APP_FALSE))
 #define APP_POLICY_SERVER_ACK_TIMEOUT_MS           (30000u) //10000u default
