@@ -87,7 +87,8 @@
 #define APP_BC95_AT_CMD_LGU_QBOOTSTRAPHOLDOFF_SET_0 "AT+QBOOTSTRAPHOLDOFF=0\r\n"
 #define APP_BC95_AT_CMD_LGU_QLWEPNS_MANU_SET      "AT+QLWEPNS=1," APP_BC95_PLATFORM_LGU_EPNS_STRING "\r\n"
 #define APP_BC95_AT_CMD_LGU_QLWEPNS_AUTO_SET      "AT+QLWEPNS=0," APP_BC95_PLATFORM_LGU_SERVCODE_STRING "\r\n"
-#define APP_BC95_AT_CMD_LGU_QLWMBSPS_SET     "AT+QLWMBSPS=" APP_BC95_PLATFORM_LGU_MBSPS_STRING "\r\n"
+//realtime 생성.
+//#define APP_BC95_AT_CMD_LGU_QLWMBSPS_SET     "AT+QLWMBSPS=" APP_BC95_PLATFORM_LGU_MBSPS_STRING "\r\n"
 #define APP_BC95_AT_CMD_CSQ                  "AT+CSQ\r\n"
 
 #define APP_BC95_SERVICE_READY_WAKE_SETTLE_MS        (2500u)
@@ -1902,9 +1903,12 @@ static volatile uint32_t s_bc95RxErrPeCount  = 0u;
  *  [PROBE] RX blind-window instrumentation (diagnostic only, no behavior change)
  *    - all variables are updated from main context only (no ISR access)
  * ============================================================ */
+#ifdef NBIOT_TRACE_DEBUG
 #define APP_BC95_TRC_MARK_PROBE_BLIND_RXNE (33)
 #define APP_BC95_TRC_MARK_PROBE_BLIND_ORE  (34)
+#endif /* NBIOT_TRACE_DEBUG */
 
+#ifdef NBIOT_TRACE_DEBUG
 static volatile uint32_t s_probeCmds;
 static volatile uint32_t s_probeDmaOnAtDrain;
 static volatile uint32_t s_probeDmaOffAtDrain;
@@ -1918,6 +1922,7 @@ static volatile uint32_t s_probeBlindMaxMs;
 static volatile uint32_t s_probeDrainTick;
 static volatile uint32_t s_probeBaud;
 static volatile uint8_t  s_probeBlindLastByte;
+#endif /* NBIOT_TRACE_DEBUG */
 
 static uint8_t App_Bc95RxProbeTailIsPartialUrc(const char *p_buf, uint16_t len)
 {
@@ -1953,6 +1958,7 @@ static uint8_t App_Bc95RxProbeTailIsPartialUrc(const char *p_buf, uint16_t len)
     return 0u;
 }
 
+#ifdef NBIOT_TRACE_DEBUG
 static void App_Bc95RxProbeDump(const char *p_where)
 {
     APP_LOGN("NBIOT", "[[RxProbe]] %s cmds=%lu dma(on/off/mis)=%lu/%lu/%lu disarmOff=%lu",
@@ -1971,12 +1977,14 @@ static void App_Bc95RxProbeDump(const char *p_where)
              (unsigned long)s_probeSplitSuspect,
              (unsigned long)s_probeBaud);
 }
+#endif /* NBIOT_TRACE_DEBUG */
 
 /* ============================================================
  *  [INSTR] EVTIND 이벤트 추적 링버퍼 (진단 전용, 동작 변경 없음)
  *    - 어느 경로(ISR/DMA/라인스캔/구제스캔)가 언제 이벤트를 캡처했는지 기록
  *    - Add 는 ISR 안전(PRIMASK, 로그 호출 없음). Dump 는 메인 컨텍스트 전용
  * ============================================================ */
+#ifdef NBIOT_TRACE_DEBUG
 #define APP_BC95_TRC_DEPTH        (32u)   /* 2의 거듭제곱 */
 #define APP_BC95_TRC_KIND_EVT     (0u)    /* val = EVTIND 번호 */
 #define APP_BC95_TRC_KIND_DMA     (1u)    /* val = DMA idle 수신 바이트 수 */
@@ -1989,7 +1997,9 @@ static void App_Bc95RxProbeDump(const char *p_where)
 #define APP_BC95_TRC_SRC_RESCUE   (4u)    /* Disarm CNDTR 구제 스캔 */
 #define APP_BC95_TRC_SRC_COUNT    (5u)
 #define APP_BC95_TRC_MARK_LATCHRESET (1)
+#endif /* NBIOT_TRACE_DEBUG */
 
+#ifdef NBIOT_TRACE_DEBUG
 typedef struct
 {
     uint32_t tick;
@@ -2000,14 +2010,18 @@ typedef struct
     uint8_t  dup;      /* EVT: 이미 mask 에 있던 이벤트를 다시 캡처 */
     uint8_t  pad;
 } AppBc95EvtTrace_t;
+#endif /* NBIOT_TRACE_DEBUG */
 
+#ifdef NBIOT_TRACE_DEBUG
 static AppBc95EvtTrace_t s_bc95Trc[APP_BC95_TRC_DEPTH];
 static volatile uint32_t s_bc95TrcHead = 0u;
 static uint32_t          s_bc95TrcDumped = 0u;
 static volatile uint8_t  s_bc95TrcSrcHint = 0u;
 static volatile uint16_t s_bc95TrcSrcCnt[APP_BC95_TRC_SRC_COUNT];
 static volatile uint16_t s_bc95TrcDupCnt = 0u;
+#endif /* NBIOT_TRACE_DEBUG */
 
+#ifdef NBIOT_TRACE_DEBUG
 static void App_Bc95EvtTraceAdd(uint8_t kind, uint8_t src, int16_t val, uint8_t dup)
 {
     uint32_t primask = __get_PRIMASK();
@@ -2038,8 +2052,10 @@ static void App_Bc95EvtTraceAdd(uint8_t kind, uint8_t src, int16_t val, uint8_t 
     }
     __set_PRIMASK(primask);
 }
+#endif /* NBIOT_TRACE_DEBUG */
 
 /* 메인 컨텍스트 전용(로그 호출). 마지막 Dump 이후 기록분만 출력하고 커서를 전진 */
+#ifdef NBIOT_TRACE_DEBUG
 static void App_Bc95EvtTraceDump(const char *p_tag)
 {
     static const char *const kKind[] = { "EVT", "DMA", "RESCUE", "MARK" };
@@ -2079,6 +2095,7 @@ static void App_Bc95EvtTraceDump(const char *p_tag)
     }
     s_bc95TrcDumped = head;
 }
+#endif /* NBIOT_TRACE_DEBUG */
 
 
 /* ============================================================
@@ -2143,13 +2160,17 @@ static void App_Bc95AtRxDmaRxEventCb(UART_HandleTypeDef *huart, uint16_t Size)
     {
         return;
     }
+#ifdef NBIOT_TRACE_DEBUG
     if (Size != 0u)
     {
         App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_DMA, APP_BC95_TRC_SRC_DMA, (int16_t)Size, 0u);
     }
     s_bc95TrcSrcHint = APP_BC95_TRC_SRC_DMA;
+#endif /* NBIOT_TRACE_DEBUG */
     App_Bc95AtRxDmaScanAndLatch(Size);
+#ifdef NBIOT_TRACE_DEBUG
     s_bc95TrcSrcHint = APP_BC95_TRC_SRC_NONE;
+#endif /* NBIOT_TRACE_DEBUG */
     App_Bc95AtRxDmaStart();
 }
 
@@ -2181,7 +2202,9 @@ static void App_Bc95AtArmUrcMonitor(UART_HandleTypeDef *p_huart)
             s_bc95UrcMonitor.armed = APP_TRUE;
             return;
         }
+#ifdef NBIOT_TRACE_DEBUG
         App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, 35, 0u);
+#endif /* NBIOT_TRACE_DEBUG */
         s_bc95RxDmaArmed = APP_FALSE;
     }
     if (s_bc95RxDmaHandle.Instance == NULL)
@@ -2235,6 +2258,7 @@ static void App_Bc95AtDisarmUrcMonitor(UART_HandleTypeDef *p_huart)
         uint16_t rescueLen = (uint16_t)(APP_BC95_AT_RX_DMA_BUF_SIZE -
                                         s_bc95RxDmaHandle.Instance->CNDTR);
         /* [PROBE-3] DMA hardware state at Disarm, and suspected split URC in the rescued bytes */
+#ifdef NBIOT_TRACE_DEBUG
         if ((s_bc95RxDmaHandle.Instance->CCR & DMA_CCR_EN) == 0u)
         {
             s_probeDisarmDmaOff++;
@@ -2250,8 +2274,11 @@ static void App_Bc95AtDisarmUrcMonitor(UART_HandleTypeDef *p_huart)
             App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_RESCUE, APP_BC95_TRC_SRC_RESCUE, (int16_t)rescueLen, 0u);
         }
         s_bc95TrcSrcHint = APP_BC95_TRC_SRC_RESCUE;
+#endif /* NBIOT_TRACE_DEBUG */
         App_Bc95AtRxDmaScanAndLatch(rescueLen);
+#ifdef NBIOT_TRACE_DEBUG
         s_bc95TrcSrcHint = APP_BC95_TRC_SRC_NONE;
+#endif /* NBIOT_TRACE_DEBUG */
     }
     (void)HAL_UART_AbortReceive(p_huart);
 
@@ -2316,19 +2343,25 @@ static void App_Bc95AtUpdateEVTINDLatch(const char *p_line)
             /* [FIX-EVTIND-2] Cortex-M0+ 에서 |= 는 load-modify-store 라 비원자적이다.
              * DMA RxEvent(UART IRQ)와 메인 루프 스캔 경로가 같은 mask 를 갱신하므로 보호한다. */
             uint32_t primask = __get_PRIMASK();
+#ifdef NBIOT_TRACE_DEBUG
             uint16_t prevMask;
+#endif /* NBIOT_TRACE_DEBUG */
             __disable_irq();
+#ifdef NBIOT_TRACE_DEBUG
             prevMask = s_bc95EVTINDSeenMask;
+#endif /* NBIOT_TRACE_DEBUG */
             if ((eventType >= 0) && (eventType < 16))
             {
                 s_bc95EVTINDSeenMask |= (uint16_t)(1u << eventType);
             }
             s_bc95LastEVTIND = eventType;
+#ifdef NBIOT_TRACE_DEBUG
             App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_EVT,
                                 (s_bc95TrcSrcHint != 0u) ? s_bc95TrcSrcHint : APP_BC95_TRC_SRC_LINE,
                                 (int16_t)eventType,
                                 (uint8_t)(((eventType >= 0) && (eventType < 16) &&
                                            ((prevMask & (uint16_t)(1u << eventType)) != 0u)) ? 1u : 0u));
+#endif /* NBIOT_TRACE_DEBUG */
             __set_PRIMASK(primask);
         }
     }
@@ -2884,17 +2917,21 @@ static void App_Bc95AtUrcMonitorFeedIsr(uint8_t byteValue)
         }
         if ((byteValue == '\r') || (byteValue == '\n'))
         {
+#ifdef NBIOT_TRACE_DEBUG
             uint16_t prevMaskIsr = s_bc95EVTINDSeenMask;
+#endif /* NBIOT_TRACE_DEBUG */
             s_bc95LastEVTIND = (int)s_bc95UrcMonitor.number;
             if (s_bc95UrcMonitor.number < 16u)
             {
                 s_bc95EVTINDSeenMask |= (uint16_t)(1u << s_bc95UrcMonitor.number);
             }
+#ifdef NBIOT_TRACE_DEBUG
             App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_EVT, APP_BC95_TRC_SRC_ISR,
                                 (int16_t)s_bc95UrcMonitor.number,
                                 (uint8_t)(((s_bc95UrcMonitor.number < 16u) &&
                                            ((prevMaskIsr & (uint16_t)(1u << s_bc95UrcMonitor.number)) != 0u)) ? 1u : 0u));
             s_bc95LatchIsrPending = 1u;
+#endif /* NBIOT_TRACE_DEBUG */
         }
         s_bc95UrcMonitor.inNumber = 0u;
         s_bc95UrcMonitor.matchIdx = 0u;
@@ -2953,6 +2990,7 @@ static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
     if (__HAL_UART_GET_FLAG(p_huart, UART_FLAG_PE)  != RESET) { s_bc95RxErrPeCount++;  }
 
     /* [PROBE-1] right after FinishRxIt (abort): is the DMA channel really enabled? flag says armed. */
+#ifdef NBIOT_TRACE_DEBUG
     s_probeDrainTick = HAL_GetTick();
     if (s_probeDrainTick == 0u) { s_probeDrainTick = 1u; }
     s_probeCmds++;
@@ -2969,6 +3007,7 @@ static void App_Bc95AtDrainRxLine(UART_HandleTypeDef *p_huart, uint32_t drainMs)
             s_probeDmaFlagMismatch++;
         }
     }
+#endif /* NBIOT_TRACE_DEBUG */
 
     __HAL_UART_CLEAR_FLAG(p_huart,
                           UART_CLEAR_OREF | UART_CLEAR_FEF |
@@ -3228,6 +3267,7 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
     g_appBc95AtRxContext.active         = APP_TRUE;
 
     /* [PROBE-2] just before arming RX: bytes that arrived after DrainRxLine and sit in RDR/ORE (FLUSH discards them next) */
+#ifdef NBIOT_TRACE_DEBUG
     if (s_probeDrainTick != 0u)
     {
         uint32_t probeBlindMs = HAL_GetTick() - s_probeDrainTick;
@@ -3253,6 +3293,7 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
             App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, APP_BC95_TRC_MARK_PROBE_BLIND_RXNE, 0u);
         }
     }
+#endif /* NBIOT_TRACE_DEBUG */
 
     __HAL_UART_CLEAR_FLAG(p_huart,
         UART_CLEAR_OREF | UART_CLEAR_FEF |
@@ -7056,8 +7097,10 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
     }
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] EVTIND state at timeout last=%d mask=0x%04X",
              s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask);
+#ifdef NBIOT_TRACE_DEBUG
     App_Bc95EvtTraceDump("wait-timeout");
     App_Bc95RxProbeDump("wait-timeout");
+#endif /* NBIOT_TRACE_DEBUG */
 
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] platform-ready wait timeout%s",
              (bootstrapSeen == APP_TRUE) ? " after bootstrap-complete" : "");
@@ -7192,8 +7235,10 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
                      (unsigned long)s_bc95RxErrOreCount,
                      (unsigned long)s_bc95RxErrFeCount);
         }
+#ifdef NBIOT_TRACE_DEBUG
         App_Bc95EvtTraceDump("register-immediate");
         App_Bc95RxProbeDump("register-immediate");
+#endif /* NBIOT_TRACE_DEBUG */
         return APP_STATUS_OK;
     }
  
@@ -7202,8 +7247,10 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     if (status == APP_STATUS_OK)
     {
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] already-registered fast path hit");
+#ifdef NBIOT_TRACE_DEBUG
         App_Bc95EvtTraceDump("register-fastpath");
         App_Bc95RxProbeDump("register-fastpath");
+#endif /* NBIOT_TRACE_DEBUG */
         return APP_STATUS_OK;
     }
     if ((status != APP_STATUS_UART_TIMEOUT) && (status != APP_STATUS_FATAL))
@@ -7216,7 +7263,9 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     s_bc95LastEVTIND = -1;
     s_bc95EVTINDSeenMask = 0u;
     s_bc95LatchIsrPending = 0u;
+#ifdef NBIOT_TRACE_DEBUG
     App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, APP_BC95_TRC_MARK_LATCHRESET, 0u);
+#endif /* NBIOT_TRACE_DEBUG */
 
     /* [v18 EVTIND 재시도 재설계 2026-11-04]
      * attempt 1 = 수동 대기(30s): fast-path 실패 직후의 마지막 수동 관측 기회.
@@ -7243,7 +7292,9 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
             s_bc95LastEVTIND = -1;
             s_bc95EVTINDSeenMask = 0u;
             s_bc95LatchIsrPending = 0u;
+#ifdef NBIOT_TRACE_DEBUG
             App_Bc95EvtTraceAdd(APP_BC95_TRC_KIND_MARK, APP_BC95_TRC_SRC_NONE, APP_BC95_TRC_MARK_LATCHRESET, 0u);
+#endif /* NBIOT_TRACE_DEBUG */
         }
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] auto bootstrap mode: waiting engine EVTIND (attempt %lu/%lu%s)",
                  (unsigned long)attempt,
@@ -7254,8 +7305,10 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
                                                           &needRegisterRetry);
         if (status == APP_STATUS_OK)
         {
+#ifdef NBIOT_TRACE_DEBUG
             App_Bc95EvtTraceDump((attempt == 2u) ? "register-nrb-retry-ok" : "register-retry-ok");
             App_Bc95RxProbeDump((attempt == 2u) ? "register-nrb-retry-ok" : "register-retry-ok");
+#endif /* NBIOT_TRACE_DEBUG */
             return APP_STATUS_OK;
         }
 
@@ -8409,10 +8462,12 @@ static AppBc95AtStatus_t App_Bc95AtParseNsorfForSocket(const char *p_resp,
                         (parsedPort > 0u) && (parsedPort <= 65535u) &&
                         (strchr(parsedIp, '.') != NULL) && (parsedHex[0] != '\0'))
                     {
+#ifdef NBIOT_TRACE_DEBUG
                         APP_LOGI("NBIOT",
                                  "[[AckDbg]] NSORF prefixless matched sock=%d len=%u",
                                  parsedSock,
                                  (unsigned)parsedLen);
+#endif /* NBIOT_TRACE_DEBUG */
                         *p_payloadLen = (uint16_t)parsedLen;
                         return APP_BC95_AT_OK;
                     }
@@ -8446,6 +8501,7 @@ static AppBc95AtStatus_t App_Bc95AtParseNsorfForSocket(const char *p_resp,
             {
                 *p_payloadLen = (uint16_t)parsedLen;
                 /* [NSORF 파싱 디버그] 파싱 성공 상세 - sock/port/len + 본문 선두 hex */
+#ifdef NBIOT_TRACE_DEBUG
                 {
                     char dbgBody[97];   /* 선두 48바 */
                     unsigned n = parsedLen;
@@ -8465,6 +8521,7 @@ static AppBc95AtStatus_t App_Bc95AtParseNsorfForSocket(const char *p_resp,
                              parsedSock, parsedIp, parsedPort, parsedLen, dbgBody,
                              (parsedLen > 48u) ? "..." : "");
                 }
+#endif /* NBIOT_TRACE_DEBUG */
                 return APP_BC95_AT_OK;
             }
         }
@@ -8549,8 +8606,10 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                             (void)snprintf(&dbgHex[di * 2u], 3u, "%02X", (unsigned)g_appBc95AtRxBuf[di]);
                         }
                         dbgHex[di * 2u] = '\0';
+#ifdef NBIOT_TRACE_DEBUG
                         APP_LOGN("NBIOT", "[[AckDbg]] NSORF raw rxLen=%u hex=%s",
                                  (unsigned)dbgLen, dbgHex);
+#endif /* NBIOT_TRACE_DEBUG */
                     }
                     if (App_Bc95AtParseNsorfForSocket((const char *)g_appBc95AtRxBuf,
                                                       (int)socketId,
@@ -8716,7 +8775,9 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                 if (s_ackDbgSkip >= 10u)
                 {
                     s_ackDbgSkip = 0u;
+#ifdef NBIOT_TRACE_DEBUG
                     APP_LOGI("NBIOT", "[[AckDbg]] NSORF absent poll rxLen=%u", (unsigned)rxLen);
+#endif /* NBIOT_TRACE_DEBUG */
                 }
             }
             App_Bc95AtDelayWithFeed(pollMs);

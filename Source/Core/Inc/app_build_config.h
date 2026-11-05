@@ -84,16 +84,16 @@ extern "C" {
 */
 
 #define APP_FW_VERSION_MAJOR                        (0u)
-#define APP_FW_VERSION_MINOR                        (10u)
+#define APP_FW_VERSION_MINOR                        (11u)
 
 #define NBIOT_SUPPORT_DNS
 #ifdef NBIOT_SUPPORT_DNS
-#define MY_SERVER_DOMAIN              "acorp2.iptime.org"
-#define APP_SERVICE_SERVER_PORT                 (6001u)
-#define APP_MGMT_SERVER_PORT                    (6001u)
-//#define MY_SERVER_DOMAIN              "dev-aro.com"
-//#define APP_SERVICE_SERVER_PORT                 (41001u)
-//#define APP_MGMT_SERVER_PORT                    (41001u)
+//#define MY_SERVER_DOMAIN              "acorp2.iptime.org"
+//#define APP_SERVICE_SERVER_PORT                 (6001u)
+//#define APP_MGMT_SERVER_PORT                    (6001u)
+#define MY_SERVER_DOMAIN              "dev-aro.com"
+#define APP_SERVICE_SERVER_PORT                 (41001u)
+#define APP_MGMT_SERVER_PORT                    (41001u)
 
 #define WARMUPDNS_SERVER_DOMAIN       MY_SERVER_DOMAIN
 #define APP_MGMT_SERVER_DOMAIN        MY_SERVER_DOMAIN
@@ -113,7 +113,8 @@ extern "C" {
 //#define APP_BC95_PLATFORM_LGU_SERIAL_STRING         "02132120"  //debug
 #define APP_BC95_PLATFORM_LGU_SERVCODE_STRING       "ADJ1"          //fix. service-code
 #define APP_BC95_PLATFORM_LGU_MODEL_STRING          "ACO-WT-NB26"     //fix. device name
-#define APP_BC95_PLATFORM_LGU_MBSPS_STRING          "ADJ1,4323800010,01226680136,919592,ACO-WT-NB26" //QLWMBSPS:<serv_code>,<ser_no>,<ctn>,<iccid>,<model>
+//realtime 생성.
+//#define APP_BC95_PLATFORM_LGU_MBSPS_STRING          "ADJ1,4323800010,01226680136,919592,ACO-WT-NB26" //QLWMBSPS:<serv_code>,<ser_no>,<ctn>,<iccid>,<model>
 #define APP_BC95_PLATFORM_LGU_NBAND_STRING          "5"
 
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
@@ -176,6 +177,10 @@ extern "C" {
 //select support meter
 #define SUPPORT_METER_NORMAL
 #undef SUPPORT_METER_SC1xxx
+
+/* [2026-11-05] 디버깅/추적 코드 게이트 — AckDbg/EvtTrace/RxProbe/probe 카운터/트레이스 상수.
+ * 제품 빌드에서 끄면 관련 전역·함수·로그가 모두 컴파일에서 제외된다. */
+#undef NBIOT_TRACE_DEBUG
 
 //NBIoT simulation code
 #undef NBIoT_SIMULATION_CODE
@@ -320,12 +325,12 @@ extern "C" {
  * 파생 DEFAULT_* 매크로는 사용처(옵션 기본값 초기화)에서 인라인 계산으로 대체하고 삭제.
  * 이전 공용 마스터(옵션 기본용)도 삭제 — 옵션 기본값은 경로별 플래그를 직접 사용. */
 /* [MGMT 경로] raw UDP(NSOST→NSORF) ACK 대기 — WAIT_MGMT_ACK_ENABLE과 짝 */
-#define APP_POLICY_MGMT_ACK_TIMEOUT_MS             (30000u)
-#define APP_POLICY_MGMT_ACK_POLL_MS                (500u)
+#define APP_POLICY_MGMT_ACK_TIMEOUT_MS             (3000u)
+#define APP_POLICY_MGMT_ACK_POLL_MS                (100u)
 /* [SERVICE 경로] 플랫폼 UL(QLWULDATAEX) 후 앱 ACK(+NNMI) 대기 — QLWULDATASTATUS=4(1차 ACK) 이후.
  * 서버가 DL 응답을 생성해 단말 +NNMI로 도달하기까지의 상한. 0이 아닌 값 유지 필요. */
-#define APP_POLICY_SERVICE_ACK_TIMEOUT_MS          (30000u)
-#define APP_POLICY_SERVICE_ACK_POLL_MS             (500u)
+#define APP_POLICY_SERVICE_ACK_TIMEOUT_MS          (3000u)
+#define APP_POLICY_SERVICE_ACK_POLL_MS             (100u)
 /* 공용: NSORF 읽기 요청 바이트(경로 무관) */
 #define APP_POLICY_SERVER_ACK_READ_BYTES           (64u)
 #define APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS     (0u) /* 0: legacy fixed spread fallback */
