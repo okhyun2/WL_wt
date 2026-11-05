@@ -8355,6 +8355,69 @@ static AppBc95AtStatus_t App_Bc95AtParseNsorfForSocket(const char *p_resp,
 
     APP_RETURN_IF_FALSE((p_resp != NULL) && (p_payloadLen != NULL), APP_BC95_AT_ERR_PARAM);
 
+    /* [NSORF 무접두 폴백 2026-11-05] 실측(10:28): 본 펌웨어는 +NSORF 접두 없이
+     * "+NSONMI:1,8" URC 직후 데이터 라인 "<sock>,<ip>,<port>,<len>,<hex>,<remain>"를
+     * 내보낸다(체감: 폴링 응답 버퍼에 OK만 보이던 현상의 원인). 접두 검색 실패 시
+     * 라인 단위 6필드 패턴 매칭 폴백을 먼저 시도한다. */
+    if (strstr(p_resp, APP_BC95_AT_NSORF_PREFIX) == NULL)
+    {
+        const char *p_line = p_resp;
+        while (p_line != NULL)
+        {
+            const char *p_eol = strchr(p_line, '\n');
+            size_t lineLen = (p_eol != NULL) ? (size_t)(p_eol - p_line) : strlen(p_line);
+            char lineBuf[128];
+
+            if (lineLen > 0u && lineLen < sizeof(lineBuf))
+            {
+                (void)memcpy(lineBuf, p_line, lineLen);
+                lineBuf[lineLen] = '\0';
+
+                /* 라인 정리: 앞뒤 CR/공백 제거 */
+                char *p_trim = lineBuf;
+                while ((*p_trim == '\r') || (*p_trim == ' ')) { p_trim++; }
+                size_t tl = strlen(p_trim);
+                while ((tl > 0u) && ((p_trim[tl - 1u] == '\r') || (p_trim[tl - 1u] == ' ')))
+                {
+                    p_trim[--tl] = '\0';
+                }
+
+                parsedSock = -1;
+                parsedIp[0] = '\0';
+                parsedPort = 0u;
+                parsedLen = 0u;
+                parsedHex[0] = '\0';
+                parsedRemain = 0u;
+
+                /* 6필드 패턴: sock,ip,port,len,hexdata,remain (ip는 dotted-quad 강제) */
+                if (sscanf(p_trim,
+                           "%d,%63[0-9.],%u,%u,%1024[^,],%u",
+                           &parsedSock,
+                           parsedIp,
+                           &parsedPort,
+                           &parsedLen,
+                           parsedHex,
+                           &parsedRemain) >= 5)
+                {
+                    /* NSOST 에코("1,83") 등 오검출 방지: dotted IP + len>0 + hex 필수 */
+                    if ((parsedSock == targetSock) && (parsedLen > 0u) &&
+                        (parsedPort > 0u) && (parsedPort <= 65535u) &&
+                        (strchr(parsedIp, '.') != NULL) && (parsedHex[0] != '\0'))
+                    {
+                        APP_LOGI("NBIOT",
+                                 "[[AckDbg]] NSORF prefixless matched sock=%d len=%u",
+                                 parsedSock,
+                                 (unsigned)parsedLen);
+                        *p_payloadLen = (uint16_t)parsedLen;
+                        return APP_BC95_AT_OK;
+                    }
+                }
+            }
+
+            p_line = (p_eol != NULL) ? (p_eol + 1) : NULL;
+        }
+    }
+
     p_scan = p_resp;
     while ((p_pfx = strstr(p_scan, APP_BC95_AT_NSORF_PREFIX)) != NULL)
     {
@@ -8377,6 +8440,26 @@ static AppBc95AtStatus_t App_Bc95AtParseNsorfForSocket(const char *p_resp,
             if ((parsedSock == targetSock) && (parsedLen > 0u))
             {
                 *p_payloadLen = (uint16_t)parsedLen;
+                /* [NSORF 파싱 디버그] 파싱 성공 상세 - sock/port/len + 본문 선두 hex */
+                {
+                    char dbgBody[97];   /* 선두 48바 */
+                    unsigned n = parsedLen;
+                    unsigned k;
+                    if (n > 48u) { n = 48u; }
+                    for (k = 0u; k < n; k++)
+                    {
+                        unsigned hi = (unsigned)(unsigned char)parsedHex[2u * k];
+                        unsigned lo = (unsigned)(unsigned char)parsedHex[(2u * k) + 1u];
+                        /* hex 문자를 값으로 복원 */
+                        int hv = (hi <= '9') ? (hi - '0') : ((hi | 0x20u) - 'a' + 10);
+                        int lv = (lo <= '9') ? (lo - '0') : ((lo | 0x20u) - 'a' + 10);
+                        (void)snprintf(&dbgBody[k * 2u], 3u, "%02X", (unsigned)((hv * 16) + lv));
+                    }
+                    dbgBody[n * 2u] = '\0';
+                    APP_LOGN("NBIOT", "[[AckDbg]] NSORF parsed sock=%d ip=%s port=%u len=%u body(48B)=%s%s",
+                             parsedSock, parsedIp, parsedPort, parsedLen, dbgBody,
+                             (parsedLen > 48u) ? "..." : "");
+                }
                 return APP_BC95_AT_OK;
             }
         }
@@ -8449,6 +8532,21 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                 if (atStatus == APP_BC95_AT_OK)
                 {
                     ackPayloadLen = 0u;
+                    /* [NSORF 파싱 디버그 2026-11-04] 수신 응답 원본을 그대로 기록 -
+                     * 서버가 보낸 83바 본문(NSORF 포함)의 실제 내용을 확인해
+                     * 파싱 실패/본문 해석 문제를 화면에서 바로 판정한다 */
+                    {
+                        uint16_t dbgLen = (rxLen < (uint16_t)sizeof(g_appBc95AtRxBuf)) ? rxLen : ((uint16_t)sizeof(g_appBc95AtRxBuf) - 1u);
+                        char dbgHex[(2u * 256u) + 1u];
+                        uint16_t di;
+                        for (di = 0u; (di < dbgLen) && (((di * 2u) + 2u) < sizeof(dbgHex)); di++)
+                        {
+                            (void)snprintf(&dbgHex[di * 2u], 3u, "%02X", (unsigned)g_appBc95AtRxBuf[di]);
+                        }
+                        dbgHex[di * 2u] = '\0';
+                        APP_LOGN("NBIOT", "[[AckDbg]] NSORF raw rxLen=%u hex=%s",
+                                 (unsigned)dbgLen, dbgHex);
+                    }
                     if (App_Bc95AtParseNsorfForSocket((const char *)g_appBc95AtRxBuf,
                                                       (int)socketId,
                                                       &ackPayloadLen) == APP_BC95_AT_OK)
@@ -8516,6 +8614,16 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                 }
             }
 
+            /* [NSORF 파싱 디버그] NSORF 없는 응답이면 요약 1줄 기록(스팸 방지 1/10) */
+            {
+                static uint8_t s_ackDbgSkip = 0u;
+                s_ackDbgSkip++;
+                if (s_ackDbgSkip >= 10u)
+                {
+                    s_ackDbgSkip = 0u;
+                    APP_LOGI("NBIOT", "[[AckDbg]] NSORF absent poll rxLen=%u", (unsigned)rxLen);
+                }
+            }
             App_Bc95AtDelayWithFeed(pollMs);
         }
 
