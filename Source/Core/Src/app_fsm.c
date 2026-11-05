@@ -24,20 +24,38 @@
 #include "app_selftest.h"
 #include "app_comm_param.h"
 
-#if 0 //debug
-#if 0
-#define APP_DEBUG_METER_PERIOD_MS      (2u * 60000u)   /* 5 min */
-#define APP_DEBUG_TX_PERIOD_MS         (3u * 60000u)   /* 10 min : service TX */
-#define APP_DEBUG_MGMT_TX_PERIOD_MS    (3u * 60000u)   /* 10 min : management TX */
-#else
-/* run shot time for immediately test */
-#define APP_DEBUG_METER_PERIOD_MS      (2u * 60000u)   /* 1 min */
-#define APP_DEBUG_TX_PERIOD_MS         (3u * 60000u)   /* 5 min : service TX */
-#define APP_DEBUG_MGMT_TX_PERIOD_MS    (15u * 60000u)   /* 10 min : management TX */
+/* ==========================================================================
+ * [가속 테스트 게이트] 주기 3종을 분 단위로 설정 (0 = 해당 항목 비활성화)
+ *   - APP_TEST_METER_PERIOD_MIN      : 검침 주기      (NVM 주기 무시, 이 값 사용)
+ *   - APP_TEST_SERVICE_TX_PERIOD_MIN : 주기보고(service TX)
+ *   - APP_TEST_MGMT_TX_PERIOD_MIN    : MGMT 전송주기
+ *   - 활성화되면 App_FsmTxScheduleBypassDebugGuards()가 참이 되어
+ *     검침 근접 가드 등 스케줄 가드도 함께 우회된다 (app_fsm.c 하단).
+ *   - DL 주기변경/간격분산 커맨드(6.6/6.7)는 NVM(시간 단위)에만 반영되며
+ *     이 디버그 주기가 활성화된 동안에는 타이밍에 영향 없음.
+ *   - 끄려면 아래 #define APP_TEST_PERIOD_ACCEL 을 주석 처리
+ *     (정상: NVM 저장 주기 + 오버라이드 사용)
+ * ========================================================================== */
+#ifdef APP_TEST_PERIOD_ACCEL
+
+#define APP_TEST_METER_PERIOD_MIN           (2u)   /* 검침 주기(분) */
+#define APP_TEST_SERVICE_TX_PERIOD_MIN      (3u)   /* 주기보고(분) */
+#define APP_TEST_MGMT_TX_PERIOD_MIN         (15u)  /* MGMT 전송주기(분) */
+
+#if (APP_TEST_METER_PERIOD_MIN > 0u)
+#define APP_DEBUG_METER_PERIOD_MS           ((uint32_t)APP_TEST_METER_PERIOD_MIN * 60000u)
 #endif
+#if (APP_TEST_SERVICE_TX_PERIOD_MIN > 0u)
+#define APP_DEBUG_TX_PERIOD_MS              ((uint32_t)APP_TEST_SERVICE_TX_PERIOD_MIN * 60000u)
+#endif
+#if (APP_TEST_MGMT_TX_PERIOD_MIN > 0u)
+#define APP_DEBUG_MGMT_TX_PERIOD_MS         ((uint32_t)APP_TEST_MGMT_TX_PERIOD_MIN * 60000u)
+#endif
+
 #undef APP_RTC_ALARM_COLLISION_TX_DELAY_SEC
 #define APP_RTC_ALARM_COLLISION_TX_DELAY_SEC        (10u)
-#endif
+
+#endif /* APP_TEST_PERIOD_ACCEL */
 
 ///////////////////////////////////////////////////////////////////////////////////
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 1u)

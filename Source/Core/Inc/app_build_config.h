@@ -182,6 +182,9 @@ extern "C" {
  * 제품 빌드에서 끄면 관련 전역·함수·로그가 모두 컴파일에서 제외된다. */
 #undef NBIOT_TRACE_DEBUG
 
+/* 가속 테스트(검침,주기보고,MGMT보고)시: define */
+#define APP_TEST_PERIOD_ACCEL
+
 //NBIoT simulation code
 #undef NBIoT_SIMULATION_CODE
 
