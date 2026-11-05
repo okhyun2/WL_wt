@@ -2319,6 +2319,71 @@ static void App_Bc95AtFinishRxIt(UART_HandleTypeDef *p_huart)
 /* ============================================================
  *  RX 라인 드레인 (송신 직전 호출)
  * ============================================================ */
+/* ============================================================================
+ * [DFOTA 1.6.3] LwM2M Module DFOTA flow 대응 (bc95 LGU 매뉴얼 1.6절)
+ *  +QLWEVTIND:5 = 서버가 DFOTA 개시를 통보하고 delta 다운로드가 시작된다.
+ *  매뉴얼 경고: 이 URC 수신 후에는 모듈이 firmware update를 마칠 때까지
+ *  AT command 전송/리부트 등 모듈 제어를 멈춰야 한다(REBOOT_CAUSE_SECURITY_
+ *  FOTA_UPGRADE 로 모듈이 스스로 리부트).
+ *  대응: EVTIND:5 수신 시 DFOTA hold 상태 진입 ->
+ *    - 플랫폼 UDP 송신(App_Bc95AtUdpSendOnce) 억제
+ *    - 모뎀 SW/HW 리셋(CFUN 토글/전원 차단) 억제
+ *    - hold는 모듈 재초기화(App_NBIoTAtInit) 또는 만료 시 해제되며,
+ *      부팅 재진입 시 기존 BootTrack이 AT+QGMR 로 버전을 확인한다.
+ *  hold 상한은 APP_BC95_DFOTA_HOLD_TIMEOUT_MS (delta 수신 지연 만료 대비).
+ * ========================================================================== */
+#define APP_BC95_DFOTA_HOLD_TIMEOUT_MS      (30u * 60000u)   /* 30 min */
+
+static volatile uint8_t s_bc95DfotaHoldActive  = 0u;
+static volatile uint32_t s_bc95DfotaHoldStartMs = 0u;
+static volatile uint8_t  s_bc95DfotaHoldTimeoutLogged = 0u;
+
+static void App_Bc95AtDfotaHoldEnter(void);
+static uint8_t App_Bc95AtDfotaHoldActive(void);
+static void App_Bc95AtDfotaHoldClear(const char *p_reason);
+
+static void App_Bc95AtDfotaHoldEnter(void)
+{
+    if (s_bc95DfotaHoldActive == 0u)
+    {
+        s_bc95DfotaHoldActive = 1u;
+        s_bc95DfotaHoldStartMs = HAL_GetTick();
+        s_bc95DfotaHoldTimeoutLogged = 0u;
+        APP_LOGW("NBIOT", "[[DFOTA]] EVTIND:5 firmware download started -> hold module control (timeout=%lums)",
+                 (unsigned long)APP_BC95_DFOTA_HOLD_TIMEOUT_MS);
+    }
+    else
+    {
+        APP_LOGI("NBIOT", "[[DFOTA]] EVTIND:5 re-enter while hold already active");
+    }
+}
+
+static uint8_t App_Bc95AtDfotaHoldActive(void)
+{
+    if (s_bc95DfotaHoldActive == 0u)
+    {
+        return APP_FALSE;
+    }
+    if ((HAL_GetTick() - s_bc95DfotaHoldStartMs) >= APP_BC95_DFOTA_HOLD_TIMEOUT_MS)
+    {
+        /* 만료: 다운로드가 비정상 지연된 경우. 제어를 회복해 폴백 복구가
+         * 가능하도록 한다(모듈이 이미 죽어있으면 기존 부팅 복구 경로가 처리). */
+        App_Bc95AtDfotaHoldClear("timeout");
+        return APP_FALSE;
+    }
+    return APP_TRUE;
+}
+
+static void App_Bc95AtDfotaHoldClear(const char *p_reason)
+{
+    if (s_bc95DfotaHoldActive != 0u)
+    {
+        s_bc95DfotaHoldActive = 0u;
+        (void)p_reason;
+        APP_LOGN("NBIOT", "[[DFOTA]] hold cleared (%s)", (p_reason != NULL) ? p_reason : "unknown");
+    }
+}
+
 /* EVTIND 조기 도착 래치:
  * 부팅 트랙(자가진단/계량기 프로브, 수 초) 동안 LwM2M 엔진의 EVTIND:0/3/8 URC가
  * 모뎀에서 먼저 도착할 수 있다. 기존 로직은 ServicePlatformWake의 fast-path 대기가
@@ -2363,6 +2428,12 @@ static void App_Bc95AtUpdateEVTINDLatch(const char *p_line)
                                            ((prevMask & (uint16_t)(1u << eventType)) != 0u)) ? 1u : 0u));
 #endif /* NBIOT_TRACE_DEBUG */
             __set_PRIMASK(primask);
+        }
+        /* [DFOTA 1.6.3] EVTIND:5 = DFOTA 다운로드 개시 URC -> hold 진입.
+         * 스캔/래치/대기 루프 모든 경로가 이 래치를 거치므로 여기서 1회 처리. */
+        if (eventType == 5)
+        {
+            App_Bc95AtDfotaHoldEnter();
         }
     }
 }
@@ -7081,6 +7152,13 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
             APP_LOGW("NBIOT", "[[ServicePlatformWake]] registration retry requested by URC=%d", eventType);
             return APP_STATUS_UART_TIMEOUT;
         }
+        if (eventType == 5)
+        {
+            /* [DFOTA 1.6.3] 서버 DFOTA 다운로드 개시: hold 진입 후 이 주기는 TX 중단 */
+            App_Bc95AtDfotaHoldEnter();
+            APP_LOGW("NBIOT", "[[ServicePlatformWake]] DFOTA download started (URC=%d) -> stop platform TX for this cycle", eventType);
+            return APP_STATUS_BUSY;
+        }
         if ((eventType == 6) || (eventType == 7))
         {
             APP_LOGW("NBIOT", "[[ServicePlatformWake]] DFOTA-related URC=%d -> stop platform TX for this cycle", eventType);
@@ -7644,7 +7722,13 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
 static AppStatus_t App_NbiotCarrierPerformSwReset(void)
 {
     AppStatus_t status;
-
+    /* [DFOTA 1.6.3] hold 중 리셋 금지 - 모듈 자체 update 흐름 보호 */
+    if (App_Bc95AtDfotaHoldActive() == APP_TRUE)
+    {
+        APP_LOGW("NBIOT", "[[DFOTA]] firmware update in progress -> skip SW reset (carrier reset)");
+        return APP_STATUS_BUSY;
+    }
+ 
     APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_RESET " SW reset sequence start (AT+CFUN=0 -> AT+CFUN=1)");
 
     status = App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_CFUN_SET_MIN,
@@ -7673,6 +7757,13 @@ static AppStatus_t App_NbiotCarrierPerformSwReset(void)
 
 static AppStatus_t App_NbiotCarrierPerformHwReset(void)
 {
+    /* [DFOTA 1.6.3] hold 중 전원 차단 금지 - 모듈 자체 update 흐름 보호 */
+    if (App_Bc95AtDfotaHoldActive() == APP_TRUE)
+    {
+        APP_LOGW("NBIOT", "[[DFOTA]] firmware update in progress -> skip HW reset (carrier reset)");
+        return APP_STATUS_BUSY;
+    }
+
     APP_LOGW("NBIOT", APP_NBIOT_REPORT_LOG_RESET " HW reset sequence start (power cycle)");
     App_HwNbiotPowerCycle();
     /*
@@ -9163,6 +9254,13 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
                                   AppBc95UdpResult_t *p_result,
                                   uint8_t isMgmtPath)
 {
+    /* [DFOTA 1.6.3] hold 중에는 모듈 제어(AT command)를 금지한다 */
+    if (App_Bc95AtDfotaHoldActive() == APP_TRUE)
+    {
+        APP_LOGW("NBIOT", "[[DFOTA]] firmware update in progress -> skip UDP send (%s)", p_logTag);
+        return APP_STATUS_BUSY;
+    }
+
     AppStatus_t status;
     AppMeterServerFormatOptions_t opt;
     uint8_t waitServerAck;
@@ -9733,6 +9831,14 @@ AppStatus_t App_NBIoTSyncTime(void)
  * ============================================================ */
 AppStatus_t App_NBIoTAtInit(void)
 {
+    /* [DFOTA 1.6.3] 모듈 리부트/재초기화 = update 완료(REBOOT_CAUSE_SECURITY_
+     * FOTA_UPGRADE) 후 재진입. hold를 해제해 정상 제어를 회복하며, 기존
+     * BootTrack의 AT+QGMR 로 업데이트된 버전을 확인한다. */
+    if (s_bc95DfotaHoldActive != 0u)
+    {
+        App_Bc95AtDfotaHoldClear("module re-init");
+    }
+
     APP_RETURN_IF_FALSE((APP_UART_NBIOT_HANDLE != NULL), APP_STATUS_INVALID_PARAM);
 
     (void)memset(&g_appBc95AtRxContext, 0, sizeof(g_appBc95AtRxContext));
