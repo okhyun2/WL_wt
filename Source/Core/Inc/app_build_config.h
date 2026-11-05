@@ -318,7 +318,7 @@ extern "C" {
    ServiceTx/MgmtTx 공용 UDP ACK 대기 플래그였음(단일 App_Bc95AtUdpSendOnce 공유).
    경로별 제어를 위해 둘로 분리 — 기본값은 기존 동작 보존(둘 다 TRUE). */
 #define APP_POLICY_WAIT_MGMT_ACK_ENABLE            (APP_TRUE)  /* [[MgmtTx]] mgmt 서버 ACK 대기 */
-#define APP_POLICY_WAIT_SERVICE_ACK_ENABLE         (APP_FALSE)  /* [[ServiceTx]] service 서버 ACK 대기 */
+#define APP_POLICY_WAIT_SERVICE_ACK_ENABLE         (APP_TRUE)  /* [[ServiceTx]] service 서버 ACK 대기 */
 /* [ACK 정책 상수 정리 2026-11-05] 경로별 2종 체계(MGMT / SERVICE)로 통합.
  * 실측(2026-11-05): mgmt NSORF 수신은 폴링 1회차(220~250ms)에 완료, 정상 세션
  * EVTIND 4→3 평균 2.0s → 타임아웃은 여유 있는 30s 유지(이상 세션은 NRB 에스컬레이션).
