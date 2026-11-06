@@ -232,6 +232,9 @@ static volatile uint8_t g_appFsmNfcStopOriginPending;
 static volatile uint8_t g_appFsmNfcDropAwakeTagPending;
 static volatile NFC_WakeupEvent_t g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
 static volatile uint8_t g_appFsmNfcBusyReplyPending = APP_FALSE;
+/* [NFC-AWAKE-BUSY] awake-origin 세션 1프레임 제한 표지:
+ * 세션을 1프레임만 진행해 busy 응답 1건으로 종료하기 위한 플래그. */
+static volatile uint8_t g_appFsmNfcAwakeBusyOneShot = APP_FALSE;
 static volatile uint8_t g_appFsmNbiotBusyWindow = APP_FALSE;
 static uint8_t g_nfcReady = APP_FALSE;
 static uint8_t g_appFsmInitialBootRoutineQueued = APP_FALSE;
@@ -717,6 +720,7 @@ AppStatus_t App_NfcInit(void)
     g_nfcWakeEvent = NFC_WAKEUP_EVENT_UNKNOWN;
     g_appFsmNfcStopOriginPending = APP_FALSE;
     g_appFsmNfcDropAwakeTagPending = APP_FALSE;
+    g_appFsmNfcAwakeBusyOneShot = APP_FALSE;
     g_nfcReady = APP_TRUE;
     APP_LOGI("FSM", "trace nfc module init done ready=%u", (unsigned int)g_nfcReady);
     return APP_STATUS_OK;
@@ -1285,12 +1289,20 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
      * g_appFsmNfcBusyReplyPending 도 함께 clear 하여,
      * 다음 STOP-origin 세션에서 stale busy reply 가 소비되지 않도록 한다.
      */
+    /* [NFC-AWAKE-BUSY] awake(RUN/SLEEP) 중 태깅 정책 v2:
+     * 기존: 완전 무응답 drop -> 검침원이 기기 상태를 알 수 없음.
+     * 변경: 세션을 1프레임만 진행해 SEOUL/UCMD 프레임에 busy 응답 1건을
+     *       내린 뒤 종료한다("지금 통신 중, 잠시 후 재태깅" 피드백).
+     * 주기능 영향 없음: NBIoT 개입 0(commRequested 큐잉 안 함), I2C 응답 1회.
+     * 안전장치: busy pending은 프레임 소비 시 즉시 clear 되고, 미소비
+     *          프레임(PING/AUTH)이면 아래 one-shot 종료에서 강제 clear 하므로
+     *          stale busy 가 다음 STOP 세션에 넘어가지 않는다. */
     if (g_appFsmNfcDropAwakeTagPending == APP_TRUE)
     {
-        g_appFsmNfcBusyReplyPending = APP_FALSE;
+        g_appFsmNfcBusyReplyPending = APP_TRUE;
+        g_appFsmNfcAwakeBusyOneShot = APP_TRUE;
         APP_LOGW("FSM",
-                 "trace nfc hard-block awake-origin tag -> drop without response (busy cleared)");
-        return APP_STATUS_OK;
+                 "trace nfc awake-origin tag -> busy reply session (1 frame, no NBIoT)");
     }
 
     for (;;)
@@ -1316,6 +1328,20 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
         if (App_FsmNfcHandleIndicatedCommand(&seoulResult) != APP_STATUS_OK)
         {
             return APP_STATUS_FATAL;
+        }
+
+        /* [NFC-AWAKE-BUSY] awake-origin 세션은 1프레임(busy 응답)으로 종료:
+         * commRequested 큐잉(NBIoT wake)과 auth same-wake 대기를 하지 않는다. */
+        if (g_appFsmNfcAwakeBusyOneShot == APP_TRUE)
+        {
+            g_appFsmNfcAwakeBusyOneShot = APP_FALSE;
+            g_appFsmNfcDropAwakeTagPending = APP_FALSE;
+            g_appFsmNfcBusyReplyPending = APP_FALSE;
+            APP_LOGI("FSM",
+                     "trace nfc awake busy session done cmd=%02X%02X -> release to stop",
+                     (unsigned int)seoulResult.requestCmd1,
+                     (unsigned int)seoulResult.requestCmd2);
+            return APP_STATUS_OK;
         }
 
         if (seoulResult.handled == APP_TRUE)
