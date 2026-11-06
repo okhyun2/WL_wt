@@ -252,6 +252,14 @@ static uint8_t g_appBc95NcfgQueryBuf[1024];
 /* [NRB 최적화 1단계] 마지막 NCONFIG 동기화에서 실제 수행한 NVM set 횟수
  * (0=이미 원하는 값 -> 부팅 NRB 생략 근거). 쿼리 실패 시 conservative set 2회. */
 static uint8_t g_appBc95NconfigSyncSetCount = 0u;
+/* [NCONFIG-QUERY-SKIP] BKP4R 기반 직전 세션 AUTOCONNECT 상태 캐시:
+ * BKP4R = 매직(0x4E43 <<16 | state), state: 1=FALSE(스티어링 완료), 2=TRUE(provisioning 실행).
+ * RTC BKP는 POR 시 클리어되므로 매직 불일치 -> 폴백 쿼리(기존 경로).
+ * 기존 BKP4R 사용(Get_BootInfo 마킹 0x00040004)은 부팅 즉시 소비/무사용이라 충돌 없음. */
+#define APP_NBIOT_NCFG_BKP_MAGIC_STATE_FALSE (0x4E430001u)
+#define APP_NBIOT_NCFG_BKP_MAGIC_STATE_TRUE  (0x4E430002u)
+static uint8_t App_NbiotNcfgBkpGetState(uint8_t *p_isFalse);
+static void App_NbiotNcfgBkpSetState(uint8_t isFalse);
 /* [NRB 최적화 2단계] 이번 세션에 provisioning(QREGSWT=1+AUTOCONNECT=TRUE+NRB)을
  * 실행했는지. TRUE로 남은 NVM을 전원 off 전에 FALSE로 되돌리기 위한 표시. */
 static uint8_t s_appNbiotProvisionedThisSession = APP_FALSE;
@@ -6291,6 +6299,28 @@ static AppStatus_t App_Bc95AtSendRebootBestEffort(void)
 static AppStatus_t App_NbiotRunBootConfigurationSequenceCore(void)
 {
     AppStatus_t status;
+
+    /* [NCONFIG-QUERY-SKIP] BKP 캐시가 유효하면 255B NCONFIG? 쿼리를 생략한다.
+     *  - state=FALSE(스티어링 완료): 부팅 sync 목적(AUTOCONNECT=FALSE)이 이미
+     *    충족돼 있으므로 sync set 0회 -> 기존 boot_nrb_optimize 경로대로 NRB 스킵.
+     *  - state=TRUE(provisioning NRB 직후): NVM=TRUE가 맞는 상태이므로 여기서는
+     *    FALSE로 되돌리지 않고 sync 생략. CELL_RESELECTION은 provisioning에서
+     *    이미 TRUE 적용 -> NRB 스킵 대상.
+     * POR(갑작스런 전원) 시 BKP가 클리어되어 이 분기에 진입하지 않고
+     * 기존 쿼리 경로로 폴백한다. */
+    {
+        uint8_t bkpIsFalse = 0u;
+        if (App_NbiotNcfgBkpGetState(&bkpIsFalse) == 1u)
+        {
+            APP_LOGN("NBIOT", "[[BootTrack]] BKP state=%s -> skip NCONFIG? query (trusted)",
+                     (bkpIsFalse != 0u) ? "FALSE" : "TRUE");
+            g_appBc95NconfigSyncSetCount = 0u;
+            /* 이 시퀀스의 나머지(NCONFIG sync + NRB)는 생략하고 종료:
+             * QGMR/QLWFOTAIND/QREGSWT=2 등 선행 시퀀스는 이미 위에서 수행됨. */
+            return APP_STATUS_OK;
+        }
+    }
+
     static const AppBc95SeqStep_t kBootCfgSeq[] =
     {
         { APP_BC95_SEQ_STEP_BESTEFFORT_QUERY, APP_BC95_AT_CMD_QGMR_QUERY,                APP_BC95_AT_RX_TIMEOUT_MS, "AT+QGMR" },
@@ -6666,6 +6696,9 @@ static AppStatus_t App_NbiotRunBoardProvisioningSequence(void)
     /* [NRB 최적화 2단계] provisioning 도달 = 세션 종료 시 NVM AUTOCONNECT가
      * TRUE로 남는다 -> 전원 off 전 FALSE 스티어링 대상으로 표시 */
     s_appNbiotProvisionedThisSession = APP_TRUE;
+    /* [NCONFIG-QUERY-SKIP] provisioning NRB 이후 NVM=TRUE 상태로 부팅하는
+     * 후속 세션(finalize)이 쿼리 없이 판정할 수 있게 기록 */
+    App_NbiotNcfgBkpSetState(0u);
 
     status = App_NbiotSyncPlatformParams();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
@@ -10649,6 +10682,30 @@ AppStatus_t App_NBIoTTransmitUdp(void)
     return App_NBIoTTransmitServiceUdp(APP_TRUE);
 }
 
+/* [NCONFIG-QUERY-SKIP] BKP4R 상태 캐시 (RTC BKP는 POR에서 클리어,
+ * 그 외 리셋에서 유지. HAL_PWR_EnableBkUpAccess는 main.c에서 이미 수행). */
+static void App_NbiotNcfgBkpSetState(uint8_t isFalse)
+{
+    RTC->BKP4R = (isFalse != 0u) ? APP_NBIOT_NCFG_BKP_MAGIC_STATE_FALSE
+                                 : APP_NBIOT_NCFG_BKP_MAGIC_STATE_TRUE;
+}
+
+static uint8_t App_NbiotNcfgBkpGetState(uint8_t *p_isFalse)
+{
+    uint32_t v = RTC->BKP4R;
+    if (v == APP_NBIOT_NCFG_BKP_MAGIC_STATE_FALSE)
+    {
+        if (p_isFalse != NULL) { *p_isFalse = 1u; }
+        return 1u;
+    }
+    if (v == APP_NBIOT_NCFG_BKP_MAGIC_STATE_TRUE)
+    {
+        if (p_isFalse != NULL) { *p_isFalse = 0u; }
+        return 1u;
+    }
+    return 0u;  /* POR/소실: 폴백 필요 */
+}
+
 /*
  * [NRB 최적화 2단계] 세션 종료 스티어링:
  * provisioning이 남긴 NVM AUTOCONNECT=TRUE를 전원 off 전에 FALSE로 되돌려
@@ -10703,6 +10760,8 @@ static void App_NbiotSteerAutoconnectFalseAtPowerOff(void)
     {
         /* NVM 커밋 여유 후 전원 차단 */
         App_Bc95AtDelayWithFeed(APP_NBIOT_NVM_WRITE_GAP_MS);
+        /* [NCONFIG-QUERY-SKIP] 다음 세션 부팅이 쿼리 없이 판정할 수 있게 기록 */
+        App_NbiotNcfgBkpSetState(1u);
         APP_LOGN("NBIOT", "[[PowerOff]] AUTOCONNECT steering done -> next session boot NRB skippable");
     }
     else
