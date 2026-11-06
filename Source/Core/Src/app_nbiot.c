@@ -344,6 +344,7 @@ static int s_bc95LastEVTIND = -1;
 static void App_Bc95AtUpdateEVTINDLatch(const char *p_line);
 static uint8_t App_Bc95AtEVTINDMaskReady(uint16_t seenMask);
 static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len);
+static void App_Bc95AtScanBufferForEVTINDCont(void);
 static uint8_t App_Bc95AtEVTINDMaskReadyFallbackOnly(uint16_t seenMask);
 
 /* --- NNMI 래치 상태 (main/IRQ 혼재 쓰기 → PRIMASK 보호) --- */
@@ -1892,10 +1893,19 @@ typedef struct
 
 static App_Bc95AtUrcMonitor_t s_bc95UrcMonitor;
 static volatile uint8_t s_bc95LatchIsrPending = 0u;
+/* [FIX-EVTIND-4] ready 판정 타임아웃 시 last∈{3,8}이면 마스크 불완전해도
+ * 실제 전송 1회로 등록을 검증한다(NRB 에스컬레이션 대신). 호출부가
+ * 소비 후 0으로 되돌린다. */
+static uint8_t s_bc95EvtindReadyVerifyPending = 0u;
 /* 지금까지 본 EVTIND 종류의 비트마스크(bit n = EVTIND:n 관측).
  * 마지막 값(last)만 저장하면 :0(등록완료)이 :3/:8에 덮여 유실되므로
  * ready 판정은 마스크 기준으로 한다. */
 static volatile uint16_t s_bc95EVTINDSeenMask = 0u;
+/* [FIX-EVTIND-3] 스캔 경로 부분 URC continuation:
+ * 버퍼 경계에서 잘린 "+QLWEVTIND:" 접두어/라인을 다음 스캔에서 이어 붙여
+ * 파싱한다. 비어 있음은 tailLen==0 으로 판정. */
+static char s_bc95EvtScanTail[16];
+static uint16_t s_bc95EvtScanTailLen = 0u;
 /* 요약 시점에 이미 로그를 남긴 이벤트 비트마스크(ISR 캡처분 중복 로그 방지) */
 static uint16_t s_bc95LoggedMask = 0u; /* ISR 래치 갱신 표지(메인 루프 로그용) */
 /* [2단계-1차] HW 수신 오류 카운터: 유실 원인(오버런 유무) 실증용.
@@ -2455,6 +2465,30 @@ static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len)
     }
     /* [NNMI] EVTIND 스캔과 동일한 경로(응답 혼입/ DMA 잔량)에서 NNMI도 함께 회수 */
     App_Bc95AtScanBufferForNnmi(p_buf, len);
+    /* [FIX-EVTIND-3] 이전 버퍼 끝에서 잘린 EVTIND 라인이 있으면 현재 버퍼
+     * 선두와 이어 붙여 먼저 판정한다(경계 분할 URC 회수). */
+    if (s_bc95EvtScanTailLen > 0u)
+    {
+        char contBuf[64];
+        uint16_t contLen = s_bc95EvtScanTailLen;
+        uint16_t k;
+        (void)memcpy(contBuf, s_bc95EvtScanTail, s_bc95EvtScanTailLen);
+        for (k = 0u; (k < len) && (contLen < (uint16_t)(sizeof(contBuf) - 1u)) &&
+             (p_buf[k] != '\r') && (p_buf[k] != '\n'); k++)
+        {
+            contBuf[contLen++] = p_buf[k];
+        }
+        contBuf[contLen] = '\0';
+        if ((contLen > (uint16_t)APP_BC95_AT_QLWEVTIND_PREFIX_LEN) &&
+            (memcmp(contBuf, APP_BC95_AT_QLWEVTIND_PREFIX,
+                    APP_BC95_AT_QLWEVTIND_PREFIX_LEN) == 0))
+        {
+            App_Bc95AtUpdateEVTINDLatch(contBuf);
+            if (k > 0u) { i = (uint16_t)(k - 1u); }  /* 소비분 건너뛰기(아래 ++i) */
+        }
+        s_bc95EvtScanTailLen = 0u;
+    }
+
     /* 라인 단위로 훑어 EVTIND 접두어를 찾는다(버퍼 내 NUL 보존 가정 없음) */
     for (i = 0u; (i + APP_BC95_AT_QLWEVTIND_PREFIX_LEN) <= len; i++)
     {
@@ -2483,6 +2517,45 @@ static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len)
             }
         }
     }
+    /* [FIX-EVTIND-3] 버퍼 끝이 부분 URC(잘린 접두어 또는 접두어+미완성 본문)면
+     * 다음 스캔에서 완성 판정할 수 있게 보존한다. 완성 라인은 위 루프에서
+     * 이미 처리되므로 여기는 미완성 꼬리만 남는다. */
+    if (App_Bc95RxProbeTailIsPartialUrc(p_buf, len) == 1u)
+    {
+        uint16_t k;
+        uint16_t start = len;
+        /* 마지막 라인 시작 위치(직전 CR/LF 뒤)를 찾아 라인 단위로 보존 */
+        for (k = len; k > 0u; k--)
+        {
+            if ((p_buf[k - 1u] == '\r') || (p_buf[k - 1u] == '\n'))
+            {
+                start = k;
+                break;
+            }
+        }
+        if (len > start)
+        {
+            uint16_t copyLen = (uint16_t)(len - start);
+            if (copyLen > (uint16_t)(sizeof(s_bc95EvtScanTail) - 1u))
+            {
+                copyLen = (uint16_t)(sizeof(s_bc95EvtScanTail) - 1u);
+            }
+            (void)memcpy(s_bc95EvtScanTail, &p_buf[len - copyLen], copyLen);
+            s_bc95EvtScanTailLen = copyLen;
+        }
+    }
+    else
+    {
+        s_bc95EvtScanTailLen = 0u;
+    }
+}
+
+/* [FIX-EVTIND-3] 스캔 경로 외부(세션 경계 등)에서 tail을 비워
+ * 이전 세션 조각이 다음 세션 판정을 오염시키지 않게 한다. */
+static void App_Bc95AtScanBufferForEVTINDCont(void)
+{
+    s_bc95EvtScanTailLen = 0u;
+
 }
 
 /* ============================================================================
@@ -6774,6 +6847,7 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
     s_bc95LastEVTIND      = -1;
     s_bc95EVTINDSeenMask  = 0u;
     s_bc95LatchIsrPending = 0u;
+    s_bc95EvtindReadyVerifyPending = 0u;
 
     /* [NRB 최적화 2단계] provisioning 실행 플래그를 세션 시작 시 초기화 */
     s_appNbiotProvisionedThisSession = APP_FALSE;
@@ -7206,6 +7280,16 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
     }
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] EVTIND state at timeout last=%d mask=0x%04X",
              s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask);
+    /* [FIX-EVTIND-4] 엔진 등록 후반부 이벤트(3=registered, 8=update-done)가
+     * 이미 관측됐으면 등록 완료 가능성이 높다. 마스크 완성 대기를 포기하고
+     * 전송 1회로 실 등록을 검증하도록 호출부에 힌트를 남긴다. */
+    if ((s_bc95LastEVTIND == 3) || (s_bc95LastEVTIND == 8))
+    {
+        s_bc95EvtindReadyVerifyPending = 1u;
+        APP_LOGN("NBIOT", "[[ServicePlatformWake]] last=%d -> verify registration by TX instead of NRB",
+                 s_bc95LastEVTIND);
+    }
+
 #ifdef NBIOT_TRACE_DEBUG
     App_Bc95EvtTraceDump("wait-timeout");
     App_Bc95RxProbeDump("wait-timeout");
@@ -7391,6 +7475,21 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
     for (attempt = 1u; attempt <= APP_BC95_PLATFORM_REGISTER_RETRY_MAX; attempt++)
     {
         {
+            /* [FIX-EVTIND-4] 등록 후반부 이벤트(last=3/8)가 이미 관측됐으면
+             * 모뎀이 버스트 일부만 발행한 것으로 실 등록 완료 가능성이 높다.
+             * NRB 에스컬레이션 대신 전송 1회로 실 등록을 검증한다:
+             *   - TX 성공(UDP OK) -> 등록 유효로 간주, NRB 생략(회복 ~16s 절감)
+             *   - TX 실패       -> 기존대로 NRB 에스컬레이션
+             * 검증 TX는 send 루프가 재시도하므로 여기서는 pending 플래그만 세운다. */
+            if (s_bc95EvtindReadyVerifyPending == 1u)
+            {
+                s_bc95EvtindReadyVerifyPending = 0u;
+                APP_LOGN("NBIOT", "[[ServicePlatformWake]] skip NRB escalation: verify registration by first TX (last=3/8 seen)");
+                /* NRB 없이 재대기 없이 전송으로 진행: 루프를 통과해 send 단계로 이동.
+                 * wait 실패이므로 상태는 UART_TIMEOUT 대신 OK로 간주해 진행한다. */
+                return APP_STATUS_OK;
+            }
+
             APP_LOGW("NBIOT", "[[ServicePlatformWake]] attempt 1/2 passive wait failed -> escalate NRB reset + re-register (no repeat wait)");
             if (App_Bc95AtSendRebootBestEffort() != APP_STATUS_OK)
             {
