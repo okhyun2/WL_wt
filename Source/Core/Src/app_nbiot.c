@@ -20,7 +20,6 @@
 
 #define APP_NBIOT_AT_RAW_RX_DEBUG   APP_FALSE //TODO. debug:APP_TRUE, PRODUCT: APP_FALSE
 
-
 #define APP_BC95_AT_CMD_PING          "AT\r\n"
 #define APP_BC95_AT_CMD_IMEI          "AT+CGSN=1\r\n"
 #define APP_BC95_AT_CMD_IMSI          "AT+CIMI\r\n"

@@ -213,6 +213,25 @@ def process_bin(bin_path: str) -> Tuple[bytearray, int, int, int]:
     if len(data) % 4 != 0:
         data += b'\xFF' * (4 - len(data) % 4)
 
+    # [OPT 2026-11-06] CRC 대상 크기 축소: 마지막 non-0xFF 바이트까지만 유효 이미지로
+    # 간주해 firmwareSize를 축소한다. 업데이트 다운로드(6.10 FW_CHUNK) 시간 단축 목적.
+    # 부트 검증(BootSlotIsValid/DlVerifyImage)은 firmwareSize를 CRC 대상으로만 사용하므로
+    # 헤더(0x40~)가 항상 non-FF인 조건에서 안전. 축소 후 크기는 4바이트 정렬 유지.
+    _last = len(data) - 1
+    while _last >= 0 and data[_last] == 0xFF:
+        _last -= 1
+    _trunc = _last + 1
+    if _trunc % 4 != 0:
+        _trunc += 4 - (_trunc % 4)
+    if _trunc < len(data) and _trunc >= 0x100:
+        _padded_size = len(data)
+        data = data[:_trunc]
+        print(f"[BIN] size optimized   : {_padded_size} -> {_trunc} bytes "
+              f"(-{_padded_size - _trunc} bytes, "
+              f"{(_padded_size - _trunc) / _padded_size * 100:.1f}% saved)")
+    else:
+        _trunc = len(data)
+
     firmware_size = len(data)
 
     struct.pack_into('<I', data, firmware_size_offset, firmware_size)
