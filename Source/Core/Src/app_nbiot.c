@@ -7,6 +7,7 @@
 #include "main.h"
 #include "app_hw.h"
 #include "app_nbiot.h"
+#include "boot_udp_dl.h"   /* [FW-UPD] BootDlMeta_t / BOOT_DL_META_PAGE2 공유 */
 #include "app_gpio_lp.h"
 #include "app_log.h"
 #include "app_clock.h"
@@ -195,6 +196,30 @@
 #define APP_NBIOT_REJECT_CAUSE_TERMINATED_1   (8)
 #define APP_NBIOT_REJECT_CAUSE_TERMINATED_2   (2)
 #define APP_NBIOT_REJECT_CAUSE_TERMINATED_3   (26)
+
+/* [NNMI] 서비스 서버 ACK 대기 (2차 ACK): QLWULDATASTATUS=4(1차, 플랫폼 CoAP) 이후 호출.
+ * 서버 응답은 +NNMI 푸시이므로 NSORF 폴링이 아닌 래치 카운터 폴링으로 대기(문서 §1.5).
+ * 타임아웃 시에도 전송 자체는 성공(STATUS=4)이므로 OK 반환 — 재전송에 의한 이중화 방지. */
+/* ============================================================================
+ * [DL 명령 실행 2026-11-04] +NNMI로 수신한 A3 명령 프레임의 실제 동작 수행
+ *   0x50 reset  : 단말 리셋(6.5) — 시스템 소프트 리셋 지연 수행(로그 플러시 시간 확보)
+ *   0x51 period : 주기 변경(6.6) — payload [측정h][보고h] → 옵션 저장(NVM) 후 반영
+ *   0x52 spread : 보고 시간간격 분산(6.7) — payload [분산h] → 옵션 저장(NVM) 후 반영
+ * 프레임은 App_DlAckClassifyFrame(헤더/msgLen/checksum)을 통과한 것만 전달된다.
+ * 실행 결과는 APP_LOGN으로 남기며, period/spread 저장 실패 시에도 수신 자체는
+ * ack 카운트된다(수신-실행 분리).
+ * ========================================================================== */
+#define APP_DL_CMD_RESET                      (0x50u)
+#define APP_DL_CMD_PERIOD                     (0x51u)
+#define APP_DL_CMD_SPREAD                     (0x52u)
+/* [FW-UPD 6.9] 앱 업데이트 시작: [ver(2)][size(4)][crc32(4)][ip(4)][port(2)] 수신 ->
+ * DlMeta(META page2) 기록 후 소프트 리셋. 부트가 BOOT UDP 다운로드를 수행한다. */
+#define APP_DL_CMD_FW_BEGIN                    (0x54u)
+#define APP_DL_CMD_RESET_DELAY_MS             (1500u)   /* 로그 플러시 후 리셋 */
+/* [mgmt reserved 2026-11-04] mgmt 전용 cmd 예약 영역 0x60~0x7F — 향후 확장용.
+ * 등록은 App_DlAckRegisterCmd(cmd, "이름"), 동작은 case 추가로 확장. */
+#define APP_DL_CMD_MGMT_RESERVED_MIN          (0x60u)
+#define APP_DL_CMD_MGMT_RESERVED_MAX          (0x7Fu)
 
 /* ============================================================
  *  내부 상태
@@ -2622,6 +2647,7 @@ void App_DlAckInit(void)
     (void)App_DlAckRegisterCmd(0x50u, "reset");
     (void)App_DlAckRegisterCmd(0x51u, "period");
     (void)App_DlAckRegisterCmd(0x52u, "spread");
+    (void)App_DlAckRegisterCmd(APP_DL_CMD_FW_BEGIN, "fw_begin");   /* [FW-UPD] 6.9 */
 }
 
 AppStatus_t App_DlAckRegisterCmd(uint8_t cmd, const char *p_name)
@@ -2890,26 +2916,37 @@ static void App_Bc95AtNnmiScanDmaBuf(void)
     }
 }
 
-/* [NNMI] 서비스 서버 ACK 대기 (2차 ACK): QLWULDATASTATUS=4(1차, 플랫폼 CoAP) 이후 호출.
- * 서버 응답은 +NNMI 푸시이므로 NSORF 폴링이 아닌 래치 카운터 폴링으로 대기(문서 §1.5).
- * 타임아웃 시에도 전송 자체는 성공(STATUS=4)이므로 OK 반환 — 재전송에 의한 이중화 방지. */
-/* ============================================================================
- * [DL 명령 실행 2026-11-04] +NNMI로 수신한 A3 명령 프레임의 실제 동작 수행
- *   0x50 reset  : 단말 리셋(6.5) — 시스템 소프트 리셋 지연 수행(로그 플러시 시간 확보)
- *   0x51 period : 주기 변경(6.6) — payload [측정h][보고h] → 옵션 저장(NVM) 후 반영
- *   0x52 spread : 보고 시간간격 분산(6.7) — payload [분산h] → 옵션 저장(NVM) 후 반영
- * 프레임은 App_DlAckClassifyFrame(헤더/msgLen/checksum)을 통과한 것만 전달된다.
- * 실행 결과는 APP_LOGN으로 남기며, period/spread 저장 실패 시에도 수신 자체는
- * ack 카운트된다(수신-실행 분리).
- * ========================================================================== */
-#define APP_DL_CMD_RESET                      (0x50u)
-#define APP_DL_CMD_PERIOD                     (0x51u)
-#define APP_DL_CMD_SPREAD                     (0x52u)
-#define APP_DL_CMD_RESET_DELAY_MS             (1500u)   /* 로그 플러시 후 리셋 */
-/* [mgmt reserved 2026-11-04] mgmt 전용 cmd 예약 영역 0x60~0x7F — 향후 확장용.
- * 등록은 App_DlAckRegisterCmd(cmd, "이름"), 동작은 case 추가로 확장. */
-#define APP_DL_CMD_MGMT_RESERVED_MIN          (0x60u)
-#define APP_DL_CMD_MGMT_RESERVED_MAX          (0x7Fu)
+/* [FW-UPD 6.9] BootDlMeta를 META page2(0x0802F000)에 기록. 부트와 구조체 공유
+ * (Boot/Inc/boot_udp_dl.h — include path에 Boot/Inc 존재). 페이지 지움+word 프로그램. */
+static AppStatus_t App_DlFwBeginSaveMeta(const BootDlMeta_t *p_meta)
+{
+    FLASH_EraseInitTypeDef erase;
+    uint32_t pageError = 0u;
+    const uint32_t *p_word = (const uint32_t *)p_meta;
+    uint32_t i;
+
+    HAL_FLASH_Unlock();
+    erase.TypeErase = FLASH_TYPEERASE_PAGES;
+    erase.PageAddress = BOOT_DL_META_PAGE2;
+    erase.NbPages = 1u;
+    if (HAL_FLASHEx_Erase(&erase, &pageError) != HAL_OK)
+    {
+        (void)HAL_FLASH_Lock();
+        APP_LOGE("NBIOT", "[[FW-UPD]] DlMeta erase fail (err=%lu)", (unsigned long)pageError);
+        return APP_STATUS_INIT_FAILED;
+    }
+    for (i = 0u; i < (sizeof(BootDlMeta_t) / 4u); i++)
+    {
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, BOOT_DL_META_PAGE2 + (i * 4u), p_word[i]) != HAL_OK)
+        {
+            (void)HAL_FLASH_Lock();
+            APP_LOGE("NBIOT", "[[FW-UPD]] DlMeta program fail (idx=%lu)", (unsigned long)i);
+            return APP_STATUS_INIT_FAILED;
+        }
+    }
+    (void)HAL_FLASH_Lock();
+    return APP_STATUS_OK;
+}
 
 static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len, uint8_t isServicePath)
 {
@@ -2985,6 +3022,46 @@ static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len, uint8_t isSer
                          (unsigned)opt.reportingSpreadHours);
             }
             break;
+
+        case APP_DL_CMD_FW_BEGIN:
+        {
+            /* 프레임: [0xA3][msgLen=17][0x54][ver2][size4][crc4][ip4][port2][crc8] */
+            if (len < 20u)
+            {
+                APP_LOGW("NBIOT", "[[DlCmd]] fw_begin(6.9) payload short (len=%u) -> ignore", (unsigned)len);
+                break;
+            }
+            {
+                BootDlMeta_t meta;
+                uint8_t i;
+                (void)memset((void *)&meta, 0, sizeof(meta));
+                meta.magic = BOOT_DL_MAGIC;
+                meta.versionMajor = p_frame[3];
+                meta.versionMinor = p_frame[4];
+                meta.imageSize = ((uint32_t)p_frame[5] << 24) | ((uint32_t)p_frame[6] << 16) |
+                                 ((uint32_t)p_frame[7] << 8) | (uint32_t)p_frame[8];
+                meta.imageCrc = ((uint32_t)p_frame[9] << 24) | ((uint32_t)p_frame[10] << 16) |
+                                ((uint32_t)p_frame[11] << 8) | (uint32_t)p_frame[12];
+                for (i = 0u; i < 4u; i++) { meta.serverIp[i] = p_frame[13 + i]; }
+                meta.serverPort = (uint16_t)(((uint16_t)p_frame[17] << 8) | (uint16_t)p_frame[18]);
+                meta.active = 1u;
+                meta.failCount = 0u;
+                meta.recvOffset = 0u;   /* FW_BEGIN 중복 수신 시 풀재시도 */
+                if (App_DlFwBeginSaveMeta(&meta) != APP_STATUS_OK)
+                {
+                    APP_LOGE("NBIOT", "[[DlCmd]] fw_begin(6.9) meta save FAIL -> ignore (no reset)");
+                    break;
+                }
+                APP_LOGN("NBIOT", "[[DlCmd]] fw_begin(6.9) v%u.%u size=%lu crc=0x%08lX ip=%u.%u.%u.%u:%u -> reset in %u ms",
+                         (unsigned)meta.versionMajor, (unsigned)meta.versionMinor,
+                         (unsigned long)meta.imageSize, (unsigned long)meta.imageCrc,
+                         meta.serverIp[0], meta.serverIp[1], meta.serverIp[2], meta.serverIp[3],
+                         (unsigned)meta.serverPort, (unsigned)APP_DL_CMD_RESET_DELAY_MS);
+                App_Bc95AtDelayWithFeed(APP_DL_CMD_RESET_DELAY_MS);
+                HAL_NVIC_SystemReset();   /* 반환 없음 */
+            }
+            break;   /* 도달하지 않음(방어) */
+        }
 
         default:
             if ((cmd >= APP_DL_CMD_MGMT_RESERVED_MIN) && (cmd <= APP_DL_CMD_MGMT_RESERVED_MAX))
