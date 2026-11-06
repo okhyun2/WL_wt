@@ -1,5 +1,6 @@
 #include "boot_info.h"
 #include "boot_slot.h"
+#include "boot_udp_dl.h"
 
 static void BootSaveOrResetDefaults(BootInfo_t *p_info)
 {
@@ -18,6 +19,10 @@ int main(void)
 
     BootInfoLoad(&info);
     BootSaveOrResetDefaults(&info);
+
+    /* [FW-UPD] 관리서버 UDP 앱 업데이트: DlMeta.active=1이면 여기서 다운로드 수행.
+     * 성공 시 플래그 소거 + 새 이미지가 APP 슬롯에 기록되어 아래 점프에서 반영. */
+    BootUdpDlRun();
 
     if (info.bootState == BOOT_STATE_UPDATE_REQUESTED)
     {

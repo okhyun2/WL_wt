@@ -172,7 +172,7 @@
 			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
 		</cconfiguration>
 		<cconfiguration id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1946799328">
-			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1946799328" moduleId="org.eclipse.cdt.core.settings" name="bootloader">
+			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1946799328" moduleId="org.eclipse.cdt.core.settings" name="Boot_Release">
 				<externalSettings/>
 				<extensions>
 					<extension id="org.eclipse.cdt.core.ELF" point="org.eclipse.cdt.core.BinaryParser"/>
@@ -184,7 +184,7 @@
 				</extensions>
 			</storageModule>
 			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-				<configuration artifactExtension="elf" artifactName="bootloader" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe,org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release" cleanCommand="rm -rf" description="dualboot" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1946799328" name="bootloader" parent="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release">
+				<configuration artifactExtension="elf" artifactName="bootloader" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe,org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release" cleanCommand="rm -rf" description="bootloader" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1946799328" name="Boot_Release" parent="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release">
 					<folderInfo id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1946799328." name="/" resourcePath="">
 						<toolChain id="com.st.stm32cube.ide.mcu.gnu.managedbuild.toolchain.exe.release.1528541045" name="MCU ARM GCC" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.toolchain.exe.release">
 							<option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.option.target_mcu.1101450102" name="MCU" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.option.target_mcu" useByScannerDiscovery="true" value="STM32L073RZTx" valueType="string"/>
@@ -223,7 +223,7 @@
 								<option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.option.optimization.level.811484726" name="Optimization level" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.option.optimization.level" useByScannerDiscovery="false" value="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.option.optimization.level.value.os" valueType="enumerated"/>
 							</tool>
 							<tool id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.1701132896" name="MCU/MPU GCC Linker" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker">
-								<option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.option.script.1726196494" name="Linker Script (-T)" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.option.script" value="${workspace_loc:/${ProjName}/Linker/BOOT_128K.ld}" valueType="string"/>
+								<option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.option.script.1726196494" name="Linker Script (-T)" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.option.script" value="${workspace_loc:/${ProjName}/Linker/BOOT_24K.ld}" valueType="string"/>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.input.1946245263" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 									<additionalInput kind="additionalinput" paths="$(LIBS)"/>
@@ -241,16 +241,16 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Boot"/>
-						<entry excluding="Src/stm32l0xx_it.c|Src/sysmem.c|Src/syscalls.c|Src/nfc_user_command.c|Src/nfc_secure_auth.c|Src/nfc_ntag5_ntp53321.c|Src/nfc_lowpower.c|Src/main.c|Src/app_system.c|Src/app_storage.c|Src/app_selftest.c|Src/app_msgq.c|Src/app_meter.c|Src/app_log.c|Src/app_fsm.c|Src/app_debug.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="Boot"/>
+						<entry excluding="Src/app_aux.c|Src/app_clock.c|Src/app_comm_param.c|Src/app_debug.c|Src/app_error.c|Src/app_fsm.c|Src/app_gpio_lp.c|Src/app_log.c|Src/app_meter.c|Src/app_meter_server_format.c|Src/app_meter_storage.c|Src/app_msgq.c|Src/app_nbiot.c|Src/app_nfc_seoul_format.c|Src/app_selftest.c|Src/app_system.c|Src/app_util.c|Src/nfc_app_control_command.c|Src/nfc_lowpower.c|Src/nfc_ntag5_ntp53321.c|Src/nfc_secure_auth.c|Src/nfc_user_command.c|Src/stm32l0xx_it.c|Src/sysmem.c|Src/syscalls.c|Src/main.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
+ 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>
 			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
 		</cconfiguration>
 		<cconfiguration id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1664012624">
-			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1664012624" moduleId="org.eclipse.cdt.core.settings" name="app_image">
+			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1664012624" moduleId="org.eclipse.cdt.core.settings" name="App_Release">
 				<externalSettings/>
 				<extensions>
 					<extension id="org.eclipse.cdt.core.ELF" point="org.eclipse.cdt.core.BinaryParser"/>
@@ -262,7 +262,7 @@
 				</extensions>
 			</storageModule>
 			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-				<configuration artifactExtension="elf" artifactName="app_image" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe,org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release" cleanCommand="rm -rf" description="default" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1664012624" name="app_image" parent="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release" postannouncebuildStep="append image crc" postbuildStep="python ../scripts/post_build_crc.py &quot;${BuildArtifactFileBaseName}.bin&quot; &quot;${BuildArtifactFileBaseName}.hex&quot; --base 0x08002000">
+				<configuration artifactExtension="elf" artifactName="app_image" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe,org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release" cleanCommand="rm -rf" description="app" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1664012624" name="App_Release" parent="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release" postannouncebuildStep="append image crc" postbuildStep="python ../scripts/post_build_crc.py &quot;${BuildArtifactFileBaseName}.bin&quot; &quot;${BuildArtifactFileBaseName}.hex&quot; --base 0x08006000">
 					<folderInfo id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1664012624." name="/" resourcePath="">
 						<toolChain id="com.st.stm32cube.ide.mcu.gnu.managedbuild.toolchain.exe.release.659085961" name="MCU ARM GCC" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.toolchain.exe.release">
 							<option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.option.target_mcu.128721869" name="MCU" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.option.target_mcu" useByScannerDiscovery="true" value="STM32L073RZTx" valueType="string"/>
@@ -303,7 +303,7 @@
 								<option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.option.optimization.level.1933756273" name="Optimization level" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.option.optimization.level" useByScannerDiscovery="false" value="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.option.optimization.level.value.os" valueType="enumerated"/>
 							</tool>
 							<tool id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.495105969" name="MCU/MPU GCC Linker" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker">
-								<option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.option.script.470735214" name="Linker Script (-T)" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.option.script" value="${workspace_loc:/${ProjName}/Linker/APP_SLOT1_128K.ld}" valueType="string"/>
+								<option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.option.script.470735214" name="Linker Script (-T)" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.option.script" value="${workspace_loc:/${ProjName}/Linker/APP_SLOT_160K.ld}" valueType="string"/>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.input.499080675" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 									<additionalInput kind="additionalinput" paths="$(LIBS)"/>
@@ -334,17 +334,14 @@
 		<project id="STM32L073RZT6_20260421.null.1242679150" name="STM32L073RZT6_20260421"/>
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
-	<storageModule moduleId="scannerConfiguration">
-		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		<scannerConfigBuildInfo instanceId="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.647261603;com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.647261603.;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.316369121;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.392720069">
-			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498;com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.360972855;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.537757678">
-			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
-	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
 	<storageModule moduleId="refreshScope" versionNumber="2">
+		<configuration configurationName="Boot_Release">
+			<resource resourceType="PROJECT" workspacePath="/STM32L073RZT6"/>
+		</configuration>
+		<configuration configurationName="App_Release">
+			<resource resourceType="PROJECT" workspacePath="/STM32L073RZT6"/>
+		</configuration>
 		<configuration configurationName="bootloader"/>
 		<configuration configurationName="app_slot2"/>
 		<configuration configurationName="app_slot1"/>
@@ -354,5 +351,18 @@
 		<configuration configurationName="Release">
 			<resource resourceType="PROJECT" workspacePath="/STM32L073RZT6"/>
 		</configuration>
+		<configuration configurationName="app_image"/>
+	</storageModule>
+	<storageModule moduleId="scannerConfiguration">
+		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		<scannerConfigBuildInfo instanceId="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1946799328;com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.1946799328.;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.2020568562;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.1819991983">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498;com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.522224498.;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.360972855;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.537757678">
+			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.647261603;com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.647261603.;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.316369121;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.392720069">
+			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
 	</storageModule>
 </cproject>

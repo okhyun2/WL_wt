@@ -20,13 +20,13 @@
 wakeup_context_t g_wakeup_ctx = {0};
 extern NFC_NTP53321_Handle_t g_nfcTagHandle;
 extern RTC_HandleTypeDef hrtc;
-BootInfo_t g_boot_info;
+AppBootInfo_t g_boot_info;
 
 static AppSystemContext_t g_appSystemContext;
 static AppGpioLpConfig_t g_appGpioLpConfig;
 static char g_appSystemWakeString[64];
 
-static void Print_BootInfo(BootInfo_t *pBootInfo);
+static void Print_BootInfo(AppBootInfo_t *pBootInfo);
 static void App_SystemForceAdcFullOffBeforeStop(void);
 static AppStatus_t App_SystemRestoreAdcAfterWakeFromStop(void);
 static void App_SystemRollbackNfcStandbyIfNeeded(uint8_t standbyPrepareState);
@@ -1872,7 +1872,7 @@ const char *App_SystemGetVersionString(void)
     return g_appVersionString;
 }
 
-void Get_BootInfo(BootInfo_t *pBootInfo)
+void Get_BootInfo(AppBootInfo_t *pBootInfo)
 {
     /* 리셋 플래그 저장 (클리어 전에) */
     pBootInfo->reset_flags = RCC->CSR;
@@ -1895,7 +1895,7 @@ void Get_BootInfo(BootInfo_t *pBootInfo)
     RTC->BKP4R = 0x00000000;
 }
 
-static void Print_BootInfo(BootInfo_t *pBootInfo)
+static void Print_BootInfo(AppBootInfo_t *pBootInfo)
 {
     APP_LOGI("BOOT", "=== Boot info ===");
 

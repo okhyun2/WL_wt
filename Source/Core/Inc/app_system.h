@@ -93,7 +93,7 @@ typedef struct {
     uint32_t bkp2;
     uint32_t bkp3;
     uint32_t bkp4;
-} BootInfo_t;
+} AppBootInfo_t;
 
 typedef enum
 {
@@ -189,7 +189,7 @@ LPTIM_PRESCALER_DIV128
 */
 #define APP_SYSTEM_LPTIM1_PRESCALER               LPTIM_PRESCALER_DIV32                   
 
-extern BootInfo_t g_boot_info;
+extern AppBootInfo_t g_boot_info;
 
 AppStatus_t App_SystemInit(void);
 AppBootResetCause_t App_SystemGetBootResetCause(void);
@@ -217,7 +217,7 @@ const char *App_SystemGetWakeSourceString(void);
 const char *App_SystemGetLowPowerModeString(void);
 AppStatus_t App_SystemRunBootSelfTest(void);
 AppStatus_t App_SystemRunWakeDataCollection(void);
-void Get_BootInfo(BootInfo_t *pBootInfo);
+void Get_BootInfo(AppBootInfo_t *pBootInfo);
 uint8_t App_SystemPrepareNfcStandbyForStop(void);
 
 #ifdef __cplusplus
