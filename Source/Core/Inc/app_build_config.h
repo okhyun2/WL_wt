@@ -185,6 +185,13 @@ extern "C" {
 /* 가속 테스트(검침,주기보고,MGMT보고)시: define */
 #define APP_TEST_PERIOD_ACCEL
 
+/* [TRACE-COMP-GATE] 주기 반복 컴포넌트의 trace comp 로그 게이트:
+ * meter/rtc/housekeeping/watchdog 등 주기 세션마다 동일 전이 시퀀스를
+ * 반복 출력해 13.4h 실측에서 로그의 ~9%(5,044/55,707)를 차지했다.
+ * 이벤트성 컴포넌트(nfc/nbiot) 전이는 이상 세션 식별 가치가 있어 유지.
+ * 1로 세팅하면 기존대로 전량 출력(회귀 시 사용). 기본 OFF. */
+#define APP_FSM_TRACE_PERIODIC_COMP (0u)   /* 1 = 주기 컴포넌트 trace comp 재활성화 */
+
 //NBIoT simulation code
 #undef NBIoT_SIMULATION_CODE
 

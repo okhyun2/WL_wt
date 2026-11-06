@@ -595,6 +595,16 @@ static void App_Bc95SimLogModemFw(void)
             len++;
         }
 
+        /* [FIX-EVTIND-5] 응답에 혼입된 EVTIND URC는 FW 값 오염의 원인
+         * (실측: "Modem FW : +QLWEVTIND:0"). URC는 래치 스캔 경로가
+         * 이미 처리하므로 여기서는 건너뛰고 다음 라인에서 FW를 찾는다. */
+        if (strncmp(p_line, APP_BC95_AT_QLWEVTIND_PREFIX,
+                    APP_BC95_AT_QLWEVTIND_PREFIX_LEN) == 0)
+        {
+            p_line += len;
+            continue;
+        }
+
         /* skip command echo (AT...) and the final "OK" */
         if ((strncmp(p_line, "AT", 2) != 0) &&
             !((len == 2u) && (strncmp(p_line, "OK", 2) == 0)))
@@ -7233,8 +7243,11 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
             continue;
         }
 
+#ifdef NBIOT_TRACE_DEBUG
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWEVTIND=%d (last=%d mask=0x%04X)",
                  eventType, s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask);
+#endif /* NBIOT_TRACE_DEBUG */
+
         if (App_Bc95AtPlatformEventIsReady(eventType) == APP_TRUE)
         {
             return APP_STATUS_OK;

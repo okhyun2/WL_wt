@@ -1638,6 +1638,23 @@ static void App_FsmCompleteComponentRun(AppFsmComponentContext_t *p_component, A
     p_component->runCount++;
 }
 
+static uint8_t App_FsmTraceCompEnabled(AppFsmComponentId_t id)
+{
+#if (APP_FSM_TRACE_PERIODIC_COMP == 1u)
+    (void)id;
+    return 1u;
+#else
+    switch (id)
+    {
+        case APP_FSM_COMPONENT_NFC:
+        case APP_FSM_COMPONENT_NBIOT:
+            return 1u;
+        default:
+            return 0u;
+    }
+#endif
+}
+
 static void App_FsmMarkComponent(AppFsmComponentId_t id,
                                  uint8_t state,
                                  uint8_t busy,
@@ -1664,7 +1681,7 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
     p_component->eventPending = eventPending;
     App_FsmCompleteComponentRun(p_component, status);
 
-    if ((oldState != state) || (oldBusy != busy) || (oldEventPending != eventPending))
+    if (((oldState != state) || (oldBusy != busy) || (oldEventPending != eventPending)) && (App_FsmTraceCompEnabled(id) == 1u))
     {
         APP_LOGI("FSM",
                  "trace comp=%s %s->%s busy:%u->%u evt:%u->%u status=%lu",
