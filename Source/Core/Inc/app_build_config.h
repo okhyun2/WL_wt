@@ -89,11 +89,9 @@ extern "C" {
 #define NBIOT_SUPPORT_DNS
 #ifdef NBIOT_SUPPORT_DNS
 //#define MY_SERVER_DOMAIN              "acorp2.iptime.org"
-//#define APP_SERVICE_SERVER_PORT                 (6001u)
-//#define APP_MGMT_SERVER_PORT                    (6001u)
 #define MY_SERVER_DOMAIN              "dev-aro.com"
-#define APP_SERVICE_SERVER_PORT                 (41001u)
-#define APP_MGMT_SERVER_PORT                    (41001u)
+#define APP_SERVICE_SERVER_PORT                 (6001u)
+#define APP_MGMT_SERVER_PORT                    (6001u)
 
 #define WARMUPDNS_SERVER_DOMAIN       MY_SERVER_DOMAIN
 #define APP_MGMT_SERVER_DOMAIN        MY_SERVER_DOMAIN
@@ -160,9 +158,7 @@ extern "C" {
 //#define APP_BUILD_IS_PRODUCTION                     (APP_TRUE) //if true. change swd&debug pin -> analog input.(=disable swd&debug).
 
 /* APP_TRUE: APP_LOGT/D/I 호출과 포맷 문자열을 빌드에서 제거(flash 절감). SWD 핀 설정과 무관. 검증용 빌드는 APP_FALSE. */
-#ifndef APP_LOG_STRIP_VERBOSE
 #define APP_LOG_STRIP_VERBOSE                       (APP_FALSE) //TODO debug:APP_FALSE, PRODUCTION:APP_TRUE
-#endif
 
 #ifdef DEBUG
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE) //org. ins timestamp
