@@ -259,11 +259,21 @@ static uint8_t g_appBc95NconfigSyncSetCount = 0u;
 #define APP_NBIOT_NCFG_BKP_MAGIC_STATE_FALSE (0x4E430001u)
 #define APP_NBIOT_NCFG_BKP_MAGIC_STATE_TRUE  (0x4E430002u)
 static uint8_t App_NbiotNcfgBkpGetState(uint8_t *p_isFalse);
+static uint8_t App_NbiotProvSkipGet(uint8_t *p_due);   /* [PROV-SKIP] */
+static void App_NbiotProvSkipSet(uint8_t done);
 static void App_NbiotNcfgBkpSetState(uint8_t isFalse);
 /* [NRB 최적화 2단계] 이번 세션에 provisioning(QREGSWT=1+AUTOCONNECT=TRUE+NRB)을
  * 실행했는지. TRUE로 남은 NVM을 전원 off 전에 FALSE로 되돌리기 위한 표시. */
 static uint8_t s_appNbiotProvisionedThisSession = APP_FALSE;
-
+/* [PROV-SKIP] BKP3R 상태 캐시: provisioning 완료 플래그.
+ * BKP3R = 0x50524F4B(PROVK)면 provisioning 파라미터 유효 -> 후속 세션은
+ * provisioning(쿼리+set+QREGSWT=1+AUTOCONNECT=TRUE+NRB)을 생략하고
+ * TRUE 상태 전원온 자동 attach로 진행. POR 시 소실 -> 폴백 풀 provisioning.
+ * 주기 재검증: skipCount >= APP_PROV_SKIP_RECHECK_SESSIONS면 1회 풀 실행. */
+#define APP_NBIOT_PROV_BKP_MAGIC             (0x50524F4Bu)
+#define APP_PROV_SKIP_RECHECK_SESSIONS       (24u)
+static uint16_t s_provSkipCount = 0u;
+ 
 /* UDP seq 단조 증가 카운터 (stale URC 매칭 방지) */
 static uint8_t g_appBc95UdpSeqCounter = 0u;
 
@@ -6691,6 +6701,29 @@ static AppStatus_t App_NbiotRunBoardProvisioningSequence(void)
         { APP_BC95_SEQ_STEP_REBOOT,           NULL,                              0u,                        "AT+NRB" }
     };
 
+    /* [PROV-SKIP] BKP3R 매직 유효 && 주기 재검증 미도달이면 provisioning 전체
+     * (파라미터 쿼리/set + QREGSWT=1 + AUTOCONNECT=TRUE + NRB)를 생략한다.
+     * 근거: AUTOCONNECT=TRUE는 NRB로만 효력이 나지만, NVM=TRUE 상태에서는
+     * 모뎀 전원온(=리부트)만으로 자동 attach가 시작된다 -> NRB 없이도 엔진
+     * 기동/EVTIND 버스트가 발생한다. 후속 finalize는 기존 경로 그대로 수행. */
+    {
+        uint8_t provDue = 0u;
+        if (App_NbiotProvSkipGet(&provDue) == 1u)
+        {
+            if (provDue == 0u)
+            {
+                s_provSkipCount++;
+                APP_LOGN("NBIOT", "[[BootTrack]] provisioning skip (BKP valid, recheck %u/%u) -> power-on auto-attach",
+                         (unsigned)s_provSkipCount,
+                         (unsigned)APP_PROV_SKIP_RECHECK_SESSIONS);
+                /* NVM=TRUE 유지: 세션 종료 FALSE 스티어링 대상 아님(플래그 미설정) */
+                return APP_STATUS_OK;
+            }
+            APP_LOGN("NBIOT", "[[BootTrack]] provisioning recheck due (every %u sessions) -> full provisioning",
+                     (unsigned)APP_PROV_SKIP_RECHECK_SESSIONS);
+        }
+    }
+
     APP_LOGN("NBIOT", "[[BootTrack]] start board provisioning sequence");
 
     /* [NRB 최적화 2단계] provisioning 도달 = 세션 종료 시 NVM AUTOCONNECT가
@@ -6703,9 +6736,17 @@ static AppStatus_t App_NbiotRunBoardProvisioningSequence(void)
     status = App_NbiotSyncPlatformParams();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    return App_Bc95AtRunSequence(kProvisionSeq,
-                                 (uint32_t)(sizeof(kProvisionSeq) / sizeof(kProvisionSeq[0])),
-                                 "[[BootTrack]]");
+    status = App_Bc95AtRunSequence(kProvisionSeq,
+                                   (uint32_t)(sizeof(kProvisionSeq) / sizeof(kProvisionSeq[0])),
+                                   "[[BootTrack]]");
+    /* [PROV-SKIP] 풀 provisioning(NRB 포함) 성공 -> BKP 기록.
+     * RunSequence의 REBOOT 단계는 SendRebootBestEffort가 WaitUntilReady(부트
+     * 배너+USIM)까지 OK로 판정하므로 이 지점은 NRB 후 준비 완료 상태다. */
+    if (status == APP_STATUS_OK)
+    {
+        App_NbiotProvSkipSet(1u);
+    }
+    return status;
 }
 
 static AppStatus_t App_NbiotSyncTimeSoft(void)
@@ -10688,6 +10729,33 @@ static void App_NbiotNcfgBkpSetState(uint8_t isFalse)
 {
     RTC->BKP4R = (isFalse != 0u) ? APP_NBIOT_NCFG_BKP_MAGIC_STATE_FALSE
                                  : APP_NBIOT_NCFG_BKP_MAGIC_STATE_TRUE;
+}
+
+static uint8_t App_NbiotProvSkipGet(uint8_t *p_due)
+{
+    if (RTC->BKP3R != APP_NBIOT_PROV_BKP_MAGIC)
+    {
+        return 0u;   /* 소실/POR -> 풀 provisioning 필요 */
+    }
+    if (p_due != NULL)
+    {
+        *p_due = (s_provSkipCount >= APP_PROV_SKIP_RECHECK_SESSIONS) ? 1u : 0u;
+    }
+    return 1u;
+}
+
+static void App_NbiotProvSkipSet(uint8_t done)
+{
+    if (done != 0u)
+    {
+        RTC->BKP3R = APP_NBIOT_PROV_BKP_MAGIC;
+        s_provSkipCount = 0u;
+    }
+    else
+    {
+        RTC->BKP3R = 0u;
+        s_provSkipCount = 0u;
+    }
 }
 
 static uint8_t App_NbiotNcfgBkpGetState(uint8_t *p_isFalse)
