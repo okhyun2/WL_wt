@@ -3029,6 +3029,7 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeout
                 {
                     /* [DL 명령 실행] 분류 통과 프레임 = 실제 명령 - 즉시 수행 */
                     App_DlCmdExecute(frameBuf, frameLen, APP_TRUE);
+                    /* [SERVICE-STAT-LOG] ACK 수신 성공판 (요약은 결과 로그 뒤) */
                     APP_LOGN("NBIOT", "[[ServicePlatformWake]] service ACK received len=%u cmd=0x%02X(%s) data=%s",
                              (unsigned)frameLen, (unsigned)ackCmd, App_DlAckNameOf(ackCmd), hexLog);
                 }
@@ -3037,6 +3038,13 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeout
                     /* A3 프레임이 아닌 응답(에코 등) — 카운트 없이 원본만 기록 */
                     APP_LOGN("NBIOT", "[[ServicePlatformWake]] service ACK received len=%u cmd=n/a data=%s",
                              (unsigned)frameLen, hexLog);
+
+                    /* [SERVICE-STAT-LOG] 트랜잭션 단위 service 통계 요약 (결과 로그 뒤 1행):
+                     * try=누적 전송 시도, platform4=플랫폼 1차 ACK(QLWULDATASTATUS=4) 수신 여부,
+                     * appAck=서버 애플리케이션 ACK(+NNMI) 수신 여부. */
+                    APP_LOGN("NBIOT", "[[ServiceStat]] try=%u seq=%u platform4=1 appAck=1",
+                             (unsigned)(s_appNbiotServiceTxAttempts > 0u ? s_appNbiotServiceTxAttempts : 1u),
+                             (unsigned)seqNum);
                 }
             }
             return APP_STATUS_OK;
@@ -3051,6 +3059,10 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeout
                                           waitLineBuf, (uint16_t)sizeof(waitLineBuf));
     }
     APP_LOGW("NBIOT", "[[ServicePlatformWake]] service ACK(+NNMI) timeout (platform OK seq=%u, app ACK absent)", (unsigned)seqNum);
+    /* [SERVICE-STAT-LOG] 트랜잭션 단위 service 통계 요약 (결과 로그 뒤 1행) */
+    APP_LOGN("NBIOT", "[[ServiceStat]] try=%u seq=%u platform4=1 appAck=0",
+             (unsigned)(s_appNbiotServiceTxAttempts > 0u ? s_appNbiotServiceTxAttempts : 1u),
+             (unsigned)seqNum);
     return APP_STATUS_OK;
 #endif
 }
@@ -7625,7 +7637,9 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
 
         if (App_Bc95AtParseQlwuldataStatus((const char *)g_appBc95AtRxBuf, &qlwStatus, &qlwSeq) == APP_BC95_AT_OK)
         {
-            APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWULDATASTATUS=%d seq=%d", qlwStatus, qlwSeq);
+#ifdef NBIOT_TRACE_DEBUG
+             APP_LOGN("NBIOT", "[[ServicePlatformWake]] QLWULDATASTATUS=%d seq=%d", qlwStatus, qlwSeq);
+#endif /* NBIOT_TRACE_DEBUG */
             if (qlwStatus == 4)
             {
                 /* CON 성공 URC 수신 통계 (mgmt 트레일러 tag 0xD3 보고용) */
