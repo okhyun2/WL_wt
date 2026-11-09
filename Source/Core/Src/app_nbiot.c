@@ -383,6 +383,16 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_
 static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 
 static int s_bc95LastEVTIND = -1;
+/* [STALL-GUARD 2026-11-09] AT 채널 완전 소실 감지.
+ * 실측(3일 745세션): 16세션(2.1%)에서 QLW* 쿼리 응답 0건 + CGATT/CEREG/EVTIND 모두
+ * 수십초 무응답(모뎀 AT 스톨, RSSI -75~-78 정상, 다음 세션 회복). 기존은 30초
+ * 대기 창을 2 attempt 모두 소진해 세션당 ~2분 지연. 대기 중 연속 무응답 청크를
+ * 세고, 프로브 AT 1회 송신 후에도 침묵하면 만료를 기다리지 않고 즉시 NRB escalate. */
+/* 청크=5s(APP_BC95_AT_WAIT_CHUNK_MS 기준). 2청크(10s) 무응답 시 프로브,
+ * 3청크(15s) 침묵 지속 시 스톨 확정. */
+#define APP_BC95_AT_STALL_PROBE_CHUNKS       (2u)
+#define APP_BC95_AT_STALL_SILENT_CHUNKS      (3u)
+static volatile uint32_t s_bc95AtStallEpisodes = 0u;   /* 스톨 에피소드 누적(로그용) */
 static void App_Bc95AtUpdateEVTINDLatch(const char *p_line);
 static uint8_t App_Bc95AtEVTINDMaskReady(uint16_t seenMask);
 static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len);
@@ -7368,6 +7378,9 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
     char rxSnapshot[APP_BC95_AT_RX_BUF_SIZE];
     uint8_t bootstrapSeen = APP_FALSE;
 
+    uint8_t silentChunks = 0u;   /* [STALL-GUARD] 연속 무응답 청크 수 */
+    uint8_t probeSent = 0u;      /* [STALL-GUARD] 프로브 AT 송신 여부 */
+
     if (p_needRegisterRetry != NULL)
     {
         *p_needRegisterRetry = APP_FALSE;
@@ -7397,8 +7410,29 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
                                              (uint16_t)sizeof(rxSnapshot));
         if (status == APP_STATUS_UART_TIMEOUT)
         {
+            /* [STALL-GUARD] 무응답 청크 연속 추적: 2청크 침묵 시 프로브 AT 송신,
+             * 3청크 침묵 지속 시 대기 창 조기 포기(caller가 NRB escalate).
+             * 어떤 라인이든 수신되면 카운터 리셋(혼입/URC 포함 활성 판정). */
+            silentChunks++;
+            if ((silentChunks >= APP_BC95_AT_STALL_PROBE_CHUNKS) && (probeSent == 0u))
+            {
+                static const char stallProbe[] = "AT\r\n";
+                (void)HAL_UART_Transmit(APP_UART_NBIOT_HANDLE, (const uint8_t *)stallProbe,
+                                        4u, 200u);
+                probeSent = 1u;
+            }
+            else if (silentChunks >= APP_BC95_AT_STALL_SILENT_CHUNKS)
+            {
+                s_bc95AtStallEpisodes++;
+                APP_LOGW("NBIOT", "[[ServicePlatformWake]] AT stall detected (silent %u chunks, probe sent, episode=%lu) -> escalate now",
+                         (unsigned int)silentChunks,
+                         (unsigned long)s_bc95AtStallEpisodes);
+                return APP_STATUS_UART_TIMEOUT;
+            }
             continue;
         }
+        silentChunks = 0u;
+        probeSent = 0u;
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
         if (App_Bc95AtParseQlwevtind(rxSnapshot, &eventType) != APP_BC95_AT_OK)
         {
