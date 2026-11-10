@@ -1288,10 +1288,14 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
      * g_appFsmNfcBusyReplyPending 도 함께 clear 하여,
      * 다음 STOP-origin 세션에서 stale busy reply 가 소비되지 않도록 한다.
      */
-    /* [NFC-AWAKE-BUSY] awake(RUN/SLEEP) 중 태깅 정책 v2:
-     * 기존: 완전 무응답 drop -> 검침원이 기기 상태를 알 수 없음.
-     * 변경: 세션을 1프레임만 진행해 SEOUL/UCMD 프레임에 busy 응답 1건을
-     *       내린 뒤 종료한다("지금 통신 중, 잠시 후 재태깅" 피드백).
+    /* [NFC-AWAKE-BUSY] awake(RUN/SLEEP) 중 태깅 정책 v3.5(2026-11-10):
+     * v2: 세션을 1프레임만 진행해 SEOUL/UCMD 프레임에 busy 응답 1건을
+     *     내린 뒤 종료("지금 통신 중, 잠시 후 재태깅" 피드백).
+     * v3.5 변경: busy 응답을 라이트 모드로 — 스토리지/캐시 스냅샷 구성과
+     *     RT_ALL 실시간 계량기 프로브(UART, 실측 ~1.8s)를 생략하고
+     *     commState=BUSY 응답만 기록한다. 실측(11-10): detach 후 awake
+     *     세션에서 프로브+EEPROM 기록이 수행되던 것을 응답 1프레임 수준으로
+     *     제한. 통신 중 태깅 데이터는 sleep 복귀 후 재태깅으로 처리.
      * 주기능 영향 없음: NBIoT 개입 0(commRequested 큐잉 안 함), I2C 응답 1회.
      * 안전장치: busy pending은 프레임 소비 시 즉시 clear 되고, 미소비
      *          프레임(PING/AUTH)이면 아래 one-shot 종료에서 강제 clear 하므로
@@ -1300,8 +1304,9 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     {
         g_appFsmNfcBusyReplyPending = APP_TRUE;
         g_appFsmNfcAwakeBusyOneShot = APP_TRUE;
+        App_NfcSeoulBusyLiteSet(APP_TRUE);   /* 응답은 하되 스냅샷/프로브 생략 */
         APP_LOGW("FSM",
-                 "trace nfc awake-origin tag -> busy reply session (1 frame, no NBIoT)");
+                 "trace nfc awake-origin tag -> busy lite reply session (1 frame, no NBIoT)");
     }
 
     for (;;)
@@ -1334,6 +1339,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
         if (g_appFsmNfcAwakeBusyOneShot == APP_TRUE)
         {
             g_appFsmNfcAwakeBusyOneShot = APP_FALSE;
+            App_NfcSeoulBusyLiteSet(APP_FALSE);
             g_appFsmNfcDropAwakeTagPending = APP_FALSE;
             g_appFsmNfcBusyReplyPending = APP_FALSE;
             APP_LOGI("FSM",

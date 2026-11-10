@@ -31,8 +31,8 @@ static void App_SystemForceAdcFullOffBeforeStop(void);
 static AppStatus_t App_SystemRestoreAdcAfterWakeFromStop(void);
 static void App_SystemRollbackNfcStandbyIfNeeded(uint8_t standbyPrepareState);
 static void App_SystemRecoverNfcAfterWake(uint8_t standbyPrepareState);
-static AppStatus_t App_SystemRtcConfigureAlarmAForMetering(uint8_t *p_configured);
-static AppStatus_t App_SystemRtcConfigureAlarmBForReporting(uint8_t *p_configured);
+static AppStatus_t App_SystemRtcConfigureAlarmAForMetering(uint8_t *p_configured, AppDateTime_t *p_armedDue);
+static AppStatus_t App_SystemRtcConfigureAlarmBForReporting(uint8_t *p_configured, AppDateTime_t *p_armedDue);
 
 static uint8_t g_appSystemRtcBackupRecoveryApplied = APP_FALSE;
 
@@ -665,7 +665,7 @@ static AppStatus_t App_SystemRtcConfigureAlarmInternal(const AppDateTime_t *p_du
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_SystemRtcConfigureAlarmAForMetering(uint8_t *p_configured)
+static AppStatus_t App_SystemRtcConfigureAlarmAForMetering(uint8_t *p_configured, AppDateTime_t *p_armedDue)
 {
     AppDateTime_t dueTime;
     AppStatus_t status;
@@ -681,11 +681,16 @@ static AppStatus_t App_SystemRtcConfigureAlarmAForMetering(uint8_t *p_configured
 
     status = App_SystemRtcConfigureAlarmInternal(&dueTime, RTC_ALARM_A, "[[AlarmA(meter)]]");
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if (p_armedDue != NULL)
+    {
+        *p_armedDue = dueTime;  /* 퓨즈 보정 반영된 실무장 시각 */
+    }
     *p_configured = APP_TRUE;
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_SystemRtcConfigureAlarmBForReporting(uint8_t *p_configured)
+static AppStatus_t App_SystemRtcConfigureAlarmBForReporting(uint8_t *p_configured, AppDateTime_t *p_armedDue)
 {
     AppDateTime_t dueTime;
     AppStatus_t status;
@@ -701,6 +706,11 @@ static AppStatus_t App_SystemRtcConfigureAlarmBForReporting(uint8_t *p_configure
 
     status = App_SystemRtcConfigureAlarmInternal(&dueTime, RTC_ALARM_B, "[[AlarmB(tx)]]");
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
+
+    if (p_armedDue != NULL)
+    {
+        *p_armedDue = dueTime;  /* 퓨즈 보정 반영된 실무장 시각 */
+    }
     *p_configured = APP_TRUE;
     return APP_STATUS_OK;
 }
@@ -1230,6 +1240,8 @@ static AppStatus_t App_SystemEnterStopMode(void)
     {
         uint8_t alarmAConfigured = APP_FALSE;
         uint8_t alarmBConfigured = APP_FALSE;
+        AppDateTime_t alarmADue;
+        AppDateTime_t alarmBDue;
         uint8_t forcedShortConfigured = APP_FALSE;
         uint8_t allowPeriodicFallback = APP_FALSE;
         uint32_t wakeupSeconds = 0;
@@ -1239,18 +1251,51 @@ static AppStatus_t App_SystemEnterStopMode(void)
 
         g_appSystemContext.oldWakeSourceMask &= ~APP_SYSTEM_WAKE_SRC_RTC;
 
-        alarmAStatus = App_SystemRtcConfigureAlarmAForMetering(&alarmAConfigured);
+        alarmAStatus = App_SystemRtcConfigureAlarmAForMetering(&alarmAConfigured, &alarmADue);
         if ((alarmAStatus != APP_STATUS_OK) && (alarmAStatus != APP_STATUS_NOT_INITIALIZED))
         {
             APP_LOGW("LP", "AlarmA cfg fail st=%ld", (long)alarmAStatus);
             alarmAConfigured = APP_FALSE;
         }
 
-        alarmBStatus = App_SystemRtcConfigureAlarmBForReporting(&alarmBConfigured);
+        alarmBStatus = App_SystemRtcConfigureAlarmBForReporting(&alarmBConfigured, &alarmBDue);
         if ((alarmBStatus != APP_STATUS_OK) && (alarmBStatus != APP_STATUS_NOT_INITIALIZED))
         {
             APP_LOGW("LP", "AlarmB cfg fail st=%ld", (long)alarmBStatus);
             alarmBConfigured = APP_FALSE;
+        }
+
+        /* [SLEEP-SCHEDULE 2026-11-10] 슬립 진입 직전 실무장 알람 요약(진단용):
+         * AlarmA/AlarmB 에 실제로 무장된 다음 웨이크 시각(AlarmGuard 퓨즈 보정
+         * 포함)과 남은 시간을 출력해, 슬립 중 기대 웨이크를 로그에서 즉시 대조한다. */
+        {
+            AppDateTime_t now;
+            uint32_t nowSec;
+            uint32_t aSec;
+            uint32_t bSec;
+
+            if (RTC_GetTime(&now) == APP_STATUS_OK)
+            {
+                nowSec = ((uint32_t)now.hour * 3600u) +
+                         ((uint32_t)now.minute * 60u) +
+                         (uint32_t)now.second;
+                aSec = ((uint32_t)alarmADue.hour * 3600u) +
+                       ((uint32_t)alarmADue.minute * 60u) +
+                       (uint32_t)alarmADue.second;
+                bSec = ((uint32_t)alarmBDue.hour * 3600u) +
+                       ((uint32_t)alarmBDue.minute * 60u) +
+                       (uint32_t)alarmBDue.second;
+
+                APP_LOGI("RTC",
+                         "[[SleepSchedule]] now=%02u:%02u:%02u | next wake AlarmA(meter)=%02u:%02u:%02u (+%lus, %s) | AlarmB(tx)=%02u:%02u:%02u (+%lus, %s)",
+                         (unsigned)now.hour, (unsigned)now.minute, (unsigned)now.second,
+                         (unsigned)alarmADue.hour, (unsigned)alarmADue.minute, (unsigned)alarmADue.second,
+                         (unsigned long)((aSec > nowSec) ? (aSec - nowSec) : ((86400u + aSec) - nowSec)),
+                         (alarmAConfigured == APP_TRUE) ? "armed" : "not-armed",
+                         (unsigned)alarmBDue.hour, (unsigned)alarmBDue.minute, (unsigned)alarmBDue.second,
+                         (unsigned long)((bSec > nowSec) ? (bSec - nowSec) : ((86400u + bSec) - nowSec)),
+                         (alarmBConfigured == APP_TRUE) ? "armed" : "not-armed");
+            }
         }
 
         if (forcedWakeupSeconds > 0u)

@@ -179,7 +179,7 @@ extern "C" {
 #undef NBIOT_TRACE_DEBUG
 
 /* 가속 테스트(검침,주기보고,MGMT보고)시: define */
-#define APP_TEST_PERIOD_ACCEL //TODO. PRODUCT-> #undef
+#undef APP_TEST_PERIOD_ACCEL //TODO. PRODUCT-> #undef
 
 /* [TRACE-COMP-GATE] 주기 반복 컴포넌트의 trace comp 로그 게이트:
  * meter/rtc/housekeeping/watchdog 등 주기 세션마다 동일 전이 시퀀스를
@@ -355,8 +355,8 @@ extern "C" {
 #define APP_POLICY_REPORT_SPREAD_FALLBACK_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
 //TODO change serial number -> serial_bcd 5
 //#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
-#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x46\x10\x00\x00\x05" 
-//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x45\x67\x00\x00\x02" 
+//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x46\x10\x00\x00\x05" 
+#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x45\x67\x00\x00\x02" 
 #define APP_POLICY_NBIOT_BOOTRACK_REG_SERVPLATFORM (APP_TRUE) //default: TRUE
 
 

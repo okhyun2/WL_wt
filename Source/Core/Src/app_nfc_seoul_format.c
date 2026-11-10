@@ -438,6 +438,16 @@ static void App_NfcSeoulApplyTestModeLiveFields(uint8_t *p_payload, uint8_t payl
 #endif
 }
 
+/* [NFC-AWAKE-BUSY-LITE 2026-11-10] awake(RUN/SLEEP) 기원 busy 응답용 라이트 모드:
+ * 1이면 스냅샷 구성(스토리지/캐시 read)과 RT_ALL 실시간 계량기 프로브를
+ * 생략한다. awake 세션 진입 시 set, one-shot 종료에서 clear 한다. */
+static uint8_t g_appNfcSeoulBusyLite = APP_FALSE;
+
+void App_NfcSeoulBusyLiteSet(uint8_t enable)
+{
+    g_appNfcSeoulBusyLite = (enable != APP_FALSE) ? APP_TRUE : APP_FALSE;
+}
+
 static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_payload, uint8_t payloadCapacity, uint8_t *p_payloadLength)
 {
     AppNfcSeoulSnapshot_t snapshot;
@@ -451,22 +461,34 @@ static AppStatus_t App_NfcSeoulBuildResponsePayload(uint8_t cmd2, uint8_t *p_pay
         return APP_STATUS_INVALID_PARAM;
     }
 
-    App_NfcSeoulBuildSnapshot(&snapshot);
-
-    if (cmd2 == APP_NFC_SEOUL_CMD_RT_ALL_RES)
+    if (g_appNfcSeoulBusyLite == APP_TRUE)
     {
-        (void)memset(&liveRecord, 0, sizeof(liveRecord));
-        liveStatus = App_FsmMeterProbeNoStore(&liveRecord);
-        if (liveStatus == APP_STATUS_OK)
+        /* [NFC-AWAKE-BUSY-LITE] awake 기원 busy 응답은 최소 비용으로:
+         * 스토리지/캐시 스냅샷 구성과 RT_ALL 실시간 프로브(UART)를 생략하고
+         * 빈 스냅샷 + commState=BUSY 로만 응답한다(응답 NDEF 쓰기는 유지). */
+        (void)memset(&snapshot, 0, sizeof(snapshot));
+        snapshot.commState = APP_NFC_SEOUL_COMM_BUSY;
+        APP_LOGI("NFC", "Seoul busy lite: snapshot/probe skipped (awake-origin)");
+    }
+    else
+    {
+        App_NfcSeoulBuildSnapshot(&snapshot);
+
+        if (cmd2 == APP_NFC_SEOUL_CMD_RT_ALL_RES)
         {
-            App_NfcSeoulApplyRecordToSnapshot(&snapshot, &liveRecord);
-            snapshot.commState = APP_NFC_SEOUL_COMM_ON;
-            APP_LOGI("NFC", "Seoul realtime meter probe PASS");
-        }
-        else
-        {
-            snapshot.commState = APP_NFC_SEOUL_COMM_BUSY;
-            APP_LOGW("NFC", "Seoul realtime meter probe FAIL status=%d", (int)liveStatus);
+            (void)memset(&liveRecord, 0, sizeof(liveRecord));
+            liveStatus = App_FsmMeterProbeNoStore(&liveRecord);
+            if (liveStatus == APP_STATUS_OK)
+            {
+                App_NfcSeoulApplyRecordToSnapshot(&snapshot, &liveRecord);
+                snapshot.commState = APP_NFC_SEOUL_COMM_ON;
+                APP_LOGI("NFC", "Seoul realtime meter probe PASS");
+            }
+            else
+            {
+                snapshot.commState = APP_NFC_SEOUL_COMM_BUSY;
+                APP_LOGW("NFC", "Seoul realtime meter probe FAIL status=%d", (int)liveStatus);
+            }
         }
     }
 
