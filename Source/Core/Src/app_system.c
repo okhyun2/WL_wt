@@ -565,8 +565,56 @@ static AppStatus_t App_SystemRtcConfigureAlarmInternal(const AppDateTime_t *p_du
                                                        const char *p_label)
 {
     RTC_AlarmTypeDef alarm;
+    AppDateTime_t dueTimeLocal;
 
     APP_RETURN_IF_FALSE((p_dueTime != NULL) && (p_label != NULL), APP_STATUS_INVALID_PARAM);
+
+    /* [ALARM-PRIORITY 2026-11-10] 과거 시각 무장 금지.
+     * 실측(11-09): NFC 루프 중 재무장이 과거 nextDue(18:07:05/18:11:47)를 그대로
+     * 무장해 알람이 "죽은" 상태로 남아 1h53m 지연을 유발. 과거 시각이 들어오면
+     * 단안 퓨즈(현재+60s)로 무장해 즉시 웨이크시키고, 발화 시 consume/checkdue
+     * 경로에서 스케줄이 정상 전진된다. */
+    {
+        AppDateTime_t now;
+        uint32_t dueSec;
+        uint32_t nowSec;
+
+        if ((RTC_GetTime(&now) == APP_STATUS_OK) &&
+            (p_dueTime->day == now.day))
+        {
+            dueSec = ((uint32_t)p_dueTime->hour * 3600u) +
+                     ((uint32_t)p_dueTime->minute * 60u) +
+                     (uint32_t)p_dueTime->second;
+            nowSec = ((uint32_t)now.hour * 3600u) +
+                     ((uint32_t)now.minute * 60u) +
+                     (uint32_t)now.second;
+            if (dueSec <= (nowSec + 2u))
+            {
+                dueTimeLocal = now;
+                dueTimeLocal.minute = 0u;
+                dueTimeLocal.second = 0u;
+                dueTimeLocal.hour = now.hour;
+                if ((now.minute + 1u) >= 60u)
+                {
+                    dueTimeLocal.minute = 0u;
+                    dueTimeLocal.hour = (now.hour + 1u) % 24u;
+                }
+                else
+                {
+                    dueTimeLocal.minute = now.minute + 1u;
+                }
+                APP_LOGW("RTC", "[[AlarmGuard]] %s past-due re-arm %02lu:%02lu:%02lu -> fuse +%umin (%02lu:%02lu:%02lu)",
+                         p_label,
+                         (unsigned long)p_dueTime->hour, (unsigned long)p_dueTime->minute,
+                         (unsigned long)p_dueTime->second,
+                         (unsigned int)(dueTimeLocal.hour * 60u + dueTimeLocal.minute - now.hour * 60u - now.minute),
+                         (unsigned long)dueTimeLocal.hour,
+                         (unsigned long)dueTimeLocal.minute,
+                         (unsigned long)dueTimeLocal.second);
+                p_dueTime = &dueTimeLocal;
+            }
+        }
+    }
 
     if (App_SystemRtcInitBase() != APP_STATUS_OK)
     {

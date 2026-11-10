@@ -4082,7 +4082,15 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 break;
             }
 
-            if ((g_appFsmRtcTxWakePending != APP_TRUE) && (g_appFsmFirstAttachCycleDone == APP_TRUE))
+            /* [ALARM-PRIORITY 2026-11-10] NFC 태깅 연속 웨이크 중에도 만료된
+             * service/mgmt 스케줄을 즉시 발화한다(알람 우선).
+             * 실측(11-09 17:04~20:03): NFC_ED 14초 루프 ~100분 동안 AlarmB(tx) 발화가
+             * 무효화되어 due(18:11:47)가 1h53m 지연 -> starvation escape로만 회복.
+             * 기존은 g_appFsmFirstAttachCycleDone == APP_TRUE 일 때만 CheckDue를
+             * 호출했으므로 첫 사이클 미완료 구간에서 만료가 봉인됐다.
+             * CheckDue는 항상 수행하고, due가 없을 때만 first-attach 게이트를
+             * 적용한다(스킵 로그에 사유를 남겨 재발 시 즉시 식별). */
+            if (g_appFsmRtcTxWakePending != APP_TRUE)
             {
                 APP_RETURN_IF_FALSE(App_FsmTxScheduleCheckDue(&serviceDue) == APP_STATUS_OK, APP_STATUS_FATAL);
                 APP_RETURN_IF_FALSE(App_FsmMgmtTxScheduleCheckDue(&mgmtDue) == APP_STATUS_OK, APP_STATUS_FATAL);
@@ -4096,11 +4104,24 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
 
                 if ((serviceDue != APP_TRUE) && (mgmtDue != APP_TRUE))
                 {
-                    g_appFsmWakeCollectionPending = APP_FALSE;
-                    App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
-                    App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
-                    APP_LOGN("FSM", "[[TxSchedule]] skip attach/send before service/mgmt due");
-                    break;
+                    /* [ALARM-PRIORITY v2 2026-11-10] 부팅 첫 사이클(first-attach)이
+                     * 끝나기 전에는 due가 없어도 NBIOT_POWER_ON으로 진행해야 한다.
+                     * v1의 무조건 break가 부팅 attach 사이클을 씹는 회귀(실측 11-10
+                     * 부팅 로그: BootRoutine 큐잉 후 skip -> STOP, attach 0회).
+                     * first-attach 미완료 시에는 원래 동작대로 fall-through 한다. */
+                    if (g_appFsmFirstAttachCycleDone == APP_TRUE)
+                    {
+                        g_appFsmWakeCollectionPending = APP_FALSE;
+                        App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
+                        App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
+                        APP_LOGN("FSM", "[[TxSchedule]] skip attach/send before service/mgmt due");
+                        break;
+                    }
+                    /* else: first-attach cycle pending -> fall through to boot cycle */
+                }
+                else
+                {
+                    /* due가 있으면 first-attach 여부 무관 pendings 세팅(기존 로직) */
                 }
 
                 g_appFsmRtcServiceTxWakePending = serviceDue;
