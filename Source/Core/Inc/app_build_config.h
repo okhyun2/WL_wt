@@ -88,8 +88,8 @@ extern "C" {
 
 #define NBIOT_SUPPORT_DNS
 #ifdef NBIOT_SUPPORT_DNS
-//#define MY_SERVER_DOMAIN              "acorp2.iptime.org"
-#define MY_SERVER_DOMAIN              "dev-aro.com"
+//#define MY_SERVER_DOMAIN              "acorp2.iptime.org" //TODO test server
+#define MY_SERVER_DOMAIN              "dev-aro.com" //TODO test server
 #define APP_SERVICE_SERVER_PORT                 (6001u)
 #define APP_MGMT_SERVER_PORT                    (6001u)
 
@@ -179,7 +179,7 @@ extern "C" {
 #undef NBIOT_TRACE_DEBUG
 
 /* 가속 테스트(검침,주기보고,MGMT보고)시: define */
-#define APP_TEST_PERIOD_ACCEL
+#define APP_TEST_PERIOD_ACCEL //TODO. PRODUCT-> #undef
 
 /* [TRACE-COMP-GATE] 주기 반복 컴포넌트의 trace comp 로그 게이트:
  * meter/rtc/housekeeping/watchdog 등 주기 세션마다 동일 전이 시퀀스를
@@ -250,6 +250,18 @@ extern "C" {
 #define APP_NFC_REPORT_INTERVAL_MAX_SEC              (86400u)
 #define APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE      (0u) //0:disable(default), 1:enable. refresh ms tx nfc. for kc identify
 #define APP_NFC_TEST_MODE_REFRESH_MS                (100u)
+
+/* [QUALITY-REPORT 2026-11-09] NB-IoT 단말 품질리포트 (규격 v1.8, MSG Ver.04)
+ * 목적지/주기/새벽 윈도우는 고정값(컴파일타임 확정, NFC/서버 설정 아님). */
+//#define APP_QUALITY_REPORT_HOST                     "10.120.182.10" //TODO default server
+#define APP_QUALITY_REPORT_HOST                     "acorp2.iptime.org" //TODO test server
+#define APP_QUALITY_REPORT_PORT                     (50000u)
+#define APP_QUALITY_REPORT_MSG_VER                  (0x04u)
+#define APP_QUALITY_REPORT_INTERVAL_DAYS            (1u)   /* 1=하루 1회, 2=2일 1회 */
+#define APP_QUALITY_REPORT_WINDOW_START_HOUR        (2u)   /* 새벽 윈도우 02시 */
+#define APP_QUALITY_REPORT_WINDOW_END_HOUR          (6u)   /* ~ 06시 (04시 포함) */
+#define APP_QUALITY_REPORT_CATCHUP_EXTRA_DAYS       (1u)   /* 만료 후 1일 경과 시 윈도우 무시 즉시 전송 */
+#define APP_QUALITY_REPORT_MODEL_STRING             APP_BC95_PLATFORM_LGU_MODEL_STRING
 
 #define APP_FSM_USE_WFI_IDLE                        (APP_TRUE)
 #define APP_FSM_IDLE_DELAY_MS                       (1u)

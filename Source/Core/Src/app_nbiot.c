@@ -253,6 +253,11 @@ static uint8_t  g_appBc95AtImeiBcd[APP_BC95_IMEI_BCD_BYTES];
 static uint8_t  g_appBc95AtImsiBcd[APP_BC95_IMSI_BCD_BYTES];
 static uint8_t  g_appBc95AtQualityBcd[APP_BC95_QUALITY_BCD_BYTES];
 static AppBc95Quality_t g_appBc95AtQuality;
+/* [QUALITY-REPORT 2026-11-09] 품질리포트 상태(RAM, STOP 유지).
+ * 리셋 시 lastValid=0 -> 부팅 후 첫 만료 세션에서 부팅후 리포트(UE INFO bit0=1) 1회. */
+static uint8_t  g_appBc95UdpSkipAckWait   = APP_FALSE;
+static uint8_t  g_appQualityReportLastValid = APP_FALSE;
+static uint32_t g_appQualityReportLastDays  = 0u;
 static AppBc95NetStatus_t g_appBc95AtNetStatus;
 static AppNbiotCarrierContext_t g_appNbiotCarrierContext;
 static uint8_t g_appBc95UsimFatal = APP_FALSE;
@@ -393,6 +398,13 @@ static int s_bc95LastEVTIND = -1;
 #define APP_BC95_AT_STALL_PROBE_CHUNKS       (2u)
 #define APP_BC95_AT_STALL_SILENT_CHUNKS      (3u)
 static volatile uint32_t s_bc95AtStallEpisodes = 0u;   /* 스톨 에피소드 누적(로그용) */
+/* [STALL-CLUSTER 2026-11-09] 연속 스톨 에피소드(클러스터) 추적.
+ * 실측(11-09 두 로그): 스톨 클러스터 내 attempt 2(NRB)도 회복 불가 - NRB 직후
+ * 에피소드 4건(2,3,5,6) 재발. 클러스터 판정(연속 2회+) 시 attempt 2의 NRB를
+ * 건너뛰고 즉시 세션 포기(다음 세션 회복에 맡김)로 NRB 1회/배터리 절감.
+ * 정상 라인 수신 시 리셋(스톨 종료 판정). */
+static volatile uint32_t s_bc95AtStallStreak = 0u;     /* 연속 스톨 에피소드(클러스터 내) */
+#define APP_BC95_AT_STALL_CLUSTER_NRB_SKIP_MIN (2u)    /* streak>=2면 NRB 스킵 */
 static void App_Bc95AtUpdateEVTINDLatch(const char *p_line);
 static uint8_t App_Bc95AtEVTINDMaskReady(uint16_t seenMask);
 static void App_Bc95AtScanBufferForEVTIND(const char *p_buf, uint16_t len);
@@ -7401,6 +7413,7 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
         {
             APP_LOGN("NBIOT", "[[BootTrack]] EVTIND-latch ready in wait loop (last=%d mask=0x%04X)",
                      s_bc95LastEVTIND, (unsigned int)s_bc95EVTINDSeenMask);
+            s_bc95AtStallStreak = 0u;   /* [STALL-CLUSTER] 스톨 종료 판정 */
             return APP_STATUS_OK;
         }
 
@@ -7424,6 +7437,7 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
             else if (silentChunks >= APP_BC95_AT_STALL_SILENT_CHUNKS)
             {
                 s_bc95AtStallEpisodes++;
+                s_bc95AtStallStreak++;
                 APP_LOGW("NBIOT", "[[ServicePlatformWake]] AT stall detected (silent %u chunks, probe sent, episode=%lu) -> escalate now",
                          (unsigned int)silentChunks,
                          (unsigned long)s_bc95AtStallEpisodes);
@@ -7446,6 +7460,7 @@ static AppStatus_t App_Bc95AtWaitForPlatformReadyWithPolicy(uint32_t timeoutMs, 
 
         if (App_Bc95AtPlatformEventIsReady(eventType) == APP_TRUE)
         {
+            s_bc95AtStallStreak = 0u;   /* [STALL-CLUSTER] 스톨 종료 판정 */
             return APP_STATUS_OK;
         }
         if (eventType == 4)
@@ -7699,6 +7714,15 @@ static AppStatus_t App_Bc95AtPlatformRegister(void)
                 return APP_STATUS_OK;
             }
 
+            /* [STALL-CLUSTER] 연속 스톨(클러스터)이면 NRB 무의미(실측: NRB 후에도
+             * 스톨 지속). NRB 생략하고 즉시 세션 포기 -> 다음 세션 회복에 맡김. */
+            if (s_bc95AtStallStreak >= APP_BC95_AT_STALL_CLUSTER_NRB_SKIP_MIN)
+            {
+                APP_LOGW("NBIOT", "[[ServicePlatformWake]] stall cluster streak=%lu -> skip attempt 2 NRB, give up this session",
+                         (unsigned long)s_bc95AtStallStreak);
+                return APP_STATUS_UART_TIMEOUT;
+            }
+
             APP_LOGW("NBIOT", "[[ServicePlatformWake]] attempt 1/2 passive wait failed -> escalate NRB reset + re-register (no repeat wait)");
             if (App_Bc95AtSendRebootBestEffort() != APP_STATUS_OK)
             {
@@ -7901,7 +7925,10 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
                                        &effectiveDeleteStorage);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGW("NBIOT", "%s skip send", p_logTag);
+        /* [SKIP-REASON 2026-11-09] skip 사유를 로그로 구분:
+         * NOT_INITIALIZED(옵션 미초기화)/레코드 부재 등 원인별 추적.
+         * APP_LOGW 후속 라인 없이 한 줄로 유지(로그 게이트 정책 동일). */
+        APP_LOGW("NBIOT", "%s skip send (status=%d)", p_logTag, (int)status);
         return status;
     }
 
@@ -9632,6 +9659,10 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     }
     waitServerAck = ((isMgmtPath != APP_FALSE) ? App_NbiotResolveWaitServerAck(&opt)
                                                : App_NbiotResolveWaitServiceAck(&opt));
+    if (g_appBc95UdpSkipAckWait != APP_FALSE)
+    {
+        waitServerAck = 0u;    /* [QUALITY-REPORT] 품질서버는 ACK 프로토콜 없음 */
+    }
     ackTimeoutMs = ((isMgmtPath != APP_FALSE) ? App_MeterServerOptionsGetAckTimeoutMs(&opt)
                                               : ((uint32_t)opt.svcAckTimeoutSec * 1000u));
     ackPollMs = ((isMgmtPath != APP_FALSE) ? App_MeterServerOptionsGetAckPollMs(&opt)
@@ -10648,6 +10679,388 @@ AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo)
     return APP_STATUS_OK;
 }
 
+/* ============================================================
+ * [QUALITY-REPORT 2026-11-09] NB-IoT 단말 품질리포트 (규격 v1.8 / MSG Ver.04)
+ *  - 목적지 : APP_QUALITY_REPORT_HOST:PORT (10.120.182.10:50000, 고정)
+ *  - 시점   : mgmt 전송 성공 세션에서 판정(별도 wake 없음)
+ *             만료일 도래 && 새벽 윈도우(02~06시) -> 전송
+ *             윈도우 놓침(mgmt 주기 최대 72h 등) -> 만료+1일 경과 시 즉시 전송(catch-up)
+ *  - 주기   : APP_QUALITY_REPORT_INTERVAL_DAYS (고정값, 1=하루/2=이틀)
+ *  - 측정   : AT+NUESTATS(RADIO) 1회 - Signal power/ SNR/ TX power/
+ *             Cell ID/ CURRENT BAND (raw 단위 0.1dB, BC95-GV 매뉴얼 106~107p)
+ *  - 패킷   : Ver(1) CTN(6) 전원(3) CGI(4) RSRP(2) SINR(2) 모델명(1+n)
+ *             FW(1+n) TXPWR(2) 위치(1) 이웃셀(1) UEINFO(1) PORT(3) RSV(3)
+ * ============================================================ */
+#define APP_QUALITY_REPORT_CMD_CGMR             "AT+CGMR\r\n"
+#define APP_QUALITY_REPORT_NUESTATS_SIGNAL_TAG  "Signal power:"
+#define APP_QUALITY_REPORT_NUESTATS_SNR_TAG     "SNR:"
+#define APP_QUALITY_REPORT_NUESTATS_TXPWR_TAG   "TX power:"
+#define APP_QUALITY_REPORT_NUESTATS_CELLID_TAG  "Cell ID:"
+#define APP_QUALITY_REPORT_NUESTATS_BAND_TAG    "CURRENT BAND:"
+#define APP_QUALITY_REPORT_PACKET_MAX           (64u)
+
+typedef struct
+{
+    int32_t  rsrpCdB;      /* Signal power (0.1dB 단위 raw) */
+    int32_t  snrCdB;       /* SNR (0.1dB 단위 raw) */
+    int32_t  txPowerCdB;   /* TX power (0.1dB 단위 raw) */
+    uint32_t cellId;       /* CGI(4B, big-endian으로 전송) */
+    uint8_t  band;         /* CURRENT BAND */
+    uint8_t  txValid;
+    uint8_t  valid;
+} AppNbiotQualityRadioStats_t;
+
+/* 태그 뒤의 부호 있는 10진 정수 추출. 못 찾으면 *p_found=APP_FALSE */
+static int32_t App_NbiotQualityTagValue(const char *p_resp, const char *p_tag,
+                                        uint8_t *p_found)
+{
+    const char *p_pos;
+    long value = 0L;
+
+    *p_found = APP_FALSE;
+    if ((p_resp == NULL) || (p_tag == NULL))
+    {
+        return 0L;
+    }
+    p_pos = strstr(p_resp, p_tag);
+    if (p_pos == NULL)
+    {
+        return 0L;
+    }
+    p_pos += strlen(p_tag);
+    while ((*p_pos == ' ') || (*p_pos == '\t')) { p_pos++; }
+    if (sscanf(p_pos, "%ld", &value) == 1)
+    {
+        *p_found = APP_TRUE;
+    }
+    return (int32_t)value;
+}
+
+/* AT+NUESTATS(RADIO) 1회 조회 -> 리포트 필요 항목 파싱 */
+static AppStatus_t App_NbiotQualityFetchRadioStats(AppNbiotQualityRadioStats_t *p_stats)
+{
+    AppStatus_t status;
+    uint16_t rxLen = 0u;
+    uint8_t rsrpFound;
+    uint8_t snrFound;
+    uint8_t txFound;
+    uint8_t cellFound;
+    uint8_t bandFound;
+    int32_t cellRaw;
+    int32_t bandRaw;
+
+    APP_RETURN_IF_FALSE(p_stats != NULL, APP_STATUS_INVALID_PARAM);
+    (void)memset(p_stats, 0, sizeof(*p_stats));
+
+    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_NUESTATS_RADIO,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   APP_BC95_AT_RX_TIMEOUT_MS,
+                                   &rxLen);
+    if ((status != APP_STATUS_OK) && (status != APP_STATUS_UART_TIMEOUT))
+    {
+        APP_LOGW("NBIOT", "[[QREP]] NUESTATS send fail (status=%d)", (int)status);
+        return status;
+    }
+
+    p_stats->rsrpCdB = App_NbiotQualityTagValue((const char *)g_appBc95AtRxBuf,
+                                                APP_QUALITY_REPORT_NUESTATS_SIGNAL_TAG,
+                                                &rsrpFound);
+    p_stats->snrCdB  = App_NbiotQualityTagValue((const char *)g_appBc95AtRxBuf,
+                                                APP_QUALITY_REPORT_NUESTATS_SNR_TAG,
+                                                &snrFound);
+    p_stats->txPowerCdB = App_NbiotQualityTagValue((const char *)g_appBc95AtRxBuf,
+                                                   APP_QUALITY_REPORT_NUESTATS_TXPWR_TAG,
+                                                   &txFound);
+    cellRaw = App_NbiotQualityTagValue((const char *)g_appBc95AtRxBuf,
+                                       APP_QUALITY_REPORT_NUESTATS_CELLID_TAG,
+                                       &cellFound);
+    bandRaw = App_NbiotQualityTagValue((const char *)g_appBc95AtRxBuf,
+                                       APP_QUALITY_REPORT_NUESTATS_BAND_TAG,
+                                       &bandFound);
+    p_stats->cellId = (cellFound != APP_FALSE) ? (uint32_t)cellRaw : 0u;
+    p_stats->band   = (bandFound != APP_FALSE) ? (uint8_t)bandRaw : 0u;
+    p_stats->txValid = ((txFound != APP_FALSE) &&
+                        (p_stats->txPowerCdB != APP_BC95_AT_NUESTATS_INVALID_RAW) &&
+                        (labs(p_stats->txPowerCdB) <= (int32_t)APP_BC95_AT_NUESTATS_RAW_ABS_MAX))
+                       ? APP_TRUE : APP_FALSE;
+
+    if ((rsrpFound == APP_FALSE) || (snrFound == APP_FALSE))
+    {
+        APP_LOGW("NBIOT", "[[QREP]] NUESTATS tags missing (rsrp=%u snr=%u)",
+                 (unsigned)rsrpFound, (unsigned)snrFound);
+        return APP_STATUS_FATAL;   /* 이번 세션 스킵, 다음 세션 재시도 */
+    }
+    p_stats->valid = APP_TRUE;
+    return APP_STATUS_OK;
+}
+
+static uint8_t App_NbiotQualityBcdByte(uint16_t value)
+{
+    uint16_t v = value;
+    if (v > 99u) { v = 99u; }
+    return (uint8_t)(((v / 10u) * 16u) + (v % 10u));
+}
+
+/* 규격 필드 순서대로 패킷 조립 (최대 ~48B) */
+static AppStatus_t App_NbiotQualityBuildPacket(const AppNbiotQualityRadioStats_t *p_stats,
+                                               uint8_t bootReport,
+                                               uint8_t *p_pkt, uint16_t cap,
+                                               uint16_t *p_len)
+{
+    uint16_t cursor = 0u;
+    char imsiStr[APP_BC95_SIM_INFO_IMSI_DIGITS + 1u];
+    char mdnStr[APP_BC95_SIM_INFO_MDN_BUF_SIZE];
+    char fwStr[24];
+    char modFw[16];
+    uint16_t rsrpAbs;
+    int32_t  snrVal;
+    uint16_t snrAbs;
+    size_t fwLen;
+
+    APP_RETURN_IF_FALSE((p_pkt != NULL) && (p_len != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(cap >= APP_QUALITY_REPORT_PACKET_MAX, APP_STATUS_BUFFER_OVERFLOW);
+
+    (void)memset(p_pkt, 0, cap);
+
+    /* 1. MSG Ver */
+    p_pkt[cursor++] = APP_QUALITY_REPORT_MSG_VER;
+
+    /* 2. CTN 6B BCD: MDN(est)='0'+IMSI[5..14] 11자리 + pad nibble
+     *    012-2299-1234 -> 00 12 22 99 12 34 */
+    if ((App_Bc95SimImsiBcdToDigits(g_appBc95AtImsiBcd, imsiStr, sizeof(imsiStr)) == APP_TRUE) &&
+        (App_Bc95SimEstimateMdn(imsiStr, mdnStr, sizeof(mdnStr)) == APP_TRUE))
+    {
+        uint8_t i;
+        for (i = 0u; i < 6u; i++)
+        {
+            uint8_t hi = (i == 0u) ? 0u : (uint8_t)(mdnStr[(i * 2u) - 1u] - '0');
+            uint8_t lo = (uint8_t)(mdnStr[(i * 2u)] - '0');
+            p_pkt[cursor++] = (uint8_t)((hi * 16u) + lo);
+        }
+    }
+    else
+    {
+        cursor += 6u;   /* IMSI 미취득: 0x00 채움 */
+    }
+
+    /* 3. 전원 3B (UNIT=01 전압, LEVEL=정수부+소수부 BCD, 3.62V -> 03 62) */
+    {
+        uint32_t adcVref;
+        uint32_t adcVbat;
+        uint32_t vddaMv;
+        uint32_t vbatMv;
+        if (Battery_ReadVoltage_Averaged_mV(&adcVref, &adcVbat, &vddaMv, &vbatMv) == HAL_OK)
+        {
+            p_pkt[cursor++] = 0x01u;
+            p_pkt[cursor++] = App_NbiotQualityBcdByte((uint16_t)(vbatMv / 1000u));
+            p_pkt[cursor++] = App_NbiotQualityBcdByte((uint16_t)((vbatMv % 1000u) / 10u));
+        }
+        else
+        {
+            p_pkt[cursor++] = 0x99u;   /* 디바이스 미지원 */
+            p_pkt[cursor++] = 0x99u;
+            p_pkt[cursor++] = 0x99u;
+        }
+    }
+
+    /* 4. CGI 4B HEX (Serving Cell ID, big-endian) */
+    p_pkt[cursor++] = (uint8_t)((p_stats->cellId >> 24) & 0xFFu);
+    p_pkt[cursor++] = (uint8_t)((p_stats->cellId >> 16) & 0xFFu);
+    p_pkt[cursor++] = (uint8_t)((p_stats->cellId >> 8) & 0xFFu);
+    p_pkt[cursor++] = (uint8_t)(p_stats->cellId & 0xFFu);
+
+    /* 5. RF: RSRP 2B(백단위+2자리 BCD, 부호 미표기) + SINR 2B(부호+2자리 BCD)
+     *    -875(=−87.5dBm) -> 00 87 / 1120 -> 01 12, SNR 250 -> 00 25, -50 -> 01 05 */
+    rsrpAbs = (uint16_t)((p_stats->rsrpCdB < 0) ? -p_stats->rsrpCdB : p_stats->rsrpCdB);
+    rsrpAbs = (uint16_t)(rsrpAbs / 10u);
+    p_pkt[cursor++] = (uint8_t)((rsrpAbs / 100u) & 0xFFu);
+    p_pkt[cursor++] = App_NbiotQualityBcdByte((uint16_t)(rsrpAbs % 100u));
+    snrVal = p_stats->snrCdB;
+    snrAbs = (uint16_t)((snrVal < 0) ? -snrVal : snrVal);
+    snrAbs = (uint16_t)(snrAbs / 10u);
+    if (snrAbs > 99u) { snrAbs = 99u; }
+    p_pkt[cursor++] = (uint8_t)((snrVal < 0) ? 0x01u : 0x00u);
+    p_pkt[cursor++] = App_NbiotQualityBcdByte(snrAbs);
+
+    /* 6. 모델명 1B(len)+ASCII (규격: 서비스디바이스 모델명, 최대 20B) */
+    {
+        const char *p_model = APP_QUALITY_REPORT_MODEL_STRING;
+        size_t modelLen = strlen(p_model);
+        if (modelLen > 19u) { modelLen = 19u; }
+        p_pkt[cursor++] = (uint8_t)modelLen;
+        (void)memcpy(&p_pkt[cursor], p_model, modelLen);
+        cursor += (uint16_t)modelLen;
+    }
+
+    /* 7. FW 버전 1B(len)+ASCII: 단말FW "/" 모듈FW (모듈 조회 실패 시 단말FW만) */
+    (void)snprintf(fwStr, sizeof(fwStr), "V%u.%02u",
+                   (unsigned)APP_FW_VERSION_MAJOR, (unsigned)APP_FW_VERSION_MINOR);
+    modFw[0] = '\0';
+    {
+        AppStatus_t gmrStatus;
+        uint16_t gmrLen = 0u;
+        const char *p_pos;
+        const char *p_run;
+        size_t k = 0u;
+        gmrStatus = App_Bc95AtSendCommand(APP_QUALITY_REPORT_CMD_CGMR,
+                                          g_appBc95AtRxBuf,
+                                          (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                          APP_BC95_AT_RX_TIMEOUT_MS,
+                                          &gmrLen);
+        if ((gmrStatus == APP_STATUS_OK) || (gmrStatus == APP_STATUS_UART_TIMEOUT))
+        {
+            p_pos = strstr((const char *)g_appBc95AtRxBuf, "GMR");
+            p_run = (p_pos != NULL) ? (p_pos + 3) : (const char *)g_appBc95AtRxBuf;
+            while ((*p_run != '\0') && ((*p_run < 0x20) || (*p_run > 0x7E))) { p_run++; }
+            while ((p_run[k] >= 0x20) && (p_run[k] <= 0x7E) && (k < (sizeof(modFw) - 1u)))
+            {
+                modFw[k] = p_run[k];
+                k++;
+            }
+            modFw[k] = '\0';
+            if ((k < 3u) || (strncmp(modFw, "OK", 2u) == 0)) { modFw[0] = '\0'; }
+        }
+        if (modFw[0] != '\0')
+        {
+            (void)strncat(fwStr, "/", sizeof(fwStr) - strlen(fwStr) - 1u);
+            (void)strncat(fwStr, modFw, sizeof(fwStr) - strlen(fwStr) - 1u);
+        }
+    }
+    fwLen = strlen(fwStr);
+    if (fwLen > 20u) { fwLen = 20u; }   /* 규격: size 최대 20B(초과 시 축약) */
+    p_pkt[cursor++] = (uint8_t)fwLen;
+    (void)memcpy(&p_pkt[cursor], fwStr, fwLen);
+    cursor += (uint16_t)fwLen;
+
+    /* 8. TX POWER 2B BCD (부호 00=양수/01=음수, 모듈 미지원 시 02 00) */
+    if (p_stats->txValid != APP_FALSE)
+    {
+        uint16_t txAbs = (uint16_t)((p_stats->txPowerCdB < 0) ? -p_stats->txPowerCdB
+                                                              : p_stats->txPowerCdB);
+        txAbs = (uint16_t)(txAbs / 10u);
+        p_pkt[cursor++] = (uint8_t)((p_stats->txPowerCdB < 0) ? 0x01u : 0x00u);
+        p_pkt[cursor++] = App_NbiotQualityBcdByte(txAbs);
+    }
+    else
+    {
+        p_pkt[cursor++] = 0x02u;
+        p_pkt[cursor++] = 0x00u;
+    }
+
+    /* 9. 위치정보 1B(미사용 0x00), 10. Neighbor Cell ID 1B(미사용 0x00) */
+    p_pkt[cursor++] = 0x00u;
+    p_pkt[cursor++] = 0x00u;
+
+    /* 11. UE INFO 1B 비트패턴
+     *     bit7=B1 bit6=B5(LTE850) bit5=B7 bit4=n78 bit3=n257 bit2=예비
+     *     bit1=운영타입 고정형(=1) bit0=Report구분(부팅후=1/주기=0). 샘플 0x43=LTE850+고정+부팅후 */
+    {
+        uint8_t ueInfo = 0x02u;
+        if (p_stats->band == 5u) { ueInfo |= 0x40u; }
+        if (bootReport != APP_FALSE) { ueInfo |= 0x01u; }
+        p_pkt[cursor++] = ueInfo;
+    }
+
+    /* 12. PORT INFO 3B(미사용 0x00), 13. Reserved F1F1F1 */
+    cursor += 3u;
+    p_pkt[cursor++] = 0xF1u;
+    p_pkt[cursor++] = 0xF1u;
+    p_pkt[cursor++] = 0xF1u;
+
+    *p_len = cursor;
+    return APP_STATUS_OK;
+}
+
+/* mgmt 전송 성공 세션에서 호출: 만료/새벽 윈도우 판정 후 리포트 1발 전송 */
+static AppStatus_t App_NbiotQualityReportMaybeSend(void)
+{
+    AppDateTime_t now;
+    AppNbiotQualityRadioStats_t stats;
+    AppBc95UdpResult_t sendResult;
+    AppStatus_t status;
+    uint32_t nowDays;
+    uint32_t elapsedDays;
+    uint8_t pkt[APP_QUALITY_REPORT_PACKET_MAX];
+    uint16_t pktLen = 0u;
+    uint8_t bootReport;
+    uint8_t due;
+    uint8_t hourInWindow;
+
+    (void)memset(&sendResult, 0, sizeof(sendResult));
+
+    if (RTC_GetTime(&now) != APP_STATUS_OK)
+    {
+        return APP_STATUS_NOT_INITIALIZED;   /* RTC 미확정 -> 판정 보류 */
+    }
+
+    nowDays = ((uint32_t)now.year * 366u) + ((uint32_t)now.month * 31u) +
+              (uint32_t)now.day;
+    bootReport = (g_appQualityReportLastValid == APP_FALSE) ? APP_TRUE : APP_FALSE;
+
+    due = bootReport;
+    if (due == APP_FALSE)
+    {
+        elapsedDays = nowDays - g_appQualityReportLastDays;
+        if (elapsedDays < (uint32_t)APP_QUALITY_REPORT_INTERVAL_DAYS)
+        {
+            return APP_STATUS_OK;   /* 미만료 */
+        }
+        hourInWindow = ((now.hour >= APP_QUALITY_REPORT_WINDOW_START_HOUR) &&
+                        (now.hour < APP_QUALITY_REPORT_WINDOW_END_HOUR)) ? APP_TRUE : APP_FALSE;
+        /* 새벽 윈도우 우선. 윈도우를 놓친 경우(mgmt 주기 72h 등) 만료+1일 경과 시 즉시 전송 */
+        due = ((hourInWindow != APP_FALSE) ||
+               (elapsedDays >= ((uint32_t)APP_QUALITY_REPORT_INTERVAL_DAYS +
+                                (uint32_t)APP_QUALITY_REPORT_CATCHUP_EXTRA_DAYS)))
+              ? APP_TRUE : APP_FALSE;
+    }
+    if (due == APP_FALSE)
+    {
+        return APP_STATUS_OK;
+    }
+
+    status = App_NbiotQualityFetchRadioStats(&stats);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("NBIOT", "[[QREP]] radio stats fail (status=%d) - retry next session",
+                 (int)status);
+        return status;
+    }
+
+    status = App_NbiotQualityBuildPacket(&stats, bootReport, pkt, sizeof(pkt), &pktLen);
+    if (status != APP_STATUS_OK)
+    {
+        APP_LOGW("NBIOT", "[[QREP]] packet build fail (status=%d)", (int)status);
+        return status;
+    }
+
+    g_appBc95UdpSkipAckWait = APP_TRUE;
+    status = App_Bc95AtUdpSendOnce("QREP",
+                                   APP_QUALITY_REPORT_HOST,
+                                   APP_QUALITY_REPORT_PORT,
+                                   pkt,
+                                   pktLen,
+                                   &sendResult,
+                                   APP_FALSE);
+    g_appBc95UdpSkipAckWait = APP_FALSE;
+
+    if (status == APP_STATUS_OK)
+    {
+        g_appQualityReportLastValid = APP_TRUE;
+        g_appQualityReportLastDays  = nowDays;
+        APP_LOGN("NBIOT", "[[QREP]] sent (len=%u, boot=%u, %u.%02u %02u:%02u)",
+                 (unsigned)pktLen, (unsigned)bootReport,
+                 (unsigned)now.year, (unsigned)now.month,
+                 (unsigned)now.hour, (unsigned)now.minute);
+    }
+    else
+    {
+        APP_LOGW("NBIOT", "[[QREP]] send fail (status=%d, stage=%d)",
+                 (int)status, (int)sendResult.lastStage);
+    }
+    return status;
+}
+
 static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                                                 const char *p_host,
                                                 uint16_t port,
@@ -10689,6 +11102,12 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
         if (p_sendResultOut != NULL)
         {
             *p_sendResultOut = sendResult;
+        }
+
+        if ((status == APP_STATUS_OK) && (isMgmtPath != APP_FALSE))
+        {
+            /* [QUALITY-REPORT] mgmt 전송 성공 세션에서 판정(별도 wake 없음) */
+            (void)App_NbiotQualityReportMaybeSend();
         }
 
         if ((status == APP_STATUS_OK) && (buildResult.recordCount != 0u))
@@ -10761,7 +11180,9 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
     }
     else
     {
-        APP_LOGW("NBIOT", "%s skip send", p_logTag);
+        /* [SKIP-REASON 2026-11-09] build 실패(레코드 0건/옵션 미초기화) 시의 스킵.
+         * 이 스킵은 전송 대상이 없는 정상 상태이므로 WARN 대신 status 표기로 통일. */
+        APP_LOGW("NBIOT", "%s skip send (status=%d)", p_logTag, (int)status);
     }
 
     APP_LOGD("NBIOT", "%s build len=%u payload=%u rec=%u checksum=0x%02X cleared=%u delete=%u live=%u",

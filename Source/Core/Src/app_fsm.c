@@ -204,6 +204,7 @@ static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void);
 static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed);
 static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed);
 static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due);
+static uint8_t g_appFsmMgmtSkipConsumed = 0u;   /* [SKIP-REASON] 레코드 0건 escape 소비 플래그 */
 static AppStatus_t App_FsmTxScheduleLoadSpreadMaxMs(uint32_t *p_spreadMaxMs);
 static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due);
 static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void);
@@ -3262,6 +3263,16 @@ static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due)
                                    nowDateKey,
                                    nowMsOfDay) == APP_TRUE)
     {
+        /* [SKIP-REASON 2026-11-09] 저장 레코드가 없으면 starvation escape를 세우지
+         * 않는다(전송해도 skip send 뿐). 실측(2026-11-09): 스톨 에피소드로 anchor
+         * 미확정 -> escape due=1 유지 -> 이후 태깅 wake마다 skip send 6회 반복. */
+        if (App_MeterStorageCount() == 0u)
+        {
+            /* 레코드 없음: escape 세팅 대신 소비로 처리해 재평가 소음 차단 */
+            App_FsmMgmtTxScheduleConsumeDueNow(&g_appFsmMgmtSkipConsumed);
+            return APP_STATUS_OK;
+        }
+
         *p_due = APP_TRUE;
         APP_LOGW("FSM",
                  "[[MgmtTxSchedule]] starvation escape due=1 after service anchor timeout (%lu ms, guardShiftStreak=%u)",
