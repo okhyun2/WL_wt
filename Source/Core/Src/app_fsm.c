@@ -204,7 +204,6 @@ static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void);
 static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed);
 static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed);
 static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due);
-static uint8_t g_appFsmMgmtSkipConsumed = 0u;   /* [SKIP-REASON] 레코드 0건 escape 소비 플래그 */
 static AppStatus_t App_FsmTxScheduleLoadSpreadMaxMs(uint32_t *p_spreadMaxMs);
 static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due);
 static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void);
@@ -248,7 +247,6 @@ static uint8_t g_appFsmRtcMgmtTxWakePending = APP_FALSE;
 static uint8_t g_appFsmMgmtTxCarryPendingAfterAbort = APP_FALSE;
 
 #define APP_FSM_MGMT_TX_GUARD_SHIFT_MAX      (2u)
-#define APP_FSM_MGMT_TX_MAX_STARVATION_MS    (180000u) /* 3 min */
 static uint8_t  g_appFsmMgmtTxGuardShiftStreak = 0u;
 static uint32_t g_appFsmMgmtTxLastGuardAnchorDateKey = 0u;
 static uint32_t g_appFsmMgmtTxLastGuardAnchorMsOfDay = 0u;
@@ -3206,11 +3204,6 @@ static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
 static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due)
 {
     AppStatus_t status;
-    AppDateTime_t now;
-    uint32_t nowDateKey;
-    uint32_t nowMsOfDay;
-    uint32_t starvationDateKey;
-    uint32_t starvationMsOfDay;
 
     APP_RETURN_IF_FALSE(p_due != NULL, APP_STATUS_INVALID_PARAM);
     *p_due = APP_FALSE;
@@ -3239,46 +3232,8 @@ static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due)
         return APP_STATUS_OK;
     }
 
-    if ((g_appFsmTxSchedule.lastDispatchedDateKey == 0u) &&
-        (g_appFsmTxSchedule.lastDispatchedMsOfDay == 0u))
-    {
-        return APP_STATUS_OK;
-    }
-
-    status = RTC_GetTime(&now);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    nowDateKey = App_FsmMeterScheduleDateKey(&now);
-    nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
-
-    status = App_FsmScheduleAddMs(g_appFsmTxSchedule.lastDispatchedDateKey,
-                                  g_appFsmTxSchedule.lastDispatchedMsOfDay,
-                                  APP_FSM_MGMT_TX_MAX_STARVATION_MS,
-                                  &starvationDateKey,
-                                  &starvationMsOfDay);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    if (App_FsmScheduleIsDueOrPast(starvationDateKey,
-                                   starvationMsOfDay,
-                                   nowDateKey,
-                                   nowMsOfDay) == APP_TRUE)
-    {
-        /* [SKIP-REASON 2026-11-09] 저장 레코드가 없으면 starvation escape를 세우지
-         * 않는다(전송해도 skip send 뿐). 실측(2026-11-09): 스톨 에피소드로 anchor
-         * 미확정 -> escape due=1 유지 -> 이후 태깅 wake마다 skip send 6회 반복. */
-        if (App_MeterStorageCount() == 0u)
-        {
-            /* 레코드 없음: escape 세팅 대신 소비로 처리해 재평가 소음 차단 */
-            App_FsmMgmtTxScheduleConsumeDueNow(&g_appFsmMgmtSkipConsumed);
-            return APP_STATUS_OK;
-        }
-
-        *p_due = APP_TRUE;
-        APP_LOGW("FSM",
-                 "[[MgmtTxSchedule]] starvation escape due=1 after service anchor timeout (%lu ms, guardShiftStreak=%u)",
-                 (unsigned long)APP_FSM_MGMT_TX_MAX_STARVATION_MS,
-                 (unsigned)g_appFsmMgmtTxGuardShiftStreak);
-    }
+    /* starvation escape removed (2026-11-10): mgmt periodic due(AlarmB)가 유일한
+     * mgmt 트리거. 서비스 실패 시 조기 배출은 정기 due가 담당(최대 지연 = mgmt 주기). */
 
     return APP_STATUS_OK;
 }
@@ -4085,7 +4040,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             /* [ALARM-PRIORITY 2026-11-10] NFC 태깅 연속 웨이크 중에도 만료된
              * service/mgmt 스케줄을 즉시 발화한다(알람 우선).
              * 실측(11-09 17:04~20:03): NFC_ED 14초 루프 ~100분 동안 AlarmB(tx) 발화가
-             * 무효화되어 due(18:11:47)가 1h53m 지연 -> starvation escape로만 회복.
+             * 무효화되어 due(18:11:47)가 1h53m 지연되었다(데이터 배출은 mgmt 정기 due가 담당).
              * 기존은 g_appFsmFirstAttachCycleDone == APP_TRUE 일 때만 CheckDue를
              * 호출했으므로 첫 사이클 미완료 구간에서 만료가 봉인됐다.
              * CheckDue는 항상 수행하고, due가 없을 때만 first-attach 게이트를
