@@ -7092,6 +7092,25 @@ AppStatus_t App_NBIoTColdBootResetTrack(void)
  * 시그니처 변경 없이 static 플래그 + setter로 처리(기존 호출부 영향 없음). */
 static uint8_t s_appNbiotBootPiggybackSkip = APP_FALSE;
 
+/* [BOOT-DUAL-TX 2026-11-16] 부팅 첫 전송의 live 레코드를 service 플랫폼 경로에도
+ * 전달하기 위한 1회성 슬롯. FSM이 BootLiveTx 레코드를 set 하면 다음
+ * App_NBIoTServicePlatformWakeTrack() 호출에서 platform TX(BuildFromRecord)에
+ * 사용되고 즉시 소비(clear)된다. 미설정 시 기존대로 스토리지 기반 빌드. */
+static AppMeterStorageRecord_t s_appNbiotBootServiceLiveRecord;
+static uint8_t s_appNbiotBootServiceLiveValid = APP_FALSE;
+
+AppStatus_t App_NBIoTSetBootServiceLiveRecord(const AppMeterStorageRecord_t *p_record)
+{
+    if (p_record == NULL)
+    {
+        s_appNbiotBootServiceLiveValid = APP_FALSE;
+        return APP_STATUS_OK;
+    }
+    s_appNbiotBootServiceLiveRecord = *p_record;
+    s_appNbiotBootServiceLiveValid = APP_TRUE;
+    return APP_STATUS_OK;
+}
+
 AppStatus_t App_NBIoTSetBootPiggybackSkip(uint8_t enable)
 {
     s_appNbiotBootPiggybackSkip = enable;
@@ -7142,10 +7161,17 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
     }
     else
     {
+        /* [BOOT-DUAL-TX] 부팅 live 레코드가 pending 이면 스토리지 대신 이것으로
+         * platform TX를 수행하고 소비한다(스토리지 0건 부팅에서도 service
+         * 플랫폼 전송 보장). 정기 service wake는 pending 없으니 기존과 동일. */
+        const AppMeterStorageRecord_t *p_bootLive =
+            (s_appNbiotBootServiceLiveValid == APP_TRUE) ? &s_appNbiotBootServiceLiveRecord : NULL;
+        s_appNbiotBootServiceLiveValid = APP_FALSE;
+
         status = App_NBIoTTransmitPlatformInternal("[[ServiceTx]]",
                                                    deleteStorage,
                                                    APP_FALSE,
-                                                   NULL);
+                                                   p_bootLive);
         if (status != APP_STATUS_OK)
         {
             APP_LOGW("NBIOT", "[[ServiceTx]] platform transmit failed (status=%d) -> continue with mgmt UDP", (int)status);

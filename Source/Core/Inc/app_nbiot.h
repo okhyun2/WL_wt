@@ -373,6 +373,7 @@ uint8_t App_NBIoTGetSimSerial(char *p_out, size_t outSize);
 AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo);
 AppStatus_t App_NBIoTColdBootResetTrack(void);
 AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage);
+AppStatus_t App_NBIoTSetBootServiceLiveRecord(const AppMeterStorageRecord_t *p_record);   /* [BOOT-DUAL-TX] */
 AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage);
 AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage);
 AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage);

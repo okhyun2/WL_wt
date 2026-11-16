@@ -179,7 +179,7 @@ extern "C" {
 #undef NBIOT_TRACE_DEBUG
 
 /* 가속 테스트(검침,주기보고,MGMT보고)시: define */
-#define APP_TEST_PERIOD_ACCEL //TODO. PRODUCT-> #undef
+#undef APP_TEST_PERIOD_ACCEL //TODO. PRODUCT-> #undef
 
 /* [TRACE-COMP-GATE] 주기 반복 컴포넌트의 trace comp 로그 게이트:
  * meter/rtc/housekeeping/watchdog 등 주기 세션마다 동일 전이 시퀀스를

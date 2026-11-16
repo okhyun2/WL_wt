@@ -4219,6 +4219,10 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                         /* 부팅 wake에서만 piggyback 생략: 직후 자체 mgmt 전송이 담당.
                          * 정기 service wake에는 영향 없도록 호출 후 즉시 해제. */
                         (void)App_NBIoTSetBootPiggybackSkip(APP_TRUE);
+                        /* [BOOT-DUAL-TX] live(placeholder 포함) 레코드를 service
+                         * 플랫폼 TX에도 사용 -> 첫 부팅이 서비스/관제 양쪽 전송.
+                         * 레코드는 WakeTrack 내에서 1회 소비된다. */
+                        (void)App_NBIoTSetBootServiceLiveRecord(&bootLiveRecord);
                         platformStatus = App_NBIoTServicePlatformWakeTrack(APP_FALSE);
                         (void)App_NBIoTSetBootPiggybackSkip(APP_FALSE);
  
