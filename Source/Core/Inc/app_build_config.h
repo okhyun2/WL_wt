@@ -462,6 +462,19 @@ extern "C" {
 #define APP_STORAGE_CONFIG_SLOT_COUNT                           (4u)
 #define APP_STORAGE_OPTION_SLOT_COUNT                           (4u)
 
+/* ===== [TX-PATH-GATE 2026-11-16] 전송 경로별 컴파일 타임 스위치 =====
+ * APP_TX_SERVICE_ENABLE : 서비스 플랫폼(LwM2M/CoAP) 전송 경로 on/off.
+ *   0이면 service wake(정기/부팅)의 platform TX를 스킵. mgmt/QREP는 영향 없음.
+ * APP_TX_MGMT_ENABLE    : 관제 mgmt UDP 전송 경로 on/off.
+ *   0이면 정기 mgmt due/부팅 mgmt live 전송을 모두 스킵.
+ * APP_TX_QREP_ENABLE    : 품질리포트(quality report) 전송 on/off.
+ *   0이면 리포트를 만들지/보내지 않는다. mgmt와 독립적으로 판정·전송된다
+ *   (mgmt 전송 결과/활성 여부에 의존하지 않음).
+ * 셋 모두 1(기본)이면 현행 동작과 100% 동일. */
+#define APP_TX_SERVICE_ENABLE                       (1u)
+#define APP_TX_MGMT_ENABLE                          (1u)
+#define APP_TX_QREP_ENABLE                          (1u)
+
 #if !defined(STM32L073xx)
 #error "This project requires STM32L073xx device support."
 #endif

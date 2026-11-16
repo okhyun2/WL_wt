@@ -386,6 +386,7 @@ static void App_Bc95AtDelayWithFeed(uint32_t ms);
 static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
+static AppStatus_t App_NbiotQualityReportMaybeSend(void);
 
 static int s_bc95LastEVTIND = -1;
 /* [STALL-GUARD 2026-11-09] AT 채널 완전 소실 감지.
@@ -7119,6 +7120,15 @@ AppStatus_t App_NBIoTSetBootPiggybackSkip(uint8_t enable)
 
 AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
 {
+#if (APP_TX_SERVICE_ENABLE != 1u)
+    (void)deleteStorage;
+    APP_LOGN("NBIOT", "[[ServicePlatformWake]] disabled by APP_TX_SERVICE_ENABLE=0");
+#if (APP_TX_QREP_ENABLE == 1u)
+    /* [QREP-INDEPENDENT] service가 꺼진 세션에서도 리포트는 독자 판정 */
+    (void)App_NbiotQualityReportMaybeSend();
+#endif
+    return APP_STATUS_OK;
+#else
 #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 7u)
     /* 시험 7 전용: 실제 모뎀 측정/시간동기/플랫폼 전송을 전부 건너뛰고 시나리오만 진행 */
     App_CommTest7RunCycle();
@@ -7218,15 +7228,30 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
             mgmtStatus = APP_STATUS_OK;
             APP_LOGN("NBIOT", "[[ServicePlatformWake]] mgmt piggyback disabled (independent schedule)");
         }
+        /* [QREP-INDEPENDENT] service 세션 종료 전 독자 판정:
+         * mgmt 전송 결과와 무관하게 QREP 스케줄(부팅/새벽 윈도우)이 due면 전송. */
+#if (APP_TX_QREP_ENABLE == 1u)
+        (void)App_NbiotQualityReportMaybeSend();
+#endif
         APP_LOGN("NBIOT", "[[ServicePlatformWake]] done");
         return APP_STATUS_OK;
 
 #endif
 #endif
+#endif /* APP_TX_SERVICE_ENABLE */
 }
 
 AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage)
 {
+#if (APP_TX_MGMT_ENABLE != 1u)
+    (void)deleteStorage;
+    APP_LOGN("NBIOT", "[[MgmtTx]] disabled by APP_TX_MGMT_ENABLE=0");
+#if (APP_TX_QREP_ENABLE == 1u)
+    /* [QREP-INDEPENDENT] mgmt가 꺼진 세션에서도 리포트는 독자 판정 */
+    (void)App_NbiotQualityReportMaybeSend();
+#endif
+    return APP_STATUS_OK;
+#endif
     APP_LOGN("NBIOT", "[[MgmtSocketWake]] start");
     (void)App_NBIoTReadIdentity(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
@@ -7236,7 +7261,14 @@ AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage)
      * (배터리 우선 / service-driven policy)
      */
 
-    return App_NBIoTTransmitMgmtUdp(deleteStorage);
+    {
+        AppStatus_t mgmtStatus = App_NBIoTTransmitMgmtUdp(deleteStorage);
+        /* [QREP-INDEPENDENT] mgmt 성공/실패 무관, 세션 종료 전 독자 판정 */
+#if (APP_TX_QREP_ENABLE == 1u)
+        (void)App_NbiotQualityReportMaybeSend();
+#endif
+        return mgmtStatus;
+    }
 }
 
 static AppStatus_t App_Bc95AtWaitForLinePrefix(const char *p_prefix,
@@ -10998,9 +11030,15 @@ static AppStatus_t App_NbiotQualityBuildPacket(const AppNbiotQualityRadioStats_t
     return APP_STATUS_OK;
 }
 
-/* mgmt 전송 성공 세션에서 호출: 만료/새벽 윈도우 판정 후 리포트 1발 전송 */
+/* 세션 종료 전 호출(호출부는 service/mgmt/boot 다수): 만료/새벽 윈도우 판정 후 리포트 1발 전송.
+ * [QREP-INDEPENDENT] mgmt 전송 결과와 무관하게 호출되며, 중복 호출 시 due 판정이
+ * 걸러주므로 안전하다. */
 static AppStatus_t App_NbiotQualityReportMaybeSend(void)
 {
+#if (APP_TX_QREP_ENABLE != 1u)
+    /* [TX-PATH-GATE] 품질리포트 비활성: 스케줄 갱신 없이 조용히 스킵 */
+    return APP_STATUS_OK;
+#endif
     AppDateTime_t now;
     AppNbiotQualityRadioStats_t stats;
     AppBc95UdpResult_t sendResult;
@@ -11241,6 +11279,12 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
 
 AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage)
 {
+#if (APP_TX_MGMT_ENABLE != 1u)
+    (void)deleteStorage;
+    APP_LOGN("NBIOT", "[[MgmtTx]] disabled by APP_TX_MGMT_ENABLE=0");
+    return APP_STATUS_OK;
+#endif
+
 #ifdef NBIOT_SUPPORT_DNS
     return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL, APP_FALSE);
 #else
@@ -11259,10 +11303,25 @@ AppStatus_t App_NBIoTTransmitMgmtUdp(uint8_t deleteStorage)
 
 AppStatus_t App_NBIoTTransmitServiceLiveRecord(const AppMeterStorageRecord_t *p_record)
 {
+#if (APP_TX_MGMT_ENABLE != 1u)
+    (void)p_record;
+    APP_LOGN("NBIOT", "[[MgmtTx]] live disabled by APP_TX_MGMT_ENABLE=0");
+#if (APP_TX_QREP_ENABLE == 1u)
+    /* [QREP-INDEPENDENT] mgmt가 꺼진 부팅 세션에서도 리포트는 독자 판정 */
+    (void)App_NbiotQualityReportMaybeSend();
+#endif
+    return APP_STATUS_OK;
+#endif
+
 #ifdef NBIOT_SUPPORT_DNS
     return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL, APP_FALSE);
 #else
     return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL, APP_FALSE);
+#endif
+
+    /* [QREP-INDEPENDENT] 부팅 mgmt 전송 성공/실패 무관 세션 종료 전 독자 판정 */
+#if (APP_TX_QREP_ENABLE == 1u)
+    (void)App_NbiotQualityReportMaybeSend();
 #endif
 }
 
