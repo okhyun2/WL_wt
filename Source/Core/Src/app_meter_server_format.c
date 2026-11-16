@@ -147,7 +147,7 @@ AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_opti
         (originalAckPoll100Ms != p_options->ackPoll100Ms) ||
         (originalDeleteAfterSend != p_options->deleteAfterSend))
     {
-        APP_LOGW("OPT", "opt fix m=%u>%u r=%u>%u g=%u>%u s=%u>%u aw=%u>%u at=%u>%u ap=%u>%u d=%u>%u",
+        APP_LOGD("OPT", "opt fix m=%u>%u r=%u>%u g=%u>%u s=%u>%u aw=%u>%u at=%u>%u ap=%u>%u d=%u>%u",
                  (unsigned)originalMetering,
                  (unsigned)p_options->meteringPeriodHours,
                  (unsigned)originalReporting,
@@ -315,7 +315,7 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
 
     status = App_MeterStorageGetInfo(&info);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    APP_LOGI("MSTOR", "saved cnt=%d(%s)", info.count, (info.count > 0)? "build":"skip");
+    APP_LOGD("MSTOR", "saved cnt=%d(%s)", info.count, (info.count > 0)? "build":"skip");
     APP_RETURN_IF_FALSE(info.count > 0u, APP_STATUS_INVALID_PARAM);
 
     startLogicalIndex = 0u;
@@ -335,7 +335,7 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
                 break;
             }
         }
-        APP_LOGI("MSTOR", "unsent cnt=%u(%s)",
+        APP_LOGD("MSTOR", "unsent cnt=%u(%s)",
                  (unsigned int)availableRecordCount,
                  (foundUnsent == APP_TRUE) ? "build" : "skip");
         APP_RETURN_IF_FALSE(foundUnsent == APP_TRUE, APP_STATUS_INVALID_PARAM);
@@ -731,7 +731,7 @@ AppStatus_t App_MeterServerOptionsClear(void)
 
 void App_MeterServerOptionsInfo(void)
 {
-    APP_LOGI("OPT", "EEP opt addr=0x%08lx size=%lu slot(n=%u sz=%lu)",
+    APP_LOGD("OPT", "EEP opt addr=0x%08lx size=%lu slot(n=%u sz=%lu)",
              (uint32_t)(DATA_EEPROM_BASE + APP_STORAGE_METER_OPTION_EEPROM_OFFSET_BYTES),
              (uint32_t)APP_STORAGE_METER_OPTION_EEPROM_SIZE_BYTES,
              (unsigned)APP_STORAGE_OPTION_SLOT_COUNT,
@@ -766,16 +766,16 @@ void App_MeterServerOptionsDump(const AppMeterServerFormatOptions_t *p_options)
 {
     if (p_options == NULL)
     {
-        APP_LOGW("OPT", "dump null");
+        APP_LOGD("OPT", "dump null");
         return;
     }
 
-    APP_LOGI("OPT", "=== Meter opt ===");
-    APP_LOGI("OPT", "  linkHeader : 0x%02X (%s)",
+    APP_LOGD("OPT", "=== Meter opt ===");
+    APP_LOGD("OPT", "  linkHeader : 0x%02X (%s)",
              p_options->linkHeader,
              (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_LORA)  ? "LoRa"  :
              (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_NBIOT) ? "NB-IoT": "unknown");
-    APP_LOGI("OPT", "  cmd : 0x%02X", p_options->command);
+    APP_LOGD("OPT", "  cmd : 0x%02X", p_options->command);
 
     App_MeterServerFormatDumpHex("OPT", "wirelessQuality",
                                  p_options->wirelessQuality,
@@ -789,32 +789,32 @@ void App_MeterServerOptionsDump(const AppMeterServerFormatOptions_t *p_options)
                                  p_options->deviceSerialBcd,
                                  sizeof(p_options->deviceSerialBcd));
 
-    APP_LOGI("OPT", "  fw : %u.%u",
+    APP_LOGD("OPT", "  fw : %u.%u",
              (unsigned)p_options->firmwareVersion[0],
              (unsigned)p_options->firmwareVersion[1]);
 
-    APP_LOGI("OPT", "  batt : raw=0x%02X volt=%u(x0.1V) alarm=%u",
+    APP_LOGD("OPT", "  batt : raw=0x%02X volt=%u(x0.1V) alarm=%u",
              p_options->terminalBattery.value,
              (unsigned)p_options->terminalBattery.b.volt,
              (unsigned)p_options->terminalBattery.b.alarm);
 
-    APP_LOGI("OPT", "  meter_h : %u", (unsigned)p_options->meteringPeriodHours);
-    APP_LOGI("OPT", "  report_h: %u", (unsigned)p_options->reportingPeriodHours);
-    APP_LOGI("OPT", "  mgmt_h  : %u (%s)",
+    APP_LOGD("OPT", "  meter_h : %u", (unsigned)p_options->meteringPeriodHours);
+    APP_LOGD("OPT", "  report_h: %u", (unsigned)p_options->reportingPeriodHours);
+    APP_LOGD("OPT", "  mgmt_h  : %u (%s)",
              (unsigned)p_options->managementReportingPeriodHours,
              (p_options->managementReportingPeriodHours == 0u) ? "disabled" : "enabled");
-    APP_LOGI("OPT", "  spread_h: %u (%s)",
+    APP_LOGD("OPT", "  spread_h: %u (%s)",
              (unsigned)p_options->reportingSpreadHours,
              (p_options->reportingSpreadHours == 0u) ? "legacy/default" : "configured");
-    APP_LOGI("OPT", "  ack_en : %u", (unsigned)p_options->ackWaitEnabled);
-    APP_LOGI("OPT", "  ack_to : %u", (unsigned)p_options->ackTimeoutSec);
-    APP_LOGI("OPT", "  ack_p  : %u", (unsigned)p_options->ackPoll100Ms);
-    APP_LOGI("OPT", "  del_tx : %u", (unsigned)p_options->deleteAfterSend);
+    APP_LOGD("OPT", "  ack_en : %u", (unsigned)p_options->ackWaitEnabled);
+    APP_LOGD("OPT", "  ack_to : %u", (unsigned)p_options->ackTimeoutSec);
+    APP_LOGD("OPT", "  ack_p  : %u", (unsigned)p_options->ackPoll100Ms);
+    APP_LOGD("OPT", "  del_tx : %u", (unsigned)p_options->deleteAfterSend);
 
-    APP_LOGI("OPT", "  slot(i=%u s=%u)",
+    APP_LOGD("OPT", "  slot(i=%u s=%u)",
              (unsigned)g_appMeterServerOptionsRegion.latestSlotIndex,
              (unsigned)g_appMeterServerOptionsRegion.latestSeq);
-    APP_LOGI("OPT", "  nightOnly : %u (%02u~%02u)",
+    APP_LOGD("OPT", "  nightOnly : %u (%02u~%02u)",
              (unsigned)p_options->nightOnly, (unsigned)p_options->nightStartHour, (unsigned)p_options->nightEndHour);
 }
 
@@ -1005,18 +1005,18 @@ AppStatus_t App_MeterServerOptionsUpdate(const AppMeterServerFormatOptions_t *p_
     if ((status == APP_STATUS_OK) &&
         (memcmp(&current, &temp, sizeof(current)) == 0))
     {
-        APP_LOGI("OPT", "update: no change");
+        APP_LOGD("OPT", "update: no change");
         return APP_STATUS_OK;
     }
 
-    APP_LOGI("OPT", "update: write");
+    APP_LOGD("OPT", "update: write");
     return App_MeterServerOptionsSave(&temp);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void App_ReservedEepromInfo(void)
 {
-    APP_LOGI("OPT", "EEP rsvd addr=0x%08lx size=%lu",
+    APP_LOGD("OPT", "EEP rsvd addr=0x%08lx size=%lu",
              (uint32_t)(DATA_EEPROM_BASE + APP_STORAGE_RESERVED_EEPROM_OFFSET_BYTES),
              (uint32_t)APP_STORAGE_RESERVED_EEPROM_SIZE_BYTES);
 }

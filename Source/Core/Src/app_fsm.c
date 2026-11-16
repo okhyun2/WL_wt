@@ -258,7 +258,7 @@ static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTE
 static void App_FsmNfcWakeupCallback(NFC_WakeupEvent_t event)
 {
     g_nfcWakeEvent = event;
-    APP_LOGI("FSM", "trace nfc wake cb event=%s", App_FsmNfcGetWakeEventName(event));
+    APP_LOGD("FSM", "trace nfc wake cb event=%s", App_FsmNfcGetWakeEventName(event));
 }
 
 static AppStatus_t App_FsmMeterReinitUart(uint32_t settleDelayMs)
@@ -330,7 +330,7 @@ static uint32_t App_FsmMeterApplyPostNbiotPowerOffGuard(const char *p_logTag)
             if (elapsedSincePowerOffDoneMs < minGuardMs)
             {
                 uint32_t waitMs = minGuardMs - elapsedSincePowerOffDoneMs;
-                APP_LOGN("FSM", "%s apply post-NBIOT power-off guard wait=%lu ms (elapsed=%lu ms, min=%lu ms, cfun0Status=%ld)",
+                APP_LOGD("FSM", "%s apply post-NBIOT power-off guard wait=%lu ms (elapsed=%lu ms, min=%lu ms, cfun0Status=%ld)",
                          (p_logTag != NULL) ? p_logTag : "[[MeterWake]]",
                          (unsigned long)waitMs,
                          (unsigned long)elapsedSincePowerOffDoneMs,
@@ -721,7 +721,7 @@ AppStatus_t App_NfcInit(void)
     g_appFsmNfcDropAwakeTagPending = APP_FALSE;
     g_appFsmNfcAwakeBusyOneShot = APP_FALSE;
     g_nfcReady = APP_TRUE;
-    APP_LOGI("FSM", "trace nfc module init done ready=%u", (unsigned int)g_nfcReady);
+    APP_LOGD("FSM", "trace nfc module init done ready=%u", (unsigned int)g_nfcReady);
     return APP_STATUS_OK;
 }
 
@@ -752,8 +752,7 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
         if (ret != NFC_RESULT_OK)
         {
             status0FailCount++;
-            APP_LOGW("FSM",
-                     "trace nfc pt wait: status0 read fail ret=%d loop=%lu elapsed=%lums fail0=%lu fail1=%lu",
+            APP_LOGD("FSM", "trace nfc pt wait: status0 read fail ret=%d loop=%lu elapsed=%lums fail0=%lu fail1=%lu",
                      (int)ret,
                      (unsigned long)loopCount,
                      (unsigned long)(HAL_GetTick() - startTick),
@@ -770,8 +769,7 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
         if (ret != NFC_RESULT_OK)
         {
             status1FailCount++;
-            APP_LOGW("FSM",
-                     "trace nfc pt wait: status1 read fail ret=%d loop=%lu elapsed=%lums fail0=%lu fail1=%lu status0=0x%02X",
+            APP_LOGD("FSM", "trace nfc pt wait: status1 read fail ret=%d loop=%lu elapsed=%lums fail0=%lu fail1=%lu status0=0x%02X",
                      (int)ret,
                      (unsigned long)loopCount,
                      (unsigned long)(HAL_GetTick() - startTick),
@@ -782,8 +780,7 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
             continue;
         }
 
-        APP_LOGI("FSM",
-                 "trace nfc pt wait: status0=0x%02X status1=0x%02X loop=%lu elapsed=%lums",
+        APP_LOGD("FSM", "trace nfc pt wait: status0=0x%02X status1=0x%02X loop=%lu elapsed=%lums",
                   (unsigned int)status0,
                  (unsigned int)status1,
                  (unsigned long)loopCount,
@@ -794,8 +791,7 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
             if (p_status0 != NULL) { *p_status0 = status0; }
             if (p_status1 != NULL) { *p_status1 = status1; }
 
-            APP_LOGI("FSM",
-                     "trace nfc pt ready: sync-write observed status0=0x%02X status1=0x%02X elapsed=%lums loops=%lu fail0=%lu fail1=%lu field=%u vcc=%u i2c_locked=%u",
+            APP_LOGD("FSM", "trace nfc pt ready: sync-write observed status0=0x%02X status1=0x%02X elapsed=%lums loops=%lu fail0=%lu fail1=%lu field=%u vcc=%u i2c_locked=%u",
                      (unsigned int)status0,
                      (unsigned int)status1,
                      (unsigned long)(HAL_GetTick() - startTick),
@@ -821,8 +817,7 @@ static AppStatus_t App_FsmNfcWaitPtRxReady(uint8_t *p_status0,
     if (p_status0 != NULL) { *p_status0 = status0; }
     if (p_status1 != NULL) { *p_status1 = status1; }
 
-    APP_LOGW("FSM",
-             "trace nfc pt wait timeout: status0=0x%02X status1=0x%02X elapsed=%lums loops=%lu fail0=%lu fail1=%lu field=%u vcc=%u sync_wr=%u sync_rd=%u vcc_boot=%u nfc_boot=%u i2c_locked=%u",
+    APP_LOGD("FSM", "trace nfc pt wait timeout: status0=0x%02X status1=0x%02X elapsed=%lums loops=%lu fail0=%lu fail1=%lu field=%u vcc=%u sync_wr=%u sync_rd=%u vcc_boot=%u nfc_boot=%u i2c_locked=%u",
              (unsigned int)status0,
              (unsigned int)status1,
              (unsigned long)(HAL_GetTick() - startTick),
@@ -853,14 +848,13 @@ static AppStatus_t App_FsmNfcWriteIndicateResponse(uint8_t prefix, uint8_t addr,
     ret = NFC_NTP53321_WriteBlock(&g_nfcTagHandle, NFC_SRAM_UCMD_IND_BLOCK, indBuf);
     if (ret != NFC_RESULT_OK)
     {
-        APP_LOGW("FSM",
-                 "trace nfc indicate rsp write fail blk=0x%04X ret=%d",
+        APP_LOGD("FSM", "trace nfc indicate rsp write fail blk=0x%04X ret=%d",
                  (unsigned int)NFC_SRAM_UCMD_IND_BLOCK,
                  (int)ret);
         return APP_STATUS_INIT_FAILED;
     }
 
-    APP_LOGI("FSM", "trace nfc indicate raw %02X %02X %02X %02X",
+    APP_LOGD("FSM", "trace nfc indicate raw %02X %02X %02X %02X",
              (unsigned int)indBuf[0],
              (unsigned int)indBuf[1],
              (unsigned int)indBuf[2],
@@ -878,8 +872,7 @@ static AppStatus_t App_FsmNfcHandlePingRequest(uint16_t startBlock, uint8_t bloc
 
     if (blockLen != responseBlockLen)
     {
-        APP_LOGW("FSM",
-                 "trace nfc ping req len=%u -> rsp len force=%u",
+        APP_LOGD("FSM", "trace nfc ping req len=%u -> rsp len force=%u",
                  (unsigned int)blockLen,
                  (unsigned int)responseBlockLen);
     }
@@ -887,8 +880,7 @@ static AppStatus_t App_FsmNfcHandlePingRequest(uint16_t startBlock, uint8_t bloc
     ret = NFC_NTP53321_WriteBlock(&g_nfcTagHandle, startBlock, kPingResponse);
     if (ret != NFC_RESULT_OK)
     {
-        APP_LOGW("FSM",
-                 "trace nfc ping rsp write fail blk=0x%04X ret=%d",
+        APP_LOGD("FSM", "trace nfc ping rsp write fail blk=0x%04X ret=%d",
                  (unsigned int)startBlock,
                  (int)ret);
         return APP_STATUS_INIT_FAILED;
@@ -902,8 +894,7 @@ static AppStatus_t App_FsmNfcHandlePingRequest(uint16_t startBlock, uint8_t bloc
         return APP_STATUS_INIT_FAILED;
     }
 
-    APP_LOGI("FSM",
-             "trace nfc ping rsp written blk=0x%04X len=%u bytes=%02X %02X %02X %02X",
+    APP_LOGD("FSM", "trace nfc ping rsp written blk=0x%04X len=%u bytes=%02X %02X %02X %02X",
              (unsigned int)startBlock,
              (unsigned int)responseBlockLen,
              (unsigned int)kPingResponse[0],
@@ -914,11 +905,11 @@ static AppStatus_t App_FsmNfcHandlePingRequest(uint16_t startBlock, uint8_t bloc
     ackStatus = App_FsmNfcWaitPtReadAck(NULL, NULL);
     if (ackStatus != APP_STATUS_OK)
     {
-        APP_LOGW("FSM", "trace nfc ping rsp ack timeout blk=0x%04X", (unsigned int)startBlock);
+        APP_LOGD("FSM", "trace nfc ping rsp ack timeout blk=0x%04X", (unsigned int)startBlock);
         return ackStatus;
     }
 
-    APP_LOGI("FSM", "trace nfc ping rsp ack ok blk=0x%04X", (unsigned int)startBlock);
+    APP_LOGD("FSM", "trace nfc ping rsp ack ok blk=0x%04X", (unsigned int)startBlock);
     return APP_STATUS_OK;
 }
 
@@ -940,14 +931,13 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
                                  (uint8_t *)&ind);
     if (ret != NFC_RESULT_OK)
     {
-        APP_LOGW("FSM",
-                 "trace nfc indicate read fail blk=0x%04X ret=%d",
+        APP_LOGD("FSM", "trace nfc indicate read fail blk=0x%04X ret=%d",
                  (unsigned int)NFC_SRAM_UCMD_IND_BLOCK,
                  (int)ret);
         return APP_STATUS_OK;
     }
 
-    APP_LOGI("FSM", "trace nfc indicate raw %02X %02X %02X %02X",
+    APP_LOGD("FSM", "trace nfc indicate raw %02X %02X %02X %02X",
              (unsigned int)ind.prefix,
              (unsigned int)ind.addr,
              (unsigned int)ind.block_len,
@@ -957,21 +947,20 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
         (ind.suffix != NFC_CMD_IND_NFC_TO_I2C_SUFFIX) ||
         (ind.block_len == 0u))
     {
-        APP_LOGI("FSM", "trace nfc indicate invalid -> stop path");
+        APP_LOGD("FSM", "trace nfc indicate invalid -> stop path");
         return APP_STATUS_OK;
     }
 
     if (ind.block_len > (uint8_t)(sizeof(raw) / 4u))
     {
-        APP_LOGW("FSM", "trace nfc indicate oversize len=%u -> stop path", (unsigned int)ind.block_len);
+        APP_LOGD("FSM", "trace nfc indicate oversize len=%u -> stop path", (unsigned int)ind.block_len);
         return APP_STATUS_OK;
     }
 
     startBlock = (uint16_t)ind.addr;
     byteCount = (uint8_t)(ind.block_len * 4u);
 
-    APP_LOGI("FSM",
-             "trace nfc cmd fetch AA=0x%02X BL=%u bytes=%u",
+    APP_LOGD("FSM", "trace nfc cmd fetch AA=0x%02X BL=%u bytes=%u",
              (unsigned int)ind.addr,
              (unsigned int)ind.block_len,
              (unsigned int)byteCount);
@@ -979,16 +968,14 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
     ret = NFC_NTP53321_ReadMultiBlock(&g_nfcTagHandle, startBlock, raw, ind.block_len);
     if (ret != NFC_RESULT_OK)
     {
-        APP_LOGW("FSM",
-                 "trace nfc cmd read fail blk=0x%04X len=%u ret=%d",
+        APP_LOGD("FSM", "trace nfc cmd read fail blk=0x%04X len=%u ret=%d",
                  (unsigned int)startBlock,
                  (unsigned int)ind.block_len,
                  (int)ret);
         return APP_STATUS_OK;
     }
 
-    APP_LOGI("FSM",
-             "trace nfc cmd raw blk=0x%04X len=%u bytes=%02X %02X %02X %02X",
+    APP_LOGD("FSM", "trace nfc cmd raw blk=0x%04X len=%u bytes=%02X %02X %02X %02X",
              (unsigned int)startBlock,
              (unsigned int)ind.block_len,
              (unsigned int)raw[0],
@@ -1004,7 +991,7 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
             (raw[2] == 0x00u) &&
             (raw[3] == 0x00u))
         {
-            APP_LOGI("FSM", "trace nfc cmd branch=PING blk=0x%04X", (unsigned int)startBlock);
+            APP_LOGD("FSM", "trace nfc cmd branch=PING blk=0x%04X", (unsigned int)startBlock);
             return App_FsmNfcHandlePingRequest(startBlock, ind.block_len);
         }
 
@@ -1021,13 +1008,12 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
             if (g_appFsmNfcBusyReplyPending == APP_TRUE)
             {
                 g_appFsmNfcBusyReplyPending = APP_FALSE;
-                APP_LOGW("FSM",
-                         "trace nfc busy reply seoul cmd2=0x%02X",
+                APP_LOGD("FSM", "trace nfc busy reply seoul cmd2=0x%02X",
                          (unsigned int)raw[2]);
                 return App_NfcSeoulProcessCommandFrameBusy(raw, byteCount, p_seoulResult);
             }
 
-            APP_LOGI("FSM", "trace nfc cmd branch=SEOUL frame cmd2=0x%02X", (unsigned int)raw[2]);
+            APP_LOGD("FSM", "trace nfc cmd branch=SEOUL frame cmd2=0x%02X", (unsigned int)raw[2]);
             return App_NfcSeoulProcessCommandFrame(raw, byteCount, p_seoulResult);
         }
 
@@ -1039,11 +1025,11 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
              (raw[1] == NFC_AUTH_CMD_CONFIRM)))
         {
             NFC_AUTH_Result_t authStatus;
-            APP_LOGI("FSM", "trace nfc cmd branch=AUTH subcmd=0x%02X start=0x%04X len=%u",
+            APP_LOGD("FSM", "trace nfc cmd branch=AUTH subcmd=0x%02X start=0x%04X len=%u",
                      (unsigned int)raw[1],
                      (unsigned int)startBlock,
                      (unsigned int)ind.block_len);
-            APP_LOGI("FSM", "trace nfc auth ctx before state=%s txn=%u sess=%u fail=%u",
+            APP_LOGD("FSM", "trace nfc auth ctx before state=%s txn=%u sess=%u fail=%u",
                      App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
                      (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u),
                      (unsigned int)(g_nfcAuthHandle.session.active ? 1u : 0u),
@@ -1053,7 +1039,7 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
                                                       byteCount,
                                                       startBlock,
                                                       ind.block_len);
-            APP_LOGI("FSM", "trace nfc auth ctx after subcmd=0x%02X status=%d state=%s txn=%u sess=%u fail=%u",
+            APP_LOGD("FSM", "trace nfc auth ctx after subcmd=0x%02X status=%d state=%s txn=%u sess=%u fail=%u",
                      (unsigned int)raw[1],
                      (int)authStatus,
                      App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
@@ -1065,7 +1051,7 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
                 (g_nfcAuthHandle.state == NFC_AUTH_STATE_CHALLENGING) &&
                 (g_nfcAuthHandle.txn_active == true))
             {
-                APP_LOGI("FSM", "trace nfc auth awaiting RESPONSE(0x03) next wake challenge=%02X %02X %02X %02X",
+                APP_LOGD("FSM", "trace nfc auth awaiting RESPONSE(0x03) next wake challenge=%02X %02X %02X %02X",
                          (unsigned int)g_nfcAuthHandle.session.challenge[0],
                          (unsigned int)g_nfcAuthHandle.session.challenge[1],
                          (unsigned int)g_nfcAuthHandle.session.challenge[2],
@@ -1073,7 +1059,7 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
             }
             else if (raw[1] == NFC_AUTH_CMD_RESPONSE)
             {
-                APP_LOGI("FSM", "trace nfc auth RESPONSE processed status=%d state=%s txn=%u sess=%u",
+                APP_LOGD("FSM", "trace nfc auth RESPONSE processed status=%d state=%s txn=%u sess=%u",
                          (int)authStatus,
                          App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
                          (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u),
@@ -1099,33 +1085,31 @@ static AppStatus_t App_FsmNfcHandleIndicatedCommand(AppNfcSeoulProcessResult_t *
             if (g_appFsmNfcBusyReplyPending == APP_TRUE)
             {
                 g_appFsmNfcBusyReplyPending = APP_FALSE;
-                APP_LOGW("FSM",
-                         "trace nfc busy reply ucmd group=0x%02X item=0x%02X",
+                APP_LOGD("FSM", "trace nfc busy reply ucmd group=0x%02X item=0x%02X",
                          (unsigned int)raw[1],
                          (unsigned int)raw[2]);
                 cmdStatus = NFC_CMD_PublishBusyResponse(&g_nfcCmdHandle);
                 return (cmdStatus == NFC_CMD_RESULT_OK) ? APP_STATUS_OK : APP_STATUS_FATAL;
             }
 
-            APP_LOGI("FSM", "trace nfc cmd branch=UCMD start=0x%04X len=%u",
+            APP_LOGD("FSM", "trace nfc cmd branch=UCMD start=0x%04X len=%u",
                      (unsigned int)startBlock,
                      (unsigned int)ind.block_len);
             cmdStatus = NFC_CMD_Process(&g_nfcCmdHandle);
-            APP_LOGI("FSM",
-                     "trace nfc ucmd done ret=%d auth=%s sess=%u",
+            APP_LOGD("FSM", "trace nfc ucmd done ret=%d auth=%s sess=%u",
                      (int)cmdStatus,
                      App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
                      (unsigned int)(g_nfcAuthHandle.session.active ? 1u : 0u));
             if (App_FsmNfcIsNonFatalCmdResult(cmdStatus) != APP_TRUE)
             {
-                APP_LOGE("FSM", "trace nfc ucmd fatal ret=%d", (int)cmdStatus);
+                APP_LOGD("FSM", "trace nfc ucmd fatal ret=%d", (int)cmdStatus);
                 return APP_STATUS_FATAL;
             }
             return APP_STATUS_OK;
         }
     }
 
-    APP_LOGI("FSM", "trace nfc cmd absent/unsupported -> stop path");
+    APP_LOGD("FSM", "trace nfc cmd absent/unsupported -> stop path");
     return APP_STATUS_OK;
 }
 
@@ -1164,7 +1148,7 @@ static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
                                           &status0);
         if (ret != NFC_RESULT_OK)
         {
-            APP_LOGW("FSM", "trace nfc pt wait: status0 read fail ret=%d", (int)ret);
+            APP_LOGD("FSM", "trace nfc pt wait: status0 read fail ret=%d", (int)ret);
             HAL_Delay(APP_FSM_NFC_PT_READ_POLL_MS);
             continue;
         }
@@ -1175,13 +1159,12 @@ static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
                                           &status1);
         if (ret != NFC_RESULT_OK)
         {
-            APP_LOGW("FSM", "trace nfc pt wait: status1 read fail ret=%d", (int)ret);
+            APP_LOGD("FSM", "trace nfc pt wait: status1 read fail ret=%d", (int)ret);
             HAL_Delay(APP_FSM_NFC_PT_READ_POLL_MS);
             continue;
         }
 
-        APP_LOGI("FSM",
-                 "trace nfc pt wait: status0=0x%02X status1=0x%02X",
+        APP_LOGD("FSM", "trace nfc pt wait: status0=0x%02X status1=0x%02X",
                  (unsigned int)status0,
                  (unsigned int)status1);
 
@@ -1189,8 +1172,7 @@ static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
         {
             if (p_status0 != NULL) { *p_status0 = status0; }
             if (p_status1 != NULL) { *p_status1 = status1; }
-            APP_LOGI("FSM",
-                     "trace nfc pt ack: sync-read observed status0=0x%02X",
+            APP_LOGD("FSM", "trace nfc pt ack: sync-read observed status0=0x%02X",
                      (unsigned int)status0);
 
             /* clear */
@@ -1208,8 +1190,7 @@ static AppStatus_t App_FsmNfcWaitPtReadAck(uint8_t *p_status0,
     if (p_status0 != NULL) { *p_status0 = status0; }
     if (p_status1 != NULL) { *p_status1 = status1; }
 
-    APP_LOGW("FSM",
-             "trace nfc pt ack timeout: status0=0x%02X status1=0x%02X",
+    APP_LOGD("FSM", "trace nfc pt ack timeout: status0=0x%02X status1=0x%02X",
              (unsigned int)status0,
              (unsigned int)status1);
 
@@ -1222,8 +1203,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     uint8_t authSameWakeWait = 0u;
     uint8_t startedFromStop;
 
-    APP_LOGI("FSM",
-             "trace nfc process enter irq=%u wake=%s",
+    APP_LOGD("FSM", "trace nfc process enter irq=%u wake=%s",
              (unsigned int)g_nfcIrqPending,
              App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
 
@@ -1235,16 +1215,14 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     if ((g_nfcIrqPending != APP_TRUE) &&
         (g_nfcWakeEvent == NFC_WAKEUP_EVENT_ED_PIN))
     {
-        APP_LOGW("FSM",
-                 "trace nfc process deferred: wake=ED_PIN but irq pending=0");
+        APP_LOGD("FSM", "trace nfc process deferred: wake=ED_PIN but irq pending=0");
         return APP_STATUS_OK;
     }
 
     if ((g_nfcIrqPending == APP_TRUE) &&
         (g_nfcWakeEvent == NFC_WAKEUP_EVENT_UNKNOWN))
     {
-        APP_LOGW("FSM",
-                 "trace nfc wake fallback: irq pending with unknown wake -> ED_PIN");
+        APP_LOGD("FSM", "trace nfc wake fallback: irq pending with unknown wake -> ED_PIN");
         g_nfcWakeEvent = NFC_WAKEUP_EVENT_ED_PIN;
     }
 
@@ -1259,16 +1237,14 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
             return APP_STATUS_FATAL;
         }
 
-        APP_LOGI("FSM",
-                 "trace nfc session origin=%s dropAwake=%u",
+        APP_LOGD("FSM", "trace nfc session origin=%s dropAwake=%u",
                  (startedFromStop == APP_TRUE) ? "STOP" : "AWAKE",
                  (unsigned int)g_appFsmNfcDropAwakeTagPending);
     }
 
     if (g_nfcWakeEvent != NFC_WAKEUP_EVENT_ED_PIN)
     {
-        APP_LOGW("FSM",
-                 "trace nfc process skip irq=%u wake=%s",
+        APP_LOGD("FSM", "trace nfc process skip irq=%u wake=%s",
                  (unsigned int)g_nfcIrqPending,
                  App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
         return APP_STATUS_OK;
@@ -1305,8 +1281,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
         g_appFsmNfcBusyReplyPending = APP_TRUE;
         g_appFsmNfcAwakeBusyOneShot = APP_TRUE;
         App_NfcSeoulBusyLiteSet(APP_TRUE);   /* 응답은 하되 스냅샷/프로브 생략 */
-        APP_LOGW("FSM",
-                 "trace nfc awake-origin tag -> busy lite reply session (1 frame, no NBIoT)");
+        APP_LOGD("FSM", "trace nfc awake-origin tag -> busy lite reply session (1 frame, no NBIoT)");
     }
 
     for (;;)
@@ -1317,14 +1292,13 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
         {
             if (authSameWakeWait != 0u)
             {
-                APP_LOGW("FSM",
-                         "trace nfc auth same-wake RESPONSE(0x03) wait timeout state=%s txn=%u",
+                APP_LOGD("FSM", "trace nfc auth same-wake RESPONSE(0x03) wait timeout state=%s txn=%u",
                          App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
                          (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u));
             }
             else
             {
-                APP_LOGI("FSM", "trace nfc no sync-write -> release to idle");
+                APP_LOGD("FSM", "trace nfc no sync-write -> release to idle");
             }
             return APP_STATUS_OK;
         }
@@ -1342,8 +1316,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
             App_NfcSeoulBusyLiteSet(APP_FALSE);
             g_appFsmNfcDropAwakeTagPending = APP_FALSE;
             g_appFsmNfcBusyReplyPending = APP_FALSE;
-            APP_LOGI("FSM",
-                     "trace nfc awake busy session done cmd=%02X%02X -> release to stop",
+            APP_LOGD("FSM", "trace nfc awake busy session done cmd=%02X%02X -> release to stop",
                      (unsigned int)seoulResult.requestCmd1,
                      (unsigned int)seoulResult.requestCmd2);
             return APP_STATUS_OK;
@@ -1351,8 +1324,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
 
         if (seoulResult.handled == APP_TRUE)
         {
-            APP_LOGI("FSM",
-                     "trace nfc handled req=%02X%02X rsp=%02X%02X comm=%u",
+            APP_LOGD("FSM", "trace nfc handled req=%02X%02X rsp=%02X%02X comm=%u",
                      (unsigned int)seoulResult.requestCmd1,
                      (unsigned int)seoulResult.requestCmd2,
                      (unsigned int)seoulResult.responseCmd1,
@@ -1368,7 +1340,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
                                          APP_TRUE,
                                          APP_FALSE,
                                          APP_STATUS_OK);
-                    APP_LOGI("FSM", "trace nbiot queued by nfc rset");
+                    APP_LOGD("FSM", "trace nbiot queued by nfc rset");
                 }
             }
         }
@@ -1378,8 +1350,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
             (g_nfcAuthHandle.txn_active == true))
         {
             authSameWakeWait = 1u;
-            APP_LOGI("FSM",
-                     "trace nfc auth same-wake wait RESPONSE(0x03) state=%s txn=%u challenge=%02X %02X %02X %02X",
+            APP_LOGD("FSM", "trace nfc auth same-wake wait RESPONSE(0x03) state=%s txn=%u challenge=%02X %02X %02X %02X",
                      App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
                      (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u),
                      (unsigned int)g_nfcAuthHandle.session.challenge[0],
@@ -1395,7 +1366,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     if ((g_nfcAuthHandle.state == NFC_AUTH_STATE_CHALLENGING) &&
         (g_nfcAuthHandle.txn_active == true))
     {
-        APP_LOGI("FSM", "trace nfc auth pending RESPONSE(0x03) release-to-stop state=%s txn=%u challenge=%02X %02X %02X %02X",
+        APP_LOGD("FSM", "trace nfc auth pending RESPONSE(0x03) release-to-stop state=%s txn=%u challenge=%02X %02X %02X %02X",
                  App_FsmNfcGetAuthStateName(g_nfcAuthHandle.state),
                  (unsigned int)(g_nfcAuthHandle.txn_active ? 1u : 0u),
                  (unsigned int)g_nfcAuthHandle.session.challenge[0],
@@ -1405,7 +1376,7 @@ static AppStatus_t App_FsmNfcProcessWakeEvent(void)
     }
     else
     {
-        APP_LOGI("FSM", "trace nfc exchange complete -> release to stop");
+        APP_LOGD("FSM", "trace nfc exchange complete -> release to stop");
     }
     return APP_STATUS_OK;
 }
@@ -1438,8 +1409,7 @@ void App_FsmNfcEdIrqHandler(void)
     {
         g_appFsmNfcBusyReplyPending = APP_TRUE;
     }
-    APP_LOGI("FSM",
-             "trace nfc ed irq pending=1 wake=%s origin=%s dropAwake=%u busyReply=%u",
+    APP_LOGD("FSM", "trace nfc ed irq pending=1 wake=%s origin=%s dropAwake=%u busyReply=%u",
              App_FsmNfcGetWakeEventName(g_nfcWakeEvent),
              (startedFromStop == APP_TRUE) ? "STOP" : "AWAKE",
              (unsigned int)g_appFsmNfcDropAwakeTagPending,
@@ -1688,8 +1658,7 @@ static void App_FsmMarkComponent(AppFsmComponentId_t id,
 
     if (((oldState != state) || (oldBusy != busy) || (oldEventPending != eventPending)) && (App_FsmTraceCompEnabled(id) == 1u))
     {
-        APP_LOGI("FSM",
-                 "trace comp=%s %s->%s busy:%u->%u evt:%u->%u status=%lu",
+        APP_LOGD("FSM", "trace comp=%s %s->%s busy:%u->%u evt:%u->%u status=%lu",
                  App_FsmGetComponentNameInternal(id),
                  App_FsmGetStateName(oldState),
                  App_FsmGetStateName(state),
@@ -2792,8 +2761,7 @@ static AppStatus_t App_FsmTxScheduleAnchorFromNowCommon(AppFsmTxScheduleContext_
                                   &p_schedule->nextDueMsOfDay);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    APP_LOGN("FSM",
-             "%s debug boot-live re-anchor now=%lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu delayMs=%lu",
+    APP_LOGD("FSM", "%s debug boot-live re-anchor now=%lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu delayMs=%lu",
              p_tag,
              (unsigned long)nowDateKey,
              (unsigned long)now.hour,
@@ -2855,7 +2823,7 @@ static AppStatus_t App_FsmTxScheduleEnsureInitializedCommon(AppFsmTxScheduleCont
     {
         if (p_schedule->rtcReadyLogged != APP_FALSE)
         {
-            APP_LOGW("FSM", "%s RTC invalid -> %s", p_tag, (p_disableReason != NULL) ? p_disableReason : "tx schedule disabled");
+            APP_LOGD("FSM", "%s RTC invalid -> %s", p_tag, (p_disableReason != NULL) ? p_disableReason : "tx schedule disabled");
         }
         App_FsmTxScheduleDisableContext(p_schedule);
         return APP_STATUS_NOT_INITIALIZED;
@@ -2865,7 +2833,7 @@ static AppStatus_t App_FsmTxScheduleEnsureInitializedCommon(AppFsmTxScheduleCont
     {
         if (p_schedule->enabled == APP_TRUE)
         {
-            APP_LOGN("FSM", "%s disabled (period=0)", p_tag);
+            APP_LOGD("FSM", "%s disabled (period=0)", p_tag);
         }
         App_FsmTxScheduleDisableContext(p_schedule);
         return APP_STATUS_NOT_INITIALIZED;
@@ -2910,7 +2878,7 @@ static AppStatus_t App_FsmTxScheduleEnsureInitializedCommon(AppFsmTxScheduleCont
     p_schedule->enabled = APP_TRUE;
     p_schedule->rtcReadyLogged = APP_TRUE;
 
-    APP_LOGN("FSM", "%s enabled period=%uh mode=period-offset next=%lu %02lu:%02lu:%02lu base_offset=%lu spread=%lu jitter=%lu",
+    APP_LOGD("FSM", "%s enabled period=%uh mode=period-offset next=%lu %02lu:%02lu:%02lu base_offset=%lu spread=%lu jitter=%lu",
              p_tag,
              (unsigned)p_schedule->periodHours,
              (unsigned long)p_schedule->nextDueDateKey,
@@ -3077,7 +3045,7 @@ static AppStatus_t App_FsmTxScheduleCheckDueCommon(AppFsmTxScheduleContext_t *p_
                                              &p_schedule->currentJitterMs);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    APP_LOGN("FSM", "%s due %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=period-offset",
+    APP_LOGD("FSM", "%s due %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=period-offset",
              p_tag,
              (unsigned long)p_schedule->lastDispatchedDateKey,
              (unsigned long)(p_schedule->lastDispatchedMsOfDay / 3600000u),
@@ -3099,7 +3067,7 @@ static uint8_t App_FsmTxScheduleApplyNightOnlyGate(const char *p_tag)
 
     if (App_CommShouldBypassNightOnlyGate() == APP_TRUE)
     {
-        APP_LOGN("FSM", "%s night-only gate bypassed (adaptive policy)",
+        APP_LOGD("FSM", "%s night-only gate bypassed (adaptive policy)",
                  (p_tag != NULL) ? p_tag : "[[TxSchedule]]");
         return APP_TRUE;
     }
@@ -3113,7 +3081,7 @@ static uint8_t App_FsmTxScheduleApplyNightOnlyGate(const char *p_tag)
         return APP_TRUE;
     }
 
-    APP_LOGN("FSM", "%s night-only gate: hour=%u out of [%u,%u) -> pull-in next due",
+    APP_LOGD("FSM", "%s night-only gate: hour=%u out of [%u,%u) -> pull-in next due",
              (p_tag != NULL) ? p_tag : "[[TxSchedule]]",
              (unsigned)now.hour, (unsigned)opt.nightStartHour, (unsigned)opt.nightEndHour);
     return APP_FALSE;
@@ -3307,8 +3275,7 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNowCommon(AppFsmTxScheduleContext_
 
         if (App_FsmTxScheduleRecomputeNextNightStart(&nightDateKey, &nightMsOfDay) == APP_STATUS_OK)
         {
-            APP_LOGN("FSM",
-                     "%s night-only gate: pull-in next due %lu %02lu:%02lu -> %lu %02lu:%02lu",
+            APP_LOGD("FSM", "%s night-only gate: pull-in next due %lu %02lu:%02lu -> %lu %02lu:%02lu",
                      p_tag,
                      (unsigned long)p_schedule->nextDueDateKey,
                      (unsigned long)(p_schedule->nextDueMsOfDay / 3600000u),
@@ -3324,7 +3291,7 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNowCommon(AppFsmTxScheduleContext_
 #endif
 
     /* 7. Log the consumption and the next scheduled time */
-    APP_LOGN("FSM", "%s alarm consume %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=period-offset",
+    APP_LOGD("FSM", "%s alarm consume %lu %02lu:%02lu:%02lu -> next=%lu %02lu:%02lu:%02lu period=%uh mode=period-offset",
              p_tag,
              (unsigned long)p_schedule->lastDispatchedDateKey,
              (unsigned long)(p_schedule->lastDispatchedMsOfDay / 3600000u),
@@ -3427,7 +3394,7 @@ static AppStatus_t App_FsmTxScheduleDelayHoursFromNowCommon(AppFsmTxScheduleCont
     p_schedule->lastDispatchedDateKey = 0u;
     p_schedule->lastDispatchedMsOfDay = 0u;
 
-    APP_LOGW("FSM", "%s hold applied -> next tx delayed %luh to %lu %02lu:%02lu:%02lu",
+    APP_LOGD("FSM", "%s hold applied -> next tx delayed %luh to %lu %02lu:%02lu:%02lu",
              p_tag,
              (unsigned long)delayHours,
              (unsigned long)p_schedule->nextDueDateKey,
@@ -3651,7 +3618,7 @@ static AppStatus_t App_FsmServiceDebugConsole(void)
 
 static void App_FsmExecuteResetBoot(void)
 {
-    APP_LOGW("FSM", "executing reset boot-hold=%lu ms", (unsigned long)APP_FSM_BOOT_RESET_HOLD_MS);
+    APP_LOGD("FSM", "executing reset boot-hold=%lu ms", (unsigned long)APP_FSM_BOOT_RESET_HOLD_MS);
     App_HwSetChargeBoot0(GPIO_PIN_SET);
     HAL_Delay(APP_FSM_BOOT_RESET_HOLD_MS);
     __disable_irq();
@@ -3878,7 +3845,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             {
                 if (selfDiagForceEveryWake == APP_TRUE)
                 {
-                    APP_LOGI("FSM", "[[MeterWake]] periodic self-test forced every wake (TEST3 mode)");
+                    APP_LOGN("FSM", "[[MeterWake]] periodic self-test forced every wake (TEST3 mode)");
                 }
                 else
                 {
@@ -3911,7 +3878,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 }
                 else
                 {
-                    APP_LOGI("FSM", "[[MeterWake]] periodic self-test skipped (already run today, dateKey=%lu)",
+                    APP_LOGN("FSM", "[[MeterWake]] periodic self-test skipped (already run today, dateKey=%lu)",
                              (unsigned long)selfDiagCurrentDateKey);
                 }
             }
@@ -3939,8 +3906,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_NFC_WAIT_EVENT:
             p_component = App_FsmGetComponentMutable(APP_FSM_COMPONENT_NFC);
 
-            APP_LOGI("FSM",
-                     "trace nfc wait irq=%u wake=%s comp_evt=%u",
+            APP_LOGD("FSM", "trace nfc wait irq=%u wake=%s comp_evt=%u",
                      (unsigned int)g_nfcIrqPending,
                      App_FsmNfcGetWakeEventName(g_nfcWakeEvent),
                      (unsigned int)((p_component != NULL) ? p_component->eventPending : 0u));
@@ -3955,8 +3921,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                                      APP_FALSE,
                                      APP_STATUS_OK);
 
-                APP_LOGI("FSM",
-                         "trace nfc exchange queued irq=%u wake=%s",
+                APP_LOGD("FSM", "trace nfc exchange queued irq=%u wake=%s",
                          (unsigned int)g_nfcIrqPending,
                          App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
             }
@@ -3964,8 +3929,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             {
                 if ((p_component != NULL) && (p_component->eventPending == APP_TRUE))
                 {
-                    APP_LOGW("FSM",
-                             "trace nfc defer exchange: component evt only irq=%u wake=%s",
+                    APP_LOGD("FSM", "trace nfc defer exchange: component evt only irq=%u wake=%s",
                              (unsigned int)g_nfcIrqPending,
                              App_FsmNfcGetWakeEventName(g_nfcWakeEvent));
                 }
@@ -3995,7 +3959,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_AUX_INIT:
             if (SHTC3_Init(APP_I2C_AUX_HANDLE) != HAL_OK)
             {
-                APP_LOGE("AUX", "SHT3 fail!");
+                APP_LOGD("AUX", "SHT3 fail!");
             }
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
             break;
@@ -4174,7 +4138,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                         adcHalStatus = Battery_ReadVoltage_Averaged_mV(&adc_vref, &adc_vbat, &vdda_mv, &vbat_mv);
                         if (adcHalStatus == HAL_OK)
                         {
-                            APP_LOGN("FSM", "ADC(vref:%lu, vbat:%lu) Volt(vdda:%lumV, vbat:%lumV)",
+                            APP_LOGD("FSM", "ADC(vref:%lu, vbat:%lu) Volt(vdda:%lumV, vbat:%lumV)",
                                      (unsigned long)adc_vref,
                                      (unsigned long)adc_vbat,
                                      (unsigned long)vdda_mv,
@@ -4381,7 +4345,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                 g_appFsmRtcMeterWakePending = APP_TRUE;
                 APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
                 App_FsmMarkComponent(APP_FSM_COMPONENT_METER, APP_FSM_STATE_METER_WAIT_TRIGGER, APP_TRUE, APP_FALSE, APP_STATUS_OK);
-                APP_LOGI("FSM", "[[EPC TEST3]] WUT-only wake -> force METER_WAIT_TRIGGER for periodic self-test");
+                APP_LOGN("FSM", "[[EPC TEST3]] WUT-only wake -> force METER_WAIT_TRIGGER for periodic self-test");
 #endif
                 g_appFsmWakeCollectionPending = APP_TRUE;
                 APP_RETURN_IF_FALSE(App_FsmQueueStateBack(APP_FSM_STATE_NBIOT_DECIDE_WAKE, APP_TRUE, 0u) == APP_STATUS_OK, APP_STATUS_MSGQ_FULL);
@@ -4842,7 +4806,7 @@ AppStatus_t App_FsmRun(void)
     status = App_FsmCheckMeterScheduledState(&nextState);
     if (status == APP_STATUS_OK)
     {
-        APP_LOGI("FSM", "Scheduled meter state:%s", App_FsmGetStateName(nextState));
+        APP_LOGD("FSM", "Scheduled meter state:%s", App_FsmGetStateName(nextState));
         g_appFsmContext.summary.lastQueuedState = nextState;
         g_appFsmContext.summary.lastDequeFromFront = APP_FALSE;
         g_appFsmContext.summary.lastCommandTickMs = HAL_GetTick();

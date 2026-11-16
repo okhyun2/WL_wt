@@ -559,14 +559,14 @@ static void App_Bc95SimLogIccid(void)
                                    &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGW("NBIOT", "ICCID query fail (status=%d)", (int)status);
+        APP_LOGD("NBIOT", "ICCID query fail (status=%d)", (int)status);
         return;
     }
 
     p_pos = strstr((const char *)g_appBc95AtRxBuf, APP_BC95_SIM_INFO_NCCID_PREFIX);
     if (p_pos == NULL)
     {
-        APP_LOGW("NBIOT", "ICCID n/a (no +NCCID in response)");
+        APP_LOGD("NBIOT", "ICCID n/a (no +NCCID in response)");
         return;
     }
     p_pos += APP_BC95_SIM_INFO_NCCID_PREFIX_LEN;
@@ -590,10 +590,10 @@ static void App_Bc95SimLogIccid(void)
 
     if (n < APP_BC95_SIM_INFO_ICCID_MIN_LEN)
     {
-        APP_LOGW("NBIOT", "ICCID parse fail (len=%u)", (unsigned)n);
+        APP_LOGD("NBIOT", "ICCID parse fail (len=%u)", (unsigned)n);
         return;
     }
-    APP_LOGN("NBIOT", "ICCID    : %s", iccid);
+    APP_LOGD("NBIOT", "ICCID    : %s", iccid);
 
     (void)memcpy(g_appBc95SimInfo.iccid, iccid, (size_t)n + 1u);
     g_appBc95SimInfo.iccidValid = APP_TRUE;
@@ -614,7 +614,7 @@ static void App_Bc95SimLogIccid(void)
                          APP_BC95_SIM_INFO_SERIAL_LEN);
             g_appBc95SimInfo.serial[APP_BC95_SIM_INFO_SERIAL_LEN] = '\0';
             g_appBc95SimInfo.serialValid = APP_TRUE;
-            APP_LOGN("NBIOT", "Serial   : %s", g_appBc95SimInfo.serial);
+            APP_LOGD("NBIOT", "Serial   : %s", g_appBc95SimInfo.serial);
         }
     }
 }
@@ -635,13 +635,13 @@ static void App_Bc95SimLogModemFw(void)
                                    &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGW("NBIOT", "FW query fail (status=%d)", (int)status);
+        APP_LOGD("NBIOT", "FW query fail (status=%d)", (int)status);
         return;
     }
 
     if (App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL) != APP_BC95_AT_OK)
     {
-        APP_LOGW("NBIOT", "FW n/a (not OK)");
+        APP_LOGD("NBIOT", "FW n/a (not OK)");
         return;
     }
 
@@ -677,12 +677,12 @@ static void App_Bc95SimLogModemFw(void)
             if (len >= sizeof(fw)) { len = sizeof(fw) - 1u; }
             (void)memcpy(fw, p_line, len);
             fw[len] = '\0';
-            APP_LOGN("NBIOT", "Modem FW : %s", fw);
+            APP_LOGD("NBIOT", "Modem FW : %s", fw);
             return;
         }
         p_line += len;
     }
-    APP_LOGW("NBIOT", "FW n/a (no payload line)");
+    APP_LOGD("NBIOT", "FW n/a (no payload line)");
 }
 
 static void App_Bc95LogSimInfo(const uint8_t *p_imsiBcd)
@@ -697,22 +697,22 @@ static void App_Bc95LogSimInfo(const uint8_t *p_imsiBcd)
     {
         (void)memcpy(plmn, imsi, APP_BC95_SIM_INFO_PLMN_LEN);
         plmn[APP_BC95_SIM_INFO_PLMN_LEN] = '\0';
-        APP_LOGN("NBIOT", "PLMN     : %s", plmn);
+        APP_LOGD("NBIOT", "PLMN     : %s", plmn);
 
         if (App_Bc95SimEstimateMdn(imsi, mdnEst, sizeof(mdnEst)) == APP_TRUE)
         {
-            APP_LOGN("NBIOT", "MDN(est) : %s", mdnEst);
+            APP_LOGD("NBIOT", "MDN(est) : %s", mdnEst);
             (void)memcpy(g_appBc95SimInfo.mdn, mdnEst, sizeof(g_appBc95SimInfo.mdn));
             g_appBc95SimInfo.mdnValid = APP_TRUE;
         }
         else
         {
-            APP_LOGN("NBIOT", "MDN(est) : n/a (PLMN != %s)", APP_BC95_SIM_INFO_PLMN_LGUP);
+            APP_LOGD("NBIOT", "MDN(est) : n/a (PLMN != %s)", APP_BC95_SIM_INFO_PLMN_LGUP);
         }
     }
     else
     {
-        APP_LOGW("NBIOT", "IMSI BCD decode fail");
+        APP_LOGD("NBIOT", "IMSI BCD decode fail");
     }
 
     App_Bc95SimLogIccid();
@@ -908,7 +908,7 @@ static void App_Bc95AtLogRawRx(const char *p_tag,
     }
     text[out] = '\0';
 
-    APP_LOGN("NBIOT", "RAW %s len=%u%s [%s]",
+    APP_LOGD("NBIOT", "RAW %s len=%u%s [%s]",
              (p_tag != NULL) ? p_tag : "rx",
              (unsigned)len,
              (len > dumpLen) ? "+TRUNC" : "",
@@ -936,7 +936,7 @@ static void App_Bc95AtLogCmeIfPresent(const char *p_tag,
         return;
     }
     cmeVal = strtol(p_cme + 11, (char **)&p_end, 10);
-    APP_LOGW("NBIOT", "CME-DIAG %s cme=%ld rxLen=%u",
+    APP_LOGD("NBIOT", "CME-DIAG %s cme=%ld rxLen=%u",
              (p_tag != NULL) ? p_tag : "cmd",
              cmeVal,
              (unsigned)rxLen);
@@ -1287,7 +1287,7 @@ static AppStatus_t App_Bc95AtResolveHostRobustInternal(const char *p_hostname,
     if (p_elapsedMsOut != NULL) { *p_elapsedMsOut = 0u; }
     (void)memset(p_ipOut, 0, ipBufSize);
 
-    APP_LOGI("NBIOT", "==== DNS resolve start: %s ====", p_hostname);
+    APP_LOGD("NBIOT", "==== DNS resolve start: %s ====", p_hostname);
 
     for (attempt = 1u; attempt <= APP_BC95_DNS_FAIL_RETRY_MAX; attempt++)
     {
@@ -1297,7 +1297,7 @@ static AppStatus_t App_Bc95AtResolveHostRobustInternal(const char *p_hostname,
         {
             if (p_attemptsOut != NULL) { *p_attemptsOut = (uint8_t)totalAttempts; }
             if (p_elapsedMsOut != NULL) { *p_elapsedMsOut = HAL_GetTick() - startTick; }
-            APP_LOGI("NBIOT", "==== DNS resolved: %s -> %s (attempts=%lu, elapsed=%lums) ====",
+            APP_LOGD("NBIOT", "==== DNS resolved: %s -> %s (attempts=%lu, elapsed=%lums) ====",
                      p_hostname, p_ipOut,
                      (unsigned long)totalAttempts,
                      (unsigned long)(HAL_GetTick() - startTick));
@@ -1399,16 +1399,14 @@ static AppStatus_t App_NbiotBuildMeterPacket(const char *p_logTag,
         envAppendStatus = App_NbiotAppendMgmtEnvTrailer(p_packet, packetCapacity, &buildResult);
         if (envAppendStatus != APP_STATUS_OK)
         {
-            APP_LOGW("NBIOT",
-                     "%s env trailer skipped (status=%d, len=%u)",
+            APP_LOGD("NBIOT", "%s env trailer skipped (status=%d, len=%u)",
                      p_logTag, (int)envAppendStatus, (unsigned int)buildResult.packetLength);
         }
 
         diagAppendStatus = App_NbiotAppendMgmtSelfTestTrailer(p_packet, packetCapacity, &buildResult);
         if (diagAppendStatus != APP_STATUS_OK)
         {
-            APP_LOGW("NBIOT",
-                     "%s selftest trailer skipped (status=%d, len=%u)",
+            APP_LOGD("NBIOT", "%s selftest trailer skipped (status=%d, len=%u)",
                      p_logTag, (int)diagAppendStatus, (unsigned int)buildResult.packetLength);
         }
 
@@ -1416,8 +1414,7 @@ static AppStatus_t App_NbiotBuildMeterPacket(const char *p_logTag,
         statAppendStatus = App_NbiotAppendMgmtServiceStatTrailer(p_packet, packetCapacity, &buildResult);
         if (statAppendStatus != APP_STATUS_OK)
         {
-            APP_LOGW("NBIOT",
-                     "%s service-stat trailer skipped (status=%d, len=%u)",
+            APP_LOGD("NBIOT", "%s service-stat trailer skipped (status=%d, len=%u)",
                      p_logTag, (int)statAppendStatus, (unsigned int)buildResult.packetLength);
         }
     }
@@ -1550,8 +1547,7 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_
     p_result->payloadLength = p_packet[1];
     p_result->packetLength  = cursor;
 
-    APP_LOGI("NBIOT",
-             "[[MgmtTx]] selftest trailer appended exec=0x%04X pass=0x%04X fail=%u st=%u len=%u",
+    APP_LOGN("NBIOT", "[[MgmtTx]] selftest trailer appended exec=0x%04X pass=0x%04X fail=%u st=%u len=%u",
              (unsigned int)executedMask,
              (unsigned int)passedMask,
              (unsigned int)diag[4],
@@ -1603,8 +1599,7 @@ static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint
     p_result->payloadLength = p_packet[1];
     p_result->packetLength  = cursor;
 
-    APP_LOGI("NBIOT",
-             "[[MgmtTx]] service-stat trailer appended tx=%u ok=%u ack=%u len=%u",
+    APP_LOGN("NBIOT", "[[MgmtTx]] service-stat trailer appended tx=%u ok=%u ack=%u len=%u",
              (unsigned int)stat[0],
              (unsigned int)stat[1],
              (unsigned int)stat[2],
@@ -1679,8 +1674,7 @@ static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t pac
     p_result->payloadLength = p_packet[1];
     p_result->packetLength  = cursor;
 
-    APP_LOGI("NBIOT",
-             "[[MgmtTx]] env trailer appended flags=0x%02X tempX100=%d rhX100=%u len=%u",
+    APP_LOGN("NBIOT", "[[MgmtTx]] env trailer appended flags=0x%02X tempX100=%d rhX100=%u len=%u",
              (unsigned int)env[0],
              (int)tempX100,
              (unsigned int)rhX100,
@@ -2447,7 +2441,7 @@ static void App_Bc95AtDfotaHoldEnter(void)
     }
     else
     {
-        APP_LOGI("NBIOT", "[[DFOTA]] EVTIND:5 re-enter while hold already active");
+        APP_LOGD("NBIOT", "[[DFOTA]] EVTIND:5 re-enter while hold already active");
     }
 }
 
@@ -3114,7 +3108,7 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeout
     char     waitLineBuf[APP_BC95_AT_RX_BUF_SIZE];
     uint16_t i;
 
-    APP_LOGI("NBIOT", "[[ServicePlatformWake]] wait service ACK(+NNMI) timeout=%lu ms poll=%lu ms",
+    APP_LOGD("NBIOT", "[[ServicePlatformWake]] wait service ACK(+NNMI) timeout=%lu ms poll=%lu ms",
              (unsigned long)timeoutMs, (unsigned long)pollMs);
     startTick = HAL_GetTick();
     while ((HAL_GetTick() - startTick) < timeoutMs)
@@ -3687,7 +3681,7 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
 #if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
             App_Bc95AtLogRawRx("full-ok", p_buffer, safeLen);
 #endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
-                APP_LOGI("NBIOT", "Response completed at full buffer (rxLen=%u)",
+                APP_LOGD("NBIOT", "Response completed at full buffer (rxLen=%u)",
                          (unsigned)safeLen);
                 return APP_STATUS_OK;
             }
@@ -3715,7 +3709,7 @@ static AppStatus_t App_Bc95AtUartReceiveResponse(UART_HandleTypeDef *p_huart,
 #if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
             App_Bc95AtLogRawRx("latel-ok", p_buffer, safeLen);
 #endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
-                APP_LOGI("NBIOT", "Late-detected response on timeout (rxLen=%u)",
+                APP_LOGD("NBIOT", "Late-detected response on timeout (rxLen=%u)",
                          (unsigned)safeLen);
                 return APP_STATUS_OK;
             }
@@ -3953,22 +3947,21 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
             bannerWaitMs = APP_BC95_ATTACH_RETRY_BANNER_WAIT_MS;
         }
         g_appBc95ShortRetryBootBannerWaitOnce = APP_FALSE;
-        APP_LOGI("NBIOT",
-                 "short boot wait for attach retry %lums",
+        APP_LOGD("NBIOT", "short boot wait for attach retry %lums",
                  (unsigned long)bannerWaitMs);
     }
 
     if (skipBootWaitOnce == APP_TRUE)
     {
-        APP_LOGI("NBIOT", "skip boot wait after NRB, probe AT");
+        APP_LOGD("NBIOT", "skip boot wait after NRB, probe AT");
     }
     else if (g_appNbiotCarrierContext.lastResetType == APP_NBIOT_CARRIER_RESET_SW)
     {
-        APP_LOGI("NBIOT", "skip boot wait after SW reset");
+        APP_LOGD("NBIOT", "skip boot wait after SW reset");
     }
     else
     {
-        APP_LOGI("NBIOT", "wait boot banner %lums", (unsigned long)bannerWaitMs);
+        APP_LOGD("NBIOT", "wait boot banner %lums", (unsigned long)bannerWaitMs);
         status = App_Bc95AtWaitForBoot(bannerWaitMs);
         if (status == APP_STATUS_OK)
         {
@@ -3977,7 +3970,7 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
         }
         else
         {
-            APP_LOGI("NBIOT", "no boot banner, probe AT");
+            APP_LOGD("NBIOT", "no boot banner, probe AT");
         }
     }
 
@@ -3987,7 +3980,7 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
         elapsedMs = HAL_GetTick() - startTick;
         if (elapsedMs >= totalTimeoutMs)
         {
-            APP_LOGE("NBIOT", "ready timeout b=%u r=%lu",
+            APP_LOGD("NBIOT", "ready timeout b=%u r=%lu",
                      (unsigned)bannerSeen, (unsigned long)retryCount);
             return APP_STATUS_UART_TIMEOUT;
         }
@@ -3996,7 +3989,7 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
         if (status == APP_STATUS_OK)
         {
             g_appBc95SkipNextAttachBootWait = APP_TRUE;
-            APP_LOGI("NBIOT", "ready b=%u r=%lu t=%lums",
+            APP_LOGD("NBIOT", "ready b=%u r=%lu t=%lums",
                      (unsigned)bannerSeen, (unsigned long)retryCount,
                      (unsigned long)(HAL_GetTick() - startTick));
             return APP_STATUS_OK;
@@ -4005,7 +3998,7 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
         retryCount++;
         if (retryCount >= APP_BC95_BOOT_PING_MAX_RETRY)
         {
-            APP_LOGE("NBIOT", "Ready check exhausted retries (last=%d)", (int)status);
+            APP_LOGD("NBIOT", "Ready check exhausted retries (last=%d)", (int)status);
             return APP_STATUS_UART_TIMEOUT;
         }
 
@@ -4031,7 +4024,7 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
 
     g_appBc95UsimFatal = APP_FALSE;
     startTick = HAL_GetTick();
-    APP_LOGI("NBIOT", "wait USIM %lums", (unsigned long)timeoutMs);
+    APP_LOGD("NBIOT", "wait USIM %lums", (unsigned long)timeoutMs);
 
     while (1)
     {
@@ -4048,7 +4041,7 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
                                                imsiStr, sizeof(imsiStr));
             if (atSt == APP_BC95_AT_OK)
             {
-                APP_LOGI("NBIOT", "USIM ready a=%lu t=%lums",
+                APP_LOGD("NBIOT", "USIM ready a=%lu t=%lums",
                          (unsigned long)attempt,
                          (unsigned long)(HAL_GetTick() - startTick));
                 return APP_STATUS_OK;
@@ -4063,10 +4056,10 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
                     (cmeErr == 315) || (cmeErr == 317) || (cmeErr == 318))
                 {
                     g_appBc95UsimFatal = APP_TRUE;
-                    APP_LOGE("NBIOT", "USIM fatal (CME=%ld)", (long)cmeErr);
+                    APP_LOGD("NBIOT", "USIM fatal (CME=%ld)", (long)cmeErr);
                     return APP_STATUS_FATAL;
                 }
-                APP_LOGI("NBIOT", "USIM !ready cme=%ld a=%lu",
+                APP_LOGD("NBIOT", "USIM !ready cme=%ld a=%lu",
                          (long)cmeErr, (unsigned long)attempt);
             }
             else
@@ -4077,7 +4070,7 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
         }
         else
         {
-            APP_LOGI("NBIOT", "USIM probe uart st=%d a=%lu",
+            APP_LOGD("NBIOT", "USIM probe uart st=%d a=%lu",
                      (int)st, (unsigned long)attempt);
         }
 
@@ -4085,7 +4078,7 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
         if (elapsed >= timeoutMs)
         {
             g_appBc95UsimFatal = APP_TRUE;
-            APP_LOGE("NBIOT", "USIM fatal timeout a=%lu t=%lums",
+            APP_LOGD("NBIOT", "USIM fatal timeout a=%lu t=%lums",
                      (unsigned long)attempt, (unsigned long)elapsed);
             return APP_STATUS_FATAL;
         }
@@ -4435,8 +4428,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
     startTick = HAL_GetTick();
     g_appBc95WakeCme524GraceUsed = APP_FALSE;
 
-    APP_LOGI("NBIOT",
-             "wait srv-ready t=%lums s=%lums p=%lums pr=%u c=%u rs=%u",
+    APP_LOGD("NBIOT", "wait srv-ready t=%lums s=%lums p=%lums pr=%u c=%u rs=%u",
              (unsigned long)totalTimeoutMs,
              (unsigned long)settleMs,
              (unsigned long)pollMs,
@@ -4452,7 +4444,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
     elapsedMs = HAL_GetTick() - startTick;
     if (elapsedMs >= totalTimeoutMs)
     {
-        APP_LOGE("NBIOT", "srv-ready timeout before USIM t=%lums",
+        APP_LOGD("NBIOT", "srv-ready timeout before USIM t=%lums",
                  (unsigned long)elapsedMs);
         g_appBc95UsimFatal = APP_TRUE;
         return APP_STATUS_FATAL;
@@ -4464,7 +4456,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
         if (status == APP_STATUS_OK)
         {
             readyStreak++;
-            APP_LOGI("NBIOT", "srv-ready streak=%u/%u t=%lums",
+            APP_LOGD("NBIOT", "srv-ready streak=%u/%u t=%lums",
                      (unsigned)readyStreak,
                      (unsigned)requiredReadyStreak,
                      (unsigned long)(HAL_GetTick() - startTick));
@@ -4477,7 +4469,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
 
             g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
 
-            APP_LOGI("NBIOT", "srv-ready ok t=%lums",
+            APP_LOGD("NBIOT", "srv-ready ok t=%lums",
                      (unsigned long)(HAL_GetTick() - startTick));
             return APP_STATUS_OK;
         }
@@ -4488,7 +4480,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
             (App_Bc95AtIsUsimFatalCme(probe.lastCmeError) == APP_TRUE))
         {
             g_appBc95UsimFatal = APP_TRUE;
-            APP_LOGE("NBIOT", "srv-ready fatal st=%d cme=%ld",
+            APP_LOGD("NBIOT", "srv-ready fatal st=%d cme=%ld",
                      (int)probe.lastStatus,
                      (long)probe.lastCmeError);
             return APP_STATUS_FATAL;
@@ -4508,8 +4500,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
                     recoverableCmeCount = 0u;
                     recoverableCme = -1;
 
-                    APP_LOGW("NBIOT",
-                             "srv-ready 524 grace t=%lums<%lums, reprobe",
+                    APP_LOGD("NBIOT", "srv-ready 524 grace t=%lums<%lums, reprobe",
                              (unsigned long)(HAL_GetTick() - startTick),
                              (unsigned long)APP_BC95_CME524_WAKE_GRACE_MS);
 
@@ -4539,7 +4530,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
                 recoverableCmeCount = 1u;
             }
 
-            APP_LOGW("NBIOT", "srv-ready recover cme=%ld streak=%u/%u",
+            APP_LOGD("NBIOT", "srv-ready recover cme=%ld streak=%u/%u",
                      (long)recoverableCme,
                      (unsigned)recoverableCmeCount,
                      (unsigned)effectiveRecoverableCmeThreshold);
@@ -4560,7 +4551,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
                     continue;
                 }
 
-                APP_LOGW("NBIOT",
+                APP_LOGD("NBIOT",
                          "srv-ready recover fail st=%d cme=%ld -> attach",
                          (int)recoverStatus,
                          (long)recoverableCme);
@@ -4578,7 +4569,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
         {
             if (App_Bc95AtIsRecoverableServiceReadyCme(probe.lastCmeError) == APP_TRUE)
             {
-                APP_LOGW("NBIOT",
+                APP_LOGD("NBIOT",
                          "srv-ready timeout after recover cme=%ld t=%lums -> attach",
                          (long)probe.lastCmeError,
                          (unsigned long)elapsedMs);
@@ -4586,7 +4577,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
             }
 
             g_appBc95UsimFatal = APP_TRUE;
-            APP_LOGE("NBIOT", "srv-ready timeout t=%lums st=%d cme=%ld",
+            APP_LOGD("NBIOT", "srv-ready timeout t=%lums st=%d cme=%ld",
                      (unsigned long)elapsedMs,
                      (int)probe.lastStatus,
                      (long)probe.lastCmeError);
@@ -4826,7 +4817,7 @@ AppStatus_t App_Bc95AtFetchImeiWithRetry(uint8_t *p_imeiBcd, uint32_t bcdSize, u
         st = App_Bc95AtFetchImei(p_imeiBcd, bcdSize);
         if (st == APP_STATUS_OK) return APP_STATUS_OK;
 
-        APP_LOGI("NBIOT", "IMEI retry %lu/%lu (status=%d)",
+        APP_LOGD("NBIOT", "IMEI retry %lu/%lu (status=%d)",
                  (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)st);
 
         if (i < (maxRetry - 1u))
@@ -4847,7 +4838,7 @@ AppStatus_t App_Bc95AtFetchImsiWithRetry(uint8_t *p_imsiBcd, uint32_t bcdSize, u
         st = App_Bc95AtFetchImsi(p_imsiBcd, bcdSize);
         if (st == APP_STATUS_OK) return APP_STATUS_OK;
 
-        APP_LOGI("NBIOT", "IMSI retry %lu/%lu (status=%d)",
+        APP_LOGD("NBIOT", "IMSI retry %lu/%lu (status=%d)",
                  (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)st);
 
         if (i < (maxRetry - 1u))
@@ -5111,7 +5102,7 @@ AppStatus_t App_Bc95AtFetchQuality(AppBc95Quality_t *p_quality, uint8_t *p_bcdBu
 #endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
     if ((status != APP_STATUS_OK) && (status != APP_STATUS_UART_TIMEOUT))
     {
-        APP_LOGE("NBIOT", "NUESTATS send fail (status=%d, rxLen=%u)",
+        APP_LOGD("NBIOT", "NUESTATS send fail (status=%d, rxLen=%u)",
                  (int)status, (unsigned)rxLen);
         return status;
     }
@@ -5122,11 +5113,11 @@ AppStatus_t App_Bc95AtFetchQuality(AppBc95Quality_t *p_quality, uint8_t *p_bcdBu
         if (rxLen < 30u)
         {
             /* 너무 짧으면 파싱 불가 */
-            APP_LOGE("NBIOT", "NUESTATS timeout, too short (rxLen=%u)",
+            APP_LOGD("NBIOT", "NUESTATS timeout, too short (rxLen=%u)",
                      (unsigned)rxLen);
             return APP_STATUS_UART_TIMEOUT;
         }
-        APP_LOGI("NBIOT", "NUESTATS timeout but data present (rxLen=%u), try parse",
+        APP_LOGD("NBIOT", "NUESTATS timeout but data present (rxLen=%u), try parse",
                  (unsigned)rxLen);
         /* OK 토큰이 없을 수 있으므로 ParseNuestatsCell 가 통과할지 확인 */
     }
@@ -5141,7 +5132,7 @@ AppStatus_t App_Bc95AtFetchQuality(AppBc95Quality_t *p_quality, uint8_t *p_bcdBu
             status = App_Bc95AtQualityToBcd(p_quality, p_bcdBuf, bcdBufSize);
             if (status != APP_STATUS_OK)
             {
-                APP_LOGE("NBIOT", "quality to bcd failed");
+                APP_LOGD("NBIOT", "quality to bcd failed");
                 return APP_STATUS_FATAL;
             }
         }
@@ -5150,11 +5141,11 @@ AppStatus_t App_Bc95AtFetchQuality(AppBc95Quality_t *p_quality, uint8_t *p_bcdBu
 
     if (atStatus == APP_BC95_AT_ERR_NO_DATA)
     {
-        APP_LOGI("NBIOT", "NUESTATS: no cell info yet (not camped)");
+        APP_LOGD("NBIOT", "NUESTATS: no cell info yet (not camped)");
         return APP_STATUS_UART_TIMEOUT;   /* 일시 실패 */
     }
 
-    APP_LOGE("NBIOT", "NUESTATS parse fail (status=%d, rxLen=%u)",
+    APP_LOGD("NBIOT", "NUESTATS parse fail (status=%d, rxLen=%u)",
              (int)atStatus, (unsigned)rxLen);
     return APP_STATUS_FATAL;
 }
@@ -5173,7 +5164,7 @@ AppStatus_t App_Bc95AtFetchQualityWithRetry(AppBc95Quality_t *p_quality, uint8_t
         if (st == APP_STATUS_OK) return APP_STATUS_OK;
         if (st == APP_STATUS_FATAL) return st;   /* 영구 실패는 즉시 */
 
-        APP_LOGW("NBIOT", "Quality retry %lu/%lu (status=%d)",
+        APP_LOGD("NBIOT", "Quality retry %lu/%lu (status=%d)",
                  (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)st);
 
         if (i < (maxRetry - 1u))
@@ -5211,7 +5202,7 @@ static void App_Bc95PrintBcd(const char *p_label, const uint8_t *p_bcd, uint32_t
         }
         offset += (uint32_t)written;
     }
-    APP_LOGI("NBIOT", "%s BCD: %s", p_label, tempChar);
+    APP_LOGD("NBIOT", "%s BCD: %s", p_label, tempChar);
 }
 
 static void App_Bc95PrintDecoded(const char *p_label, const uint8_t *p_bcd, uint32_t length)
@@ -5256,19 +5247,19 @@ static void App_Bc95PrintDecoded(const char *p_label, const uint8_t *p_bcd, uint
         { offset = (uint32_t)APP_BC95_PRINT_TEMP_LEN - 1u; break; }
         offset += (uint32_t)written;
     }
-    APP_LOGI("NBIOT", "%s     : %s", p_label, tempChar);
+    APP_LOGD("NBIOT", "%s     : %s", p_label, tempChar);
 }
 
 static void App_NBIoTPrintQuality(const AppBc95Quality_t *p_q)
 {
     if (p_q == NULL) return;
-    APP_LOGI("NBIOT", "EARFCN: %u, PCI: %u, Primary: %u",
+    APP_LOGD("NBIOT", "EARFCN: %u, PCI: %u, Primary: %u",
              (unsigned)p_q->earfcn, (unsigned)p_q->pci, (unsigned)p_q->primaryCell);
-    APP_LOGI("NBIOT", "RSSI : %d dBm", (int)p_q->rssiDbm);
-    APP_LOGI("NBIOT", "RSRP : %d dBm", (int)p_q->rsrpDbm);
-    APP_LOGI("NBIOT", "RSRQ : %d dB",  (int)p_q->rsrqDbm);
-    APP_LOGI("NBIOT", "SNR  : %d dB",  (int)p_q->snrDb);
-    APP_LOGI("NBIOT", "BER  : %u (reserved)", (unsigned)p_q->ber);
+    APP_LOGD("NBIOT", "RSSI : %d dBm", (int)p_q->rssiDbm);
+    APP_LOGD("NBIOT", "RSRP : %d dBm", (int)p_q->rsrpDbm);
+    APP_LOGD("NBIOT", "RSRQ : %d dB",  (int)p_q->rsrqDbm);
+    APP_LOGD("NBIOT", "SNR  : %d dB",  (int)p_q->snrDb);
+    APP_LOGD("NBIOT", "BER  : %u (reserved)", (unsigned)p_q->ber);
 }
 
 /* ============================================================
@@ -5426,7 +5417,7 @@ static AppStatus_t App_Bc95AtSendWithRetry(const char *p_cmd, uint8_t *p_rxBuf,
             ((p_rxLenOut == NULL) || (*p_rxLenOut == 0u)))
         {
             g_appBc95TotalSilenceDetected = APP_TRUE;
-            APP_LOGW("NBIOT", "cmd(%s) total silence (rxLen=0) -> abort retries", p_cmd);
+            APP_LOGD("NBIOT", "cmd(%s) total silence (rxLen=0) -> abort retries", p_cmd);
             return status;
         }
 
@@ -5453,7 +5444,7 @@ AppStatus_t App_Bc95AtSetFullFunction(void)
     uint16_t rxLen = 0u;
 
     APP_RETURN_IF_FALSE((g_appBc95AtInitialized == APP_TRUE), APP_STATUS_INVALID_PARAM);
-    APP_LOGI("NBIOT", "Set CFUN=1 (may take up to 85s)...");
+    APP_LOGD("NBIOT", "Set CFUN=1 (may take up to 85s)...");
 
     status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_CFUN_SET_FULL,
                                    g_appBc95AtRxBuf,
@@ -5461,22 +5452,22 @@ AppStatus_t App_Bc95AtSetFullFunction(void)
                                    APP_BC95_AT_CFUN_RESP_TIMEOUT_MS, &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "CFUN=1 send fail (status=%d)", (int)status);
+        APP_LOGD("NBIOT", "CFUN=1 send fail (status=%d)", (int)status);
         return status;
     }
 
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
 #ifdef NBIoT_SIMULATION_CODE
-    APP_LOGI("NBIOT", "Forcely err timeout CFUN=1 test..."); // NBIoT simulation test
+    APP_LOGD("NBIOT", "Forcely err timeout CFUN=1 test..."); // NBIoT simulation test
     atStatus = APP_BC95_AT_ERR_TIMEOUT;
 #endif // NBIoT_SIMULATION_CODE
     if (atStatus != APP_BC95_AT_OK)
     {
-        APP_LOGE("NBIOT", "CFUN=1 not OK (parse=%s)",
+        APP_LOGD("NBIOT", "CFUN=1 not OK (parse=%s)",
                  App_Bc95AtGetStatusString(atStatus));
         return APP_STATUS_FATAL;
     }
-    APP_LOGI("NBIOT", "CFUN=1 done");
+    APP_LOGD("NBIOT", "CFUN=1 done");
     return APP_STATUS_OK;
 }
 
@@ -5552,7 +5543,7 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
             (void)App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
             if (App_Bc95AtIsUsimFatalCme(cmeErr) == APP_TRUE)
             {
-                APP_LOGE("NBIOT", "CFUN? USIM fatal (CME=%ld)", (long)cmeErr);
+                APP_LOGD("NBIOT", "CFUN? USIM fatal (CME=%ld)", (long)cmeErr);
                 p_status->phase = APP_BC95_NET_PHASE_USIM_ERROR;
                 p_status->lastUpdateTick = HAL_GetTick();
                 return APP_STATUS_FATAL;
@@ -5578,7 +5569,7 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
     {
         atSt = App_Bc95AtParseCereg((const char *)g_appBc95AtRxBuf, &ceregN, &ceregStat, &rejectCause);
 #ifdef NBIoT_SIMULATION_CODE
-        APP_LOGI("NBIOT", "Forcely err timeout CEREG:0 test..."); // NBIoT simulation test
+        APP_LOGD("NBIOT", "Forcely err timeout CEREG:0 test..."); // NBIoT simulation test
         atSt = APP_BC95_AT_ERR_FORMAT;
 #endif // NBIoT_SIMULATION_CODE
         if (atSt == APP_BC95_AT_OK)
@@ -5603,7 +5594,7 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
     {
         atSt = App_Bc95AtParseCgatt((const char *)g_appBc95AtRxBuf, &cgattVal);
 #ifdef NBIoT_SIMULATION_CODE
-        APP_LOGI("NBIOT", "Forcely err timeout CGATT:0 test..."); // NBIoT simulation test
+        APP_LOGD("NBIOT", "Forcely err timeout CGATT:0 test..."); // NBIoT simulation test
         atSt = APP_BC95_AT_ERR_FORMAT;
 #endif // NBIoT_SIMULATION_CODE
         if (atSt == APP_BC95_AT_OK)
@@ -5948,7 +5939,7 @@ static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
     APP_RETURN_IF_FALSE((p_cmdLabel != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((p_logPrefix != NULL), APP_STATUS_INVALID_PARAM);
 
-    APP_LOGN("NBIOT", "%s TX %s", p_logPrefix, p_cmdLabel);
+    APP_LOGD("NBIOT", "%s TX %s", p_logPrefix, p_cmdLabel);
     status = App_Bc95AtSendWithRetry(p_cmd,
                                      g_appBc95AtRxBuf,
                                      (uint16_t)sizeof(g_appBc95AtRxBuf),
@@ -5957,14 +5948,14 @@ static AppStatus_t App_Bc95AtSendSimpleOkCommand(const char *p_cmd,
                                      APP_NBIOT_AT_NORESP_RETRY_MAX);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "%s %s send fail. rxLen=%u (status=%d)", p_logPrefix, p_cmdLabel, (unsigned)rxLen, (int)status);
+        APP_LOGD("NBIOT", "%s %s send fail. rxLen=%u (status=%d)", p_logPrefix, p_cmdLabel, (unsigned)rxLen, (int)status);
         return status;
     }
 
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
     if (atStatus != APP_BC95_AT_OK)
     {
-        APP_LOGE("NBIOT", "%s %s not OK (parse=%s)",
+        APP_LOGD("NBIOT", "%s %s not OK (parse=%s)",
                  p_logPrefix, p_cmdLabel, App_Bc95AtGetStatusString(atStatus));
         return APP_STATUS_FATAL;
     }
@@ -6164,7 +6155,7 @@ static AppStatus_t App_Bc95AtSendBestEffortQuery(const char *p_cmd,
     APP_RETURN_IF_FALSE((p_cmdLabel != NULL), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE((p_logPrefix != NULL), APP_STATUS_INVALID_PARAM);
 
-    APP_LOGN("NBIOT", "%s TX %s", p_logPrefix, p_cmdLabel);
+    APP_LOGD("NBIOT", "%s TX %s", p_logPrefix, p_cmdLabel);
     status = App_Bc95AtSendCommand(p_cmd,
                                    g_appBc95AtRxBuf,
                                    (uint16_t)sizeof(g_appBc95AtRxBuf),
@@ -6172,14 +6163,14 @@ static AppStatus_t App_Bc95AtSendBestEffortQuery(const char *p_cmd,
                                    &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGW("NBIOT", "%s %s skipped (status=%d)", p_logPrefix, p_cmdLabel, (int)status);
+        APP_LOGD("NBIOT", "%s %s skipped (status=%d)", p_logPrefix, p_cmdLabel, (int)status);
         return status;
     }
 
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL);
     if (atStatus != APP_BC95_AT_OK)
     {
-        APP_LOGW("NBIOT", "%s %s not OK (parse=%s)",
+        APP_LOGD("NBIOT", "%s %s not OK (parse=%s)",
                  p_logPrefix, p_cmdLabel, App_Bc95AtGetStatusString(atStatus));
         return APP_STATUS_FATAL;
     }
@@ -6198,7 +6189,7 @@ static AppStatus_t App_Bc95AtSendBestEffortSimpleOk(const char *p_cmd,
     status = App_Bc95AtSendSimpleOkCommand(p_cmd, rxTimeoutMs, p_cmdLabel, p_logPrefix);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGW("NBIOT", "%s %s skipped (status=%d)", p_logPrefix, p_cmdLabel, (int)status);
+        APP_LOGD("NBIOT", "%s %s skipped (status=%d)", p_logPrefix, p_cmdLabel, (int)status);
     }
     return status;
 }
@@ -6856,7 +6847,7 @@ static AppStatus_t App_NbiotSyncTimeSoft(void)
     uint16_t rxLen = 0u;
     uint32_t attempt;
 
-    APP_LOGI("NBIOT", "Synchronizing time from network (soft)...");
+    APP_LOGD("NBIOT", "Synchronizing time from network (soft)...");
 
     for (attempt = 1u; attempt <= APP_BC95_TIME_SYNC_RETRY_MAX; attempt++)
     {
@@ -6885,7 +6876,7 @@ static AppStatus_t App_NbiotSyncTimeSoft(void)
                 status = App_ClockSyncFromNbiot(&timeInfo);
                 if (status == APP_STATUS_OK)
                 {
-                    APP_LOGI("NBIOT", "Time sync done (soft)");
+                    APP_LOGD("NBIOT", "Time sync done (soft)");
                     return APP_STATUS_OK;
                 }
 
@@ -7986,7 +7977,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
         /* [SKIP-REASON 2026-11-09] skip 사유를 로그로 구분:
          * NOT_INITIALIZED(옵션 미초기화)/레코드 부재 등 원인별 추적.
          * APP_LOGW 후속 라인 없이 한 줄로 유지(로그 게이트 정책 동일). */
-        APP_LOGW("NBIOT", "%s skip send (status=%d)", p_logTag, (int)status);
+        APP_LOGD("NBIOT", "%s skip send (status=%d)", p_logTag, (int)status);
         return status;
     }
 
@@ -7997,8 +7988,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
         status = App_Bc95AtPlatformRegister();
         if (status != APP_STATUS_OK)
         {
-            APP_LOGW("NBIOT",
-                     "%s platform register failed on attempt %lu/%lu (status=%d, evtind last=%d mask=0x%04X, ore=%lu fe=%lu)",
+            APP_LOGD("NBIOT", "%s platform register failed on attempt %lu/%lu (status=%d, evtind last=%d mask=0x%04X, ore=%lu fe=%lu)",
                      p_logTag,
                      (unsigned long)sendAttempt,
                      (unsigned long)APP_BC95_PLATFORM_SEND_RETRY_MAX,
@@ -8026,7 +8016,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
 
                 break;
             }
-            APP_LOGW("NBIOT", "%s platform send failed on attempt %lu/%lu (status=%d)",
+            APP_LOGD("NBIOT", "%s platform send failed on attempt %lu/%lu (status=%d)",
                      p_logTag,
                      (unsigned long)sendAttempt,
                      (unsigned long)APP_BC95_PLATFORM_SEND_RETRY_MAX,
@@ -8047,15 +8037,14 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
      *  아래 autotune 판정이 성공으로 기록된다.) */
     if ((status != APP_STATUS_OK) && (registerFailCount == APP_BC95_PLATFORM_SEND_RETRY_MAX))
     {
-        APP_LOGW("NBIOT",
-                 "%s register failed %lu/%lu (last status=%d) -> escalate NRB reset + 1 retry",
+        APP_LOGD("NBIOT", "%s register failed %lu/%lu (last status=%d) -> escalate NRB reset + 1 retry",
                  p_logTag,
                  (unsigned long)registerFailCount,
                  (unsigned long)APP_BC95_PLATFORM_SEND_RETRY_MAX,
                  (int)status);
         if (App_Bc95AtSendRebootBestEffort() != APP_STATUS_OK)
         {
-            APP_LOGW("NBIOT", "%s escalate NRB failed -> keep original failure (status=%d)",
+            APP_LOGD("NBIOT", "%s escalate NRB failed -> keep original failure (status=%d)",
                      p_logTag, (int)status);
         }
         else
@@ -8066,7 +8055,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
             {
                 status = App_Bc95AtPlatformSendAndConfirm(packet, buildResult.packetLength, seqNum);
             }
-            APP_LOGN("NBIOT", "%s escalate retry status=%d", p_logTag, (int)status);
+            APP_LOGD("NBIOT", "%s escalate retry status=%d", p_logTag, (int)status);
         }
     }
 
@@ -8083,7 +8072,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
     {
         if (p_liveRecord != NULL)
         {
-            APP_LOGN("NBIOT", "%s live meter record sent without storage (records=%u)",
+            APP_LOGD("NBIOT", "%s live meter record sent without storage (records=%u)",
                      p_logTag,
                      (unsigned int)buildResult.recordCount);
         }
@@ -8092,7 +8081,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
             AppStatus_t markStatus = App_MeterStorageMarkOldestUnsentSent(buildResult.recordCount);
             if (markStatus != APP_STATUS_OK)
             {
-                APP_LOGE("NBIOT", "%s storage sent-mark failed (status=%ld, records=%u)",
+                APP_LOGD("NBIOT", "%s storage sent-mark failed (status=%ld, records=%u)",
                          p_logTag,
                          (long)markStatus,
                          (unsigned int)buildResult.recordCount);
@@ -8104,7 +8093,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
                 AppStatus_t clearStatus = App_MeterStorageDeleteOldestSent(&deletedCount);
                 if (clearStatus != APP_STATUS_OK)
                 {
-                    APP_LOGE("NBIOT", "%s storage delete failed (status=%ld, records=%u)",
+                    APP_LOGD("NBIOT", "%s storage delete failed (status=%ld, records=%u)",
                              p_logTag,
                              (long)clearStatus,
                              (unsigned int)buildResult.recordCount);
@@ -8114,7 +8103,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
             }
             else
             {
-                APP_LOGN("NBIOT", "%s storage marked sent (records=%u, remain=%u)",
+                APP_LOGD("NBIOT", "%s storage marked sent (records=%u, remain=%u)",
                          p_logTag,
                          (unsigned int)buildResult.recordCount,
                          (unsigned int)App_MeterStorageCount());
@@ -8125,7 +8114,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
             AppStatus_t clearStatus = App_MeterStorageDeleteOldest(buildResult.recordCount);
             if (clearStatus != APP_STATUS_OK)
             {
-                APP_LOGE("NBIOT", "%s storage delete failed (status=%ld, records=%u)",
+                APP_LOGD("NBIOT", "%s storage delete failed (status=%ld, records=%u)",
                          p_logTag,
                          (long)clearStatus,
                          (unsigned int)buildResult.recordCount);
@@ -8137,7 +8126,7 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
 
     if (status == APP_STATUS_OK)
     {
-        APP_LOGN("NBIOT", "%s PlatformSendResult: sent=%u seq=%u confirmed=1",
+        APP_LOGD("NBIOT", "%s PlatformSendResult: sent=%u seq=%u confirmed=1",
                  p_logTag,
                  (unsigned)buildResult.packetLength,
                  (unsigned)seqNum);
@@ -8495,13 +8484,13 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
 
     if ((p_hostname == NULL) || (p_ipOut == NULL) || (ipBufSize < APP_BC95_IP_STR_SIZE))
     {
-        APP_LOGE("NBIOT", "ResolveHost: invalid param");
+        APP_LOGD("NBIOT", "ResolveHost: invalid param");
         return APP_STATUS_FATAL;
     }
     hostLen = (uint32_t)strlen(p_hostname);
     if ((hostLen == 0u) || (hostLen > APP_BC95_HOSTNAME_MAX_LEN))
     {
-        APP_LOGE("NBIOT", "ResolveHost: bad hostname len=%lu", (unsigned long)hostLen);
+        APP_LOGD("NBIOT", "ResolveHost: bad hostname len=%lu", (unsigned long)hostLen);
         return APP_STATUS_FATAL;
     }
     (void)memset(p_ipOut, 0, ipBufSize);
@@ -8512,7 +8501,7 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
     cmdLen = snprintf(atCmd, sizeof(atCmd), "AT+QDNS=0,%s\r\n", p_hostname);
     if ((cmdLen <= 0) || (cmdLen >= (int)sizeof(atCmd)))
     {
-        APP_LOGE("NBIOT", "ResolveHost: cmd build fail");
+        APP_LOGD("NBIOT", "ResolveHost: cmd build fail");
         return APP_STATUS_FATAL;
     }
     APP_LOGD("NBIOT", "DNS query: %s", p_hostname);
@@ -8530,7 +8519,7 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
     halStatus = HAL_UART_Receive_IT(APP_UART_NBIOT_HANDLE, &g_appBc95AtRxBuf[0], 1u);
     if (halStatus != HAL_OK)
     {
-        APP_LOGE("NBIOT", "ResolveHost: RX_IT fail (%d)", halStatus);
+        APP_LOGD("NBIOT", "ResolveHost: RX_IT fail (%d)", halStatus);
         App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
         return APP_STATUS_UART_RX_FAILED;
     }
@@ -8540,7 +8529,7 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
                                   APP_BC95_DNS_CMD_TIMEOUT_MS);
     if (halStatus != HAL_OK)
     {
-        APP_LOGE("NBIOT", "ResolveHost: TX fail (%d)", halStatus);
+        APP_LOGD("NBIOT", "ResolveHost: TX fail (%d)", halStatus);
         App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
         return APP_STATUS_UART_RX_FAILED;
     }
@@ -8558,7 +8547,7 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
 
         if (g_appBc95AtRxContext.error == APP_TRUE)
         {
-            APP_LOGE("NBIOT", "ResolveHost: UART err (rxLen=%lu)", (unsigned long)rxLen);
+            APP_LOGD("NBIOT", "ResolveHost: UART err (rxLen=%lu)", (unsigned long)rxLen);
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
             return APP_STATUS_UART_RX_FAILED;
         }
@@ -8571,7 +8560,7 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
         }
         if ((atStatus == APP_BC95_AT_ERR_AT_ERROR) || (atStatus == APP_BC95_AT_ERR_CME_ERROR))
         {
-            APP_LOGE("NBIOT", "ResolveHost: response error parse=%s cme=%ld raw=[%s]",
+            APP_LOGD("NBIOT", "ResolveHost: response error parse=%s cme=%ld raw=[%s]",
                      App_Bc95AtGetStatusString(atStatus), (long)cmeErr, rxSnapshot);
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
             return APP_STATUS_UART_TIMEOUT;
@@ -8584,10 +8573,10 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
             atStatus = App_Bc95AtCheckResponse(rxSnapshot, &cmeErr);
             if (atStatus == APP_BC95_AT_OK)
             {
-                APP_LOGI("NBIOT", "ResolveHost: late OK detected (rxLen=%lu)", (unsigned long)snapLen);
+                APP_LOGD("NBIOT", "ResolveHost: late OK detected (rxLen=%lu)", (unsigned long)snapLen);
                 break;
             }
-            APP_LOGE("NBIOT", "ResolveHost: OK timeout (rxLen=%lu, raw=[%s])",
+            APP_LOGD("NBIOT", "ResolveHost: OK timeout (rxLen=%lu, raw=[%s])",
                      (unsigned long)rxLen, rxSnapshot);
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
             return APP_STATUS_UART_TIMEOUT;
@@ -8611,7 +8600,7 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
 
         if (g_appBc95AtRxContext.error == APP_TRUE)
         {
-            APP_LOGE("NBIOT", "ResolveHost: UART err in URC wait raw=[%s]", rxSnapshot);
+            APP_LOGD("NBIOT", "ResolveHost: UART err in URC wait raw=[%s]", rxSnapshot);
             status = APP_STATUS_UART_RX_FAILED;
             break;
         }
@@ -8623,7 +8612,7 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
         {
             if (qdnsFail == APP_TRUE)
             {
-                APP_LOGI("NBIOT", "DNS FAIL for %s (transient)", p_hostname);
+                APP_LOGD("NBIOT", "DNS FAIL for %s (transient)", p_hostname);
                 status = APP_STATUS_UART_TIMEOUT;
             }
             else
@@ -8635,7 +8624,7 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
         }
         if ((atStatus != APP_BC95_AT_ERR_NO_PREFIX) && (atStatus != APP_BC95_AT_ERR_NO_DATA))
         {
-            APP_LOGE("NBIOT", "ResolveHost: invalid QDNS URC raw=[%s]", rxSnapshot);
+            APP_LOGD("NBIOT", "ResolveHost: invalid QDNS URC raw=[%s]", rxSnapshot);
             (void)memset(p_ipOut, 0, ipBufSize);
             status = APP_STATUS_UART_TIMEOUT;
             break;
@@ -8649,12 +8638,12 @@ AppStatus_t App_Bc95AtResolveHost(const char *p_hostname, char *p_ipOut, uint32_
             atStatus = App_Bc95AtParseQdnsResult(rxSnapshot, p_ipOut, ipBufSize, &qdnsFound, &qdnsFail);
             if ((atStatus == APP_BC95_AT_OK) && (qdnsFound == APP_TRUE) && (qdnsFail == APP_FALSE))
             {
-                APP_LOGI("NBIOT", "ResolveHost: late QDNS detected %s -> %s", p_hostname, p_ipOut);
+                APP_LOGD("NBIOT", "ResolveHost: late QDNS detected %s -> %s", p_hostname, p_ipOut);
                 status = APP_STATUS_OK;
             }
             else
             {
-                APP_LOGE("NBIOT", "ResolveHost: URC timeout (rxLen=%lu, raw=[%s])",
+                APP_LOGD("NBIOT", "ResolveHost: URC timeout (rxLen=%lu, raw=[%s])",
                          (unsigned long)rxLen, rxSnapshot);
                 status = APP_STATUS_UART_TIMEOUT;
             }
@@ -8809,7 +8798,7 @@ AppStatus_t App_Bc95AtCreateUdpSocket(uint16_t localPort, int32_t *p_socketOut)
                                    APP_BC95_SOCKET_TIMEOUT_MS, &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "NSOCR send fail (status=%d)", (int)status);
+        APP_LOGD("NBIOT", "NSOCR send fail (status=%d)", (int)status);
         return status;
     }
 
@@ -8817,7 +8806,7 @@ AppStatus_t App_Bc95AtCreateUdpSocket(uint16_t localPort, int32_t *p_socketOut)
     atStatus = App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, &cmeErr);
     if (atStatus != APP_BC95_AT_OK)
     {
-        APP_LOGE("NBIOT", "NSOCR resp err (parse=%s, CME=%ld)",
+        APP_LOGD("NBIOT", "NSOCR resp err (parse=%s, CME=%ld)",
                  App_Bc95AtGetStatusString(atStatus), (long)cmeErr);
         return APP_STATUS_FATAL;
     }
@@ -8838,7 +8827,7 @@ AppStatus_t App_Bc95AtCreateUdpSocket(uint16_t localPort, int32_t *p_socketOut)
 
     if (parsedSock < 0)
     {
-        APP_LOGE("NBIOT", "NSOCR socket id parse fail. raw=[%s]", g_appBc95AtRxBuf);
+        APP_LOGD("NBIOT", "NSOCR socket id parse fail. raw=[%s]", g_appBc95AtRxBuf);
         /* 패치: 알 수 없는 소켓 누수 방지 */
         App_Bc95AtCloseAllSockets();
         return APP_STATUS_FATAL;
@@ -8980,8 +8969,7 @@ static AppBc95AtStatus_t App_Bc95AtParseNsorfForSocket(const char *p_resp,
                         (strchr(parsedIp, '.') != NULL) && (parsedHex[0] != '\0'))
                     {
 #ifdef NBIOT_TRACE_DEBUG
-                        APP_LOGI("NBIOT",
-                                 "[[AckDbg]] NSORF prefixless matched sock=%d len=%u",
+                        APP_LOGN("NBIOT", "[[AckDbg]] NSORF prefixless matched sock=%d len=%u",
                                  parsedSock,
                                  (unsigned)parsedLen);
 #endif /* NBIOT_TRACE_DEBUG */
@@ -9249,7 +9237,7 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                                             App_DlCmdExecute(&p_scan[scanStart],
                                                              (uint16_t)(frameLen + 3u),
                                                              servicePath);
-                                            APP_LOGN("NBIOT", "Server ACK frame cmd=0x%02X(%s) bytes=%u path=%s",
+                                            APP_LOGD("NBIOT", "Server ACK frame cmd=0x%02X(%s) bytes=%u path=%s",
 
                                                      (unsigned)frameCmd, App_DlAckNameOf(frameCmd),
                                                      (unsigned)ackPayloadLen,
@@ -9260,7 +9248,7 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                                 }
                             }
                         }
-                        APP_LOGI("NBIOT", "Server ACK received (sock=%ld, bytes=%u%s)",
+                        APP_LOGD("NBIOT", "Server ACK received (sock=%ld, bytes=%u%s)",
                                  (long)socketId,
                                  (unsigned)ackPayloadLen,
                                  (servicePath == APP_TRUE) ? ", svc-path" : "");
@@ -9278,7 +9266,7 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                 App_Bc95AtNnmiScanDmaBuf();
                 if (s_bc95NnmiCount != beforeNnmiCount)
                 {
-                    APP_LOGN("NBIOT", "Server ACK via +NNMI latch (svc-path) count=%lu->%lu",
+                    APP_LOGD("NBIOT", "Server ACK via +NNMI latch (svc-path) count=%lu->%lu",
                              (unsigned long)beforeNnmiCount,
                              (unsigned long)s_bc95NnmiCount);
                     return APP_STATUS_OK;
@@ -9293,14 +9281,14 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                 {
                     s_ackDbgSkip = 0u;
 #ifdef NBIOT_TRACE_DEBUG
-                    APP_LOGI("NBIOT", "[[AckDbg]] NSORF absent poll rxLen=%u", (unsigned)rxLen);
+                    APP_LOGD("NBIOT", "[[AckDbg]] NSORF absent poll rxLen=%u", (unsigned)rxLen);
 #endif /* NBIOT_TRACE_DEBUG */
                 }
             }
             App_Bc95AtDelayWithFeed(pollMs);
         }
 
-        APP_LOGW("NBIOT", "Server ACK timeout (sock=%ld, timeout=%lums%s)",
+        APP_LOGD("NBIOT", "Server ACK timeout (sock=%ld, timeout=%lums%s)",
                  (long)socketId,
                  (unsigned long)timeoutMs,
                  (servicePath == APP_TRUE) ? ", svc-path" : "");
@@ -9343,14 +9331,14 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
                        (long)socketId, p_ip, (unsigned)port, (unsigned)length);
     if ((printed <= 0) || ((uint32_t)printed >= sizeof(appBc95AtCmdTxBuf)))
     {
-        APP_LOGE("NBIOT", "NSOST: header build fail");
+        APP_LOGD("NBIOT", "NSOST: header build fail");
         return APP_STATUS_INVALID_PARAM;
     }
     headerLen = (uint32_t)printed;
 
     if ((headerLen + (2u * (uint32_t)length) + 16u) >= sizeof(appBc95AtCmdTxBuf))
     {
-        APP_LOGE("NBIOT", "NSOST: buf too small");
+        APP_LOGD("NBIOT", "NSOST: buf too small");
         return APP_STATUS_INVALID_PARAM;
     }
     App_Bc95AtBytesToHex(p_data, length, &appBc95AtCmdTxBuf[headerLen]);
@@ -9361,11 +9349,11 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
                        ",%u\r\n", (unsigned)seqNum);
     if ((printed <= 0) || ((headerLen + (uint32_t)printed) >= sizeof(appBc95AtCmdTxBuf)))
     {
-        APP_LOGE("NBIOT", "NSOST: tail build fail");
+        APP_LOGD("NBIOT", "NSOST: tail build fail");
         return APP_STATUS_INVALID_PARAM;
     }
 
-    APP_LOGI("NBIOT", "NSOST send: sock=%ld, ip=%s, port=%u, len=%u, seq=%u",
+    APP_LOGD("NBIOT", "NSOST send: sock=%ld, ip=%s, port=%u, len=%u, seq=%u",
              (long)socketId, p_ip, (unsigned)port, (unsigned)length, (unsigned)seqNum);
 
     rxLen  = 0u;
@@ -9375,7 +9363,7 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
                                    APP_BC95_SOCKET_TIMEOUT_MS, &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "NSOST send fail (status=%d, rxLen=%u)", (int)status, (unsigned)rxLen);
+        APP_LOGD("NBIOT", "NSOST send fail (status=%d, rxLen=%u)", (int)status, (unsigned)rxLen);
         if (status == APP_STATUS_UART_RX_FAILED) return APP_STATUS_UART_RX_FAILED;
         return APP_STATUS_UART_TIMEOUT;
     }
@@ -9386,7 +9374,7 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
     atStatus = App_Bc95AtCheckResponse(rxSnapshot, &cmeErr);
     if (atStatus != APP_BC95_AT_OK)
     {
-        APP_LOGE("NBIOT", "NSOST no OK (parse=%s, cme=%ld, rxLen=%lu, raw=[%s])",
+        APP_LOGD("NBIOT", "NSOST no OK (parse=%s, cme=%ld, rxLen=%lu, raw=[%s])",
                  App_Bc95AtGetStatusString(atStatus), (long)cmeErr, (unsigned long)snapLen, rxSnapshot);
         return APP_STATUS_UART_TIMEOUT;
     }
@@ -9398,11 +9386,11 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
     {
         if (parsedStatus == 1)
         {
-            APP_LOGI("NBIOT", "NSOSTR confirmed (fast): sock=%ld, seq=%u",
+            APP_LOGD("NBIOT", "NSOSTR confirmed (fast): sock=%ld, seq=%u",
                      (long)socketId, (unsigned)seqNum);
             return APP_STATUS_OK;
         }
-        APP_LOGE("NBIOT", "NSOSTR fail (fast): sock=%ld, seq=%u, status=%d (transient)",
+        APP_LOGD("NBIOT", "NSOSTR fail (fast): sock=%ld, seq=%u, status=%d (transient)",
                  (long)socketId, (unsigned)seqNum, parsedStatus);
         return APP_STATUS_UART_TIMEOUT;
     }
@@ -9411,7 +9399,7 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
 
     if (rxLen >= bufCap)
     {
-        APP_LOGE("NBIOT", "NSOSTR wait: buf full after OK (rxLen=%u)", (unsigned)rxLen);
+        APP_LOGD("NBIOT", "NSOSTR wait: buf full after OK (rxLen=%u)", (unsigned)rxLen);
         if (App_Bc95AtFindNsostrForSocketSeq(rxSnapshot,
                                              (int)socketId,
                                              (int)seqNum,
@@ -9443,14 +9431,14 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
     if (halStatus != HAL_OK)
     {
         App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
-        APP_LOGE("NBIOT", "NSOSTR wait: RX_IT start fail (%d)", (int)halStatus);
+        APP_LOGD("NBIOT", "NSOSTR wait: RX_IT start fail (%d)", (int)halStatus);
         return APP_STATUS_UART_RX_FAILED;
     }
 
     if (g_appBc95AtRxContext.error == APP_TRUE)
     {
         App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
-        APP_LOGE("NBIOT", "NSOSTR wait: error right after start");
+        APP_LOGD("NBIOT", "NSOSTR wait: error right after start");
         return APP_STATUS_UART_RX_FAILED;
     }
 
@@ -9471,7 +9459,7 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
             __HAL_UART_CLEAR_FLAG(APP_UART_NBIOT_HANDLE,
                                   UART_CLEAR_OREF | UART_CLEAR_FEF |
                                   UART_CLEAR_NEF  | UART_CLEAR_PEF);
-            APP_LOGE("NBIOT", "NSOSTR wait: UART err (rxLen=%u, raw=[%s])",
+            APP_LOGD("NBIOT", "NSOSTR wait: UART err (rxLen=%u, raw=[%s])",
                      (unsigned)g_appBc95AtRxContext.receivedLength, rxSnapshot);
             return APP_STATUS_UART_RX_FAILED;
         }
@@ -9485,12 +9473,12 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
             if (parsedStatus == 1)
             {
-                APP_LOGI("NBIOT", "NSOSTR confirmed: sock=%ld, seq=%u (elapsed=%lums)",
+                APP_LOGD("NBIOT", "NSOSTR confirmed: sock=%ld, seq=%u (elapsed=%lums)",
                          (long)socketId, (unsigned)seqNum,
                          (unsigned long)(HAL_GetTick() - startTick));
                 return APP_STATUS_OK;
             }
-            APP_LOGE("NBIOT", "NSOSTR fail: sock=%ld, seq=%u, status=%d (transient)",
+            APP_LOGD("NBIOT", "NSOSTR fail: sock=%ld, seq=%u, status=%d (transient)",
                      (long)socketId, (unsigned)seqNum, parsedStatus);
             return APP_STATUS_UART_TIMEOUT;
         }
@@ -9498,7 +9486,7 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
         if (g_appBc95AtRxContext.receivedLength >= bufCap)
         {
             App_Bc95AtFinishRxIt(APP_UART_NBIOT_HANDLE);
-            APP_LOGE("NBIOT", "NSOSTR wait: buffer full (rxLen=%u, raw=[%s])",
+            APP_LOGD("NBIOT", "NSOSTR wait: buffer full (rxLen=%u, raw=[%s])",
                      (unsigned)g_appBc95AtRxContext.receivedLength, rxSnapshot);
             if (App_Bc95AtFindNsostrForSocketSeq(rxSnapshot,
                                                  (int)socketId,
@@ -9522,11 +9510,11 @@ AppStatus_t App_Bc95AtUdpSendAndConfirm(int32_t        socketId,
                                                  (int)seqNum,
                                                  &parsedStatus) == APP_BC95_AT_OK)
             {
-                APP_LOGI("NBIOT", "NSOSTR late-detected: sock=%ld, seq=%u, status=%d",
+                APP_LOGD("NBIOT", "NSOSTR late-detected: sock=%ld, seq=%u, status=%d",
                          (long)socketId, (unsigned)seqNum, parsedStatus);
                 return (parsedStatus == 1) ? APP_STATUS_OK : APP_STATUS_UART_TIMEOUT;
             }
-            APP_LOGE("NBIOT", "NSOSTR timeout (sock=%ld, seq=%u, rxLen=%u, raw=[%s])",
+            APP_LOGD("NBIOT", "NSOSTR timeout (sock=%ld, seq=%u, rxLen=%u, raw=[%s])",
                      (long)socketId, (unsigned)seqNum, (unsigned)rxLen, rxSnapshot);
             return APP_STATUS_UART_TIMEOUT;
         }
@@ -9565,7 +9553,7 @@ static AppStatus_t App_Bc95AtCloseSocketInternal(int32_t socketId,
                                    APP_BC95_SOCKET_TIMEOUT_MS, &rxLen);
 
 #ifdef NBIoT_SIMULATION_CODE
-    APP_LOGI("NBIOT", "Forcely err NSOCL send fail test..."); // NBIoT simulation test
+    APP_LOGD("NBIOT", "Forcely err NSOCL send fail test..."); // NBIoT simulation test
     status = APP_STATUS_INVALID_PARAM;
     quietNoSocket = APP_FALSE;
 #endif // NBIoT_SIMULATION_CODE
@@ -9573,7 +9561,7 @@ static AppStatus_t App_Bc95AtCloseSocketInternal(int32_t socketId,
     {
         if (quietNoSocket != APP_TRUE)
         {
-            APP_LOGI("NBIOT", "NSOCL send fail (sock=%ld, status=%d)", (long)socketId, (int)status);
+            APP_LOGD("NBIOT", "NSOCL send fail (sock=%ld, status=%d)", (long)socketId, (int)status);
         }
         return status;
     }
@@ -9585,14 +9573,14 @@ static AppStatus_t App_Bc95AtCloseSocketInternal(int32_t socketId,
         *p_atStatusOut = atStatus;
     }
 #ifdef NBIoT_SIMULATION_CODE
-    APP_LOGI("NBIOT", "Forcely err NSOCL not OK test..."); // NBIoT simulation test
+    APP_LOGD("NBIOT", "Forcely err NSOCL not OK test..."); // NBIoT simulation test
     atStatus = APP_BC95_AT_ERR_AT_ERROR;
 #endif // NBIoT_SIMULATION_CODE
     if (atStatus != APP_BC95_AT_OK)
     {
         if (quietNoSocket != APP_TRUE)
         {
-            APP_LOGI("NBIOT", "NSOCL not OK (sock=%ld, parse=%s)",
+            APP_LOGD("NBIOT", "NSOCL not OK (sock=%ld, parse=%s)",
                      (long)socketId, App_Bc95AtGetStatusString(atStatus));
         }
         return APP_STATUS_FATAL;
@@ -9617,7 +9605,7 @@ void App_Bc95AtCloseAllSockets(void)
     uint32_t sendFailCount = 0u;
     uint32_t otherFailCount = 0u;
 
-    APP_LOGI("NBIOT", "close sockets 0..%d (open mask=0x%02lx)",
+    APP_LOGD("NBIOT", "close sockets 0..%d (open mask=0x%02lx)",
              APP_BC95_UDP_SOCKET_ID_MAX, (unsigned long)s_nbiotUdpSocketOpenMask);
     for (sid = 0; sid <= APP_BC95_UDP_SOCKET_ID_MAX; sid++)
     {
@@ -9656,8 +9644,7 @@ void App_Bc95AtCloseAllSockets(void)
         App_NBIoTDetachNoteOutcome(closeStatus);
         if (App_NBIoTDetachModuleDead() == APP_TRUE)
         {
-            APP_LOGW("NBIOT",
-                     "sock clean dead streak=%u abort %d..%d",
+            APP_LOGD("NBIOT", "sock clean dead streak=%u abort %d..%d",
                      s_nbiotDetachNoRespStreak, sid + 1, APP_BC95_UDP_SOCKET_ID_MAX);
             otherFailCount += (uint32_t)(APP_BC95_UDP_SOCKET_ID_MAX - sid);
             break;
@@ -9666,8 +9653,7 @@ void App_Bc95AtCloseAllSockets(void)
         APP_WWDGFeed();
     }
 
-    APP_LOGI("NBIOT",
-             "sock clean c=%lu ac=%lu sf=%lu of=%lu",
+    APP_LOGD("NBIOT", "sock clean c=%lu ac=%lu sf=%lu of=%lu",
              (unsigned long)closedCount,
              (unsigned long)alreadyClosedCount,
              (unsigned long)sendFailCount,
@@ -9737,7 +9723,7 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     {
         usedCachedIp = APP_TRUE;
         result.usedCachedIp = APP_TRUE;
-        APP_LOGI("NBIOT", "DNS cache hit: %s -> %s", p_host, ipBuf);
+        APP_LOGD("NBIOT", "DNS cache hit: %s -> %s", p_host, ipBuf);
     }
     else
     {
@@ -9747,7 +9733,7 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
         result.dnsElapsedMs = dnsElapsedMs;
         if ((status != APP_STATUS_OK) || (ipBuf[0] == '\\0'))
         {
-            APP_LOGE("NBIOT", "DNS resolve failed for %s", p_host);
+            APP_LOGD("NBIOT", "DNS resolve failed for %s", p_host);
             if (p_result != NULL) (void)memcpy(p_result, &result, sizeof(*p_result));
             return (status != APP_STATUS_OK) ? status : APP_STATUS_FATAL;
         }
@@ -9768,7 +9754,7 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
         status = App_Bc95AtCreateUdpSocket(APP_BC95_UDP_LOCAL_PORT, &socketId);
         if (status == APP_STATUS_OK) break;
 
-        APP_LOGI("NBIOT", "NSOCR retry %lu/%lu (status=%d)",
+        APP_LOGD("NBIOT", "NSOCR retry %lu/%lu (status=%d)",
                  (unsigned long)attempt,
                  (unsigned long)APP_BC95_UDP_SEND_RETRY_MAX, (int)status);
         if (attempt < APP_BC95_UDP_SEND_RETRY_MAX)
@@ -9776,7 +9762,7 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     }
     if ((status != APP_STATUS_OK) || (socketId < 0))
     {
-        APP_LOGE("NBIOT", "UDP socket create failed");
+        APP_LOGD("NBIOT", "UDP socket create failed");
         if (p_result != NULL) (void)memcpy(p_result, &result, sizeof(*p_result));
         return (status != APP_STATUS_OK) ? status : APP_STATUS_FATAL;
     }
@@ -9804,11 +9790,11 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
         }
         if (status == APP_STATUS_INVALID_PARAM)
         {
-            APP_LOGE("NBIOT", "UDP send invalid param");
+            APP_LOGD("NBIOT", "UDP send invalid param");
             break;
         }
 
-        APP_LOGI("NBIOT", "UDP send retry %lu/%lu (status=%d)",
+        APP_LOGD("NBIOT", "UDP send retry %lu/%lu (status=%d)",
                  (unsigned long)attempt,
                  (unsigned long)APP_BC95_UDP_SEND_RETRY_MAX, (int)status);
         if (attempt < APP_BC95_UDP_SEND_RETRY_MAX)
@@ -9831,7 +9817,7 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
          * 꺼진 경우를 명시적으로 스킵한다. MGMT=FALSE/SERVICE=TRUE 설정에서
          * mgmt raw 경로는 ackWaitEnabled 기본값(FALSE)이라 여기로 진입해
          * "wait mgmt ACK" 대기 없이 즉시 통과된다(로그 한 줄로 증거 남김). */
-        APP_LOGW("NBIOT", "%s policy: skip %s ACK wait (compile-time path disabled)",
+        APP_LOGD("NBIOT", "%s policy: skip %s ACK wait (compile-time path disabled)",
                  p_logTag, (isMgmtPath != APP_FALSE) ? "mgmt" : "service");
     }
     else if ((status == APP_STATUS_OK) && (waitServerAck == APP_TRUE))
@@ -9842,17 +9828,17 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
                                  : (uint8_t)APP_POLICY_WAIT_SERVICE_ACK_ENABLE;
         if (ackPathEnabled != APP_TRUE)
         {
-            APP_LOGW("NBIOT", "%s policy: skip %s ACK wait (path disabled)", p_logTag, p_ackPath);
+            APP_LOGD("NBIOT", "%s policy: skip %s ACK wait (path disabled)", p_logTag, p_ackPath);
         }
         else
         {
-            APP_LOGI("NBIOT", "%s wait %s ACK timeout=%lu ms poll=%lu ms", p_logTag, p_ackPath, (unsigned long)ackTimeoutMs, (unsigned long)ackPollMs);
+            APP_LOGD("NBIOT", "%s wait %s ACK timeout=%lu ms poll=%lu ms", p_logTag, p_ackPath, (unsigned long)ackTimeoutMs, (unsigned long)ackPollMs);
             status = App_Bc95AtWaitUdpAck(socketId, ackTimeoutMs, ackPollMs);
         }
     }
     else if ((status == APP_STATUS_OK) && (waitServerAck != APP_TRUE))
     {
-        APP_LOGW("NBIOT", "%s policy: skip %s ACK wait (runtime disabled)",
+        APP_LOGD("NBIOT", "%s policy: skip %s ACK wait (runtime disabled)",
                  p_logTag, (isMgmtPath != APP_FALSE) ? "mgmt" : "service");
     }
 #endif
@@ -9864,12 +9850,12 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
     if (status == APP_STATUS_OK)
     {
         result.lastStage = APP_BC95_UDP_STAGE_DONE;
-        APP_LOGI("NBIOT", "UDP send done: %s:%u, %u bytes, seq=%u",
+        APP_LOGD("NBIOT", "UDP send done: %s:%u, %u bytes, seq=%u",
                  ipBuf, (unsigned)port, (unsigned)length, (unsigned)seq);
     }
     else
     {
-        APP_LOGE("NBIOT", "UDP send/ack failed (stage=%d, status=%d)",
+        APP_LOGD("NBIOT", "UDP send/ack failed (stage=%d, status=%d)",
                  (int)result.lastStage, (int)status);
     }
 
@@ -9928,7 +9914,7 @@ AppBc95AtStatus_t App_Bc95AtParseCclk(const char *p_resp, AppBc95Time_t *p_time)
 
     if (parsedFields < 6)
     {
-        APP_LOGE("NBIOT", "CCLK format error: [%s]", p_payload);
+        APP_LOGD("NBIOT", "CCLK format error: [%s]", p_payload);
         return APP_BC95_AT_ERR_FORMAT;
     }
 
@@ -9954,7 +9940,7 @@ AppBc95AtStatus_t App_Bc95AtParseCclk(const char *p_resp, AppBc95Time_t *p_time)
     /* 네트워크 시간을 못 받은 상태 거르기 */
     if ((uint16_t)(2000 + parsedYy) < APP_BC95_TIME_MIN_VALID_YEAR)
     {
-        APP_LOGI("NBIOT", "CCLK: network time not synced yet (year=20%02d)", parsedYy);
+        APP_LOGD("NBIOT", "CCLK: network time not synced yet (year=20%02d)", parsedYy);
         return APP_BC95_AT_ERR_NO_DATA;
     }
 
@@ -9992,7 +9978,7 @@ AppStatus_t App_Bc95AtFetchTime(AppBc95Time_t *p_time)
                                    APP_BC95_AT_RX_TIMEOUT_MS, &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "CCLK send fail (status=%d, rxLen=%u)",
+        APP_LOGD("NBIOT", "CCLK send fail (status=%d, rxLen=%u)",
                  (int)status, (unsigned)rxLen);
         return status;
     }
@@ -10010,7 +9996,7 @@ AppStatus_t App_Bc95AtFetchTime(AppBc95Time_t *p_time)
         return APP_STATUS_UART_TIMEOUT;
     }
 
-    APP_LOGE("NBIOT", "CCLK parse fail (atStatus=%s, raw=[%s])",
+    APP_LOGD("NBIOT", "CCLK parse fail (atStatus=%s, raw=[%s])",
              App_Bc95AtGetStatusString(atStatus), g_appBc95AtRxBuf);
     return APP_STATUS_FATAL;
 }
@@ -10028,7 +10014,7 @@ AppStatus_t App_Bc95AtFetchTimeWithRetry(AppBc95Time_t *p_time, uint32_t maxRetr
         if (st == APP_STATUS_OK) return APP_STATUS_OK;
         if (st == APP_STATUS_FATAL) return st;
 
-        APP_LOGI("NBIOT", "CCLK retry %lu/%lu (status=%d)",
+        APP_LOGD("NBIOT", "CCLK retry %lu/%lu (status=%d)",
                  (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)st);
         if (i < (maxRetry - 1u))
             App_Bc95AtDelayWithFeed(APP_BC95_TIME_SYNC_RETRY_DELAY_MS);
@@ -10053,7 +10039,7 @@ AppStatus_t App_Bc95AtEnableAutoTimezone(void)
                                    APP_BC95_AT_RX_TIMEOUT_MS, &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGI("NBIOT", "CTZU=1 send fail (status=%d) - ignored",
+        APP_LOGD("NBIOT", "CTZU=1 send fail (status=%d) - ignored",
                  (int)status);
         return status;
     }
@@ -10066,7 +10052,7 @@ AppStatus_t App_Bc95AtEnableAutoTimezone(void)
         return APP_STATUS_FATAL;
     }
 
-    APP_LOGI("NBIOT", "Auto-timezone (CTZU=1) enabled");
+    APP_LOGD("NBIOT", "Auto-timezone (CTZU=1) enabled");
     return APP_STATUS_OK;
 }
 
@@ -10178,7 +10164,7 @@ AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime)
     APP_RETURN_IF_FALSE((nbTime != NULL) && (nbTime->valid != 0u), APP_STATUS_INVALID_PARAM);
     APP_RETURN_IF_FALSE(nbTime->dateTime.year >= APP_BC95_TIME_MIN_VALID_YEAR, APP_STATUS_INVALID_PARAM);
 
-    APP_LOGI("NBIOT", "Get Module time: %04u-%02u-%02u %02u:%02u:%02u (TZ=%+d/15min)",
+    APP_LOGD("NBIOT", "Get Module time: %04u-%02u-%02u %02u:%02u:%02u (TZ=%+d/15min)",
              (unsigned)nbTime->dateTime.year, (unsigned)nbTime->dateTime.month, (unsigned)nbTime->dateTime.day,
              (unsigned)nbTime->dateTime.hour, (unsigned)nbTime->dateTime.minute, (unsigned)nbTime->dateTime.second,
              (int)nbTime->tzQuarterHour);
@@ -10188,12 +10174,12 @@ AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime)
     if(!IsUpdatedRTC())
     {
         /* 백업 도메인이 초기 상태 → 아직 유효 시각 없음 */
-        APP_LOGI("RTC", "INITS=0 (uninitialized) -> set from NBIoT");
+        APP_LOGD("RTC", "INITS=0 (uninitialized) -> set from NBIoT");
         needSet = 1u;
     }
     else if (RTC_GetTime(&rtcTime) != APP_STATUS_OK)
     {
-        APP_LOGW("RTC", "RTC read failed -> set from NBIoT");
+        APP_LOGD("RTC", "RTC read failed -> set from NBIoT");
         needSet = 1u;
     }
     else
@@ -10201,11 +10187,11 @@ AppStatus_t App_ClockSyncFromNbiot(const AppBc95Time_t *nbTime)
         diff = nbEpoch - App_DateTimeToEpoch(&rtcTime);
         if (diff < 0) { diff = -diff; }
 
-        APP_LOGI("RTC", "NBIoT vs RTC diff=%ld sec", (long)diff);
+        APP_LOGD("RTC", "NBIoT vs RTC diff=%ld sec", (long)diff);
 
         if (diff > (int64_t)APP_RTC_SYNC_THRESHOLD_SEC)
         {
-            APP_LOGI("RTC", "diff exceeds %d sec -> resync", APP_RTC_SYNC_THRESHOLD_SEC);
+            APP_LOGD("RTC", "diff exceeds %d sec -> resync", APP_RTC_SYNC_THRESHOLD_SEC);
             needSet = 1u;
         }
         else
@@ -10243,16 +10229,16 @@ AppStatus_t App_NBIoTSyncTime(void)
 {
     AppStatus_t status;
 
-    APP_LOGI("NBIOT", "Synchronizing time from network...");
+    APP_LOGD("NBIOT", "Synchronizing time from network...");
 
     status = App_Bc95AtSyncTimeToRtc();
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "Time sync failed (status=%d)", (int)status);
+        APP_LOGD("NBIOT", "Time sync failed (status=%d)", (int)status);
         return status;
     }
 
-    APP_LOGI("NBIOT", "Time sync done");
+    APP_LOGD("NBIOT", "Time sync done");
     return APP_STATUS_OK;
 }
 
@@ -10300,11 +10286,11 @@ AppStatus_t App_NBIoTAtInit(void)
      * 명시적으로 초기화해 태스크 컨텍스트에서 테이블을 구성한다. */
     App_DlAckInit();
 #ifdef NBIoT_SIMULATION_CODE
-    APP_LOGI("NBIOT", "Forcely err not initializedBC95 test..."); // NBIoT simulation test
+    APP_LOGD("NBIOT", "Forcely err not initializedBC95 test..."); // NBIoT simulation test
     g_appBc95AtInitialized = APP_FALSE;
 #endif // NBIoT_SIMULATION_CODE
 
-    APP_LOGI("NBIOT", "NBIoT Init");
+    APP_LOGD("NBIOT", "NBIoT Init");
 
     return APP_STATUS_OK;
 }
@@ -10317,7 +10303,7 @@ AppStatus_t App_NBIoTBringUp(void)
     status = App_Bc95AtWaitUntilReady(APP_BC95_BOOT_WAIT_BANNER_MS + 6000u);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "Module boot timeout");
+        APP_LOGD("NBIOT", "Module boot timeout");
         return status;
     }
 
@@ -10355,11 +10341,11 @@ AppStatus_t App_NBIoTBringUp(void)
     {
         if (g_appBc95UsimFatal == APP_TRUE)
         {
-            APP_LOGE("NBIOT", "Module service ready fatal");
+            APP_LOGD("NBIOT", "Module service ready fatal");
         }
         else
         {
-            APP_LOGE("NBIOT", "Module service ready fail (status=%d)", (int)status);
+            APP_LOGD("NBIOT", "Module service ready fail (status=%d)", (int)status);
         }
         return status;
     }
@@ -10375,7 +10361,7 @@ AppStatus_t App_NBIoTBringUp(void)
         return status;
     }
 
-    APP_LOGI("NBIOT", "Module ready");
+    APP_LOGD("NBIOT", "Module ready");
     return APP_STATUS_OK;
 }
 
@@ -10396,7 +10382,7 @@ AppStatus_t App_NBIoTBringUpWithReset(uint8_t maxResetRetry)
         st = App_NBIoTBringUp();
         if (st == APP_STATUS_OK) return APP_STATUS_OK;
 
-        APP_LOGE("NBIOT", "BringUp failed (%d), HW reset %u/%u",
+        APP_LOGD("NBIOT", "BringUp failed (%d), HW reset %u/%u",
                  (int)st, (unsigned)(i + 1u), (unsigned)maxResetRetry);
 
         App_HwNbiotPowerCycle();   /* weak default: no-op */
@@ -10414,7 +10400,7 @@ AppStatus_t App_NBIoTNetworkBringUp(void)
     status = App_Bc95AtWaitForNetwork(APP_BC95_NET_DEFAULT_TIMEOUT_MS, &netStatus);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "Network not ready (phase=%s)",
+        APP_LOGD("NBIOT", "Network not ready (phase=%s)",
                  App_Bc95AtGetNetPhaseString(netStatus.phase));
         return status;
     }
@@ -10429,7 +10415,7 @@ AppStatus_t App_NBIoTNetworkBringUp(void)
     (void)App_Bc95AtWarmupDns(WARMUPDNS_SERVER_DOMAIN);
 #endif // NBIOT_SUPPORT_DNS
 
-    APP_LOGI("NBIOT", "Network ready");
+    APP_LOGD("NBIOT", "Network ready");
     return APP_STATUS_OK;
 }
 
@@ -10489,7 +10475,7 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
 
         if (g_appBc95ForceSkipAttachBootWaitOnce == APP_TRUE)
         {
-            APP_LOGI("NBIOT", "[[Attach]] keep recent-NRB fast-path hint once for boottrack attach-verification");
+            APP_LOGN("NBIOT", "[[Attach]] keep recent-NRB fast-path hint once for boottrack attach-verification");
             g_appBc95ForceSkipAttachBootWaitOnce = APP_FALSE;
         }
         else
@@ -10515,16 +10501,14 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
                 (preAttachSignalDbm <= APP_BC95_PRE_ATTACH_SIGNAL_WEAK_DBM))
             {
                 preAttachNeedShortProbe = APP_TRUE;
-                APP_LOGW("NBIOT",
-                         "[PreAttach] weak signal power detected (%d dBm) -> short camp probe",
+                APP_LOGD("NBIOT", "[PreAttach] weak signal power detected (%d dBm) -> short camp probe",
                          (int)preAttachSignalDbm);
             }
             else if (status != APP_STATUS_OK)
             {
                 preAttachNeedShortProbe = APP_TRUE;
                 preAttachCsqRssiDbm = 0;
-                APP_LOGW("NBIOT",
-                         "[PreAttach] radio power unavailable -> short camp probe first");
+                APP_LOGD("NBIOT", "[PreAttach] radio power unavailable -> short camp probe first");
                 status = APP_STATUS_OK;
             }
 
@@ -10535,8 +10519,7 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
 
                 if (status == APP_STATUS_OK)
                 {
-                    APP_LOGI("NBIOT",
-                             "[PreAttach] short camp probe reached READY -> reuse result");
+                    APP_LOGD("NBIOT", "[PreAttach] short camp probe reached READY -> reuse result");
                     netStatus = probeNetStatus;
                     goto attach_finalize;
                 }
@@ -10570,13 +10553,11 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void)
                     g_appNbiotCarrierContext.lastNetStatus = probeNetStatus;
                     status = APP_STATUS_UART_TIMEOUT;
 
-                    APP_LOGW("NBIOT",
-                             "[PreAttach] early-abort this attempt -> skip long network wait and go recovery");
+                    APP_LOGD("NBIOT", "[PreAttach] early-abort this attempt -> skip long network wait and go recovery");
                     goto attach_finalize;
                 }
 
-                APP_LOGW("NBIOT",
-                         "[PreAttach] short probe inconclusive -> continue normal attach");
+                APP_LOGD("NBIOT", "[PreAttach] short probe inconclusive -> continue normal attach");
                 status = APP_STATUS_OK;
             }
 
@@ -10675,7 +10656,7 @@ AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo)
                                           APP_BC95_IMEI_FETCH_RETRY_MAX);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "IMEI fetch failed (status=%d)", (int)status);
+        APP_LOGD("NBIOT", "IMEI fetch failed (status=%d)", (int)status);
         return status;
     }
     App_Bc95PrintBcd("IMEI", appImeiBcd, (uint32_t)APP_BC95_IMEI_BCD_BYTES);
@@ -10685,7 +10666,7 @@ AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo)
                                           APP_BC95_IMSI_FETCH_RETRY_MAX);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "IMSI fetch failed (status=%d)", (int)status);
+        APP_LOGD("NBIOT", "IMSI fetch failed (status=%d)", (int)status);
         return status;
     }
     App_Bc95PrintBcd("IMSI", appImsiBcd, (uint32_t)APP_BC95_IMSI_BCD_BYTES);
@@ -10716,7 +10697,7 @@ AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo)
                                              APP_BC95_QUALITY_FETCH_RETRY_MAX);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGE("NBIOT", "Quality fetch failed (status=%d)", (int)status);
+        APP_LOGD("NBIOT", "Quality fetch failed (status=%d)", (int)status);
         return status;
     }
     App_NBIoTPrintQuality(&quality);
@@ -11178,7 +11159,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
         {
             if (p_liveRecord != NULL)
             {
-                APP_LOGN("NBIOT", "%s live meter record sent without storage (records=%u)",
+                APP_LOGD("NBIOT", "%s live meter record sent without storage (records=%u)",
                          p_logTag,
                          (unsigned int)buildResult.recordCount);
             }
@@ -11187,7 +11168,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                 AppStatus_t markStatus = App_MeterStorageMarkOldestUnsentSent(buildResult.recordCount);
                 if (markStatus != APP_STATUS_OK)
                 {
-                    APP_LOGE("NBIOT", "%s storage sent-mark failed (status=%ld, records=%u)",
+                    APP_LOGD("NBIOT", "%s storage sent-mark failed (status=%ld, records=%u)",
                              p_logTag,
                              (long)markStatus,
                              (unsigned int)buildResult.recordCount);
@@ -11209,7 +11190,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                     buildResult.cleared = (deletedCount != 0u) ? APP_TRUE : APP_FALSE;
                     if (deletedCount != 0u)
                     {
-                        APP_LOGN("NBIOT", "%s storage deleted (records=%u, remain=%u)",
+                        APP_LOGD("NBIOT", "%s storage deleted (records=%u, remain=%u)",
                                  p_logTag,
                                  (unsigned int)deletedCount,
                                  (unsigned int)App_MeterStorageCount());
@@ -11217,7 +11198,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                 }
                 else
                 {
-                    APP_LOGN("NBIOT", "%s storage marked sent (records=%u, remain=%u)",
+                    APP_LOGD("NBIOT", "%s storage marked sent (records=%u, remain=%u)",
                              p_logTag,
                              (unsigned int)buildResult.recordCount,
                              (unsigned int)App_MeterStorageCount());
@@ -11228,14 +11209,14 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
                 AppStatus_t clearStatus = App_MeterStorageDeleteOldest(buildResult.recordCount);
                 if (clearStatus != APP_STATUS_OK)
                 {
-                    APP_LOGE("NBIOT", "%s storage delete failed (status=%ld, records=%u)",
+                    APP_LOGD("NBIOT", "%s storage delete failed (status=%ld, records=%u)",
                              p_logTag,
                              (long)clearStatus,
                              (unsigned int)buildResult.recordCount);
                     return clearStatus;
                 }
                 buildResult.cleared = APP_TRUE;
-                APP_LOGN("NBIOT", "%s storage deleted (records=%u, remain=%u)",
+                APP_LOGD("NBIOT", "%s storage deleted (records=%u, remain=%u)",
                          p_logTag,
                          (unsigned int)buildResult.recordCount,
                          (unsigned int)App_MeterStorageCount());
@@ -11246,7 +11227,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
     {
         /* [SKIP-REASON 2026-11-09] build 실패(레코드 0건/옵션 미초기화) 시의 스킵.
          * 이 스킵은 전송 대상이 없는 정상 상태이므로 WARN 대신 status 표기로 통일. */
-        APP_LOGW("NBIOT", "%s skip send (status=%d)", p_logTag, (int)status);
+        APP_LOGD("NBIOT", "%s skip send (status=%d)", p_logTag, (int)status);
     }
 
     APP_LOGD("NBIOT", "%s build len=%u payload=%u rec=%u checksum=0x%02X cleared=%u delete=%u live=%u",
@@ -11261,7 +11242,7 @@ static AppStatus_t App_NBIoTTransmitUdpInternal(const char *p_logTag,
 
     if (status == APP_STATUS_OK)
     {
-        APP_LOGN("NBIOT", "%s SendResult: stage=%d, ip=%s, port=%u, sent=%u, seq=%u, confirmed=%u",
+        APP_LOGD("NBIOT", "%s SendResult: stage=%d, ip=%s, port=%u, sent=%u, seq=%u, confirmed=%u",
                  p_logTag,
                  (int)sendResult.lastStage,
                  sendResult.resolvedIp,

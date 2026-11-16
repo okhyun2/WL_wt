@@ -303,8 +303,7 @@ void wakeup_process_all_pending(void)
     uint32_t unhandled = pending_flags & ~g_wakeup_ctx.processed_flags;
     if (unhandled)
     {
-        APP_LOGE("LP",
-                 "Wake unhandled flags=0x%08lX(%s)",
+        APP_LOGD("LP", "Wake unhandled flags=0x%08lX(%s)",
                  (unsigned long)unhandled,
                  App_SystemBuildWakeupFlagString(unhandled));
         /* 예상치 못한 wakeup 소스 처리 또는 오류 처리 */
@@ -528,7 +527,7 @@ static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
         wakeupSeconds = 1u;
     }
 
-    APP_LOGW("RTC", "[TEST3] force WUT=%lus (no uid/jitter)",
+    APP_LOGD("RTC", "[TEST3] force WUT=%lus (no uid/jitter)",
              (unsigned long)wakeupSeconds);
 
     return App_SystemRtcConfigureWakeupTimerSeconds(wakeupSeconds, pWakeupSeconds);
@@ -550,7 +549,7 @@ static AppStatus_t App_SystemRtcConfigureWakeupTimer(uint32_t *pWakeupSeconds)
         wakeupSeconds += fixedOffset;
         s_deviceOffsetApplied = APP_TRUE;
 
-        APP_LOGI("LP", "RTC WUT initial device offset applied: %lu sec (uidHash=0x%08lX)",
+        APP_LOGD("LP", "RTC WUT initial device offset applied: %lu sec (uidHash=0x%08lX)",
                  (unsigned long)fixedOffset, (unsigned long)deviceHash);
     }
 
@@ -654,7 +653,7 @@ static AppStatus_t App_SystemRtcConfigureAlarmInternal(const AppDateTime_t *p_du
     APP_RETURN_IF_FALSE(HAL_RTC_SetAlarm_IT(&hrtc, &alarm, RTC_FORMAT_BIN) == HAL_OK,
                         APP_STATUS_INIT_FAILED);
 
-    APP_LOGN("RTC", "%s set %04u-%02u-%02u %02u:%02u:%02u",
+    APP_LOGD("RTC", "%s set %04u-%02u-%02u %02u:%02u:%02u",
              p_label,
              (unsigned int)p_dueTime->year,
              (unsigned int)p_dueTime->month,
@@ -914,32 +913,32 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     g_appSystemContext.logReady = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_LOG_READY;
 
-    APP_LOGN("SYS", "Boot: %s v%s", APP_NAME_STRING, App_SystemGetVersionString());
-    APP_LOGI("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu",
+    APP_LOGD("SYS", "Boot: %s v%s", APP_NAME_STRING, App_SystemGetVersionString());
+    APP_LOGD("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu",
              (unsigned long)p_clockContext->sysclkHz,
              (unsigned long)p_clockContext->hclkHz,
              (unsigned long)p_clockContext->pclk1Hz,
              (unsigned long)p_clockContext->pclk2Hz,
              (unsigned long)p_clockContext->msiRange);
 
-    APP_LOGN("CLK", "RTC src boot=%s now=%s LSERDY=%u CSR=0x%08lX",
+    APP_LOGD("CLK", "RTC src boot=%s now=%s LSERDY=%u CSR=0x%08lX",
              App_ClockRtcSourceToString(p_clockContext->rtcSourceAtBoot),
              App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()),
              (unsigned int)p_clockContext->lseReady,
              (unsigned long)RCC->CSR);
-    APP_LOGN("SYS", "Device UID hash=0x%08lX", (unsigned long)App_ClockGetDeviceUidHash());
-    APP_LOGI("GPIO", "LP policy ready: SWD=%lu",
+    APP_LOGD("SYS", "Device UID hash=0x%08lX", (unsigned long)App_ClockGetDeviceUidHash());
+    APP_LOGD("GPIO", "LP policy ready: SWD=%lu",
                                  (unsigned long)g_appGpioLpConfig.swdPolicy);
-    APP_LOGI("RTC", "STOP wake period=%lu ms (%s)",
+    APP_LOGD("RTC", "STOP wake period=%lu ms (%s)",
                                  (unsigned long)APP_RTC_WAKEUP_PERIOD_MS,
                                  (APP_RTC_WAKEUP_PERIOD_MS == 0) ? "Don't work stop" : "LSE" " rtc wakeup");
-    APP_LOGI("DBG", "USART1 dbg %lu baud",
+    APP_LOGD("DBG", "USART1 dbg %lu baud",
                                  (unsigned long)APP_UART_DEBUG_HANDLE->Init.BaudRate);
-    APP_LOGI("METER", "USART2 meter %lu baud",
+    APP_LOGD("METER", "USART2 meter %lu baud",
                                  (unsigned long)APP_UART_METER_HANDLE->Init.BaudRate);
-    APP_LOGI("NBIoT", "LPUART1 nbiot %lu baud",
+    APP_LOGD("NBIoT", "LPUART1 nbiot %lu baud",
                                  (unsigned long)APP_UART_NBIOT_HANDLE->Init.BaudRate);
-    APP_LOGI("NFC", "I2C2 nfc %sKHz",
+    APP_LOGD("NFC", "I2C2 nfc %sKHz",
                                  (((unsigned long)APP_I2C_NFC_HANDLE->Init.Timing == 0x00000708)?"100":"unknown"));
 
     return APP_STATUS_OK;
@@ -950,7 +949,7 @@ AppStatus_t App_SystemRunBootSelfTest(void)
 {
     AppStatus_t status;
 
-    APP_LOGI("SELF", "######################## run selftest");
+    APP_LOGD("SELF", "######################## run selftest");
 
     status = App_SelfTestInit();
     if (status != APP_STATUS_OK)
@@ -967,11 +966,11 @@ AppStatus_t App_SystemRunBootSelfTest(void)
 
     if (status == APP_STATUS_OK)
     {
-        APP_LOGI("SELF", "------ Boot self-test finished without failures");
+        APP_LOGD("SELF", "------ Boot self-test finished without failures");
         return APP_STATUS_OK;
     }
 
-    APP_LOGW("SELF", "!!!!!! Boot self-test completed with one or more failures");
+    APP_LOGD("SELF", "!!!!!! Boot self-test completed with one or more failures");
 
     if (APP_SELFTEST_FAIL_STOPS_BOOT == APP_TRUE)
     {
@@ -987,7 +986,7 @@ AppStatus_t App_SystemRunWakeDataCollection(void)
 #if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
     AppStatus_t status;
 
-    APP_LOGI("SELF", "######################## run wake data collection");
+    APP_LOGD("SELF", "######################## run wake data collection");
 
     status = App_SelfTestInit();
     if (status != APP_STATUS_OK)
@@ -1000,7 +999,7 @@ AppStatus_t App_SystemRunWakeDataCollection(void)
 
     if (status == APP_STATUS_OK)
     {
-        APP_LOGI("SELF", "------ Wake data collection finished without failures");
+        APP_LOGD("SELF", "------ Wake data collection finished without failures");
         // Confirm Buzzer
         {
             uint8_t index;
@@ -1016,7 +1015,7 @@ AppStatus_t App_SystemRunWakeDataCollection(void)
         return APP_STATUS_OK;
     }
 
-    APP_LOGW("SELF", "!!!!!! Wake data collection completed with one or more failures");
+    APP_LOGD("SELF", "!!!!!! Wake data collection completed with one or more failures");
     // Confirm Buzzer
     {
         uint8_t index;
@@ -1059,7 +1058,7 @@ static AppStatus_t App_SystemInitFsm(void)
     g_appSystemContext.fsmStatus = APP_STATUS_OK;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_FSM_READY;
 
-    APP_LOGI("FSM", "FSM q=%u st=%s",
+    APP_LOGD("FSM", "FSM q=%u st=%s",
              (unsigned int)APP_MSGQ_CAPACITY,
              App_FsmGetCurrentStateString());
 
@@ -1159,18 +1158,18 @@ uint8_t App_SystemPrepareNfcStandbyForStop(void)
     if (g_nfcTagHandle.state == NFC_STATE_UNINITIALIZED ||
         g_nfcTagHandle.state == NFC_STATE_ERROR)
     {
-        APP_LOGW("NFC", "Skip standby prepare: state=%u", (unsigned int)g_nfcTagHandle.state);
+        APP_LOGD("NFC", "Skip standby prepare: state=%u", (unsigned int)g_nfcTagHandle.state);
         return APP_SYSTEM_NFC_STANDBY_PREP_NONE;
     }
 
     nfcRet = NFC_NTP53321_EnterStandby(&g_nfcTagHandle);
     if (nfcRet == NFC_RESULT_OK)
     {
-        APP_LOGI("NFC", "NTP53321 standby entered before MCU STOP");
+        APP_LOGD("NFC", "NTP53321 standby entered before MCU STOP");
         return APP_SYSTEM_NFC_STANDBY_PREP_ENTERED;
     }
 
-    APP_LOGW("NFC", "NTP53321 standby enter failed before MCU STOP ret=%d", (int)nfcRet);
+    APP_LOGD("NFC", "NTP53321 standby enter failed before MCU STOP ret=%d", (int)nfcRet);
 #endif
     return APP_SYSTEM_NFC_STANDBY_PREP_NONE;
 }
@@ -1197,11 +1196,11 @@ static void App_SystemRecoverNfcAfterWake(uint8_t standbyPrepareState)
         NFC_Result_t nfcRet = NFC_NTP53321_ExitStandby(&g_nfcTagHandle);
         if (nfcRet != NFC_RESULT_OK)
         {
-            APP_LOGW("NFC", "ExitStandby after wake failed ret=%d", (int)nfcRet);
+            APP_LOGD("NFC", "ExitStandby after wake failed ret=%d", (int)nfcRet);
         }
         else
         {
-            APP_LOGI("NFC", "NTP53321 exited standby after wake");
+            APP_LOGD("NFC", "NTP53321 exited standby after wake");
         }
         return;
     }
@@ -1218,7 +1217,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
     uint8_t standbyPrepareState = APP_SYSTEM_NFC_STANDBY_PREP_NONE;
     AppStatus_t adcRestoreStatus;
 	
-    APP_LOGN("LP", "Enter STOP mode%s rtcClockSource=%s (RCC->CSR=0x%08lX)",
+    APP_LOGD("LP", "Enter STOP mode%s rtcClockSource=%s (RCC->CSR=0x%08lX)",
              (g_appSystemContext.stopNoWakeRequested == APP_TRUE) ? " (fatal/no-wake)" : "",
              App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()),
              (unsigned long)RCC->CSR);
@@ -1230,10 +1229,10 @@ static AppStatus_t App_SystemEnterStopMode(void)
         App_SystemRtcDisableWakeupTimer();
     #if 0 //TODO delete
         g_appSystemContext.oldWakeSourceMask &= ~(APP_SYSTEM_WAKE_SRC_RTC | APP_SYSTEM_WAKE_SRC_LPTIM);
-        APP_LOGW("LP", "fatal no-wake STOP: periodic RTC/LPTIM wake disabled");
+        APP_LOGD("LP", "fatal no-wake STOP: periodic RTC/LPTIM wake disabled");
     #endif
         g_appSystemContext.oldWakeSourceMask &= ~(APP_SYSTEM_WAKE_SRC_RTC);
-        APP_LOGW("RTC", "fatal no-wake STOP: periodic RTC wake disabled");
+        APP_LOGD("RTC", "fatal no-wake STOP: periodic RTC wake disabled");
     }
     else if( (g_appSystemContext.oldWakeSourceMask == APP_SYSTEM_WAKE_SRC_NONE) ||
              (g_appSystemContext.oldWakeSourceMask & APP_SYSTEM_WAKE_SRC_RTC) )
@@ -1254,14 +1253,14 @@ static AppStatus_t App_SystemEnterStopMode(void)
         alarmAStatus = App_SystemRtcConfigureAlarmAForMetering(&alarmAConfigured, &alarmADue);
         if ((alarmAStatus != APP_STATUS_OK) && (alarmAStatus != APP_STATUS_NOT_INITIALIZED))
         {
-            APP_LOGW("LP", "AlarmA cfg fail st=%ld", (long)alarmAStatus);
+            APP_LOGD("LP", "AlarmA cfg fail st=%ld", (long)alarmAStatus);
             alarmAConfigured = APP_FALSE;
         }
 
         alarmBStatus = App_SystemRtcConfigureAlarmBForReporting(&alarmBConfigured, &alarmBDue);
         if ((alarmBStatus != APP_STATUS_OK) && (alarmBStatus != APP_STATUS_NOT_INITIALIZED))
         {
-            APP_LOGW("LP", "AlarmB cfg fail st=%ld", (long)alarmBStatus);
+            APP_LOGD("LP", "AlarmB cfg fail st=%ld", (long)alarmBStatus);
             alarmBConfigured = APP_FALSE;
         }
 
@@ -1286,8 +1285,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
                        ((uint32_t)alarmBDue.minute * 60u) +
                        (uint32_t)alarmBDue.second;
 
-                APP_LOGI("RTC",
-                         "[[SleepSchedule]] now=%02u:%02u:%02u | next wake AlarmA(meter)=%02u:%02u:%02u (+%lus, %s) | AlarmB(tx)=%02u:%02u:%02u (+%lus, %s)",
+                APP_LOGD("RTC", "[[SleepSchedule]] now=%02u:%02u:%02u | next wake AlarmA(meter)=%02u:%02u:%02u (+%lus, %s) | AlarmB(tx)=%02u:%02u:%02u (+%lus, %s)",
                          (unsigned)now.hour, (unsigned)now.minute, (unsigned)now.second,
                          (unsigned)alarmADue.hour, (unsigned)alarmADue.minute, (unsigned)alarmADue.second,
                          (unsigned long)((aSec > nowSec) ? (aSec - nowSec) : ((86400u + aSec) - nowSec)),
@@ -1305,14 +1303,14 @@ static AppStatus_t App_SystemEnterStopMode(void)
             {
                 forcedShortConfigured = APP_TRUE;
                 g_appSystemContext.forcedRtcWakeupSeconds = 0u;
-                APP_LOGI("RTC", "STOP short WUT=%lus A=%u B=%u",
+                APP_LOGD("RTC", "STOP short WUT=%lus A=%u B=%u",
                          (unsigned long)wakeupSeconds,
                          (unsigned int)alarmAConfigured,
                          (unsigned int)alarmBConfigured);
             }
             else
             {
-                APP_LOGW("RTC", "short WUT cfg fail st=%ld", (long)status);
+                APP_LOGD("RTC", "short WUT cfg fail st=%ld", (long)status);
                 allowPeriodicFallback = APP_TRUE;
             }
         }
@@ -1333,20 +1331,20 @@ static AppStatus_t App_SystemEnterStopMode(void)
             (forcedShortConfigured != APP_TRUE))
         {
             App_SystemRtcDisableWakeupTimer();
-            APP_LOGI("RTC", "STOP alarms A=%u B=%u WUT=off",
+            APP_LOGD("RTC", "STOP alarms A=%u B=%u WUT=off",
                      (unsigned int)alarmAConfigured,
                      (unsigned int)alarmBConfigured);
         }
         else if ((alarmAConfigured == APP_TRUE) || (alarmBConfigured == APP_TRUE))
         {
-            APP_LOGI("RTC", "STOP alarms A=%u B=%u shortWUT=%lus",
+            APP_LOGD("RTC", "STOP alarms A=%u B=%u shortWUT=%lus",
                      (unsigned int)alarmAConfigured,
                      (unsigned int)alarmBConfigured,
                      (unsigned long)wakeupSeconds);
         }
         else if (forcedShortConfigured == APP_TRUE)
         {
-            APP_LOGI("RTC", "STOP shortWUT only=%lus", (unsigned long)wakeupSeconds);
+            APP_LOGD("RTC", "STOP shortWUT only=%lus", (unsigned long)wakeupSeconds);
         }
         else if (allowPeriodicFallback == APP_TRUE)
         {
@@ -1354,16 +1352,16 @@ static AppStatus_t App_SystemEnterStopMode(void)
             status = App_SystemRtcConfigureWakeupTimer(&wakeupSeconds);
             if (status != APP_STATUS_OK)
             {
-                APP_LOGE("LP", "RtcConfigureWakeupTimer");
+                APP_LOGD("LP", "RtcConfigureWakeupTimer");
                 return status;
             }
 
-            APP_LOGI("RTC", "STOP periodic fallback:%ds", wakeupSeconds);
+            APP_LOGD("RTC", "STOP periodic fallback:%ds", wakeupSeconds);
         }
         else
         {
             App_SystemRtcDisableWakeupTimer();
-            APP_LOGW("RTC", "No AlarmA/B configured and periodic fallback suppressed");
+            APP_LOGD("RTC", "No AlarmA/B configured and periodic fallback suppressed");
         }
     }
     #if 0 //TODO delete
@@ -1376,7 +1374,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
         fTemp = (((APP_SYSTEM_LPTIM1_ARR+1) * lptim1_prescaler)/32768) + 0.5;
         wakeupSeconds = (uint32_t)fTemp;
         g_appSystemContext.oldWakeSourceMask &= ~APP_SYSTEM_WAKE_SRC_LPTIM;
-        APP_LOGI("LPTIM", "STOP periodic:%ds", wakeupSeconds);
+        APP_LOGD("LPTIM", "STOP periodic:%ds", wakeupSeconds);
     }
     #endif
 
@@ -1386,7 +1384,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
     if (status != APP_STATUS_OK)
     {
         App_SystemRollbackNfcStandbyIfNeeded(standbyPrepareState);
-        APP_LOGE("LP", "systemPrepareForStop");
+        APP_LOGD("LP", "systemPrepareForStop");
         return status;
     }
 
@@ -1419,11 +1417,11 @@ static AppStatus_t App_SystemEnterStopMode(void)
 	adcRestoreStatus = App_SystemRestoreAdcAfterWakeFromStop();
     if (adcRestoreStatus != APP_STATUS_OK)
     {
-        APP_LOGE("LP", "ADC restore after STOP dry-run failed: status=%lu", (unsigned long)adcRestoreStatus);
+        APP_LOGD("LP", "ADC restore after STOP dry-run failed: status=%lu", (unsigned long)adcRestoreStatus);
         return adcRestoreStatus;
     }
     // this don't print because stopped external interface.
-    APP_LOGW("LP", "STOP dry-run only: candidate=%lu dryrun=%lu wake=%s",
+    APP_LOGD("LP", "STOP dry-run only: candidate=%lu dryrun=%lu wake=%s",
              (unsigned long)g_appSystemContext.stopCandidateCount,
              (unsigned long)g_appSystemContext.stopDryRunCount,
              App_SystemGetWakeSourceString());
@@ -1480,13 +1478,13 @@ static AppStatus_t App_SystemEnterStopMode(void)
     adcRestoreStatus = App_SystemRestoreAdcAfterWakeFromStop();
     if (adcRestoreStatus != APP_STATUS_OK)
     {
-        APP_LOGE("LP", "ADC restore after STOP wake failed: status=%lu", (unsigned long)adcRestoreStatus);
+        APP_LOGD("LP", "ADC restore after STOP wake failed: status=%lu", (unsigned long)adcRestoreStatus);
         return adcRestoreStatus;
     }
 
     if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
     {
-        APP_LOGW("LP", "fatal no-wake STOP woke unexpectedly -> re-enter STOP");
+        APP_LOGD("LP", "fatal no-wake STOP woke unexpectedly -> re-enter STOP");
         g_appSystemContext.stopRequested = APP_TRUE;
         g_appSystemContext.stopQualificationCount = APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT;
         return APP_STATUS_OK;
@@ -1515,7 +1513,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
 
     g_appSystemContext.stopEntryCount++;
 
-    APP_LOGN("LP", "STOP exit wake=%s, mask=%x count=%lu tick=%lu",
+    APP_LOGD("LP", "STOP exit wake=%s, mask=%x count=%lu tick=%lu",
              App_SystemGetWakeSourceString(),
              g_appSystemContext.wakeSourceMask,
              (unsigned long)g_appSystemContext.stopEntryCount,
@@ -1553,8 +1551,7 @@ static void App_SystemHandleIdle(void)
 
         if (g_appSystemContext.stopQualificationCount >= APP_LP_STOP_MIN_IDLE_QUALIFY_COUNT)
         {
-            APP_LOGW("LP",
-                     "STOP go stop=%u nw=%u q=%u dec=%s idle=%lu disp=%lu",
+            APP_LOGD("LP", "STOP go stop=%u nw=%u q=%u dec=%s idle=%lu disp=%lu",
                      (unsigned int)g_appSystemContext.stopRequested,
                      (unsigned int)g_appSystemContext.stopNoWakeRequested,
                      (unsigned int)g_appSystemContext.stopQualificationCount,
@@ -1570,7 +1567,7 @@ static void App_SystemHandleIdle(void)
             {
                 g_appSystemContext.fsmStatus = status;
                 App_ErrorRecord(status, __FILE__, __LINE__);
-                APP_LOGE("LP", "STOP entry/exit failed: status=%lu", (unsigned long)status);
+                APP_LOGD("LP", "STOP entry/exit failed: status=%lu", (unsigned long)status);
             }
             return;
         }
@@ -1606,7 +1603,7 @@ void App_SystemHandleLptim1AutoReloadMatchCallback(void)
 {
     if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
     {
-        APP_LOGW("LP", "Ignore LPTIM wake in fatal no-wake STOP");
+        APP_LOGD("LP", "Ignore LPTIM wake in fatal no-wake STOP");
         return;
     }
 
@@ -1626,7 +1623,7 @@ void App_SystemHandleRtcCallBack(void)
 {
     if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
     {
-        APP_LOGW("LP", "Ignore RTC wake in fatal no-wake STOP");
+        APP_LOGD("LP", "Ignore RTC wake in fatal no-wake STOP");
         return;
     }
 
@@ -1647,7 +1644,7 @@ void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
 {
     if (g_appSystemContext.stopNoWakeRequested == APP_TRUE)
     {
-        APP_LOGW("LP", "Ignore EXTI wake pinmask=0x%04X in fatal no-wake STOP", (unsigned int)GPIO_Pin);
+        APP_LOGD("LP", "Ignore EXTI wake pinmask=0x%04X in fatal no-wake STOP", (unsigned int)GPIO_Pin);
         return;
     }
 
@@ -1665,7 +1662,7 @@ void App_SystemHandleExtiCallBack(uint16_t GPIO_Pin)
             break;
 
         default:
-            APP_LOGW("LP", "Unhandled EXTI wake pinmask=0x%04X", (unsigned int)GPIO_Pin);
+            APP_LOGD("LP", "Unhandled EXTI wake pinmask=0x%04X", (unsigned int)GPIO_Pin);
             break;
     }
 }
@@ -1736,7 +1733,7 @@ AppStatus_t App_SystemInit(void)
     status = App_DebugConsoleInit();
     if (status != APP_STATUS_OK)
     {
-        APP_LOGW("SYS", "debug console init skipped status=%d", (int)status);
+        APP_LOGD("SYS", "debug console init skipped status=%d", (int)status);
     }
     else
     {
@@ -1775,12 +1772,12 @@ AppStatus_t App_SystemInit(void)
     status = App_SelfTestInit();
     if (status != APP_STATUS_OK)
     {
-        APP_LOGW("SELF", "boot pre-init fail st=%lu", (unsigned long)status);
+        APP_LOGD("SELF", "boot pre-init fail st=%lu", (unsigned long)status);
         /* self-test 초기화 실패는 부팅 중단 사유로 보지 않고 계속 진행 */
     }
     else
     {
-        APP_LOGI("SELF", "self ctx pre-init @boot");
+        APP_LOGD("SELF", "self ctx pre-init @boot");
     }
 #endif
 
@@ -1794,7 +1791,7 @@ AppStatus_t App_SystemInit(void)
     g_appSystemContext.initialized = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_APP_READY;
 
-    APP_LOGI("SYS", "init attach/selftest/report -> FSM");
+    APP_LOGD("SYS", "init attach/selftest/report -> FSM");
 
     APP_LOGD("SYS", "Application ready: boot=%lu/%lu stop_req=%u",
                                  (unsigned long)g_appSystemContext.bootStage,
@@ -1826,7 +1823,7 @@ void App_SystemProcess(void)
     if (status != APP_STATUS_OK)
     {
         App_ErrorRecord(status, __FILE__, __LINE__);
-        APP_LOGE("SYS", "FSM run failed: status=%lu", (unsigned long)status);
+        APP_LOGD("SYS", "FSM run failed: status=%lu", (unsigned long)status);
     }
 
     p_fsmSummary = App_FsmGetSummary();
@@ -1939,8 +1936,7 @@ AppStatus_t App_SystemRequestLowPowerNoWake(uint8_t allowStopNoWake)
 {
     APP_RETURN_IF_FALSE((allowStopNoWake == APP_FALSE) || (allowStopNoWake == APP_TRUE), APP_STATUS_INVALID_PARAM);
 
-    APP_LOGW("LP",
-             "STOP no-wake new=%u before=%u",
+    APP_LOGD("LP", "STOP no-wake new=%u before=%u",
              (unsigned int)allowStopNoWake,
              (unsigned int)g_appSystemContext.stopRequested);
 
@@ -1990,57 +1986,57 @@ void Get_BootInfo(AppBootInfo_t *pBootInfo)
 
 static void Print_BootInfo(AppBootInfo_t *pBootInfo)
 {
-    APP_LOGI("BOOT", "=== Boot info ===");
+    APP_LOGD("BOOT", "=== Boot info ===");
 
     /* --- 리셋 원인 표시 --- */
-    APP_LOGI("BOOT", "reset_flags=0x%08lX",
+    APP_LOGD("BOOT", "reset_flags=0x%08lX",
            (unsigned long)pBootInfo->reset_flags);
 
     if (pBootInfo->reset_flags & RCC_CSR_LPWRRSTF)
-        APP_LOGI("BOOT", " LPWR");
+        APP_LOGD("BOOT", " LPWR");
     if (pBootInfo->reset_flags & RCC_CSR_WWDGRSTF)
-        APP_LOGI("BOOT", " WWDG");
+        APP_LOGD("BOOT", " WWDG");
     if (pBootInfo->reset_flags & RCC_CSR_IWDGRSTF)
-        APP_LOGI("BOOT", " IWDG");
+        APP_LOGD("BOOT", " IWDG");
     if (pBootInfo->reset_flags & RCC_CSR_SFTRSTF)
-        APP_LOGI("BOOT", " SFT");
+        APP_LOGD("BOOT", " SFT");
     if (pBootInfo->reset_flags & RCC_CSR_PORRSTF)
-        APP_LOGI("BOOT", " POR/PDR");
+        APP_LOGD("BOOT", " POR/PDR");
     if (pBootInfo->reset_flags & RCC_CSR_PINRSTF)
-        APP_LOGI("BOOT", " NRST");
+        APP_LOGD("BOOT", " NRST");
     if (pBootInfo->reset_flags & RCC_CSR_OBLRSTF)
-        APP_LOGI("BOOT", " OBL");
+        APP_LOGD("BOOT", " OBL");
 
     /* --- 백업 레지스터 내용 표시 --- */
-    APP_LOGI("BOOT", "backup");
-    APP_LOGI("BOOT", "  BKP0R = 0x%08lX", (unsigned long)pBootInfo->bkp0);
-    APP_LOGI("BOOT", "  BKP1R = 0x%08lX", (unsigned long)pBootInfo->bkp1);
-    APP_LOGI("BOOT", "  BKP2R = 0x%08lX", (unsigned long)pBootInfo->bkp2);
-    APP_LOGI("BOOT", "  BKP3R = 0x%08lX", (unsigned long)pBootInfo->bkp3);
-    APP_LOGI("BOOT", "  BKP4R = 0x%08lX", (unsigned long)pBootInfo->bkp4);
+    APP_LOGD("BOOT", "backup");
+    APP_LOGD("BOOT", "  BKP0R = 0x%08lX", (unsigned long)pBootInfo->bkp0);
+    APP_LOGD("BOOT", "  BKP1R = 0x%08lX", (unsigned long)pBootInfo->bkp1);
+    APP_LOGD("BOOT", "  BKP2R = 0x%08lX", (unsigned long)pBootInfo->bkp2);
+    APP_LOGD("BOOT", "  BKP3R = 0x%08lX", (unsigned long)pBootInfo->bkp3);
+    APP_LOGD("BOOT", "  BKP4R = 0x%08lX", (unsigned long)pBootInfo->bkp4);
 
     /* BKP0R 의미 해석 */
     if(pBootInfo->bkp0 == WWDG_RESET_MAGIC)
     {
-        APP_LOGI("BOOT", "  -> WWDG abnormal");
+        APP_LOGD("BOOT", "  -> WWDG abnormal");
     }
     else if(pBootInfo->bkp0 == NORMAL_BOOT_MAGIC)
     {
-        APP_LOGI("BOOT", "  -> prev normal");
+        APP_LOGD("BOOT", "  -> prev normal");
     }
     else if(pBootInfo->bkp0 == 0)
     {
         if((pBootInfo->bkp1 == 0) && (pBootInfo->bkp2 != EXT_WATCHDOG_TEST_ARM_MAGIC))
         {
-            APP_LOGI("BOOT", "  -> BKP clr");
+            APP_LOGD("BOOT", "  -> BKP clr");
         }
     }
     else
     {
-        APP_LOGI("BOOT", "  -> unknown");
+        APP_LOGD("BOOT", "  -> unknown");
     }
 
-    APP_LOGI("BOOT", "  BKP1R = 0x%08lX  emergency",
+    APP_LOGD("BOOT", "  BKP1R = 0x%08lX  emergency",
            (unsigned long)pBootInfo->bkp1);
 
     /* 외부 워치독(EWDT) 리셋 판별.
@@ -2053,13 +2049,13 @@ static void Print_BootInfo(AppBootInfo_t *pBootInfo)
         ((pBootInfo->reset_flags & RCC_CSR_PINRSTF) != 0u) &&
         (pBootInfo->bkp2 == EXT_WATCHDOG_TEST_ARM_MAGIC))
     {
-        APP_LOGI("BOOT", "EWDT reset confirmed");
+        APP_LOGD("BOOT", "EWDT reset confirmed");
         g_appSystemContext.bootResetCause = APP_BOOT_RESET_EXT_WATCHDOG_CONFIRMED;
     }
     else if (((pBootInfo->reset_flags & RCC_CSR_PORRSTF) == 0u) &&
              ((pBootInfo->reset_flags & RCC_CSR_PINRSTF) != 0u))
     {
-        APP_LOGI("BOOT", "NRST-only reset");
+        APP_LOGD("BOOT", "NRST-only reset");
         g_appSystemContext.bootResetCause = APP_BOOT_RESET_NRST_UNKNOWN;
     }
     else if ((pBootInfo->reset_flags & RCC_CSR_PORRSTF) != 0u)
@@ -2075,19 +2071,19 @@ static void Print_BootInfo(AppBootInfo_t *pBootInfo)
     if ((pBootInfo->reset_flags & RCC_CSR_WWDGRSTF) &&
         (pBootInfo->bkp0 == WWDG_RESET_MAGIC))
     {
-        APP_LOGI("BOOT", "[WWDG Diagnosis]");
-        APP_LOGI("BOOT", "  EWI emergency handler executed successfully.");
-        APP_LOGI("BOOT", "  Last status code: 0x%08lX",
+        APP_LOGD("BOOT", "[WWDG Diagnosis]");
+        APP_LOGD("BOOT", "  EWI emergency handler executed successfully.");
+        APP_LOGD("BOOT", "  Last status code: 0x%08lX",
                (unsigned long)pBootInfo->bkp1);
     }
     else if (pBootInfo->reset_flags & RCC_CSR_WWDGRSTF)
     {
-        APP_LOGI("BOOT", "[WWDG Diagnosis]");
-        APP_LOGI("BOOT", "  WWDG reset occurred, but no EWI handler trace found.");
-        APP_LOGI("BOOT", "  --> EWI was disabled or reset occurred before callback.");
+        APP_LOGD("BOOT", "[WWDG Diagnosis]");
+        APP_LOGD("BOOT", "  WWDG reset occurred, but no EWI handler trace found.");
+        APP_LOGD("BOOT", "  --> EWI was disabled or reset occurred before callback.");
     }
 
-    APP_LOGI("BOOT", "========================================");
+    APP_LOGD("BOOT", "========================================");
 
     #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && \
         (APP_EPC_ACTIVE_TEST_ID == 3u) && (APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED == APP_TRUE)

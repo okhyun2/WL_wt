@@ -99,8 +99,7 @@ void App_CommOnPreAttachAbort(const AppBc95Quality_t *p_quality,
     App_CommSuccessUpdate(0u, APP_TRUE);
     App_CommParamRecompose();
 
-    APP_LOGW("COMM",
-             "pre-attach abort applied: csq=%d noCell=%u signal=%s success=%s cost=%u extremeWeak=%u abort=%u",
+    APP_LOGD("COMM", "pre-attach abort applied: csq=%d noCell=%u signal=%s success=%s cost=%u extremeWeak=%u abort=%u",
              (int)csqRssiDbm,
              (unsigned)noCellAfterProbe,
              (g_appCommSignalState == APP_COMM_SIGNAL_WEAK) ? "WEAK" : "STRONG",
@@ -322,7 +321,7 @@ void App_CommSignalMeasureAndUpdate(const AppBc95Quality_t *p_quality)
     {
         g_appCommExtremeWeakLatched = APP_FALSE;
     }
-    APP_LOGN("COMM", "signal state %s -> %s (RSSI=%d RSRP=%d SNR=%d cost=%u extremeWeak=%u)",
+    APP_LOGD("COMM", "signal state %s -> %s (RSSI=%d RSRP=%d SNR=%d cost=%u extremeWeak=%u)",
          (prevState == APP_COMM_SIGNAL_STRONG) ? "STRONG" : "WEAK",
          (g_appCommSignalState == APP_COMM_SIGNAL_STRONG) ? "STRONG" : "WEAK",
          p_quality->rssiDbm, p_quality->rsrpDbm, p_quality->snrDb,
@@ -360,8 +359,7 @@ void App_CommApplyServiceSessionCost(const AppCommServiceSessionMetrics_t *p_met
         g_appCommExtremeWeakLatched = APP_FALSE;
     }
 
-    APP_LOGN("COMM",
-             "session cost: attach=%lums dns=%lums dnsTry=%u udpTry=%u extremeWeak=%u => cost=%u abort=%u",
+    APP_LOGD("COMM", "session cost: attach=%lums dns=%lums dnsTry=%u udpTry=%u extremeWeak=%u => cost=%u abort=%u",
              (unsigned long)p_metrics->attachElapsedMs,
              (unsigned long)p_metrics->dnsElapsedMs,
              (unsigned)p_metrics->dnsAttempts,
@@ -419,7 +417,7 @@ void App_CommSuccessUpdate(uint8_t attemptUsedIdx, uint8_t allFailed)
         app_comm_cost_score_sub(APP_COMM_COST_GOOD_RECOVERY_REWARD);
     }
 
-    APP_LOGN("COMM", "success update: attemptIdx=%u allFailed=%u goodStreak=%u/%u badStreak=%u/%u cost=%u",
+    APP_LOGD("COMM", "success update: attemptIdx=%u allFailed=%u goodStreak=%u/%u badStreak=%u/%u cost=%u",
          attemptUsedIdx, allFailed, g_appCommGoodStreak, APP_COMM_SUCCESS_STREAK_NEEDED,
          g_appCommBadStreak, APP_COMM_SUCCESS_STREAK_NEEDED, (unsigned)g_appCommServiceCostScore);
 }
@@ -472,8 +470,7 @@ void App_CommParamRecompose(void)
         (void)App_MeterServerOptionsUpdate(&opt);
     }
 
-    APP_LOGN("COMM",
-         "param applied: signal=%s effectiveWeak=%u success=%s cost=%u extremeWeak=%u abort=%u reportPeriod=%uh nightOnly=%u txOv=%lu meterOv=%lu",
+    APP_LOGD("COMM", "param applied: signal=%s effectiveWeak=%u success=%s cost=%u extremeWeak=%u abort=%u reportPeriod=%uh nightOnly=%u txOv=%lu meterOv=%lu",
          (g_appCommSignalState == APP_COMM_SIGNAL_WEAK) ? "WEAK" : "STRONG",
          (unsigned)effectiveWeak,
          (g_appCommSuccessState == APP_COMM_SUCCESS_LOW) ? "LOW" : "HIGH",
@@ -547,7 +544,7 @@ void App_CommTest7RunCycle(void)
 
     if (s_appTest7CaseIndex >= APP_TEST7_CASE_COUNT)
     {
-        APP_LOGN("TEST7", "test=TEST7,summary=ALL_COMPLETE,total=%u,pass=%u,fail=%u",
+        APP_LOGD("TEST7", "test=TEST7,summary=ALL_COMPLETE,total=%u,pass=%u,fail=%u",
                  (unsigned)s_appTest7Seq,
                  (unsigned)s_appTest7PassCount,
                  (unsigned)s_appTest7FailCount);
@@ -626,8 +623,7 @@ void App_CommTest7RunCycle(void)
     if (pass == APP_TRUE) { s_appTest7PassCount++; } else { s_appTest7FailCount++; }
 
     /* 5) key=value 로그를 2줄로 분할 출력 (버퍼 오버런 방지) */
-    APP_LOGN("TEST7",
-        "test=TEST7,seq=%lu,case=%s,rssi=%d,rsrp=%d,attemptIdx=%u,allFailed=%u,"
+    APP_LOGD("TEST7", "test=TEST7,seq=%lu,case=%s,rssi=%d,rsrp=%d,attemptIdx=%u,allFailed=%u,"
         "signal=%s,success=%s,periodH=%u,nightOnly=%u",
         (unsigned long)s_appTest7Seq,
         pCase->name,
@@ -640,8 +636,7 @@ void App_CommTest7RunCycle(void)
         (unsigned)opt.reportingPeriodHours,
         (unsigned)opt.nightOnly);
 
-    APP_LOGN("TEST7",
-        "test=TEST7,seq=%lu,expSignal=%s,expSuccess=%s,expPeriodH=%u,expNightOnly=%u,"
+    APP_LOGD("TEST7", "test=TEST7,seq=%lu,expSignal=%s,expSuccess=%s,expPeriodH=%u,expNightOnly=%u,"
         "result=%s%s%s",
         (unsigned long)s_appTest7Seq,
         pCase->expWeak ? "WEAK" : "STRONG",
@@ -661,8 +656,7 @@ void App_CommTest7RunCycle(void)
 
         if (s_appTest7CaseIndex >= APP_TEST7_CASE_COUNT)
         {
-            APP_LOGN("TEST7",
-                     "test=TEST7,summary=LAP_COMPLETE,lap=%lu,total=%lu,pass=%u,fail=%u",
+            APP_LOGD("TEST7", "test=TEST7,summary=LAP_COMPLETE,lap=%lu,total=%lu,pass=%u,fail=%u",
                      (unsigned long)s_appTest7LapCount,
                      (unsigned long)s_appTest7Seq,
                      (unsigned)s_appTest7PassCount,

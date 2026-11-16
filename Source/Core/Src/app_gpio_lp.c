@@ -339,7 +339,7 @@ static void App_GpioLpRestoreNbiotInterface(void)
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_SET);
     if (HAL_GPIO_ReadPin(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin) != GPIO_PIN_SET)
     {
-        APP_LOGE("GPIO", "Fail. NB-IoT power on");
+        APP_LOGD("GPIO", "Fail. NB-IoT power on");
     }
     else
     {
@@ -386,7 +386,7 @@ static void App_GpioLpRestoreNbiotInterface(void)
     }
 
     g_appGpioLpContext.nbiotInterfaceIsolated = 0u;
-    APP_LOGI("GPIO", "NB-IoT power on");
+    APP_LOGD("GPIO", "NB-IoT power on");
     APP_LOGN("NBIOT", "[[PowerOn]]" " done powered=%s isolated=%d",
              g_appGpioLpContext.nbiotPowered,
              g_appGpioLpContext.nbiotInterfaceIsolated);
@@ -402,12 +402,12 @@ static void App_GpioLpIsolateNbiotInterface(void)
         return;
     }
 
-    APP_LOGI("GPIO", "NB-IoT power off");
+    APP_LOGD("GPIO", "NB-IoT power off");
 
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
     if (HAL_GPIO_ReadPin(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin) != GPIO_PIN_RESET)
     {
-        APP_LOGE("GPIO", "Fail. NB-IoT power off");
+        APP_LOGD("GPIO", "Fail. NB-IoT power off");
     }
     else
     {
@@ -792,8 +792,7 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
 #ifdef DEBUG
     if (App_GpioLpCanDebugLog() == 1u)
     {
-        APP_LOGD("GPIO",
-                       "[[Sleep]] STOP recover done: nbiot=%u restored_mask=0x%08lX",
+        APP_LOGN("GPIO", "[[Sleep]] STOP recover done: nbiot=%u restored_mask=0x%08lX",
                        (unsigned int)g_appGpioLpContext.nbiotPowered,
                        (unsigned long)g_appGpioLpContext.lastDisabledClockMask);
     }
@@ -904,9 +903,9 @@ void GPIO_DumpPort(GPIO_TypeDef *GPIOx, const char *portName)
     uint32_t afrl    = GPIOx->AFR[0];
     uint32_t afrh    = GPIOx->AFR[1];
 
-    APP_LOGI("GPIO", "=== %s (CLK:%s) ===", portName, wasOn ? "ON" : "OFF(temp on)");
-    APP_LOGI("GPIO", "Pin | Mode    | OType | Speed | Pull   | AF | IDR ODR");
-    APP_LOGI("GPIO", "----+---------+-------+-------+--------+----+--------");
+    APP_LOGD("GPIO", "=== %s (CLK:%s) ===", portName, wasOn ? "ON" : "OFF(temp on)");
+    APP_LOGD("GPIO", "Pin | Mode    | OType | Speed | Pull   | AF | IDR ODR");
+    APP_LOGD("GPIO", "----+---------+-------+-------+--------+----+--------");
 
     for (int i = 0; i < 16; i++) {
         uint32_t m  = (moder   >> (i * 2)) & 0x3U;
@@ -918,7 +917,7 @@ void GPIO_DumpPort(GPIO_TypeDef *GPIOx, const char *portName)
         uint32_t af = (i < 8) ? ((afrl >> (i * 4)) & 0xFU)
                               : ((afrh >> ((i - 8) * 4)) & 0xFU);
 
-        APP_LOGI("GPIO", "P%s%-2d | %s | %s    | %s  | %s | %2lu | %lu   %lu",
+        APP_LOGD("GPIO", "P%s%-2d | %s | %s    | %s  | %s | %2lu | %lu   %lu",
                portName + 4,    /* "GPIOA" → "A" 추출용 */
                i,
                modeStr(m),
@@ -931,10 +930,10 @@ void GPIO_DumpPort(GPIO_TypeDef *GPIOx, const char *portName)
     }
 
     /* 원본 레지스터 값도 함께 출력 (디버깅용) */
-    APP_LOGI("GPIO", "RAW: MODER=0x%08lX OTYPER=0x%04lX OSPEEDR=0x%08lX PUPDR=0x%08lX",
+    APP_LOGD("GPIO", "RAW: MODER=0x%08lX OTYPER=0x%04lX OSPEEDR=0x%08lX PUPDR=0x%08lX",
            (unsigned long)moder, (unsigned long)otyper,
            (unsigned long)ospeedr, (unsigned long)pupdr);
-    APP_LOGI("GPIO", "     AFRL =0x%08lX AFRH  =0x%08lX IDR=0x%04lX ODR=0x%04lX",
+    APP_LOGD("GPIO", "     AFRL =0x%08lX AFRH  =0x%08lX IDR=0x%04lX ODR=0x%04lX",
            (unsigned long)afrl, (unsigned long)afrh,
            (unsigned long)idr, (unsigned long)odr);
 
@@ -943,8 +942,8 @@ void GPIO_DumpPort(GPIO_TypeDef *GPIOx, const char *portName)
 
 void GPIO_DumpAll(void)
 {
-    APP_LOGI("GPIO", "########## GPIO STATE DUMP ##########");
-    APP_LOGI("GPIO", "RCC->IOPENR = 0x%08lX", (unsigned long)RCC->IOPENR);
+    APP_LOGD("GPIO", "########## GPIO STATE DUMP ##########");
+    APP_LOGD("GPIO", "RCC->IOPENR = 0x%08lX", (unsigned long)RCC->IOPENR);
 
     GPIO_DumpPort(GPIOA, "GPIOA");
     GPIO_DumpPort(GPIOB, "GPIOB");
@@ -952,7 +951,7 @@ void GPIO_DumpAll(void)
     GPIO_DumpPort(GPIOD, "GPIOD");
     GPIO_DumpPort(GPIOH, "GPIOH");
 
-    APP_LOGI("GPIO", "######################################");
+    APP_LOGD("GPIO", "######################################");
 }
 
 #endif // DEBUG
