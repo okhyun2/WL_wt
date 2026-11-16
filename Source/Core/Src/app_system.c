@@ -1217,10 +1217,29 @@ static AppStatus_t App_SystemEnterStopMode(void)
     uint8_t standbyPrepareState = APP_SYSTEM_NFC_STANDBY_PREP_NONE;
     AppStatus_t adcRestoreStatus;
 	
-    APP_LOGD("LP", "Enter STOP mode%s rtcClockSource=%s (RCC->CSR=0x%08lX)",
+    APP_LOGN("LP", "[[StopEnter]] STOP mode%s rtc=%s (CSR=0x%08lX)",
              (g_appSystemContext.stopNoWakeRequested == APP_TRUE) ? " (fatal/no-wake)" : "",
              App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()),
              (unsigned long)RCC->CSR);
+
+    /* [SLEEP-SCHEDULE 2026-11-16] 슬립 진입 시 다음 웨이크 시각 요약:
+     * 검침(AlarmA)/전송(AlarmB) 다음 기한을 한 줄로 출력해 슬립 중
+     * 기대 웨이크를 로그에서 즉시 대조한다(미초기화 시 not-armed 표시). */
+    {
+        AppDateTime_t meterDue;
+        AppDateTime_t txDue;
+        uint8_t meterOk = (App_FsmGetNextMeterDueTime(&meterDue) == APP_STATUS_OK) ? APP_TRUE : APP_FALSE;
+        uint8_t txOk    = (App_FsmGetNextTxDueTime(&txDue) == APP_STATUS_OK) ? APP_TRUE : APP_FALSE;
+
+        APP_LOGN("LP",
+                 "[[StopEnter]] next wake: meter(A)=%s %04lu-%02lu-%02lu %02lu:%02lu:%02lu | tx(B)=%s %04lu-%02lu-%02lu %02lu:%02lu:%02lu",
+                 (meterOk == APP_TRUE) ? "ok" : "not-armed",
+                 (unsigned long)meterDue.year, (unsigned long)meterDue.month, (unsigned long)meterDue.day,
+                 (unsigned long)meterDue.hour, (unsigned long)meterDue.minute, (unsigned long)meterDue.second,
+                 (txOk == APP_TRUE) ? "ok" : "not-armed",
+                 (unsigned long)txDue.year, (unsigned long)txDue.month, (unsigned long)txDue.day,
+                 (unsigned long)txDue.hour, (unsigned long)txDue.minute, (unsigned long)txDue.second);
+    }
 
     g_appSystemContext.stopCandidateCount++;
 
