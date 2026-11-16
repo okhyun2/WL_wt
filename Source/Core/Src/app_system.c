@@ -174,8 +174,8 @@ static void handle_rtc_alarm_wakeup(uint32_t flags)
     {
         g_appSystemContext.rtcAlarmAWakeEventCount++;
         handled = APP_TRUE;
-        APP_LOGD("LP",
-                 "RTC Alarm A wake count=%lu",
+        APP_LOGN("LP",
+                 "[[Wake]] AlarmA count=%lu",
                  (unsigned long)g_appSystemContext.rtcAlarmAWakeEventCount);
     }
 
@@ -183,8 +183,8 @@ static void handle_rtc_alarm_wakeup(uint32_t flags)
     {
         g_appSystemContext.rtcAlarmBWakeEventCount++;
         handled = APP_TRUE;
-        APP_LOGD("LP",
-                 "RTC Alarm B wake count=%lu",
+        APP_LOGN("LP",
+                 "[[Wake]] AlarmB count=%lu",
                  (unsigned long)g_appSystemContext.rtcAlarmBWakeEventCount);
     }
 
@@ -197,7 +197,7 @@ static void handle_rtc_alarm_wakeup(uint32_t flags)
 static void handle_rtc_wut_wakeup(void)
 {
     g_appSystemContext.lastRtcAlarmFlags = WAKEUP_FLAG_RTC_WUT;
-    APP_LOGD("CLK", "Wake(WUT) RTC clock source=%s",
+    APP_LOGN("CLK", "[[Wake]] WUT rtc source=%s",
              App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()));
 
     App_SystemHandleRtcCallBack();
@@ -249,8 +249,8 @@ void wakeup_process_all_pending(void)
 
     g_wakeup_ctx.processed_flags = WAKEUP_FLAG_NONE;
 
-    APP_LOGD("LP",
-             "wake flags=0x%08lX(%s) rtc=0x%08lX exti=0x%08lX",
+    APP_LOGN("LP",
+             "[[Wake]] flags=0x%08lX(%s) rtc=0x%08lX exti=0x%08lX",
              (unsigned long)pending_flags,
              App_SystemBuildWakeupFlagString(pending_flags),
              (unsigned long)g_wakeup_ctx.raw_rtc_isr,
@@ -913,23 +913,23 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     g_appSystemContext.logReady = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_LOG_READY;
 
-    APP_LOGD("SYS", "Boot: %s v%s", APP_NAME_STRING, App_SystemGetVersionString());
-    APP_LOGD("CLK", "SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu",
+    APP_LOGN("SYS", "[[Boot]] %s v%s", APP_NAME_STRING, App_SystemGetVersionString());
+    APP_LOGD("CLK", "[[Clock]] SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu",
              (unsigned long)p_clockContext->sysclkHz,
              (unsigned long)p_clockContext->hclkHz,
              (unsigned long)p_clockContext->pclk1Hz,
              (unsigned long)p_clockContext->pclk2Hz,
              (unsigned long)p_clockContext->msiRange);
 
-    APP_LOGD("CLK", "RTC src boot=%s now=%s LSERDY=%u CSR=0x%08lX",
+    APP_LOGN("CLK", "[[Clock]] RTC src boot=%s now=%s LSERDY=%u CSR=0x%08lX",
              App_ClockRtcSourceToString(p_clockContext->rtcSourceAtBoot),
              App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()),
              (unsigned int)p_clockContext->lseReady,
              (unsigned long)RCC->CSR);
-    APP_LOGD("SYS", "Device UID hash=0x%08lX", (unsigned long)App_ClockGetDeviceUidHash());
+    APP_LOGN("SYS", "[[Boot]] Device UID hash=0x%08lX", (unsigned long)App_ClockGetDeviceUidHash());
     APP_LOGD("GPIO", "LP policy ready: SWD=%lu",
                                  (unsigned long)g_appGpioLpConfig.swdPolicy);
-    APP_LOGD("RTC", "STOP wake period=%lu ms (%s)",
+    APP_LOGN("RTC", "[[Boot]] STOP wake period=%lu ms (%s)",
                                  (unsigned long)APP_RTC_WAKEUP_PERIOD_MS,
                                  (APP_RTC_WAKEUP_PERIOD_MS == 0) ? "Don't work stop" : "LSE" " rtc wakeup");
     APP_LOGD("DBG", "USART1 dbg %lu baud",
@@ -949,7 +949,7 @@ AppStatus_t App_SystemRunBootSelfTest(void)
 {
     AppStatus_t status;
 
-    APP_LOGD("SELF", "######################## run selftest");
+    APP_LOGN("SELF", "[[SelfTest]] boot selftest start");
 
     status = App_SelfTestInit();
     if (status != APP_STATUS_OK)
@@ -966,11 +966,11 @@ AppStatus_t App_SystemRunBootSelfTest(void)
 
     if (status == APP_STATUS_OK)
     {
-        APP_LOGD("SELF", "------ Boot self-test finished without failures");
+        APP_LOGN("SELF", "[[SelfTest]] boot selftest PASS");
         return APP_STATUS_OK;
     }
 
-    APP_LOGD("SELF", "!!!!!! Boot self-test completed with one or more failures");
+    APP_LOGN("SELF", "[[SelfTest]] boot selftest FAIL");
 
     if (APP_SELFTEST_FAIL_STOPS_BOOT == APP_TRUE)
     {
@@ -986,7 +986,7 @@ AppStatus_t App_SystemRunWakeDataCollection(void)
 #if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
     AppStatus_t status;
 
-    APP_LOGD("SELF", "######################## run wake data collection");
+    APP_LOGN("SELF", "[[SelfTest]] wake collection start");
 
     status = App_SelfTestInit();
     if (status != APP_STATUS_OK)
@@ -999,7 +999,7 @@ AppStatus_t App_SystemRunWakeDataCollection(void)
 
     if (status == APP_STATUS_OK)
     {
-        APP_LOGD("SELF", "------ Wake data collection finished without failures");
+        APP_LOGN("SELF", "[[SelfTest]] wake collection PASS");
         // Confirm Buzzer
         {
             uint8_t index;
@@ -1015,7 +1015,7 @@ AppStatus_t App_SystemRunWakeDataCollection(void)
         return APP_STATUS_OK;
     }
 
-    APP_LOGD("SELF", "!!!!!! Wake data collection completed with one or more failures");
+    APP_LOGN("SELF", "[[SelfTest]] wake collection FAIL");
     // Confirm Buzzer
     {
         uint8_t index;
@@ -1169,7 +1169,7 @@ uint8_t App_SystemPrepareNfcStandbyForStop(void)
         return APP_SYSTEM_NFC_STANDBY_PREP_ENTERED;
     }
 
-    APP_LOGD("NFC", "NTP53321 standby enter failed before MCU STOP ret=%d", (int)nfcRet);
+    APP_LOGN("NFC", "[[Nfc]] standby entered before MCU STOP");
 #endif
     return APP_SYSTEM_NFC_STANDBY_PREP_NONE;
 }
@@ -1196,11 +1196,11 @@ static void App_SystemRecoverNfcAfterWake(uint8_t standbyPrepareState)
         NFC_Result_t nfcRet = NFC_NTP53321_ExitStandby(&g_nfcTagHandle);
         if (nfcRet != NFC_RESULT_OK)
         {
-            APP_LOGD("NFC", "ExitStandby after wake failed ret=%d", (int)nfcRet);
+            APP_LOGW("NFC", "ExitStandby after wake failed ret=%d", (int)nfcRet);
         }
         else
         {
-            APP_LOGD("NFC", "NTP53321 exited standby after wake");
+            APP_LOGN("NFC", "[[Nfc]] exited standby after wake");
         }
         return;
     }
@@ -1222,14 +1222,12 @@ static AppStatus_t App_SystemEnterStopMode(void)
              App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()),
              (unsigned long)RCC->CSR);
 
-    /* [SLEEP-SCHEDULE 2026-11-16] 슬립 진입 시 다음 웨이크 시각 요약:
-     * 검침(AlarmA)/전송(AlarmB) 다음 기한을 한 줄로 출력해 슬립 중
-     * 기대 웨이크를 로그에서 즉시 대조한다(미초기화 시 not-armed 표시). */
+    /* [SLEEP-SCHEDULE] 슬립 진입 시 다음 웨이크 시각 요약(검침A/전송B) */
     {
         AppDateTime_t meterDue;
         AppDateTime_t txDue;
         uint8_t meterOk = (App_FsmGetNextMeterDueTime(&meterDue) == APP_STATUS_OK) ? APP_TRUE : APP_FALSE;
-        uint8_t txOk    = (App_FsmGetNextTxDueTime(&txDue) == APP_STATUS_OK) ? APP_TRUE : APP_FALSE;
+        uint8_t txOk = (App_FsmGetNextTxDueTime(&txDue) == APP_STATUS_OK) ? APP_TRUE : APP_FALSE;
 
         APP_LOGN("LP",
                  "[[StopEnter]] next wake: meter(A)=%s %04lu-%02lu-%02lu %02lu:%02lu:%02lu | tx(B)=%s %04lu-%02lu-%02lu %02lu:%02lu:%02lu",
@@ -1304,7 +1302,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
                        ((uint32_t)alarmBDue.minute * 60u) +
                        (uint32_t)alarmBDue.second;
 
-                APP_LOGD("RTC", "[[SleepSchedule]] now=%02u:%02u:%02u | next wake AlarmA(meter)=%02u:%02u:%02u (+%lus, %s) | AlarmB(tx)=%02u:%02u:%02u (+%lus, %s)",
+                APP_LOGN("RTC", "[[SleepSchedule]] now=%02u:%02u:%02u | next wake AlarmA(meter)=%02u:%02u:%02u (+%lus, %s) | AlarmB(tx)=%02u:%02u:%02u (+%lus, %s)",
                          (unsigned)now.hour, (unsigned)now.minute, (unsigned)now.second,
                          (unsigned)alarmADue.hour, (unsigned)alarmADue.minute, (unsigned)alarmADue.second,
                          (unsigned long)((aSec > nowSec) ? (aSec - nowSec) : ((86400u + aSec) - nowSec)),
@@ -1532,7 +1530,7 @@ static AppStatus_t App_SystemEnterStopMode(void)
 
     g_appSystemContext.stopEntryCount++;
 
-    APP_LOGD("LP", "STOP exit wake=%s, mask=%x count=%lu tick=%lu",
+    APP_LOGN("LP", "[[StopExit]] wake=%s mask=0x%x count=%lu tick=%lu",
              App_SystemGetWakeSourceString(),
              g_appSystemContext.wakeSourceMask,
              (unsigned long)g_appSystemContext.stopEntryCount,

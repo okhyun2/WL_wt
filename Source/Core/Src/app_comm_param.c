@@ -321,7 +321,7 @@ void App_CommSignalMeasureAndUpdate(const AppBc95Quality_t *p_quality)
     {
         g_appCommExtremeWeakLatched = APP_FALSE;
     }
-    APP_LOGD("COMM", "signal state %s -> %s (RSSI=%d RSRP=%d SNR=%d cost=%u extremeWeak=%u)",
+    APP_LOGN("COMM", "[[Signal]] %s -> %s (RSSI=%d RSRP=%d SNR=%d cost=%u extremeWeak=%u)",
          (prevState == APP_COMM_SIGNAL_STRONG) ? "STRONG" : "WEAK",
          (g_appCommSignalState == APP_COMM_SIGNAL_STRONG) ? "STRONG" : "WEAK",
          p_quality->rssiDbm, p_quality->rsrpDbm, p_quality->snrDb,
@@ -359,7 +359,7 @@ void App_CommApplyServiceSessionCost(const AppCommServiceSessionMetrics_t *p_met
         g_appCommExtremeWeakLatched = APP_FALSE;
     }
 
-    APP_LOGD("COMM", "session cost: attach=%lums dns=%lums dnsTry=%u udpTry=%u extremeWeak=%u => cost=%u abort=%u",
+    APP_LOGN("COMM", "[[SessionCost]] attach=%lums dns=%lums dnsTry=%u udpTry=%u extremeWeak=%u => cost=%u abort=%u",
              (unsigned long)p_metrics->attachElapsedMs,
              (unsigned long)p_metrics->dnsElapsedMs,
              (unsigned)p_metrics->dnsAttempts,

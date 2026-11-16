@@ -386,7 +386,7 @@ static void App_GpioLpRestoreNbiotInterface(void)
     }
 
     g_appGpioLpContext.nbiotInterfaceIsolated = 0u;
-    APP_LOGD("GPIO", "NB-IoT power on");
+    APP_LOGN("GPIO", "[[Power]] NB-IoT power on");
     APP_LOGN("NBIOT", "[[PowerOn]]" " done powered=%s isolated=%d",
              g_appGpioLpContext.nbiotPowered,
              g_appGpioLpContext.nbiotInterfaceIsolated);
@@ -402,7 +402,7 @@ static void App_GpioLpIsolateNbiotInterface(void)
         return;
     }
 
-    APP_LOGD("GPIO", "NB-IoT power off");
+    APP_LOGN("GPIO", "[[Power]] NB-IoT power off");
 
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
     if (HAL_GPIO_ReadPin(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin) != GPIO_PIN_RESET)
@@ -748,8 +748,8 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
 #ifdef DEBUG
     if (App_GpioLpCanDebugLog() == 1u)
     {
-        APP_LOGD("GPIO",
-                       "STOP prep done: nbiot=%u clk_mask=0x%08lX",
+        APP_LOGN("GPIO",
+                       "[[StopEnter]] prep done nbiot=%u clk_mask=0x%08lX",
                        (unsigned int)g_appGpioLpContext.nbiotPowered,
                        (unsigned long)g_appGpioLpContext.lastDisabledClockMask);
     }

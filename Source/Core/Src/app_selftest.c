@@ -957,7 +957,7 @@ static AppStatus_t App_SelfTestRunSequenceInternal(AppSelfTestSequenceKind_t kin
             APP_FALSE);
         App_SelfTestRunCommonSteps(kCommonSuffixSilent,
                                    (uint32_t)(sizeof(kCommonSuffixSilent) / sizeof(kCommonSuffixSilent[0])));
-        App_SelfTestFinalizeSequenceContext("Operational data collection done: pass=%lu fail=%lu");
+        App_SelfTestFinalizeSequenceContext("[[SelfTest]] collection done: pass=%lu fail=%lu");
         return g_appSelfTestContext.lastSequenceStatus;
     }
 

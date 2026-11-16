@@ -995,7 +995,7 @@ static void App_Bc95AtKickAttachIfNeeded(void)
 
     if (attached == 1) { return; }
 
-    APP_LOGI("NBIOT", APP_NBIOT_LOG_PREATTACH " CGATT=%d -> kick attach (CGATT=1)", attached);
+    APP_LOGN("NBIOT", APP_NBIOT_LOG_PREATTACH " CGATT=%d -> kick attach (CGATT=1)", attached);
     (void)App_Bc95AtSendBestEffortSimpleOk(APP_BC95_AT_CMD_CGATT_ATTACH,
                                            APP_BC95_PRE_ATTACH_CGATT_KICK_TIMEOUT_MS,
                                            "AT+CGATT=1",
@@ -1287,7 +1287,7 @@ static AppStatus_t App_Bc95AtResolveHostRobustInternal(const char *p_hostname,
     if (p_elapsedMsOut != NULL) { *p_elapsedMsOut = 0u; }
     (void)memset(p_ipOut, 0, ipBufSize);
 
-    APP_LOGD("NBIOT", "==== DNS resolve start: %s ====", p_hostname);
+    APP_LOGN("NBIOT", "[[DNS]] resolve start %s", p_hostname);
 
     for (attempt = 1u; attempt <= APP_BC95_DNS_FAIL_RETRY_MAX; attempt++)
     {
@@ -1297,7 +1297,7 @@ static AppStatus_t App_Bc95AtResolveHostRobustInternal(const char *p_hostname,
         {
             if (p_attemptsOut != NULL) { *p_attemptsOut = (uint8_t)totalAttempts; }
             if (p_elapsedMsOut != NULL) { *p_elapsedMsOut = HAL_GetTick() - startTick; }
-            APP_LOGD("NBIOT", "==== DNS resolved: %s -> %s (attempts=%lu, elapsed=%lums) ====",
+            APP_LOGN("NBIOT", "[[DNS]] resolved %s -> %s attempts=%lu elapsed=%lums",
                      p_hostname, p_ipOut,
                      (unsigned long)totalAttempts,
                      (unsigned long)(HAL_GetTick() - startTick));
@@ -2441,7 +2441,7 @@ static void App_Bc95AtDfotaHoldEnter(void)
     }
     else
     {
-        APP_LOGD("NBIOT", "[[DFOTA]] EVTIND:5 re-enter while hold already active");
+        APP_LOGN("NBIOT", "[[DFOTA]] EVTIND:5 re-enter while hold already active");
     }
 }
 
@@ -3108,7 +3108,7 @@ static AppStatus_t App_Bc95AtWaitServiceAckNnmi(uint8_t seqNum, uint32_t timeout
     char     waitLineBuf[APP_BC95_AT_RX_BUF_SIZE];
     uint16_t i;
 
-    APP_LOGD("NBIOT", "[[ServicePlatformWake]] wait service ACK(+NNMI) timeout=%lu ms poll=%lu ms",
+    APP_LOGN("NBIOT", "[[ServicePlatformWake]] wait service ACK(+NNMI) timeout=%lu ms poll=%lu ms",
              (unsigned long)timeoutMs, (unsigned long)pollMs);
     startTick = HAL_GetTick();
     while ((HAL_GetTick() - startTick) < timeoutMs)
@@ -3886,7 +3886,7 @@ AppStatus_t App_Bc95AtWaitForBoot(uint32_t bannerTimeoutMs)
                 App_Bc95AtLogRawRx("banner-ok", (const uint8_t *)g_appBc95AtRxBuf,
                                    (uint16_t)g_appBc95AtRxContext.receivedLength);
 #endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
-                APP_LOGD("NBIOT", "Boot banner detected (len=%u)", (unsigned)curLen);
+                APP_LOGN("NBIOT", "[[BootTrack]] boot banner detected (len=%u)", (unsigned)curLen);
                 return APP_STATUS_OK;
             }
             lastCheckedLen = curLen;
@@ -4469,7 +4469,7 @@ static AppStatus_t App_Bc95AtWaitForServiceReady(uint32_t totalTimeoutMs)
 
             g_appBc95ServiceReadyRecoveryActive = APP_FALSE;
 
-            APP_LOGD("NBIOT", "srv-ready ok t=%lums",
+            APP_LOGN("NBIOT", "[[ReadyProbe]] srv-ready ok t=%lums",
                      (unsigned long)(HAL_GetTick() - startTick));
             return APP_STATUS_OK;
         }
@@ -6847,7 +6847,7 @@ static AppStatus_t App_NbiotSyncTimeSoft(void)
     uint16_t rxLen = 0u;
     uint32_t attempt;
 
-    APP_LOGD("NBIOT", "Synchronizing time from network (soft)...");
+    APP_LOGN("NBIOT", "[[TimeSync]] network time sync start (soft)");
 
     for (attempt = 1u; attempt <= APP_BC95_TIME_SYNC_RETRY_MAX; attempt++)
     {
@@ -6876,7 +6876,7 @@ static AppStatus_t App_NbiotSyncTimeSoft(void)
                 status = App_ClockSyncFromNbiot(&timeInfo);
                 if (status == APP_STATUS_OK)
                 {
-                    APP_LOGD("NBIOT", "Time sync done (soft)");
+                    APP_LOGN("NBIOT", "[[TimeSync]] done (soft)");
                     return APP_STATUS_OK;
                 }
 
@@ -9281,7 +9281,7 @@ static AppStatus_t App_Bc95AtWaitUdpAck(int32_t socketId, uint32_t timeoutMs, ui
                 {
                     s_ackDbgSkip = 0u;
 #ifdef NBIOT_TRACE_DEBUG
-                    APP_LOGD("NBIOT", "[[AckDbg]] NSORF absent poll rxLen=%u", (unsigned)rxLen);
+                    APP_LOGN("NBIOT", "[[AckDbg]] NSORF absent poll rxLen=%u", (unsigned)rxLen);
 #endif /* NBIOT_TRACE_DEBUG */
                 }
             }
@@ -9644,7 +9644,7 @@ void App_Bc95AtCloseAllSockets(void)
         App_NBIoTDetachNoteOutcome(closeStatus);
         if (App_NBIoTDetachModuleDead() == APP_TRUE)
         {
-            APP_LOGD("NBIOT", "sock clean dead streak=%u abort %d..%d",
+            APP_LOGN("NBIOT", "[[PowerOff]] sockets clean c=%lu ac=%lu sf=%lu of=%lu",
                      s_nbiotDetachNoRespStreak, sid + 1, APP_BC95_UDP_SOCKET_ID_MAX);
             otherFailCount += (uint32_t)(APP_BC95_UDP_SOCKET_ID_MAX - sid);
             break;
@@ -10229,7 +10229,7 @@ AppStatus_t App_NBIoTSyncTime(void)
 {
     AppStatus_t status;
 
-    APP_LOGD("NBIOT", "Synchronizing time from network...");
+    APP_LOGN("NBIOT", "[[TimeSync]] network time sync start");
 
     status = App_Bc95AtSyncTimeToRtc();
     if (status != APP_STATUS_OK)
@@ -10238,7 +10238,7 @@ AppStatus_t App_NBIoTSyncTime(void)
         return status;
     }
 
-    APP_LOGD("NBIOT", "Time sync done");
+    APP_LOGN("NBIOT", "[[TimeSync]] done");
     return APP_STATUS_OK;
 }
 
@@ -10361,7 +10361,7 @@ AppStatus_t App_NBIoTBringUp(void)
         return status;
     }
 
-    APP_LOGD("NBIOT", "Module ready");
+    APP_LOGN("NBIOT", "[[Attach]] module ready");
     return APP_STATUS_OK;
 }
 

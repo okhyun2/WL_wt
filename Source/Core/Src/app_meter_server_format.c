@@ -315,7 +315,7 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
 
     status = App_MeterStorageGetInfo(&info);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    APP_LOGD("MSTOR", "saved cnt=%d(%s)", info.count, (info.count > 0)? "build":"skip");
+    APP_LOGN("MSTOR", "[[Stor]] saved cnt=%d(%s)", info.count, (info.count > 0)? "build":"skip");
     APP_RETURN_IF_FALSE(info.count > 0u, APP_STATUS_INVALID_PARAM);
 
     startLogicalIndex = 0u;
@@ -335,7 +335,7 @@ static AppStatus_t App_MeterServerFormatBuildInternal(const AppMeterServerFormat
                 break;
             }
         }
-        APP_LOGD("MSTOR", "unsent cnt=%u(%s)",
+        APP_LOGN("MSTOR", "[[Stor]] unsent cnt=%u(%s)",
                  (unsigned int)availableRecordCount,
                  (foundUnsent == APP_TRUE) ? "build" : "skip");
         APP_RETURN_IF_FALSE(foundUnsent == APP_TRUE, APP_STATUS_INVALID_PARAM);

@@ -330,7 +330,7 @@ static uint32_t App_FsmMeterApplyPostNbiotPowerOffGuard(const char *p_logTag)
             if (elapsedSincePowerOffDoneMs < minGuardMs)
             {
                 uint32_t waitMs = minGuardMs - elapsedSincePowerOffDoneMs;
-                APP_LOGD("FSM", "%s apply post-NBIOT power-off guard wait=%lu ms (elapsed=%lu ms, min=%lu ms, cfun0Status=%ld)",
+                APP_LOGN("FSM", "%s apply post-NBIOT power-off guard wait=%lu ms (elapsed=%lu ms, min=%lu ms, cfun0Status=%ld)",
                          (p_logTag != NULL) ? p_logTag : "[[MeterWake]]",
                          (unsigned long)waitMs,
                          (unsigned long)elapsedSincePowerOffDoneMs,
@@ -3067,7 +3067,7 @@ static uint8_t App_FsmTxScheduleApplyNightOnlyGate(const char *p_tag)
 
     if (App_CommShouldBypassNightOnlyGate() == APP_TRUE)
     {
-        APP_LOGD("FSM", "%s night-only gate bypassed (adaptive policy)",
+        APP_LOGN("FSM", "%s night-only gate bypassed (adaptive policy)",
                  (p_tag != NULL) ? p_tag : "[[TxSchedule]]");
         return APP_TRUE;
     }
@@ -3081,7 +3081,7 @@ static uint8_t App_FsmTxScheduleApplyNightOnlyGate(const char *p_tag)
         return APP_TRUE;
     }
 
-    APP_LOGD("FSM", "%s night-only gate: hour=%u out of [%u,%u) -> pull-in next due",
+    APP_LOGN("FSM", "%s night-only gate: hour=%u out of [%u,%u) -> pull-in next due",
              (p_tag != NULL) ? p_tag : "[[TxSchedule]]",
              (unsigned)now.hour, (unsigned)opt.nightStartHour, (unsigned)opt.nightEndHour);
     return APP_FALSE;
@@ -3906,7 +3906,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_NFC_WAIT_EVENT:
             p_component = App_FsmGetComponentMutable(APP_FSM_COMPONENT_NFC);
 
-            APP_LOGD("FSM", "trace nfc wait irq=%u wake=%s comp_evt=%u",
+            APP_LOGN("FSM", "[[Nfc]] wait irq=%u wake=%s comp_evt=%u",
                      (unsigned int)g_nfcIrqPending,
                      App_FsmNfcGetWakeEventName(g_nfcWakeEvent),
                      (unsigned int)((p_component != NULL) ? p_component->eventPending : 0u));
@@ -4039,7 +4039,29 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                         g_appFsmWakeCollectionPending = APP_FALSE;
                         App_FsmMarkComponent(APP_FSM_COMPONENT_NBIOT, APP_FSM_STATE_NBIOT_INIT, APP_FALSE, APP_FALSE, APP_STATUS_OK);
                         App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
-                        APP_LOGN("FSM", "[[TxSchedule]] skip attach/send before service/mgmt due");
+                        {
+                            AppDateTime_t svcDue;
+                            AppDateTime_t txDue;
+                            uint8_t svcOk = (App_FsmGetNextTxDueTime(&svcDue) == APP_STATUS_OK) ? APP_TRUE : APP_FALSE;
+                            uint8_t txOk = APP_FALSE;
+                            if ((g_appFsmMgmtTxSchedule.enabled == APP_TRUE) &&
+                                (g_appFsmMgmtTxSchedule.nextDueDateKey != 0u))
+                            {
+                                txOk = (App_FsmScheduleComposeDateTime(g_appFsmMgmtTxSchedule.nextDueDateKey,
+                                                                       g_appFsmMgmtTxSchedule.nextDueMsOfDay,
+                                                                       &txDue) == APP_STATUS_OK)
+                                           ? APP_TRUE
+                                           : APP_FALSE;
+                            }
+                            APP_LOGN("FSM",
+                                     "[[TxSchedule]] skip attach/send before due | service next=%s %04lu-%02lu-%02lu %02lu:%02lu:%02lu | mgmt next=%s %04lu-%02lu-%02lu %02lu:%02lu:%02lu",
+                                     (svcOk == APP_TRUE) ? "ok" : "n/a",
+                                     (unsigned long)svcDue.year, (unsigned long)svcDue.month, (unsigned long)svcDue.day,
+                                     (unsigned long)svcDue.hour, (unsigned long)svcDue.minute, (unsigned long)svcDue.second,
+                                     (txOk == APP_TRUE) ? "ok" : "n/a",
+                                     (unsigned long)txDue.year, (unsigned long)txDue.month, (unsigned long)txDue.day,
+                                     (unsigned long)txDue.hour, (unsigned long)txDue.minute, (unsigned long)txDue.second);
+                        }
                         break;
                     }
                     /* else: first-attach cycle pending -> fall through to boot cycle */
