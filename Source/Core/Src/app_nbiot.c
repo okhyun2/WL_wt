@@ -559,14 +559,14 @@ static void App_Bc95SimLogIccid(void)
                                    &rxLen);
     if (status != APP_STATUS_OK)
     {
-        APP_LOGD("NBIOT", "ICCID query fail (status=%d)", (int)status);
+        APP_LOGW("NBIOT", "[[Usim]] ICCID query fail (status=%d)", (int)status);
         return;
     }
 
     p_pos = strstr((const char *)g_appBc95AtRxBuf, APP_BC95_SIM_INFO_NCCID_PREFIX);
     if (p_pos == NULL)
     {
-        APP_LOGD("NBIOT", "ICCID n/a (no +NCCID in response)");
+        APP_LOGW("NBIOT", "[[Usim]] ICCID n/a (no +NCCID in response)");
         return;
     }
     p_pos += APP_BC95_SIM_INFO_NCCID_PREFIX_LEN;
@@ -590,10 +590,10 @@ static void App_Bc95SimLogIccid(void)
 
     if (n < APP_BC95_SIM_INFO_ICCID_MIN_LEN)
     {
-        APP_LOGD("NBIOT", "ICCID parse fail (len=%u)", (unsigned)n);
+        APP_LOGW("NBIOT", "[[Usim]] ICCID parse fail (len=%u)", (unsigned)n);
         return;
     }
-    APP_LOGD("NBIOT", "ICCID    : %s", iccid);
+    APP_LOGN("NBIOT", "[[Usim]] ICCID=%s", iccid);
 
     (void)memcpy(g_appBc95SimInfo.iccid, iccid, (size_t)n + 1u);
     g_appBc95SimInfo.iccidValid = APP_TRUE;
@@ -697,22 +697,23 @@ static void App_Bc95LogSimInfo(const uint8_t *p_imsiBcd)
     {
         (void)memcpy(plmn, imsi, APP_BC95_SIM_INFO_PLMN_LEN);
         plmn[APP_BC95_SIM_INFO_PLMN_LEN] = '\0';
-        APP_LOGD("NBIOT", "PLMN     : %s", plmn);
+        APP_LOGN("NBIOT", "[[Usim]] IMSI=%s", imsi);
+        APP_LOGN("NBIOT", "[[Usim]] PLMN=%s", plmn);
 
         if (App_Bc95SimEstimateMdn(imsi, mdnEst, sizeof(mdnEst)) == APP_TRUE)
         {
-            APP_LOGD("NBIOT", "MDN(est) : %s", mdnEst);
+            APP_LOGN("NBIOT", "[[Usim]] MDN(est)=%s", mdnEst);
             (void)memcpy(g_appBc95SimInfo.mdn, mdnEst, sizeof(g_appBc95SimInfo.mdn));
             g_appBc95SimInfo.mdnValid = APP_TRUE;
         }
         else
         {
-            APP_LOGD("NBIOT", "MDN(est) : n/a (PLMN != %s)", APP_BC95_SIM_INFO_PLMN_LGUP);
+            APP_LOGN("NBIOT", "[[Usim]] MDN(est)=n/a (PLMN != %s)", APP_BC95_SIM_INFO_PLMN_LGUP);
         }
     }
     else
     {
-        APP_LOGD("NBIOT", "IMSI BCD decode fail");
+        APP_LOGW("NBIOT", "[[Usim]] IMSI BCD decode fail");
     }
 
     App_Bc95SimLogIccid();
@@ -4272,7 +4273,7 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
     {
         p_probe->lastCmeError = cmeErr;
         p_probe->lastStatus = APP_STATUS_UART_TIMEOUT;
-        APP_LOGE("NBIOT", "[[ReadyProbe]] CPIN not ready yet (AT=1, CMEE=1, USIM=0, CME=%ld)",
+        APP_LOGE("NBIOT", "[[Usim]] CPIN not ready (USIM=0, CME=%ld)",
                  (long)cmeErr);
         return APP_STATUS_UART_TIMEOUT;
     }
@@ -4288,7 +4289,7 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
     {
         p_probe->lastStatus = APP_STATUS_UART_TIMEOUT;
         p_probe->lastCmeError = 0;
-        APP_LOGW("NBIOT", "[[ReadyProbe]] CPIN response is OK but READY not yet visible");
+        APP_LOGW("NBIOT", "[[Usim]] CPIN response is OK but READY not yet visible");
         return APP_STATUS_UART_TIMEOUT;
     }
 
@@ -4371,6 +4372,7 @@ AppStatus_t App_Bc95AtProbeServiceReady(AppBc95ServiceReadyProbe_t *p_probe)
     {
         p_probe->usimReady = APP_TRUE;
         p_probe->lastStatus = APP_STATUS_OK;
+        APP_LOGN("NBIOT", "[[Usim]] CPIN=READY");
         APP_LOGN("NBIOT", "[[ReadyProbe]] service ready (AT=1, CMEE=1, CPIN=READY, USIM=1)");
         return APP_STATUS_OK;
     }

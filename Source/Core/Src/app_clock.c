@@ -324,6 +324,7 @@ uint32_t GetCorrectedTick(void)
 static uint64_t s_logLastRtcMs  = 0;
 static uint64_t s_logElapsedMs  = 0;
 static uint8_t  s_logLastValid  = 0;
+static uint8_t  s_logRtcFallback = 0;   /* 1: RTC 시각 0 구간(LSI) -> SysTick 대체 출력 중 */
 
 static void App_ClockLogRtcRebase(void)
 {
@@ -333,11 +334,48 @@ static void App_ClockLogRtcRebase(void)
 
 uint64_t App_ClockGetLogElapsedMs(void)
 {
-    uint64_t now = RTC_GetTimeMs();
+    uint64_t prev;
+    uint64_t now;
+    uint8_t  tries;
 
     if (s_logLastValid == 0u)
     {
         App_ClockLogRtcRebase();
+        return s_logElapsedMs;
+    }
+
+    /* torn-read 방지: 연속 두 읽기가 일치(±50ms)할 때까지 재시도(최대 3회).
+     * shadow register 갱신 경계나 RF 버스트(모뎀 TX)에 의한 일시 오독을 걸러낸다. */
+    prev = RTC_GetTimeMs();
+    now  = prev;
+    for (tries = 0u; tries < 3u; tries++)
+    {
+        int64_t diff;
+        now = RTC_GetTimeMs();
+        diff = (int64_t)now - (int64_t)prev;
+        if ((diff >= -50LL) && (diff <= 50LL))
+        {
+            break;
+        }
+        prev = now;
+    }
+
+    /* LSI 구간(부팅 직후 백업도메인 리셋으로 RTC 시각이 0으로 고정) 처리:
+     * RTC가 0에서 진행하지 않는 동안에는 SysTick으로 대체 출력한다.
+     * (awake 중 SysTick은 실측상 실제 경과와 일치) RTC가 0이 아닌 값을
+     * 반환하기 시작하면(LSE 전환 후) 그때 기준점만 갱신하고 RTC 증분 모드로
+     * 복귀한다 -- SysTick 대체 값이 전환 시점까지 이미 포함하므로 증분을
+     * 더하면 이중 계산이 된다. */
+    if ((now == 0u) && (s_logLastRtcMs == 0u))
+    {
+        s_logRtcFallback = 1u;
+        s_logElapsedMs = HAL_GetTick();
+        return s_logElapsedMs;
+    }
+    if (s_logRtcFallback == 1u)
+    {
+        s_logRtcFallback = 0u;
+        s_logLastRtcMs   = now;
         return s_logElapsedMs;
     }
 
@@ -346,8 +384,15 @@ uint64_t App_ClockGetLogElapsedMs(void)
     {
         d += 86400000LL;
     }
-    else if (d < 0)                 /* RTC 뒤로 세팅: 동결 */
+    if (d < 0)
     {
+        /* 스파이크(+점프) 후 복귀 또는 RTC 역행 세팅: 누적값도 함께 되돌려
+         * 스파이크 누설을 자가 치유한다. 미세 읽기 노이즈(|d|<=2s)는 동결해
+         * 스탬프 단조를 유지한다. */
+        if (d < -2000LL)
+        {
+            s_logElapsedMs = (s_logElapsedMs > (uint64_t)(-d)) ? (s_logElapsedMs + (uint64_t)d) : 0u;
+        }
         d = 0;
     }
 
