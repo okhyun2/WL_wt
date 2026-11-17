@@ -361,6 +361,8 @@ AppStatus_t App_NBIoTCarrierAttachMandatory(void);
 AppStatus_t App_NBIoTCarrierPowerOffMandatory(void);
 const AppNbiotCarrierContext_t *App_NBIoTCarrierGetContext(void);
 AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo);
+/* [USIM-CACHE] 캐시를 건너뛰고 AT 재조회를 강제 (프로비저닝/모뎀 리셋 후 용도) */
+AppStatus_t App_NBIoTReadIdentityForce(uint8_t bSaveInfo);
 /* SIM info cache (RAM only, refreshed by App_NBIoTReadIdentity) */
 #define APP_NBIOT_SIM_ICCID_BUF_SIZE    (23u)   /* up to 22 chars + NUL */
 #define APP_NBIOT_SIM_MDN_BUF_SIZE      (12u)   /* '0' + 10 digits + NUL */

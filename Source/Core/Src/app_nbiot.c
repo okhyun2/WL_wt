@@ -500,6 +500,12 @@ typedef struct
 } AppBc95SimInfoCache_t;
 
 static AppBc95SimInfoCache_t g_appBc95SimInfo;
+
+/* [USIM-CACHE] 정기 세션에서 IMEI/IMSI/ICCID 재조회 생략용.
+ * 유심 교체가 없는 한 불변값이므로 부팅 세션에서 1회 수집 후 RAM에 유지한다.
+ * (모뎀 NRB/전원 off/STOP 웨이크와 무관하게 유지, MCU 리셋 시 초기화 -> 재수집) */
+static uint8_t s_appBc95IdentityCacheValid = APP_FALSE;
+static uint8_t g_appBc95IdentityForceOnce  = APP_FALSE;
 /* IMSI BCD(8B, 15 digits + pad nibble) -> ASCII 15 digits */
 static uint8_t App_Bc95SimImsiBcdToDigits(const uint8_t *p_bcd, char *p_out, size_t outSize)
 {
@@ -614,7 +620,7 @@ static void App_Bc95SimLogIccid(void)
                          APP_BC95_SIM_INFO_SERIAL_LEN);
             g_appBc95SimInfo.serial[APP_BC95_SIM_INFO_SERIAL_LEN] = '\0';
             g_appBc95SimInfo.serialValid = APP_TRUE;
-            APP_LOGD("NBIOT", "Serial   : %s", g_appBc95SimInfo.serial);
+            APP_LOGN("NBIOT", "[[Usim]] Serial   : %s", g_appBc95SimInfo.serial);
         }
     }
 }
@@ -6948,7 +6954,8 @@ static AppStatus_t App_NbiotRunPostProvisionFinalizeSequence(void)
         }
     }
 
-    (void)App_NBIoTReadIdentity(APP_TRUE);
+    /* [USIM-CACHE] NRB(모뎀 리셋) 직후이므로 강제 재조회로 유심 연속성 확인 */
+    (void)App_NBIoTReadIdentityForce(APP_TRUE);
     (void)App_NBIoTReadQuality(APP_TRUE);
     (void)App_NbiotSyncTimeSoft();
     return APP_STATUS_OK;
@@ -10657,11 +10664,28 @@ attach_finalize:
 #endif
 }
 
+AppStatus_t App_NBIoTReadIdentityForce(uint8_t bSaveInfo)
+{
+    g_appBc95IdentityForceOnce = APP_TRUE;
+    return App_NBIoTReadIdentity(bSaveInfo);
+}
+
 AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo)
 {
     AppStatus_t status;
     uint8_t appImeiBcd[APP_BC95_IMEI_BCD_BYTES];
     uint8_t appImsiBcd[APP_BC95_IMSI_BCD_BYTES];
+
+    /* [USIM-CACHE] 캐시 유효 시 AT 재조회 생략 (IMEI/IMSI/NCCID/QGMR 4회 왕복 절감).
+     * 프로비저닝/모뎀 리셋 후 세션은 Force 경유로 우회한다. 조회 실패 시 캐시가
+     * 유효화되지 않아 다음 세션에서 자연 재시도된다. */
+    if ((s_appBc95IdentityCacheValid == APP_TRUE) &&
+        (g_appBc95IdentityForceOnce == APP_FALSE))
+    {
+        APP_LOGN("NBIOT", "[[Usim]] identity cached -> skip AT re-query");
+        return APP_STATUS_OK;
+    }
+    g_appBc95IdentityForceOnce = APP_FALSE;
 
     status = App_Bc95AtFetchImeiWithRetry(appImeiBcd, sizeof(appImeiBcd),
                                           APP_BC95_IMEI_FETCH_RETRY_MAX);
@@ -10684,6 +10708,7 @@ AppStatus_t App_NBIoTReadIdentity(uint8_t bSaveInfo)
     App_Bc95PrintDecoded("IMSI", appImsiBcd, (uint32_t)APP_BC95_IMSI_BCD_BYTES);
 
     App_Bc95LogSimInfo(appImsiBcd);
+    s_appBc95IdentityCacheValid = APP_TRUE;
 
     /* ----- Options에 반영 (IMEI 8B + IMSI 8B = 16B) ----- */
     if (bSaveInfo == APP_TRUE)

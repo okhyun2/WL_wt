@@ -324,7 +324,6 @@ uint32_t GetCorrectedTick(void)
 static uint64_t s_logLastRtcMs  = 0;
 static uint64_t s_logElapsedMs  = 0;
 static uint8_t  s_logLastValid  = 0;
-static uint8_t  s_logRtcFallback = 0;   /* 1: RTC 시각 0 구간(LSI) -> SysTick 대체 출력 중 */
 
 static void App_ClockLogRtcRebase(void)
 {
@@ -358,25 +357,6 @@ uint64_t App_ClockGetLogElapsedMs(void)
             break;
         }
         prev = now;
-    }
-
-    /* LSI 구간(부팅 직후 백업도메인 리셋으로 RTC 시각이 0으로 고정) 처리:
-     * RTC가 0에서 진행하지 않는 동안에는 SysTick으로 대체 출력한다.
-     * (awake 중 SysTick은 실측상 실제 경과와 일치) RTC가 0이 아닌 값을
-     * 반환하기 시작하면(LSE 전환 후) 그때 기준점만 갱신하고 RTC 증분 모드로
-     * 복귀한다 -- SysTick 대체 값이 전환 시점까지 이미 포함하므로 증분을
-     * 더하면 이중 계산이 된다. */
-    if ((now == 0u) && (s_logLastRtcMs == 0u))
-    {
-        s_logRtcFallback = 1u;
-        s_logElapsedMs = HAL_GetTick();
-        return s_logElapsedMs;
-    }
-    if (s_logRtcFallback == 1u)
-    {
-        s_logRtcFallback = 0u;
-        s_logLastRtcMs   = now;
-        return s_logElapsedMs;
     }
 
     int64_t d = (int64_t)now - (int64_t)s_logLastRtcMs;
