@@ -32,6 +32,7 @@
 #include "app_log.h"
 #include "app_meter.h"
 #include "app_meter_storage.h"
+#include "app_aux.h"
 
 /* USER CODE END Includes */
 
@@ -257,10 +258,17 @@ int main(void)
 #if !((APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && (APP_EPC_ACTIVE_TEST_ID == 12u))
   {
     uint32_t deviceHash = App_ClockGetDeviceUidHash();
+    /* 매 부팅 랜덤화. 시간 기반 값(HAL_GetTick/SysTick->VAL)은 부팅 시퀀스가
+     * 결정적이면 매번 같아서 엔트로피가 없다(실측: delay 고정). 확실한 엔트로피는
+     * ADC 열노이즈 -- VBAT/VREFINT 리딩 LSB가 부팅마다 흔들린다(실측 2728~2731).
+     * 시간 기반 지터도 함께 혼합한다. */
+    uint32_t adcNoise  = Battery_ReadAdcNoiseSeed(); /* raw 열노이즈 32샘플 혼합 */
+    uint32_t bootJitter = (HAL_GetTick() * 2654435761u) ^ SysTick->VAL ^
+                          adcNoise ^ deviceHash;
     uint32_t offsetSec = (APP_NBIOT_BOOT_OFFSET_MAX_SEC == 0u)
                              ? 1u
-                             : ((deviceHash % APP_NBIOT_BOOT_OFFSET_MAX_SEC) + 1u);
-    uint32_t randomMs = (HAL_GetTick() ^ deviceHash) % 1000u;
+                             : ((bootJitter % APP_NBIOT_BOOT_OFFSET_MAX_SEC) + 1u);
+    uint32_t randomMs = bootJitter % 1000u;
     uint32_t offsetMs = (offsetSec * 1000u) + randomMs;
 
     APP_LOGN("MAIN", "Boot NBIoT offset delay=%lu ms (uidHash=0x%08lX)",

@@ -96,6 +96,29 @@ HAL_StatusTypeDef Battery_ReadVoltage_mV(uint32_t *vbat_mv, uint32_t *vdda_mv)
 
 #define BATT_SAMPLES        8U   /* 2의 거듭제곱 권장 (시프트 연산) */
 
+/* 부팅 랜덤화용 ADC 열노이즈 시드.
+ * 평균화 리딩은 노이즈가 상쇄되어 부팅 간 값이 고정되는 반면, raw 단일 샘플은
+ * 매번 LSB 단위로 흔들린다. VREFINT/PA1을 교대로 32회 단발 읽어 혼합하고,
+ * 샘플 사이 시간 지터(SysTick->VAL, 코어 클럭마다 변함)도 함께 섞는다. */
+uint32_t Battery_ReadAdcNoiseSeed(void)
+{
+    uint32_t seed = 0x9E3779B9u;
+    uint32_t i;
+    uint16_t r;
+
+    ADC->CCR |= ADC_CCR_VREFEN;
+    HAL_Delay(3);
+
+    for (i = 0u; i < 32u; i++)
+    {
+        r = ADC_ReadChannel((i & 1u) ? ADC_CHANNEL_1 : ADC_CHANNEL_VREFINT);
+        seed = (seed * 2654435761u) ^ (uint32_t)r ^ (uint32_t)SysTick->VAL;
+    }
+
+    ADC->CCR &= ~ADC_CCR_VREFEN;
+    return seed;
+}
+
 HAL_StatusTypeDef Battery_ReadVoltage_Averaged_mV(uint32_t *adc_vref, uint32_t *adc_vbat, uint32_t *vdda_mv, uint32_t *vbat_mv)
 {
     uint32_t sum_pa1 = 0;

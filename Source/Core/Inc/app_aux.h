@@ -22,6 +22,7 @@ extern "C" {
 
 HAL_StatusTypeDef Battery_ReadVoltage_mV(uint32_t *vbat_mv, uint32_t *vdda_mv);
 HAL_StatusTypeDef Battery_ReadVoltage_Averaged_mV(uint32_t *adc_vref, uint32_t *adc_vbat, uint32_t *vdda_mv, uint32_t *vbat_mv);
+uint32_t Battery_ReadAdcNoiseSeed(void); /* 부팅 랜덤화용 ADC 열노이즈 시드 */
 void App_UpdateBatteryToOptions(uint8_t voltX10, uint8_t alarm);
 
 /* SHTC3 7-bit I2C address -> HAL은 8-bit shift된 값 사용 */
