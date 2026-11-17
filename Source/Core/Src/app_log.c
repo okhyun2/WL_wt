@@ -53,14 +53,15 @@ static const char* get_local_time_str(void)
 {
     static char buf[16];  // "hhmmss.mmm\0" = 13 bytes, 여유있게 16
 
-    uint32_t total_ms = GetCorrectedTick();
+    /* RTC 증분 기반 상대시간(부팅=0): STOP 보정/SysTick 드리프트와 무관하게
+     * 실제 경과시간을 유지한다. 서브초는 표기하지 않는다. */
+    uint64_t total_ms = App_ClockGetLogElapsedMs();
 
-    uint32_t msec = total_ms % 1000;
-    uint32_t total_sec = total_ms / 1000;
-    uint32_t sec = total_sec % 60;
-    uint32_t total_min = total_sec / 60;
-    uint32_t min = total_min % 60;
-    uint32_t hour = total_min / 60;
+    uint64_t total_sec = total_ms / 1000ULL;
+    uint32_t sec = (uint32_t)(total_sec % 60ULL);
+    uint64_t total_min = total_sec / 60ULL;
+    uint32_t min = (uint32_t)(total_min % 60ULL);
+    uint32_t hour = (uint32_t)(total_min / 60ULL);
 
 
     #if 0
@@ -73,7 +74,7 @@ static const char* get_local_time_str(void)
     snprintf(buf, sizeof(buf), "%02lu%02lu%02lu.%03lu", hour, min, sec, msec);
     #endif
 
-    snprintf(buf, sizeof(buf), "%02lu%02lu%02lu.%03lu", hour, min, sec, msec);
+    snprintf(buf, sizeof(buf), "%02lu%02lu%02lu", hour, min, sec);
 
     return buf;
 }

@@ -105,6 +105,7 @@ const AppClockContext_t *App_ClockGetContext(void);
 extern uint32_t g_tick_offset;
 uint32_t CalcElapsedMs(uint64_t before_ms, uint64_t after_ms);
 uint32_t GetCorrectedTick(void);
+uint64_t App_ClockGetLogElapsedMs(void);
 void RTC_SetTime(int year, int month, int date, int hour, int min, int sec);
 AppStatus_t RTC_GetTime(AppDateTime_t *pDateTime);
 AppStatus_t RTC_PrintTime(void);

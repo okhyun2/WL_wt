@@ -182,7 +182,7 @@
 #define APP_NBIOT_NCONFIG_QUERY_RX_TIMEOUT_MS (1500u)
 #define APP_NBIOT_SILENCE_REBOOT_EXTRA_WAIT_MS (3000u)
 
-#define APP_NBIOT_LOG_PREATTACH         "[PreAttach]"
+#define APP_NBIOT_LOG_PREATTACH         "[[PreAttach]]"
 #define APP_NBIOT_LOG_DNS               "[DNS]"
 #define APP_NBIOT_LOG_READYPROBE        "[ReadyProbe]"
 
@@ -1121,7 +1121,7 @@ static AppStatus_t App_Bc95AtReadPreAttachSignalDbm(int16_t *p_signalDbm, int16_
             {
                 *p_signalDbm = signalDbm;
                 *p_totalDbm  = totalDbm;
-                APP_LOGI("NBIOT", APP_NBIOT_LOG_PREATTACH
+                APP_LOGN("NBIOT", APP_NBIOT_LOG_PREATTACH
                          " radio power ok sig=%d dBm tot=%d dBm a=%lu t=%lums",
                          (int)signalDbm, (int)totalDbm,
                          (unsigned long)attempt,
@@ -7175,7 +7175,16 @@ AppStatus_t App_NBIoTServicePlatformWakeTrack(uint8_t deleteStorage)
                                                    p_bootLive);
         if (status != APP_STATUS_OK)
         {
-            APP_LOGW("NBIOT", "[[ServiceTx]] platform transmit failed (status=%d) -> continue with mgmt UDP", (int)status);
+            if (status == APP_STATUS_INVALID_PARAM)
+            {
+                /* 스토리지 0건 가드(전송할 저장 레코드 없음, status=2):
+                 * 통신 실패가 아니므로 검침 실패 상황에서 매시 WARN 도배를 막는다. */
+                APP_LOGN("NBIOT", "[[ServiceTx]] no saved record to send (storage empty, status=2) -> continue with mgmt UDP");
+            }
+            else
+            {
+                APP_LOGW("NBIOT", "[[ServiceTx]] platform transmit failed (status=%d) -> continue with mgmt UDP", (int)status);
+            }
         }
         else
         {

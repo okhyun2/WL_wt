@@ -90,15 +90,15 @@ extern "C" {
 #ifdef NBIOT_SUPPORT_DNS
 //#define MY_SERVER_DOMAIN              "acorp2.iptime.org" //TODO test server
 #define MY_SERVER_DOMAIN              "dev-aro.com" //TODO test server
-#define APP_SERVICE_SERVER_PORT                 (6001u)
-#define APP_MGMT_SERVER_PORT                    (6001u)
 
 #define WARMUPDNS_SERVER_DOMAIN       MY_SERVER_DOMAIN
 #define APP_MGMT_SERVER_DOMAIN        MY_SERVER_DOMAIN
 #else
-#define MY_SERVER_IP                    "59.27.15.61"
+#define MY_SERVER_IP                    "59.27.15.61" //public ip
 #define APP_MGMT_SERVER_IP             MY_SERVER_IP
 #endif // NBIOT_SUPPORT_DNS
+#define APP_SERVICE_SERVER_PORT                 (6001u)
+#define APP_MGMT_SERVER_PORT                    (6001u)
 
 /* BC95-GV board-aligned platform provisioning defaults */
 #define APP_BC95_PLATFORM_LGU_SERVER_IP_STRING      "lbk.onem2mstp.uplus.co.kr"

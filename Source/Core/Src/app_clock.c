@@ -311,6 +311,51 @@ uint32_t GetCorrectedTick(void)
     return HAL_GetTick() + g_tick_offset;
 }
 
+/* ---- 로그용 상대시간(부팅=0, RTC 기반) ----
+ * 기존 스탬프(HAL_GetTick + g_tick_offset)는 STOP 보정 누적과 SysTick 재동기화
+ * 시점 문제로 실제 경과와 누적 오차가 커졌다(실측: 1시간당 스탬프 ~2.8배 팽창).
+ * 로그 스탬프는 RTC 달력의 "증분(delta)"만 누적한다. RTC는 네트워크 타임싱크로
+ * 절대값이 보정되므로 절대값이 아무리 바뀌어도 증분은 항상 실제 시간과 일치한다.
+ *  - RTC_SetTime() 호출 시마다 기준점을 재설정(rebase)해 세팅 점프를 스탬프에
+ *    반영하지 않는다(상대시간 연속성 유지).
+ *  - RTC가 뒤로 세팅되면 카치는 동안 동결(역행 방지).
+ *  - 자정 랩은 delta가 -12h 미만일 때 +24h 보정으로 처리.
+ */
+static uint64_t s_logLastRtcMs  = 0;
+static uint64_t s_logElapsedMs  = 0;
+static uint8_t  s_logLastValid  = 0;
+
+static void App_ClockLogRtcRebase(void)
+{
+    s_logLastRtcMs = RTC_GetTimeMs();
+    s_logLastValid = 1u;
+}
+
+uint64_t App_ClockGetLogElapsedMs(void)
+{
+    uint64_t now = RTC_GetTimeMs();
+
+    if (s_logLastValid == 0u)
+    {
+        App_ClockLogRtcRebase();
+        return s_logElapsedMs;
+    }
+
+    int64_t d = (int64_t)now - (int64_t)s_logLastRtcMs;
+    if (d < -43200000LL)            /* 자정 랩(앞으로) */
+    {
+        d += 86400000LL;
+    }
+    else if (d < 0)                 /* RTC 뒤로 세팅: 동결 */
+    {
+        d = 0;
+    }
+
+    s_logElapsedMs += (uint64_t)d;
+    s_logLastRtcMs  = now;
+    return s_logElapsedMs;
+}
+
 void RTC_SetTime(int year, int month, int date, int hour, int min, int sec)
 {
   RTC_TimeTypeDef sTime = {0};
@@ -325,6 +370,9 @@ void RTC_SetTime(int year, int month, int date, int hour, int min, int sec)
 
   HAL_RTC_SetTime(APP_RTC_HANDLE, &sTime, RTC_FORMAT_BIN);
   HAL_RTC_SetDate(APP_RTC_HANDLE, &sDate, RTC_FORMAT_BIN);
+
+  /* 로그 상대시간 기준점 재설정: RTC 세팅 점프를 스탬프 누적에 반영하지 않음 */
+  App_ClockLogRtcRebase();
 }
 
 AppStatus_t RTC_GetTime(AppDateTime_t *pDateTime)
