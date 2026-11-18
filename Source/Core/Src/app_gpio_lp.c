@@ -443,11 +443,16 @@ static void App_GpioLpApplySwdPolicy(void)
  */
 static void App_GpioLpApplyUnusedPins(void)
 {
-    App_GpioLpConfigAnalogNoPull(GPIOA, APP_GPIO_LP_UNUSED_PORTA_MASK);
-    App_GpioLpConfigAnalogNoPull(GPIOB, APP_GPIO_LP_UNUSED_PORTB_MASK);
-    App_GpioLpConfigAnalogNoPull(GPIOC, APP_GPIO_LP_UNUSED_PORTC_MASK);
-    App_GpioLpConfigAnalogNoPull(GPIOD, APP_GPIO_LP_UNUSED_PORTD_MASK);
-    App_GpioLpConfigAnalogNoPull(GPIOH, APP_GPIO_LP_UNUSED_PORTH_MASK);
+    /* [MOLDING-LEAKAGE] 미사용 핀을 아날로그(부유) 대신 출력 LOW로 고정.
+     * 몰딩 경과에 의한 이온성 누설 경로가 형성돼도 핀 전위가 GND 참조로
+     * 고정되어 부유 바이어스/예측 불가 누설 전류를 방지한다.
+     * 대상은 UNUSED_PORTx_MASK = 어떤 외부 전위망(풀업/버스/분압)에도
+     * 물리지 않은 핀만이므로 출력 LOW가 전류 손실을 만들지 않는다. */
+    App_GpioLpConfigOutput(GPIOA, APP_GPIO_LP_UNUSED_PORTA_MASK, GPIO_PIN_RESET);
+    App_GpioLpConfigOutput(GPIOB, APP_GPIO_LP_UNUSED_PORTB_MASK, GPIO_PIN_RESET);
+    App_GpioLpConfigOutput(GPIOC, APP_GPIO_LP_UNUSED_PORTC_MASK, GPIO_PIN_RESET);
+    App_GpioLpConfigOutput(GPIOD, APP_GPIO_LP_UNUSED_PORTD_MASK, GPIO_PIN_RESET);
+    App_GpioLpConfigOutput(GPIOH, APP_GPIO_LP_UNUSED_PORTH_MASK, GPIO_PIN_RESET);
 }
 
 /**
