@@ -7,7 +7,9 @@
 #include "main.h"
 #include "app_hw.h"
 #include "app_nbiot.h"
+#if (defined(APP_NBIOT_FW_UPD_ENABLE) && (APP_NBIOT_FW_UPD_ENABLE == 1))
 #include "boot_udp_dl.h"   /* [FW-UPD] BootDlMeta_t / BOOT_DL_META_PAGE2 공유 */
+#endif   
 #include "app_gpio_lp.h"
 #include "app_log.h"
 #include "app_clock.h"
@@ -2670,7 +2672,9 @@ void App_DlAckInit(void)
     (void)App_DlAckRegisterCmd(0x50u, "reset");
     (void)App_DlAckRegisterCmd(0x51u, "period");
     (void)App_DlAckRegisterCmd(0x52u, "spread");
+#if (defined(APP_NBIOT_FW_UPD_ENABLE) && (APP_NBIOT_FW_UPD_ENABLE == 1))
     (void)App_DlAckRegisterCmd(APP_DL_CMD_FW_BEGIN, "fw_begin");   /* [FW-UPD] 6.9 */
+#endif   
 }
 
 AppStatus_t App_DlAckRegisterCmd(uint8_t cmd, const char *p_name)
@@ -2939,6 +2943,7 @@ static void App_Bc95AtNnmiScanDmaBuf(void)
     }
 }
 
+#if (defined(APP_NBIOT_FW_UPD_ENABLE) && (APP_NBIOT_FW_UPD_ENABLE == 1))
 /* [FW-UPD 6.9] BootDlMeta를 META page2(0x0802F000)에 기록. 부트와 구조체 공유
  * (Boot/Inc/boot_udp_dl.h — include path에 Boot/Inc 존재). 페이지 지움+word 프로그램. */
 static AppStatus_t App_DlFwBeginSaveMeta(const BootDlMeta_t *p_meta)
@@ -2970,6 +2975,7 @@ static AppStatus_t App_DlFwBeginSaveMeta(const BootDlMeta_t *p_meta)
     (void)HAL_FLASH_Lock();
     return APP_STATUS_OK;
 }
+#endif
 
 static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len, uint8_t isServicePath)
 {
@@ -3046,6 +3052,7 @@ static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len, uint8_t isSer
             }
             break;
 
+#if (defined(APP_NBIOT_FW_UPD_ENABLE) && (APP_NBIOT_FW_UPD_ENABLE == 1))
         case APP_DL_CMD_FW_BEGIN:
         {
             /* 프레임: [0xA3][msgLen=17][0x54][ver2][size4][crc4][ip4][port2][crc8] */
@@ -3085,7 +3092,12 @@ static void App_DlCmdExecute(const uint8_t *p_frame, uint16_t len, uint8_t isSer
             }
             break;   /* 도달하지 않음(방어) */
         }
-
+#else
+        case APP_DL_CMD_FW_BEGIN:
+            /* [FW-UPD] 빌드 스위치 비활성(기본): OTA 미지원 빌드 */
+            APP_LOGN("NBIOT", "[[DlCmd]] fw_begin(6.9) disabled by build switch -> ignore");
+            break;
+#endif
         default:
             if ((cmd >= APP_DL_CMD_MGMT_RESERVED_MIN) && (cmd <= APP_DL_CMD_MGMT_RESERVED_MAX))
             {
