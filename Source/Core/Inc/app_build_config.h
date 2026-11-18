@@ -152,7 +152,10 @@ extern "C" {
 #define APP_CLOCK_LSE_DRIVE                         RCC_LSEDRIVE_MEDIUMHIGH
 /* RV3032 CLKOUT(32.768kHz)을 LSE 소스로 사용: APP_TRUE=LSE bypass(외부 클럭 입력),
    APP_FALSE=보드 크리스털 발진(기존 동작). bypass에서는 LSEDRV가 무의미함 */
-#define APP_CLOCK_LSE_BYPASS_ENABLE                 (APP_FALSE) //TODO . board update -> APP_TRUE
+#define APP_CLOCK_LSE_BYPASS_ENABLE                 (APP_TRUE) /* V0.4 board: RV-3032 CLKOUT supplies 32.768kHz to LSE input */
+/* [V0.4 eRTC] RV-3032 CLKOUT(32.768kHz) 확인을 I2C1로 수행. V0.3 보드(RV-3032 없음)에서는
+ * I2C NACK -> 자동 스킵(LSI 유지)하므로 단일 빌드로 혼재 운용 가능. */
+#define APP_ERTC_ENABLE                             (APP_TRUE)
 #define APP_CLOCK_LSI_NOMINAL_HZ                    (APP_CLOCK_LSE_NOMINAL_HZ)
 #define APP_CLOCK_SYSTICK_HZ                        (1000u)
 #define APP_CLOCK_LSE_READY_TIMEOUT_MS              (8000u)

@@ -26,6 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app_clock.h"
+#include "app_ertc.h"
 #include "app_error.h"
 #include "app_system.h"
 #include <string.h>
@@ -158,6 +159,7 @@ ADC_HandleTypeDef hadc;
 
 CRC_HandleTypeDef hcrc;
 
+I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 I2C_HandleTypeDef hi2c3;
 
@@ -180,6 +182,7 @@ void SystemClock_Config(void);
 static void MX_RTC_Init(void);
 static void MX_GPIO_Init(void);
 static void MX_CRC_Init(void);
+static void MX_I2C1_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_I2C3_Init(void);
 static void MX_LPUART1_UART_Init(void);
@@ -234,12 +237,29 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_CRC_Init();
+  MX_I2C1_Init(); //eRTC (RV-3032, V0.4 board)
   MX_I2C2_Init(); //nfc
   MX_I2C3_Init(); //aux(temp,moisture)
   MX_LPUART1_UART_Init(); //nbiot
   MX_USART1_UART_Init(); //debug
   MX_USART2_UART_Init(); //meter
   MX_ADC_Init();
+#if (APP_ERTC_ENABLE == APP_TRUE)
+  /* [V0.4 eRTC] RV-3032 CLKOUT 32.768kHz confirm (I2C1).
+   * V0.3 board: probe NACK -> skip silently (LSI fallback unchanged).
+   * Runs before App_SystemInit() so CLKOUT is up before LSE background polling. */
+  {
+    AppStatus_t ertcStatus = App_ErtcProbe();
+    if (ertcStatus == APP_STATUS_OK)
+    {
+      (void)App_ErtcEnsureClkout32k();
+    }
+    else
+    {
+      APP_LOGW("ERTC", "probe fail (st=%d) -> V0.3 board? CLKOUT setup skipped", (int)ertcStatus);
+    }
+  }
+#endif
 #if 0 //no use
   MX_LPTIM1_Init();
 #endif
@@ -536,6 +556,36 @@ static void MX_CRC_Init(void)
 
   /* USER CODE END CRC_Init 2 */
 
+}
+
+/**
+  * @brief I2C1 Initialization Function (eRTC RV-3032, V0.4 board)
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x00000708; //PCLK1-2Mhz. 708:100Khz (timing aligned with I2C2/3)
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 /**

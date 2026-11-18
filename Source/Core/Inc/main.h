@@ -95,6 +95,10 @@ void APP_WWDGFeed(void);
 #define Debug_RX_GPIO_Port GPIOA
 #define WD_FEED_Pin GPIO_PIN_5
 #define WD_FEED_GPIO_Port GPIOB
+#define eRTC_SCL_Pin GPIO_PIN_6
+#define eRTC_SCL_GPIO_Port GPIOB
+#define eRTC_SDA_Pin GPIO_PIN_7
+#define eRTC_SDA_GPIO_Port GPIOB
 #define Charge_BOOT0_Pin GPIO_PIN_8
 #define Charge_BOOT0_GPIO_Port GPIOB
 #define Meter_UART_Loop_GPIO_Port GPIOA
