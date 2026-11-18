@@ -2,6 +2,7 @@
 #include <string.h>
 #include "app_log.h"
 #include "app_comm_param.h"
+#include "stm32l0xx_hal.h"
 #include "app_build_config.h"
 #include "app_meter_server_format.h"
 #include "app_meter_storage.h"
@@ -55,6 +56,170 @@ static uint8_t app_comm_is_effective_weak(void)
     return (uint8_t)((g_appCommSignalState == APP_COMM_SIGNAL_WEAK) || (g_appCommServiceCostScore >= APP_COMM_COST_WEAK_ENTER_THRESHOLD));
 }
 
+/* ---- [REPORT-LADDER] 약전계 리포트 주기 사다리 ----
+ * 기준 주기(정책 weak 슬롯 -- 서버/NFC 설정 가능, 기본 4h)에서 시작해 지원
+ * 주기 집합의 다음 값을 따라 상승한다: 4h -> 6h -> 8h -> 12h -> 24h
+ * (기준이 1h이면 2h부터, 3h/72h는 제외).
+ * 단계별 진행 규칙(세션 결과 기준):
+ *   - 성공 1회      -> 즉시 기준 주기로 복귀(사다리/nightOnly 해제)
+ *   - 실패 + 약전계 -> 1회 시도 후 다음 단계
+ *   - 실패 + 강전계 -> 3회 시도 후 다음 단계(망/서버 일시 장애 여유)
+ * 최상단(24h) 도달 시 nightOnly 윈도우 적용(야간 1회로 수렴), 24h 주기 세션
+ * 7회(=7일) 유지 후 사다리를 리셋해 기준 주기부터 재동작한다.
+ * 상태는 RAM 런타임만 사용(MCU 리셋 시 기준 주기로 초기화). mgmt/QREP 주기는
+ * 변경하지 않는다. */
+#define APP_COMM_LADDER_TOP_HOURS        (24u)
+#define APP_COMM_LADDER_TOP_HOLD_RESET   (7u)   /* 최상단 유지 세션 수 = 7일 */
+#define APP_COMM_LADDER_WEAK_TRIES       (1u)   /* 약전계: 단계당 시도 1회 */
+#define APP_COMM_LADDER_STRONG_TRIES     (3u)   /* 강전계: 단계당 시도 3회 */
+
+static const uint8_t s_commLadderHours[] = { 2u, 4u, 6u, 8u, 12u, 24u };
+static uint8_t s_commLadderActive  = 0u;  /* 1: 기준 주기에서 사다리 상승 중 */
+static uint8_t s_commLadderCur     = 0u;  /* 현재 약전계 목표 주기(활성 시) */
+static uint8_t s_commLadderTries   = 0u;  /* 현재 단계에서 완료된 세션 수 */
+static uint8_t s_commLadderTopHold = 0u;  /* 최상단 유지 세션 수 */
+
+static uint8_t app_comm_ladder_base_hours(void)
+{
+    uint8_t base = g_appCommAdaptivePolicy.weakReportingHours;
+    if ((base == 0u) ||
+        (App_MeterServerOptionsIsPeriodSupported(base) == APP_FALSE))
+    {
+        base = (uint8_t)APP_COMM_ADAPTIVE_WEAK_REPORT_HOURS;
+    }
+    return base;
+}
+
+static uint8_t app_comm_ladder_next_after(uint8_t hours)
+{
+    uint8_t i;
+    for (i = 0u; i < (uint8_t)(sizeof(s_commLadderHours) / sizeof(s_commLadderHours[0])); i++)
+    {
+        if (s_commLadderHours[i] > hours)
+        {
+            return s_commLadderHours[i];
+        }
+    }
+    return 0u;  /* 다음 단계 없음(최상단) */
+}
+
+static uint8_t app_comm_ladder_weak_hours(void)
+{
+    uint8_t base = app_comm_ladder_base_hours();
+    if (s_commLadderActive == 0u) { return base; }
+    if (s_commLadderCur < base)   { return base; }  /* 서버가 기준을 올리면 따라감 */
+    return s_commLadderCur;
+}
+
+void App_CommLadderReset(void)
+{
+    s_commLadderActive  = 0u;
+    s_commLadderCur     = 0u;
+    s_commLadderTries   = 0u;
+    s_commLadderTopHold = 0u;
+}
+
+void App_CommLadderOnServiceResult2(uint8_t allFailed)
+{
+    App_CommLadderOnServiceResult(allFailed);
+}
+
+void App_CommLadderOnServiceResult(uint8_t allFailed)
+{
+    uint8_t base = app_comm_ladder_base_hours();
+    uint8_t weak;
+    uint8_t maxTries;
+
+    if (allFailed != APP_TRUE)
+    {
+        /* 성공 1회 -> 기준 주기로 즉시 복귀 */
+        if (s_commLadderActive != 0u)
+        {
+            APP_LOGN("COMM", "[[CommLadder]] success -> ladder reset (base %uh)",
+                     (unsigned)base);
+        }
+        App_CommLadderReset();
+        return;
+    }
+
+    weak = app_comm_is_effective_weak();
+    maxTries = (weak == APP_TRUE) ? APP_COMM_LADDER_WEAK_TRIES : APP_COMM_LADDER_STRONG_TRIES;
+
+    if (s_commLadderTries < (uint8_t)(maxTries - 1u))
+    {
+        s_commLadderTries++;
+        APP_LOGN("COMM", "[[CommLadder]] session failed, retry at %uh (%u/%u, %s)",
+                 (unsigned)app_comm_ladder_weak_hours(),
+                 (unsigned)s_commLadderTries, (unsigned)maxTries,
+                 (weak == APP_TRUE) ? "weak" : "strong");
+        return;
+    }
+    s_commLadderTries = 0u;
+
+    if (s_commLadderActive == 0u)
+    {
+        uint8_t next = app_comm_ladder_next_after(base);
+        if (next == 0u)
+        {
+            /* 기준이 이미 최상단: 24h 고정 + nightOnly */
+            s_commLadderActive = APP_TRUE;
+            s_commLadderCur    = APP_COMM_LADDER_TOP_HOURS;
+            APP_LOGN("COMM", "[[CommLadder]] base is top -> 24h + night-only");
+            return;
+        }
+        s_commLadderActive = APP_TRUE;
+        s_commLadderCur    = next;
+        APP_LOGN("COMM", "[[CommLadder]] weak session done -> report period %uh",
+                 (unsigned)next);
+        if (next == APP_COMM_LADDER_TOP_HOURS)
+        {
+            APP_LOGN("COMM", "[[CommLadder]] top period 24h -> night-only window on");
+        }
+        return;
+    }
+
+    if (s_commLadderCur >= APP_COMM_LADDER_TOP_HOURS)
+    {
+        /* 최상단 유지 중: 실패 세션 7회(7일) 경과 시 리셋 */
+        s_commLadderTopHold++;
+        if (s_commLadderTopHold >= APP_COMM_LADDER_TOP_HOLD_RESET)
+        {
+            APP_LOGN("COMM", "[[CommLadder]] 24h held 7 days -> MCU reboot (ladder reset, base %uh, night-only off)",
+                     (unsigned)base);
+            /* [REPORT-LADDER v4] 7일 만료 시 MCU 리부트로 리셋한다.
+             * 사다리/nightOnly는 RAM 상태라 리부트 시 자동 초기화(기준 주기),
+             * 모뎀도 전원 인가 상태에서 재부팅되어 깨끗한 상태로 재시작한다.
+             * 위 로그는 플러시 보장을 위해 리부트 직전 마지막 출력이다. */
+            (void)base;
+            HAL_NVIC_SystemReset();   /* 반환 없음 */
+        }
+        else
+        {
+            APP_LOGN("COMM", "[[CommLadder]] 24h hold %u/%u",
+                     (unsigned)s_commLadderTopHold, (unsigned)APP_COMM_LADDER_TOP_HOLD_RESET);
+        }
+        return;
+    }
+
+    {
+        uint8_t next = app_comm_ladder_next_after(s_commLadderCur);
+        if (next == 0u)
+        {
+            s_commLadderCur = APP_COMM_LADDER_TOP_HOURS;
+        }
+        else
+        {
+            s_commLadderCur = next;
+        }
+        APP_LOGN("COMM", "[[CommLadder]] weak session done -> report period %uh",
+                 (unsigned)s_commLadderCur);
+        if (s_commLadderCur == APP_COMM_LADDER_TOP_HOURS)
+        {
+            APP_LOGN("COMM", "[[CommLadder]] top period 24h -> night-only window on");
+        }
+    }
+}
+
 void App_CommOnPreAttachAbort(const AppBc95Quality_t *p_quality,
                               int16_t csqRssiDbm,
                               uint8_t noCellAfterProbe)
@@ -97,6 +262,7 @@ void App_CommOnPreAttachAbort(const AppBc95Quality_t *p_quality,
      * service all-failed와 유사하게 cost/downshift에 반영한다.
      */
     App_CommSuccessUpdate(0u, APP_TRUE);
+    App_CommLadderOnServiceResult(APP_TRUE);   /* abort도 약전계 세션 완료로 사다리 반영 */
     App_CommParamRecompose();
 
     APP_LOGD("COMM", "pre-attach abort applied: csq=%d noCell=%u signal=%s success=%s cost=%u extremeWeak=%u abort=%u",
@@ -443,16 +609,26 @@ void App_CommParamRecompose(void)
 
     effectiveWeak = app_comm_is_effective_weak();
 
-    targetReportingHours = (effectiveWeak == APP_TRUE) ? policy.weakReportingHours
-                                                       : policy.strongReportingHours;
+    if (effectiveWeak == APP_TRUE)
+    {
+        /* [REPORT-LADDER] 약전계 지속 시 지원 주기 사다리(2..24h) */
+        targetReportingHours = app_comm_ladder_weak_hours();
+    }
+    else
+    {
+        targetReportingHours = policy.strongReportingHours;
+    }
+
     if ((policy.flags & APP_COMM_ADAPTIVE_FLAG_BYPASS_NIGHT_ONLY) != 0u)
     {
         targetNightOnly = APP_FALSE;
     }
     else
     {
-        targetNightOnly = ((g_appCommSuccessState == APP_COMM_SUCCESS_LOW) &&
-                           (g_appCommExtremeWeakLatched == APP_TRUE))
+        /* [REPORT-LADDER] nightOnly는 사다리 최상단(24h) 도달부터 적용 */
+        targetNightOnly = ((effectiveWeak == APP_TRUE) &&
+                           (s_commLadderActive == APP_TRUE) &&
+                           (app_comm_ladder_weak_hours() >= APP_COMM_LADDER_TOP_HOURS))
                           ? APP_TRUE : APP_FALSE;
     }
 
@@ -503,9 +679,11 @@ static const AppTest7Case_t g_appTest7CaseTable[APP_TEST7_CASE_COUNT] =
 {
     /* name              rssi  rsrp  attemptIdx allFailed repeat expWeak expLow expPeriodH expNightOnly */
     { "A_normal",         -70,  -75,  0,         APP_FALSE, 2,    APP_FALSE, APP_FALSE, APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS, APP_FALSE },
+    /* [REPORT-LADDER] TEST7은 사다리 훅을 호출하지 않으므로(워밍업 보호)
+     * 기대 주기는 항상 기준(weak 슬롯)값, nightOnly는 최상단 도달 전까지 FALSE */
     { "B_weakSignal",    -102, -112,  0,         APP_FALSE, 2,    APP_TRUE,  APP_FALSE, APP_COMM_PERIOD_WEAK_HOURS,                APP_FALSE },
-    { "C_lowSuccess",     -70,  -75,  3,         APP_TRUE,  2,    APP_FALSE, APP_TRUE,  APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS, APP_TRUE  },
-    { "D_combo_weak_low",-102, -112,  3,         APP_TRUE,  2,    APP_TRUE,  APP_TRUE,  APP_COMM_PERIOD_WEAK_HOURS,                APP_TRUE  },
+    { "C_lowSuccess",     -70,  -75,  3,         APP_TRUE,  2,    APP_TRUE,  APP_TRUE,  APP_COMM_PERIOD_WEAK_HOURS,                APP_FALSE },
+    { "D_combo_weak_low",-102, -112,  3,         APP_TRUE,  2,    APP_TRUE,  APP_TRUE,  APP_COMM_PERIOD_WEAK_HOURS,                APP_FALSE },
     { "E_restoreToA",     -70,  -75,  0,         APP_FALSE, 2,    APP_FALSE, APP_FALSE, APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS, APP_FALSE },
 };
 
@@ -565,6 +743,7 @@ void App_CommTest7RunCycle(void)
     /* 1.5) 새 케이스로 진입하는 시점(첫 반복)에만 streak 워밍업 수행 */
     if (s_appTest7RepeatIndex == 0u)
     {
+        App_CommLadderReset();   /* 케이스 간 사다리 상태 독립 */
         App_Test7WarmupSuccessStreak(pCase);
     }
 

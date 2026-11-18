@@ -33,6 +33,11 @@ typedef struct
 
 void App_CommSignalMeasureAndUpdate(const AppBc95Quality_t *p_quality);
 void App_CommSuccessUpdate(uint8_t attemptUsedIdx, uint8_t allFailed);
+/* [REPORT-LADDER] 약전계 리포트 주기 사다리: 세션 결과 반영 / 강제 리셋(자기검증용) */
+void App_CommLadderOnServiceResult(uint8_t allFailed);
+/* [REPORT-LADDER v3] platform4(CON) 반영 판정용 래퍼 -- 동작은 동일, 시그니처 구분용 */
+void App_CommLadderOnServiceResult2(uint8_t allFailed);
+void App_CommLadderReset(void);
 AppCommSignalState_t  App_CommGetSignalState(void);
 AppCommSuccessState_t App_CommGetSuccessState(void);
 void App_CommParamRecompose(void);

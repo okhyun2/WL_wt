@@ -7389,6 +7389,13 @@ static AppBc95AtStatus_t App_Bc95AtParseQlwevtind(const char *p_resp, int *p_eve
     return APP_BC95_AT_OK;
 }
 
+/* [REPORT-LADDER v3] 세션 스코프 platform4(CON) 결과 스냅샷.
+ * App_Bc95AtPlatformSendAndConfirm이 qlwStatus==4 수신 시 세팅하고,
+ * 세션 완료 시 사다리 판정(App_CommLadderOnServiceResult)에 사용된 뒤 클리어.
+ * allFailed=FALSE여도 platform CON이 없으면(예: STATUS 타임아웃) 실패로 판정하기
+ * 위한 보조 판정값 -- appAck(+NNMI) 타임아웃은 성공으로 본다(platform4=1이면). */
+static uint8_t s_appBc95SessionPlatform4 = APP_FALSE;
+
 static void App_NbiotServiceTxStatCount(void)
 {
     s_appNbiotServiceTxAttempts++;
@@ -7919,6 +7926,7 @@ static AppStatus_t App_Bc95AtPlatformSendAndConfirm(const uint8_t *p_data, uint1
             {
                 /* CON 성공 URC 수신 통계 (mgmt 트레일러 tag 0xD3 보고용) */
                 App_NbiotServiceSuccessStatCount();
+                s_appBc95SessionPlatform4 = APP_TRUE;   /* [REPORT-LADDER v3] */
             }
 
             if ((qlwStatus == 4) && ((qlwSeq < 0) || (qlwSeq == (int)seqNum)))
@@ -8026,7 +8034,10 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
             {
 #if (APP_COMM_PARAM_AUTOTUNE_ENABLE == APP_TRUE)
                 App_CommSuccessUpdate((uint8_t)(sendAttempt - 1u), APP_FALSE); /* service 결과만 반영 */
-                App_CommParamRecompose(); /* 1h <-> 4h / nightOnly 재계산 */
+                /* [REPORT-LADDER v3] platform CON(qlwStatus=4) 없는 성공 종료는 실패로 판정 */
+                App_CommLadderOnServiceResult2((s_appBc95SessionPlatform4 == APP_TRUE) ? APP_FALSE : APP_TRUE);
+                s_appBc95SessionPlatform4 = APP_FALSE;
+                App_CommParamRecompose(); /* 약전계 사다리 / nightOnly 재계산 */
 #endif
 #if (APP_TEST_SERVER_TX_BUZZER_ENABLE == APP_TRUE)
                 App_NbiotTestNotifyServerTxBuzzer();
@@ -8081,7 +8092,9 @@ static AppStatus_t App_NBIoTTransmitPlatformInternal(const char *p_logTag,
     if (status != APP_STATUS_OK)
     {
         App_CommSuccessUpdate(APP_BC95_PLATFORM_SEND_RETRY_MAX, APP_TRUE); /* 전체 실패 */
-        App_CommParamRecompose(); /* 빠른 하향 전환 */
+        App_CommLadderOnServiceResult2(APP_TRUE);  /* [REPORT-LADDER] 실패 세션 반영 */
+        s_appBc95SessionPlatform4 = APP_FALSE;
+        App_CommParamRecompose(); /* 약전계 사다리 / nightOnly 재계산 */
     }
 #endif
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
