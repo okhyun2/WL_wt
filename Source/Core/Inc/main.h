@@ -99,6 +99,8 @@ void APP_WWDGFeed(void);
 #define eRTC_SCL_GPIO_Port GPIOB
 #define eRTC_SDA_Pin GPIO_PIN_7
 #define eRTC_SDA_GPIO_Port GPIOB
+#define eRTC_INT_Pin GPIO_PIN_0
+#define eRTC_INT_GPIO_Port GPIOB
 #define Charge_BOOT0_Pin GPIO_PIN_8
 #define Charge_BOOT0_GPIO_Port GPIOB
 #define Meter_UART_Loop_GPIO_Port GPIOA

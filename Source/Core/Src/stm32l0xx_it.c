@@ -265,6 +265,14 @@ void LPTIM1_IRQHandler(void)
 
 void EXTI0_1_IRQHandler(void)
 {
+#if 1 /* [V0.4 eRTC-WAKE] PB0 RTC_INT (활성화 미정) - 사용 시 #if 1 */
+  if ((EXTI->PR & eRTC_INT_Pin) != 0u)
+  {
+    g_wakeup_ctx.raw_exti_pr |= eRTC_INT_Pin;
+    g_wakeup_ctx.pending_flags |= WAKEUP_FLAG_EXTI_PIN0; /* STOP wake 시 handle_exti_wakeup 경유 */
+    EXTI->PR = eRTC_INT_Pin; /* clear pending */
+  }
+#endif /* eRTC_INT */
 }
 
 void EXTI2_3_IRQHandler(void)

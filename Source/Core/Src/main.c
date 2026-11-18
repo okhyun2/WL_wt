@@ -1026,6 +1026,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(WD_FEED_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : eRTC_INT_Pin */
+  GPIO_InitStruct.Pin = eRTC_INT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING; /* RTC_INT: INT low pulse on event */
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(eRTC_INT_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : NFC_ED_Pin */
   GPIO_InitStruct.Pin = NFC_ED_Pin; //actvie low
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;

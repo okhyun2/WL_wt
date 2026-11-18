@@ -827,6 +827,7 @@ static void App_SystemConfigureWakeupInterrupts(void)
     HAL_NVIC_SetPriority(RTC_IRQn, 1u, 0u);
     HAL_NVIC_EnableIRQ(RTC_IRQn);
     HAL_NVIC_SetPriority(EXTI0_1_IRQn, 2u, 0u);
+    HAL_NVIC_SetPriority(EXTI0_1_IRQn, 3u, 0u); /* NFC_ED(EXTI4_15)보다 낮게 */
     HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
     HAL_NVIC_SetPriority(EXTI2_3_IRQn, 2u, 0u);
     HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
