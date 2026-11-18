@@ -754,7 +754,7 @@ static void App_MeterServerFormatDumpHex(const char *p_tag,
         pos += (uint32_t)snprintf(&line[pos], sizeof(line) - pos, "%02X ", p_data[i]);
         if (((i + 1u) % 16u == 0u) || ((i + 1u) == length))
         {
-            APP_LOGI(p_tag, "  %s[%02lu..]: %s",
+            APP_LOGD(p_tag, "  %s[%02lu..]: %s",
                      p_name, (uint32_t)(i - (i % 16u)), line);
             pos = 0u;
             line[0] = '\0';
@@ -777,6 +777,7 @@ void App_MeterServerOptionsDump(const AppMeterServerFormatOptions_t *p_options)
              (p_options->linkHeader == APP_METER_SERVER_FORMAT_HEADER_NBIOT) ? "NB-IoT": "unknown");
     APP_LOGD("OPT", "  cmd : 0x%02X", p_options->command);
 
+#if (APP_LOG_LEVEL == APP_LOG_LEVEL_E_DEBUG)
     App_MeterServerFormatDumpHex("OPT", "wirelessQuality",
                                  p_options->wirelessQuality,
                                  sizeof(p_options->wirelessQuality));
@@ -788,6 +789,7 @@ void App_MeterServerOptionsDump(const AppMeterServerFormatOptions_t *p_options)
     App_MeterServerFormatDumpHex("OPT", "deviceSerialBcd",
                                  p_options->deviceSerialBcd,
                                  sizeof(p_options->deviceSerialBcd));
+#endif //(APP_LOG_LEVEL == APP_LOG_LEVEL_E_DEBUG)
 
     APP_LOGD("OPT", "  fw : %u.%u",
              (unsigned)p_options->firmwareVersion[0],

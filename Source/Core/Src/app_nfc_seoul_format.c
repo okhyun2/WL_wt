@@ -1309,7 +1309,7 @@ static AppStatus_t App_NfcSeoulWritePayloadWithLocation(const uint8_t *p_payload
         APP_LOGE("NFC", "Seoul NDEF EEPROM write failed");
         return APP_STATUS_INIT_FAILED;
     }
-    App_LogHexDump(APP_LOG_LEVEL_INFO, "Seoul NDEF", (const uint8_t *)ndef, numBlocks*NFC_EEPROM_BLOCK_SIZE);
+    App_LogHexDump(APP_LOG_LEVEL_DEBUG, "Seoul NDEF", (const uint8_t *)ndef, numBlocks*NFC_EEPROM_BLOCK_SIZE);
 
     g_appNfcSeoulSramSyncPending = APP_FALSE;
 
