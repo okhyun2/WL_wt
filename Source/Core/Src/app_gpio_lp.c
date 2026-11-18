@@ -21,19 +21,20 @@ extern NFC_LP_Handle_t g_nfcLpHandle;
 
 /** @brief Truly unconnected pins on GPIOB based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTB_MASK \
-    (GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | \
+    (GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | \
      GPIO_PIN_9 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15)
 
 /** @brief Truly unconnected pins on GPIOC based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTC_MASK \
     (GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | \
-     GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13)
+     GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12)
 
 /** @brief Truly unconnected pins on GPIOD based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTD_MASK \
-    (GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5 | \
-     GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | \
-     GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15)
+    (GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | \
+     GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 | \
+     GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | \
+     GPIO_PIN_15)
 
 /** @brief Truly unconnected pins on GPIOH based on current board pin map. */
 #define APP_GPIO_LP_UNUSED_PORTH_MASK (GPIO_PIN_All)
@@ -306,6 +307,27 @@ static void App_GpioLpRestoreTempI2cPins(void)
 }
 
 /**
+ * @brief Restore eRTC I2C pins (PB6/PB7, I2C1).
+ *
+ * [SLEEP-PIN] STOP 진입 시 아날로그로 정리된 I2C1 핀을 AF 오픈드레인으로 복원.
+ */
+static void App_GpioLpRestoreErtcI2cPins(void)
+{
+    GPIO_InitTypeDef gpioInit;
+
+    __HAL_RCC_I2C1_CLK_ENABLE();
+
+    (void)memset(&gpioInit, 0, sizeof(gpioInit));
+    gpioInit.Pin = eRTC_SCL_Pin | eRTC_SDA_Pin;
+    gpioInit.Mode = GPIO_MODE_AF_OD;
+    gpioInit.Pull = GPIO_NOPULL;
+    gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
+    gpioInit.Alternate = GPIO_AF1_I2C1;
+
+    HAL_GPIO_Init(GPIOB, &gpioInit);
+}
+
+/**
  * @brief Restore piezo PWM pin.
  */
 static void App_GpioLpRestorePiezoPin(void)
@@ -404,6 +426,9 @@ static void App_GpioLpIsolateNbiotInterface(void)
 
     APP_LOGN("GPIO", "[[Power]] NB-IoT power off");
 
+    /* [NB-SLEEP-SEQ] 슬립 진입 NB-IoT GPIO 제어 순서:
+     * 1) NB-PWR(EN) Low  2) L-NRST Low(모듈 잔류전압으로 인한 RX/TX 레벨
+     * 충돌 방지 - 리셋 유지로 모듈 TX 드라이브 차단)  3) RXD1/TXD1 analog */
     App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
     if (HAL_GPIO_ReadPin(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin) != GPIO_PIN_RESET)
     {
@@ -413,7 +438,7 @@ static void App_GpioLpIsolateNbiotInterface(void)
     {
         APP_LOGD("GPIO", "Ok. NB-IoT power off");
     }
-    App_GpioLpConfigAnalogNoPull(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin);
+    App_GpioLpConfigOutput(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin, GPIO_PIN_RESET);
 
     /* 진행 중인 송신 완료 대기 */
     while (!(LPUART1->ISR & USART_ISR_TC))
@@ -479,6 +504,10 @@ static void App_GpioLpApplyStaticControlPins(void)
 static void App_GpioLpRestoreWakeInputs(void)
 {
     App_GpioLpConfigExtiFalling(NFC_ED_GPIO_Port, NFC_ED_Pin);
+
+#if 0 /* [V0.4 eRTC-WAKE] PB0 RTC_INT (활성화 미정) - 사용 시 #if 1 */
+    App_GpioLpConfigExtiFalling(eRTC_INT_GPIO_Port, eRTC_INT_Pin);
+#endif /* eRTC_INT */
 }
 
 /**
@@ -511,6 +540,11 @@ static void App_GpioLpDisablePeripheralClocks(uint32_t mask)
     if ((mask & APP_GPIO_LP_CLK_LPUART1) != 0u)
     {
         __HAL_RCC_LPUART1_CLK_DISABLE();
+    }
+
+    if ((mask & APP_GPIO_LP_CLK_I2C1) != 0u)
+    {
+        __HAL_RCC_I2C1_CLK_DISABLE();
     }
 
     if ((mask & APP_GPIO_LP_CLK_I2C2) != 0u)
@@ -566,6 +600,11 @@ static void App_GpioLpEnablePeripheralClocks(uint32_t mask)
         __HAL_RCC_LPUART1_CLK_ENABLE();
     }
 
+    if ((mask & APP_GPIO_LP_CLK_I2C1) != 0u)
+    {
+        __HAL_RCC_I2C1_CLK_ENABLE();
+    }
+
     if ((mask & APP_GPIO_LP_CLK_I2C2) != 0u)
     {
         __HAL_RCC_I2C2_CLK_ENABLE();
@@ -598,6 +637,7 @@ void App_GpioLpGetDefaultConfig(AppGpioLpConfig_t *p_config)
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
+        APP_GPIO_LP_CLK_I2C1 |
         APP_GPIO_LP_CLK_I2C2 |
         APP_GPIO_LP_CLK_I2C3 |
         APP_GPIO_LP_CLK_LPTIM1 |
@@ -699,6 +739,16 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         App_GpioLpConfigAnalogNoPull(NFC_SCL_GPIO_Port, NFC_SCL_Pin | NFC_SDA_Pin);
     }
 
+    //eRTC SCL/SDA pin (I2C1) - NFC/Temp I2C와 동일 정책. [SLEEP-PIN]
+    {
+        App_GpioLpConfigAnalogNoPull(eRTC_SCL_GPIO_Port, eRTC_SCL_Pin | eRTC_SDA_Pin);
+    }
+
+    //TX0_MON monitor input [SLEEP-PIN]
+    {
+        App_GpioLpConfigInput(TX0_MON_GPIO_Port, TX0_MON_Pin);
+    }
+
     //Aux pin
     {
         App_GpioLpConfigAnalogNoPull(Temp_SCL_GPIO_Port, Temp_SCL_Pin);
@@ -742,7 +792,13 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         /* USART1 수신(RX) 비활성화 - 핵심! */
         USART1->CR1 &= ~USART_CR1_RE; // 가짜 신호 차단
 
+#if (APP_BUILD_IS_PRODUCTION == APP_TRUE)
+        /* [SLEEP-PIN] 생산 빌드: 슬립 중 디버그 UART 핀을 출력 LOW 고정.
+         * (sleep_pin_mode 기준표: "향후 생산시 output low로 변경") */
+        App_GpioLpConfigOutput(Debug_TX_GPIO_Port, Debug_TX_Pin | Debug_RX_Pin, GPIO_PIN_RESET);
+#else
         App_GpioLpConfigAnalogNoPull(Debug_TX_GPIO_Port, Debug_TX_Pin | Debug_RX_Pin);
+#endif
     }
 
 
@@ -773,7 +829,7 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
     if (g_appGpioLpContext.nbiotInterfaceIsolated == 1u)
     {
         App_GpioLpConfigOutput(NBIoT_EN_GPIO_Port, NBIoT_EN_Pin, GPIO_PIN_RESET);
-        App_GpioLpConfigAnalogNoPull(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin);
+        App_GpioLpConfigOutput(NBIoT_RST_GPIO_Port, NBIoT_RST_Pin, GPIO_PIN_RESET);
         App_GpioLpConfigAnalogNoPull(NBIoT_RX_GPIO_Port, NBIoT_RX_Pin | NBIoT_TX_Pin);
     }
 
@@ -785,6 +841,7 @@ AppStatus_t App_GpioLpOnAfterStopExit(void)
     App_GpioLpRestoreMeterUartPins();
     App_GpioLpRestoreNfcI2cPins();
     App_GpioLpRestoreTempI2cPins();
+    App_GpioLpRestoreErtcI2cPins();
     App_GpioLpRestorePiezoPin();
     App_GpioLpRestoreExternalWatchdogPin();
 
