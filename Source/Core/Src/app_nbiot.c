@@ -68,6 +68,7 @@
 
 #define APP_BC95_AT_CMD_QGMR_QUERY           "AT+QGMR\r\n"
 #define APP_BC95_AT_CMD_CGMI_QUERY           "AT+CGMI\r\n"
+#define APP_BC95_AT_CMD_CEER_QUERY           "AT+CEER\r\n"
 #define APP_BC95_AT_CMD_CGMM_QUERY           "AT+CGMM\r\n"
 #define APP_BC95_AT_CMD_CPIN_QUERY           "AT+CPIN?\r\n"
 #define APP_BC95_AT_CMD_NCONFIG_QUERY        "AT+NCONFIG?\r\n"
@@ -1376,7 +1377,7 @@ static uint8_t App_NbiotDnsCacheLookup(const char *p_host, char *p_ipOut, uint32
             ((now - g_appBc95DnsCache[i].tickMs) < APP_BC95_DNS_CACHE_TTL_MS))
         {
             (void)strncpy(p_ipOut, g_appBc95DnsCache[i].ip, ipBufSize - 1u);
-            p_ipOut[ipBufSize - 1u] = '\\0';
+            p_ipOut[ipBufSize - 1u] = '\0';
             return APP_TRUE;
         }
     }
@@ -1841,11 +1842,11 @@ static uint8_t s_nbiotDetachNoRespStreak = 0u;
 #define APP_NBIOT_DETACH_NORESP_BAIL_THRESHOLD   (3u)
 #endif
 
-static void App_NBIoTDetachNoteOutcome(AppStatus_t st)
+static void App_NBIoTDetachNoteOutcome(AppStatus_t status)
 {
-    if ((st == APP_STATUS_UART_TIMEOUT) ||
-        (st == APP_STATUS_UART_RX_FAILED) ||
-        (st == APP_STATUS_UART_TX_FAILED))
+    if ((status == APP_STATUS_UART_TIMEOUT) ||
+        (status == APP_STATUS_UART_RX_FAILED) ||
+        (status == APP_STATUS_UART_TX_FAILED))
     {
         if (s_nbiotDetachNoRespStreak < 0xFFu) s_nbiotDetachNoRespStreak++;
     }
@@ -4156,7 +4157,7 @@ AppStatus_t App_Bc95AtWaitUntilReady(uint32_t totalTimeoutMs)
  * ============================================================ */
 AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
 {
-    AppStatus_t st;
+    AppStatus_t status;
     AppBc95AtStatus_t atSt;
     uint32_t startTick;
     uint32_t elapsed;
@@ -4175,12 +4176,12 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
     {
         attempt++;
         rxLen = 0u;
-        st = App_Bc95AtSendCommand(APP_BC95_AT_CMD_IMSI,
+        status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_IMSI,
                                    g_appBc95AtRxBuf,
                                    (uint16_t)sizeof(g_appBc95AtRxBuf),
                                    APP_BC95_AT_RX_TIMEOUT_MS, &rxLen);
 
-        if (st == APP_STATUS_OK)
+        if (status == APP_STATUS_OK)
         {
             atSt = App_Bc95AtExtractImsiString((const char *)g_appBc95AtRxBuf,
                                                imsiStr, sizeof(imsiStr));
@@ -4216,7 +4217,7 @@ AppStatus_t App_Bc95AtWaitForUsim(uint32_t timeoutMs)
         else
         {
             APP_LOGD("NBIOT", "USIM probe uart st=%d a=%lu",
-                     (int)st, (unsigned long)attempt);
+                     (int)status, (unsigned long)attempt);
         }
 
         elapsed = HAL_GetTick() - startTick;
@@ -4953,44 +4954,44 @@ AppStatus_t App_Bc95AtFetchImsi(uint8_t *p_imsiBcd, uint32_t bcdSize)
 
 AppStatus_t App_Bc95AtFetchImeiWithRetry(uint8_t *p_imeiBcd, uint32_t bcdSize, uint32_t maxRetry)
 {
-    AppStatus_t st = APP_STATUS_FATAL;
+    AppStatus_t status = APP_STATUS_FATAL;
     uint32_t i;
 
     if (maxRetry == 0u) maxRetry = 1u;
 
     for (i = 0u; i < maxRetry; i++)
     {
-        st = App_Bc95AtFetchImei(p_imeiBcd, bcdSize);
-        if (st == APP_STATUS_OK) return APP_STATUS_OK;
+        status = App_Bc95AtFetchImei(p_imeiBcd, bcdSize);
+        if (status == APP_STATUS_OK) return APP_STATUS_OK;
 
         APP_LOGD("NBIOT", "IMEI retry %lu/%lu (status=%d)",
-                 (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)st);
+                 (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)status);
 
         if (i < (maxRetry - 1u))
             App_Bc95AtDelayWithFeed(APP_BC95_FETCH_RETRY_DELAY_MS);
     }
-    return st;
+    return status;
 }
 
 AppStatus_t App_Bc95AtFetchImsiWithRetry(uint8_t *p_imsiBcd, uint32_t bcdSize, uint32_t maxRetry)
 {
-    AppStatus_t st = APP_STATUS_FATAL;
+    AppStatus_t status = APP_STATUS_FATAL;
     uint32_t i;
 
     if (maxRetry == 0u) maxRetry = 1u;
 
     for (i = 0u; i < maxRetry; i++)
     {
-        st = App_Bc95AtFetchImsi(p_imsiBcd, bcdSize);
-        if (st == APP_STATUS_OK) return APP_STATUS_OK;
+        status = App_Bc95AtFetchImsi(p_imsiBcd, bcdSize);
+        if (status == APP_STATUS_OK) return APP_STATUS_OK;
 
         APP_LOGD("NBIOT", "IMSI retry %lu/%lu (status=%d)",
-                 (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)st);
+                 (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)status);
 
         if (i < (maxRetry - 1u))
             App_Bc95AtDelayWithFeed(APP_BC95_FETCH_RETRY_DELAY_MS);
     }
-    return st;
+    return status;
 }
 
 /* ============================================================
@@ -5299,24 +5300,24 @@ AppStatus_t App_Bc95AtFetchQuality(AppBc95Quality_t *p_quality, uint8_t *p_bcdBu
 AppStatus_t App_Bc95AtFetchQualityWithRetry(AppBc95Quality_t *p_quality, uint8_t *p_bcdBuf,
                                             uint32_t bcdBufSize, uint32_t maxRetry)
 {
-    AppStatus_t st = APP_STATUS_FATAL;
+    AppStatus_t status = APP_STATUS_FATAL;
     uint32_t i;
 
     if (maxRetry == 0u) maxRetry = 1u;
 
     for (i = 0u; i < maxRetry; i++)
     {
-        st = App_Bc95AtFetchQuality(p_quality, p_bcdBuf, bcdBufSize);
-        if (st == APP_STATUS_OK) return APP_STATUS_OK;
-        if (st == APP_STATUS_FATAL) return st;   /* 영구 실패는 즉시 */
+        status = App_Bc95AtFetchQuality(p_quality, p_bcdBuf, bcdBufSize);
+        if (status == APP_STATUS_OK) return APP_STATUS_OK;
+        if (status == APP_STATUS_FATAL) return status;   /* 영구 실패는 즉시 */
 
         APP_LOGD("NBIOT", "Quality retry %lu/%lu (status=%d)",
-                 (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)st);
+                 (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)status);
 
         if (i < (maxRetry - 1u))
             App_Bc95AtDelayWithFeed(APP_BC95_FETCH_RETRY_DELAY_MS);
     }
-    return st;
+    return status;
 }
 
 /* ============================================================
@@ -5652,7 +5653,7 @@ static uint8_t App_Bc95AtIsRecoverableServiceReadyCme(int32_t cmeErr)
 
 AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
 {
-    AppStatus_t st;
+    AppStatus_t status;
     AppBc95AtStatus_t atSt;
     uint16_t rxLen;
     int32_t funVal = -1, cgattVal = -1;
@@ -5671,7 +5672,7 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
 
     /* CFUN? */
     rxLen = 0u;
-    st = App_Bc95AtSendWithRetry(APP_BC95_AT_CMD_CFUN_QUERY,
+    status = App_Bc95AtSendWithRetry(APP_BC95_AT_CMD_CFUN_QUERY,
                                  g_appBc95AtRxBuf,
                                  (uint16_t)sizeof(g_appBc95AtRxBuf),
                                  APP_BC95_AT_RX_TIMEOUT_MS, &rxLen,
@@ -5679,7 +5680,7 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
 #if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
     App_Bc95AtLogCmeIfPresent("CFUN?", g_appBc95AtRxBuf, rxLen);   /* CME 22 특정 */
 #endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
-    if (st == APP_STATUS_OK)
+    if (status == APP_STATUS_OK)
     {
         atSt = App_Bc95AtParseCfun((const char *)g_appBc95AtRxBuf, &funVal);
         if (atSt == APP_BC95_AT_OK) p_status->cfunValue = (uint8_t)funVal;
@@ -5706,12 +5707,12 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
 
     /* CEREG? */
     rxLen = 0u;
-    st = App_Bc95AtSendWithRetry(APP_BC95_AT_CMD_CEREG_QUERY,
+    status = App_Bc95AtSendWithRetry(APP_BC95_AT_CMD_CEREG_QUERY,
                                  g_appBc95AtRxBuf,
                                  (uint16_t)sizeof(g_appBc95AtRxBuf),
                                  APP_BC95_AT_RX_TIMEOUT_MS, &rxLen,
                                  APP_BC95_NET_CMD_RETRY_MAX);
-    if (st == APP_STATUS_OK)
+    if (status == APP_STATUS_OK)
     {
         atSt = App_Bc95AtParseCereg((const char *)g_appBc95AtRxBuf, &ceregN, &ceregStat, &rejectCause);
 #ifdef NBIoT_SIMULATION_CODE
@@ -5731,12 +5732,12 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
 
     /* CGATT? */
     rxLen = 0u;
-    st = App_Bc95AtSendWithRetry(APP_BC95_AT_CMD_CGATT_QUERY,
+    status = App_Bc95AtSendWithRetry(APP_BC95_AT_CMD_CGATT_QUERY,
                                  g_appBc95AtRxBuf,
                                  (uint16_t)sizeof(g_appBc95AtRxBuf),
                                  APP_BC95_AT_RX_TIMEOUT_MS, &rxLen,
                                  APP_BC95_NET_CMD_RETRY_MAX);
-    if (st == APP_STATUS_OK)
+    if (status == APP_STATUS_OK)
     {
         atSt = App_Bc95AtParseCgatt((const char *)g_appBc95AtRxBuf, &cgattVal);
 #ifdef NBIoT_SIMULATION_CODE
@@ -5752,7 +5753,7 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
         (p_status->ceregStat == APP_BC95_CEREG_REGISTERED_ROAM))
     {
         rxLen = 0u;
-        st = App_Bc95AtSendWithRetry(APP_BC95_AT_CMD_CGPADDR_QUERY,
+        status = App_Bc95AtSendWithRetry(APP_BC95_AT_CMD_CGPADDR_QUERY,
                                      g_appBc95AtRxBuf,
                                      (uint16_t)sizeof(g_appBc95AtRxBuf),
                                      APP_BC95_AT_RX_TIMEOUT_MS, &rxLen,
@@ -5760,7 +5761,7 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
 #if (APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
         App_Bc95AtLogCmeIfPresent("CGPADDR", g_appBc95AtRxBuf, rxLen);   /* CME 22 특정 */
 #endif //(APP_NBIOT_AT_RAW_RX_DEBUG == APP_TRUE)
-        if (st == APP_STATUS_OK)
+        if (status == APP_STATUS_OK)
         {
             atSt = App_Bc95AtParseCgpaddr((const char *)g_appBc95AtRxBuf,
                                           p_status->ipAddr,
@@ -5816,7 +5817,7 @@ AppStatus_t App_Bc95AtQueryNetStatus(AppBc95NetStatus_t *p_status)
 
 AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t *p_status)
 {
-    AppStatus_t st;
+    AppStatus_t status;
     AppBc95NetStatus_t snapshot;
     uint32_t startTick;
     uint32_t elapsed;
@@ -5857,11 +5858,11 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
     while (1)
     {
         elapsed = HAL_GetTick() - startTick;
-        st = App_Bc95AtQueryNetStatus(&snapshot);
+        status = App_Bc95AtQueryNetStatus(&snapshot);
         snapshot.pollCount   = ++pollCount;
         snapshot.deniedCount = deniedCount;
 
-        if (st == APP_STATUS_FATAL)
+        if (status == APP_STATUS_FATAL)
         {
             APP_LOGE("NBIOT", APP_NBIOT_REPORT_LOG_ATTACH
                 " Net query fatal (phase=%s)",
@@ -5870,10 +5871,10 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
             return APP_STATUS_FATAL;
         }
 
-        if (st != APP_STATUS_OK)
+        if (status != APP_STATUS_OK)
         {
             APP_LOGD("NBIOT", "poll #%lu: query failed (%d)",
-                     (unsigned long)pollCount, (int)st);
+                     (unsigned long)pollCount, (int)status);
         }
         else
         {
@@ -5888,6 +5889,40 @@ AppStatus_t App_Bc95AtWaitForNetwork(uint32_t totalTimeoutMs, AppBc95NetStatus_t
                          (unsigned)snapshot.rejectCause,
                          snapshot.ipAddr);
                 lastPhase = snapshot.phase;
+
+                /* [CEER-REPORT] attach 거부 사유를 EMM cause 문자열로 1회 남겨
+                 * 인증 검증(CVT) 시 cause 값 도출 근거를 로그로 제공한다.
+                 * ex) +CEER:EMM_CAUSE_EPS_AND_NON_EPS_SERVICES_NOT_ALLOWED
+                 * (BC68-GV&BC95-GV AT Manual V1.0, AT+CEER 50p) */
+                if ((snapshot.phase == APP_BC95_NET_PHASE_USIM_SUSPEND) ||
+                    (snapshot.phase == APP_BC95_NET_PHASE_USIM_TERMINATED) ||
+                    (snapshot.phase == APP_BC95_NET_PHASE_DENIED))
+                {
+                    uint16_t rxLen = 0u;
+                    status = App_Bc95AtSendCommand(APP_BC95_AT_CMD_CEER_QUERY,
+                                                   g_appBc95AtRxBuf,
+                                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                                   APP_BC95_AT_RX_TIMEOUT_MS,
+                                                   &rxLen);
+                    if (status == APP_STATUS_OK)
+                    {
+                        const char *p_ceer = strstr((const char *)g_appBc95AtRxBuf, "+CEER:");
+                        if (p_ceer != NULL)
+                        {
+                            char ceerLine[64];
+                            size_t ceerLen = 0u;
+                            p_ceer += 6u;
+                            while ((p_ceer[ceerLen] >= 0x20) && (p_ceer[ceerLen] <= 0x7E) &&
+                                   (ceerLen < (sizeof(ceerLine) - 1u)))
+                            {
+                                ceerLen++;
+                            }
+                            (void)memcpy(ceerLine, p_ceer, ceerLen);
+                            ceerLine[ceerLen] = '\0';
+                            APP_LOGN("NBIOT", "[[CEER]] %s", ceerLine);
+                        }
+                    }
+                }
             }
 
             if ((snapshot.phase == APP_BC95_NET_PHASE_REGISTERING) &&
@@ -9900,7 +9935,7 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
                                                      &dnsAttempts, &dnsElapsedMs);
         result.dnsAttempts = dnsAttempts;
         result.dnsElapsedMs = dnsElapsedMs;
-        if ((status != APP_STATUS_OK) || (ipBuf[0] == '\\0'))
+        if ((status != APP_STATUS_OK) || (ipBuf[0] == '\0'))
         {
             APP_LOGD("NBIOT", "DNS resolve failed for %s", p_host);
             if (p_result != NULL) (void)memcpy(p_result, &result, sizeof(*p_result));
@@ -10172,23 +10207,23 @@ AppStatus_t App_Bc95AtFetchTime(AppBc95Time_t *p_time)
 
 AppStatus_t App_Bc95AtFetchTimeWithRetry(AppBc95Time_t *p_time, uint32_t maxRetry)
 {
-    AppStatus_t st = APP_STATUS_FATAL;
+    AppStatus_t status = APP_STATUS_FATAL;
     uint32_t i;
 
     if (maxRetry == 0u) maxRetry = 1u;
 
     for (i = 0u; i < maxRetry; i++)
     {
-        st = App_Bc95AtFetchTime(p_time);
-        if (st == APP_STATUS_OK) return APP_STATUS_OK;
-        if (st == APP_STATUS_FATAL) return st;
+        status = App_Bc95AtFetchTime(p_time);
+        if (status == APP_STATUS_OK) return APP_STATUS_OK;
+        if (status == APP_STATUS_FATAL) return status;
 
         APP_LOGD("NBIOT", "CCLK retry %lu/%lu (status=%d)",
-                 (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)st);
+                 (unsigned long)(i + 1u), (unsigned long)maxRetry, (int)status);
         if (i < (maxRetry - 1u))
             App_Bc95AtDelayWithFeed(APP_BC95_TIME_SYNC_RETRY_DELAY_MS);
     }
-    return st;
+    return status;
 }
 
 /* ============================================================
@@ -10536,7 +10571,7 @@ AppStatus_t App_NBIoTBringUp(void)
 
 AppStatus_t App_NBIoTBringUpWithReset(uint8_t maxResetRetry)
 {
-    AppStatus_t st = APP_STATUS_FATAL;
+    AppStatus_t status = APP_STATUS_FATAL;
     uint8_t i;
 
     if (maxResetRetry == 0u) maxResetRetry = 1u;
@@ -10548,17 +10583,17 @@ AppStatus_t App_NBIoTBringUpWithReset(uint8_t maxResetRetry)
 
     for (i = 0u; i < maxResetRetry; i++)
     {
-        st = App_NBIoTBringUp();
-        if (st == APP_STATUS_OK) return APP_STATUS_OK;
+        status = App_NBIoTBringUp();
+        if (status == APP_STATUS_OK) return APP_STATUS_OK;
 
         APP_LOGD("NBIOT", "BringUp failed (%d), HW reset %u/%u",
-                 (int)st, (unsigned)(i + 1u), (unsigned)maxResetRetry);
+                 (int)status, (unsigned)(i + 1u), (unsigned)maxResetRetry);
 
         App_HwNbiotPowerCycle();   /* weak default: no-op */
         App_Bc95AtDelayWithFeed(2000u);
         (void)App_NBIoTAtInit();   /* 리셋 후 컨텍스트 재초기화 */
     }
-    return st;
+    return status;
 }
 
 AppStatus_t App_NBIoTNetworkBringUp(void)
