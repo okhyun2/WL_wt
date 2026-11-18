@@ -91,9 +91,14 @@ extern "C" {
 #define APP_IMAGE_NAME                              "app"
 */
 
-#define APP_FW_VERSION_MAJOR                        (0u)
-#define APP_FW_VERSION_MINOR                        (11u)
-
+/* f/w 버전 체계: "0x71.5.1" (major=0x71, minor, patch).
+ * 바이너리 2바이트 필드(NFC 서울/검침 서버 포맷 firmwareVersion)는 major, minor만
+ * 전송(0x71, 5) — patch는 문자열(로그/QREP)에서만 표기된다. */
+#define APP_FW_VERSION_MAJOR                        (0x71u)
+#define APP_FW_VERSION_MINOR                        (5u)
+#define APP_FW_VERSION_PATCH                        (1u)
+#define APP_FW_VERSION_STRING                       "0x71.5.1"
+ 
 #define NBIOT_SUPPORT_DNS
 #ifdef NBIOT_SUPPORT_DNS
 //#define MY_SERVER_DOMAIN              "acorp2.iptime.org" //TODO test server
@@ -122,6 +127,11 @@ extern "C" {
 //realtime 생성.
 //#define APP_BC95_PLATFORM_LGU_MBSPS_STRING          "ADJ1,4323800010,01226680136,919592,ACO-WT-NB26" //QLWMBSPS:<serv_code>,<ser_no>,<ctn>,<iccid>,<model>
 #define APP_BC95_PLATFORM_LGU_NBAND_STRING          "5"
+/* boot info banner ([[BootInfo]]) : 단말 정적 정보. 모듈 동적 정보는 AT 조회, 실패 시 아래 폴백 상수 사용 */
+#define APP_BOOT_INFO_DEVICE_MODEL_STRING           "ACO-WT-NB26"           /* 단말 모델명 */
+#define APP_BOOT_INFO_MODULE_NAME_STRING            "BC95-GV"               /* 폴백: AT+CGMM 실패 시 */
+#define APP_BOOT_INFO_MODULE_FW_STRING              "BC95GVBAR02A01_LGU"    /* 폴백: AT+QGMR 실패 시 */
+#define APP_BOOT_INFO_MODULE_MAKER_STRING           "Quectel"               /* 폴백: AT+CGMI 실패 시 */
 
 #define APP_SUPERLOOP_IDLE_DELAY_MS                 (1u)
 

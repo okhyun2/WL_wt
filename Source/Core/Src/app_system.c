@@ -1975,7 +1975,7 @@ const AppSystemContext_t *App_SystemGetContext(void)
 
 const char *App_SystemGetVersionString(void)
 {
-    return g_appVersionString;
+    return APP_FW_VERSION_STRING;
 }
 
 void Get_BootInfo(AppBootInfo_t *pBootInfo)

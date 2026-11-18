@@ -281,10 +281,9 @@ int main(void)
   #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE)
   /* EPC 시험 세션 시작 마커 - APP_EPC_TEST_MODE_ENABLE=0 이면 이 블록 전체가
      전처리 단계에서 제거되어 운영 빌드 코드/바이너리에 전혀 남지 않는다. */
-  EPC_LOGI("session start testId=%s fw=%u.%u",
+  EPC_LOGI("session start testId=%s fw=%s",
            APP_EPC_TEST_ID_STRING,
-           (unsigned)APP_FW_VERSION_MAJOR,
-           (unsigned)APP_FW_VERSION_MINOR);
+           APP_FW_VERSION_STRING);
   EPC_LOGI("test=%s,seq=0,event=BOOT", APP_EPC_TEST_ID_STRING);
 
   #if (APP_EPC_ACTIVE_TEST_ID == 3u) && (APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED == APP_TRUE)

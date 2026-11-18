@@ -67,6 +67,8 @@
 #define APP_BC95_AT_CMD_NCCID_QUERY          "AT+NCCID?\r\n"
 
 #define APP_BC95_AT_CMD_QGMR_QUERY           "AT+QGMR\r\n"
+#define APP_BC95_AT_CMD_CGMI_QUERY           "AT+CGMI\r\n"
+#define APP_BC95_AT_CMD_CGMM_QUERY           "AT+CGMM\r\n"
 #define APP_BC95_AT_CMD_CPIN_QUERY           "AT+CPIN?\r\n"
 #define APP_BC95_AT_CMD_NCONFIG_QUERY        "AT+NCONFIG?\r\n"
 #define APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_OFF "AT+NCONFIG=AUTOCONNECT,FALSE\r\n"
@@ -496,9 +498,11 @@ typedef struct
     uint8_t iccidValid;
     uint8_t mdnValid;
     uint8_t serialValid;
+    uint8_t fwValid;
     char    iccid[APP_NBIOT_SIM_ICCID_BUF_SIZE];
     char    mdn[APP_NBIOT_SIM_MDN_BUF_SIZE];
     char    serial[APP_NBIOT_SIM_SERIAL_BUF_SIZE];
+    char    fw[APP_BC95_SIM_INFO_FW_MAX_LEN];
 } AppBc95SimInfoCache_t;
 
 static AppBc95SimInfoCache_t g_appBc95SimInfo;
@@ -685,12 +689,133 @@ static void App_Bc95SimLogModemFw(void)
             if (len >= sizeof(fw)) { len = sizeof(fw) - 1u; }
             (void)memcpy(fw, p_line, len);
             fw[len] = '\0';
+            (void)memcpy(g_appBc95SimInfo.fw, fw, len + 1u);
+            g_appBc95SimInfo.fwValid = APP_TRUE;
             APP_LOGD("NBIOT", "Modem FW : %s", fw);
             return;
         }
         p_line += len;
     }
     APP_LOGD("NBIOT", "FW n/a (no payload line)");
+}
+
+/* best-effort AT query -> first payload line (echo/OK/EVTIND skip). APP_TRUE on success */
+static uint8_t App_Bc95QueryFirstPayloadLine(const char *p_cmd, char *p_out, size_t outSize)
+{
+    AppStatus_t status;
+    uint16_t rxLen = 0u;
+    const char *p_line;
+    size_t len;
+
+    status = App_Bc95AtSendCommand(p_cmd,
+                                   g_appBc95AtRxBuf,
+                                   (uint16_t)sizeof(g_appBc95AtRxBuf),
+                                   APP_BC95_AT_RX_TIMEOUT_MS,
+                                   &rxLen);
+    if (status != APP_STATUS_OK)
+    {
+        return APP_FALSE;
+    }
+
+    if (App_Bc95AtCheckResponse((const char *)g_appBc95AtRxBuf, NULL) != APP_BC95_AT_OK)
+    {
+        return APP_FALSE;
+    }
+
+    p_line = (const char *)g_appBc95AtRxBuf;
+    while (*p_line != '\0')
+    {
+        while ((*p_line == '\r') || (*p_line == '\n') || (*p_line == ' '))
+        {
+            p_line++;
+        }
+        if (*p_line == '\0') { break; }
+
+        len = 0u;
+        while ((p_line[len] != '\0') && (p_line[len] != '\r') && (p_line[len] != '\n'))
+        {
+            len++;
+        }
+
+        /* EVTIND URC skip, same policy as [FIX-EVTIND-5] */
+        if (strncmp(p_line, APP_BC95_AT_QLWEVTIND_PREFIX,
+                    APP_BC95_AT_QLWEVTIND_PREFIX_LEN) == 0)
+        {
+            p_line += len;
+            continue;
+        }
+
+        if ((strncmp(p_line, "AT", 2) != 0) &&
+            !((len == 2u) && (strncmp(p_line, "OK", 2) == 0)))
+        {
+            if (len >= outSize) { len = outSize - 1u; }
+            (void)memcpy(p_out, p_line, len);
+            p_out[len] = '\0';
+            return APP_TRUE;
+        }
+        p_line += len;
+    }
+    return APP_FALSE;
+}
+
+/* boot info banner: device(const) + module(CGMM/CGMI, fw from QGMR cache) + CTN(MDN est 3-4-4).
+ * boot session당 1회만 출력(재부착 세션의 App_Bc95LogSimInfo 재호출 시 스킵). */
+static void App_Bc95LogBootInfo(void)
+{
+    static uint8_t s_bootInfoDone = 0u;
+    char name[APP_BC95_SIM_INFO_FW_MAX_LEN];
+    char maker[APP_BC95_SIM_INFO_FW_MAX_LEN];
+    char ctn[APP_NBIOT_SIM_MDN_BUF_SIZE + 2u]; /* 11 digits + 2 dashes + NUL */
+    const char *p_name;
+    const char *p_maker;
+    const char *p_fw;
+    size_t i;
+    size_t j;
+
+    if (s_bootInfoDone == APP_TRUE)
+    {
+        return;
+    }
+    s_bootInfoDone = APP_TRUE;
+
+    APP_LOGN("NBIOT", "[[BootInfo]] Device Model : %s / %s",
+             APP_BOOT_INFO_DEVICE_MODEL_STRING, APP_FW_VERSION_STRING);
+
+    if (App_Bc95QueryFirstPayloadLine(APP_BC95_AT_CMD_CGMM_QUERY, name, sizeof(name)) == APP_TRUE)
+    {
+        /* CGMM 실측 "Quectel_BC95-GV" -> 제조사 prefix 제거 후 모델명만 표기 */
+        char *p_und = strchr(name, '_');
+        p_name = (p_und != NULL) ? (p_und + 1u) : name;
+    }
+    else
+    {
+        p_name = APP_BOOT_INFO_MODULE_NAME_STRING;
+    }
+    p_maker = (App_Bc95QueryFirstPayloadLine(APP_BC95_AT_CMD_CGMI_QUERY, maker, sizeof(maker)) == APP_TRUE)
+              ? maker : APP_BOOT_INFO_MODULE_MAKER_STRING;
+    p_fw = (g_appBc95SimInfo.fwValid == APP_TRUE) ? g_appBc95SimInfo.fw : APP_BOOT_INFO_MODULE_FW_STRING;
+    APP_LOGN("NBIOT", "[[BootInfo]] Module : %s /%s", p_name, p_fw);
+    APP_LOGN("NBIOT", "[[BootInfo]] Module Maker : %s", p_maker);
+
+    if (g_appBc95SimInfo.mdnValid == APP_TRUE)
+    {
+        for (i = 0u, j = 0u;
+             (g_appBc95SimInfo.mdn[i] != '\0') && (j < (sizeof(ctn) - 1u));
+             i++)
+        {
+            if (((i == 3u) || (i == 7u)) && (j < (sizeof(ctn) - 1u)))
+            {
+                ctn[j++] = '-';
+            }
+            ctn[j++] = g_appBc95SimInfo.mdn[i];
+        }
+        ctn[j] = '\0';
+        APP_LOGN("NBIOT", "[[BootInfo]] CTN: %s", ctn);
+    }
+    else
+    {
+        APP_LOGN("NBIOT", "[[BootInfo]] CTN: n/a (MDN est fail)");
+    }
 }
 
 static void App_Bc95LogSimInfo(const uint8_t *p_imsiBcd)
@@ -726,6 +851,7 @@ static void App_Bc95LogSimInfo(const uint8_t *p_imsiBcd)
 
     App_Bc95SimLogIccid();
     App_Bc95SimLogModemFw();
+    App_Bc95LogBootInfo();
 }
 
 uint8_t App_NBIoTGetSimIccid(char *p_out, size_t outSize)
@@ -10994,8 +11120,7 @@ static AppStatus_t App_NbiotQualityBuildPacket(const AppNbiotQualityRadioStats_t
     }
 
     /* 7. FW 버전 1B(len)+ASCII: 단말FW "/" 모듈FW (모듈 조회 실패 시 단말FW만) */
-    (void)snprintf(fwStr, sizeof(fwStr), "V%u.%02u",
-                   (unsigned)APP_FW_VERSION_MAJOR, (unsigned)APP_FW_VERSION_MINOR);
+    (void)snprintf(fwStr, sizeof(fwStr), "%s", APP_FW_VERSION_STRING);
     modFw[0] = '\0';
     {
         AppStatus_t gmrStatus;

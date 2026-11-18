@@ -176,8 +176,6 @@ typedef struct
     AppSystemLowPowerMode_t lastLowPowerMode;
 } AppSystemContext_t;
 
-static const char g_appVersionString[] = "71.5.1";
-
 #define APP_SYSTEM_RTC_TIMEOUT_LOOPS              (200000u)
 #define APP_SYSTEM_RTC_WPR_KEY1                   (0xCAu)
 #define APP_SYSTEM_RTC_WPR_KEY2                   (0x53u)
