@@ -120,19 +120,12 @@ static uint8_t App_FsmTxScheduleBypassDebugGuards(void)
 #define APP_FSM_BOOT_METER_TYPE       APP_METER_STORAGE_METER_TYPE_SC1XXX
 #endif
 
-#if 0 //debug
-#define APP_FSM_TX_SERVICE_SLOT_OFFSET_MS     (15u * 1000u)
-#define APP_FSM_TX_MGMT_SLOT_OFFSET_MS        (40u * 1000u)
-#define APP_FSM_TX_METER_PROXIMITY_GUARD_MS   (10u * 1000u)
-#define APP_FSM_TX_SERVICE_MGMT_GAP_MS        (20u * 1000u)
-#define APP_FSM_TX_DEVICE_SPREAD_MAX_MS       (3u * 1000u)
-#else
 #define APP_FSM_TX_SERVICE_SLOT_OFFSET_MS     (3u * 60000u)
 #define APP_FSM_TX_MGMT_SLOT_OFFSET_MS        (8u * 60000u)
 #define APP_FSM_TX_METER_PROXIMITY_GUARD_MS   (2u * 60000u)
 #define APP_FSM_TX_SERVICE_MGMT_GAP_MS        (2u * 60000u)
 #define APP_FSM_TX_DEVICE_SPREAD_MAX_MS       (APP_POLICY_REPORT_SPREAD_FALLBACK_MS)
-#endif
+#define APP_FSM_TX_DAY_WINDOW_SPREAD_MAX_MS   (30u * 60000u)
 
 typedef struct
 {
@@ -2609,7 +2602,7 @@ AppStatus_t App_FsmGetNextQrepDueTime(AppDateTime_t *p_dueTime)
                                        (uint8_t)APP_QUALITY_REPORT_DAY_PARITY,
                                        (uint8_t)APP_QUALITY_REPORT_WINDOW_START_HOUR,
                                        0x51524550u,   /* "QREP" */
-                                       APP_FSM_TX_DEVICE_SPREAD_MAX_MS);
+                                       APP_FSM_TX_DAY_WINDOW_SPREAD_MAX_MS);
 }
 
 /* [QREP-UNIFY] mgmt due도 QREP과 동일 알고리즘 - 무상태 즉석 계산.
@@ -2622,7 +2615,7 @@ static AppStatus_t App_FsmGetNextMgmtDueTime(AppDateTime_t *p_dueTime)
                                        (uint8_t)APP_MGMT_TX_DAY_PARITY,
                                        (uint8_t)APP_MGMT_TX_WINDOW_START_HOUR,
                                        0x4D475454u,   /* "MGTT" */
-                                       APP_FSM_TX_DEVICE_SPREAD_MAX_MS);
+                                       APP_FSM_TX_DAY_WINDOW_SPREAD_MAX_MS);
 }
 
 static uint8_t App_FsmScheduleIsEarlierOrEqual(uint32_t lhsDateKey,
@@ -3203,6 +3196,35 @@ static AppStatus_t App_FsmTxScheduleDelayHoursFromNowCommon(AppFsmTxScheduleCont
     return APP_STATUS_OK;
 }
 
+/* [FLEET-JITTER] 재시도 소진(네트워크 혼잡) 후 다음 due에 기기별 지터를
+ * 더한다 - 고정 간격이면 혼잡 시 단말들이 동기화돼 같이 재시도한다(눈사태).
+ * Uid 해시 기반 고정 지터(0~5분)로 재혼잡을 분산한다. */
+static void App_FsmTxScheduleApplyRetryJitter(void)
+{
+    uint32_t jitterMs;
+
+    if ((g_appFsmTxSchedule.initialized != APP_TRUE) ||
+        (g_appFsmTxSchedule.enabled     != APP_TRUE))
+    {
+        return;
+    }
+
+    jitterMs = ((App_ClockGetDeviceUidHash() ^ 0x52545259u) % 300u) * 1000u;
+    if (jitterMs == 0u)
+    {
+        return;
+    }
+
+    (void)App_FsmScheduleAddMs(g_appFsmTxSchedule.nextDueDateKey,
+                               g_appFsmTxSchedule.nextDueMsOfDay,
+                               jitterMs,
+                               &g_appFsmTxSchedule.nextDueDateKey,
+                               &g_appFsmTxSchedule.nextDueMsOfDay);
+    APP_LOGD("FSM", "[[ServiceTxSchedule]] retry jitter +%lu.%03lus -> due=%lu",
+             (unsigned long)(jitterMs / 1000u), (unsigned long)(jitterMs % 1000u),
+             (unsigned long)g_appFsmTxSchedule.nextDueDateKey);
+}
+
 static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours)
 {
     AppStatus_t status;
@@ -3215,9 +3237,17 @@ static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours)
     }
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-    return App_FsmTxScheduleDelayHoursFromNowCommon(&g_appFsmTxSchedule,
-                                                    delayHours,
-                                                    "[[ServiceTxSchedule]]");
+    status = App_FsmTxScheduleDelayHoursFromNowCommon(&g_appFsmTxSchedule,
+                                                      delayHours,
+                                                      "[[ServiceTxSchedule]]");
+    if (status != APP_STATUS_OK)
+    {
+        return status;
+    }
+
+    /* [FLEET-JITTER] 재시도로 밀린 due에 기기별 지터 가산 (눈사태 분산) */
+    App_FsmTxScheduleApplyRetryJitter();
+    return APP_STATUS_OK;
 }
 
 static void App_FsmUsimHoldClear(void)

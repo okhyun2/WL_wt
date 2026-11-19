@@ -1352,6 +1352,9 @@ typedef struct
 } AppBc95DnsCacheEntry_t;
 
 static AppBc95DnsCacheEntry_t g_appBc95DnsCache[2];
+/* [FLEET-DNS] resolve 실패 반복 방지 - 실패 후 최소 재조회 대기.
+ * 1만대가 DNS 장애 시 무한 재조회하면 DNS 서버가 2차 피해자가 된다. */
+static uint32_t g_appBc95DnsFailBackoffUntilMs = 0u;
 
 static uint8_t App_NbiotIsIpv4Literal(const char *p_host)
 {
@@ -9945,6 +9948,15 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
         result.usedCachedIp = APP_TRUE;
         APP_LOGD("NBIOT", "DNS cache hit: %s -> %s", p_host, ipBuf);
     }
+    else if ((g_appBc95DnsFailBackoffUntilMs != 0u) && (HAL_GetTick() < g_appBc95DnsFailBackoffUntilMs))
+    {
+        /* [FLEET-DNS] 실패 백오프 중 - DNS 재조회를 건너뛰고 세션을 실패 처리.
+         * 1만대가 DNS 장애 시 무한 재조회해 DNS 서버를 2차 피해로 만들지 않는다. */
+        APP_LOGD("NBIOT", "DNS backoff active (%s) - skip resolve", p_host);
+        result.lastStage = APP_BC95_UDP_STAGE_RESOLVE;
+        if (p_result != NULL) (void)memcpy(p_result, &result, sizeof(*p_result));
+        return APP_STATUS_UART_TIMEOUT;
+    }
     else
     {
         status = App_Bc95AtResolveHostRobustInternal(p_host, ipBuf, sizeof(ipBuf),
@@ -9953,10 +9965,13 @@ AppStatus_t App_Bc95AtUdpSendOnce(const char *p_logTag,
         result.dnsElapsedMs = dnsElapsedMs;
         if ((status != APP_STATUS_OK) || (ipBuf[0] == '\0'))
         {
-            APP_LOGD("NBIOT", "DNS resolve failed for %s", p_host);
+            /* [FLEET-DNS] 실패 기록 - 60초 백오프 후 재조회 허용 */
+            g_appBc95DnsFailBackoffUntilMs = HAL_GetTick() + 60000u;
+            APP_LOGD("NBIOT", "DNS resolve failed for %s (backoff 60s)", p_host);
             if (p_result != NULL) (void)memcpy(p_result, &result, sizeof(*p_result));
             return (status != APP_STATUS_OK) ? status : APP_STATUS_FATAL;
         }
+        g_appBc95DnsFailBackoffUntilMs = 0u;   /* 성공 시 백오프 해제 */
         App_NbiotDnsCacheStore(p_host, ipBuf);
     }
 
