@@ -3957,7 +3957,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             App_FsmSetDecision(APP_FSM_DECISION_RUN_ACTIVE);
 
         case APP_FSM_STATE_AUX_INIT:
-            if (SHTC3_Init(APP_I2C_AUX_HANDLE) != HAL_OK)
+            if (SHT40_Init(APP_I2C_AUX_HANDLE) != HAL_OK)
             {
                 APP_LOGD("AUX", "SHT3 fail!");
             }

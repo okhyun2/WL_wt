@@ -25,33 +25,28 @@ HAL_StatusTypeDef Battery_ReadVoltage_Averaged_mV(uint32_t *adc_vref, uint32_t *
 uint32_t Battery_ReadAdcNoiseSeed(void); /* 부팅 랜덤화용 ADC 열노이즈 시드 */
 void App_UpdateBatteryToOptions(uint8_t voltX10, uint8_t alarm);
 
-/* SHTC3 7-bit I2C address -> HAL은 8-bit shift된 값 사용 */
-#define SHTC3_I2C_ADDR        (0x70 << 1)
+/* [SHT40] Sensirion SHT40-AD1B (V0.4 보드 교체: SHTC3 -> SHT40)
+ * - I2C 주소 0x44 (ADDR=GND), Wake/Sleep 명령 없음(상시 활성)
+ * - 측정: 0xFD(high repeatability, T first) -> 6B 응답(T_CRC, RH_CRC)
+ * - 소프트 리셋: 0x94 / 시리얼 번호: 0x89(6B+2CRC)
+ * - CRC: poly 0x31, init 0xFF (Datasheet v7.3 Table 7, CRC(0xBEEF)=0x92) */
+#define SHT40_I2C_ADDR        (0x44 << 1)
+ 
+#define SHT40_CMD_SOFT_RESET  0x94
+#define SHT40_CMD_READ_SERIAL 0x89
+#define SHT40_CMD_MEAS_HIGH_T 0xFD   /* high repeatability, T first */
 
-/* SHTC3 Commands (16-bit, MSB first) */
-#define SHTC3_CMD_WAKEUP      0x3517
-#define SHTC3_CMD_SLEEP       0xB098
-#define SHTC3_CMD_SOFT_RESET  0x805D
-#define SHTC3_CMD_READ_ID     0xEFC8
-
-/* Normal mode, clock stretching disabled, T first */
-#define SHTC3_CMD_MEAS_TFIRST 0x7866
-/* Low power mode, clock stretching disabled, T first */
-#define SHTC3_CMD_MEAS_LP_T   0x609C
+#define SHT40_MEAS_DELAY_MS   10U    /* high rep. max 8.3ms + margin */
 
 typedef struct {
-    float temperature;   /* °C */
-    float humidity;      /* %RH */
-} SHTC3_Data_t;
+    float temperature;
+    float humidity;
+} SHT40_Data_t;
 
-HAL_StatusTypeDef SHTC3_Init(I2C_HandleTypeDef *hi2c);
-HAL_StatusTypeDef SHTC3_Wakeup(I2C_HandleTypeDef *hi2c);
-HAL_StatusTypeDef SHTC3_Sleep(I2C_HandleTypeDef *hi2c);
-HAL_StatusTypeDef SHTC3_SoftReset(I2C_HandleTypeDef *hi2c);
-HAL_StatusTypeDef SHTC3_ReadID(I2C_HandleTypeDef *hi2c, uint16_t *id);
-HAL_StatusTypeDef SHTC3_ReadTempHumidity(I2C_HandleTypeDef *hi2c, SHTC3_Data_t *data);
-void App_UpdateSHTC3ToConfigs(float temperature, float humidity);
-
+HAL_StatusTypeDef SHT40_Init(I2C_HandleTypeDef *hi2c);
+HAL_StatusTypeDef SHT40_SoftReset(I2C_HandleTypeDef *hi2c);
+HAL_StatusTypeDef SHT40_ReadSerial(I2C_HandleTypeDef *hi2c, uint32_t *serial);
+HAL_StatusTypeDef SHT40_ReadTempHumidity(I2C_HandleTypeDef *hi2c, SHT40_Data_t *data);
 
 #ifdef __cplusplus
 }

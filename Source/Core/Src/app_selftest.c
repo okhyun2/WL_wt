@@ -747,14 +747,14 @@ static AppStatus_t App_SelfTestCheckNfcI2c(void)
  */
 static AppStatus_t App_SelfTestCheckAuxI2c(void)
 {
-    SHTC3_Data_t th;
+    SHT40_Data_t th;
 
     APP_RETURN_IF_FALSE(APP_I2C_AUX_HANDLE->Instance == I2C3, APP_STATUS_HW_HANDLE_INVALID);
 
     APP_RETURN_IF_FALSE(App_SelfTestCheckI2cDevice(APP_I2C_AUX_HANDLE, "TEMP", APP_SELFTEST_AUX_I2C_ADDRESS_7BIT) == APP_STATUS_OK,
                         APP_STATUS_INVALID_PARAM);
 
-    if (SHTC3_ReadTempHumidity(APP_I2C_AUX_HANDLE, &th) == HAL_OK)
+    if (SHT40_ReadTempHumidity(APP_I2C_AUX_HANDLE, &th) == HAL_OK)
     {
         int t_int = (int)th.temperature;
         int t_dec = (int)((th.temperature - t_int) * 100);

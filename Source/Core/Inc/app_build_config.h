@@ -237,7 +237,7 @@ extern "C" {
 #define APP_SELFTEST_UART_RX_BUFFER_SIZE            (32u)
 
 #define APP_SELFTEST_NFC_I2C_ADDRESS_7BIT           (0x54u)
-#define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x70u)
+#define APP_SELFTEST_AUX_I2C_ADDRESS_7BIT           (0x44u)   /* [SHT40] V0.4 센서 교체: SHTC3(0x70) -> SHT40(0x44) */
 
 #endif /* SUPPORT_SELFTEST || APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 

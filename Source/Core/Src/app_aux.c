@@ -186,122 +186,87 @@ static uint8_t SHTC3_CRC8(const uint8_t *data, uint8_t len)
     return crc;
 }
 
-/* 16비트 명령 전송 */
-static HAL_StatusTypeDef SHTC3_SendCmd(I2C_HandleTypeDef *hi2c, uint16_t cmd)
+/* 8비트 명령 전송 (SHT40 명령은 단일 바이트) */
+static HAL_StatusTypeDef SHT40_SendCmd(I2C_HandleTypeDef *hi2c, uint8_t cmd)
 {
-    uint8_t buf[2];
-    buf[0] = (uint8_t)(cmd >> 8);
-    buf[1] = (uint8_t)(cmd & 0xFF);
-    return HAL_I2C_Master_Transmit(hi2c, SHTC3_I2C_ADDR, buf, 2, 100);
+    return HAL_I2C_Master_Transmit(hi2c, SHT40_I2C_ADDR, &cmd, 1, 100);
 }
 
-HAL_StatusTypeDef SHTC3_Wakeup(I2C_HandleTypeDef *hi2c)
+HAL_StatusTypeDef SHT40_SoftReset(I2C_HandleTypeDef *hi2c)
 {
-    HAL_StatusTypeDef st = SHTC3_SendCmd(hi2c, SHTC3_CMD_WAKEUP);
-    HAL_Delay(1);   /* tWAKEUP 최대 240us, 안전하게 1ms */
+    HAL_StatusTypeDef st = SHT40_SendCmd(hi2c, SHT40_CMD_SOFT_RESET);
+    HAL_Delay(1);   /* 리셋 후 최대 1ms 대기 */
     return st;
 }
 
-HAL_StatusTypeDef SHTC3_Sleep(I2C_HandleTypeDef *hi2c)
-{
-    return SHTC3_SendCmd(hi2c, SHTC3_CMD_SLEEP);
-}
-
-HAL_StatusTypeDef SHTC3_SoftReset(I2C_HandleTypeDef *hi2c)
-{
-    HAL_StatusTypeDef st = SHTC3_SendCmd(hi2c, SHTC3_CMD_SOFT_RESET);
-    HAL_Delay(1);
-    return st;
-}
-
-HAL_StatusTypeDef SHTC3_ReadID(I2C_HandleTypeDef *hi2c, uint16_t *id)
-{
-    uint8_t rx[3];
-    HAL_StatusTypeDef st;
-
-    st = SHTC3_Wakeup(hi2c);
-    if (st != HAL_OK) return st;
-
-    st = SHTC3_SendCmd(hi2c, SHTC3_CMD_READ_ID);
-    if (st != HAL_OK) return st;
-
-    st = HAL_I2C_Master_Receive(hi2c, SHTC3_I2C_ADDR, rx, 3, 100);
-    if (st != HAL_OK) return st;
-
-    if (SHTC3_CRC8(rx, 2) != rx[2]) return HAL_ERROR;
-
-    *id = ((uint16_t)rx[0] << 8) | rx[1];
-    return HAL_OK;
-}
-
-HAL_StatusTypeDef SHTC3_ReadTempHumidity(I2C_HandleTypeDef *hi2c, SHTC3_Data_t *data)
+HAL_StatusTypeDef SHT40_ReadSerial(I2C_HandleTypeDef *hi2c, uint32_t *serial)
 {
     uint8_t rx[6];
     HAL_StatusTypeDef st;
 
-    /* 1) Wake-up */
-    st = SHTC3_Wakeup(hi2c);
+    st = SHT40_SendCmd(hi2c, SHT40_CMD_READ_SERIAL);
     if (st != HAL_OK) return st;
 
-    /* 2) 측정 명령 (Normal mode, T first, clock stretching disabled) */
-    st = SHTC3_SendCmd(hi2c, SHTC3_CMD_MEAS_TFIRST);
+    st = HAL_I2C_Master_Receive(hi2c, SHT40_I2C_ADDR, rx, sizeof(rx), 100);
     if (st != HAL_OK) return st;
 
-    /* 3) 측정 대기: Normal mode 최대 12.1ms */
-    HAL_Delay(15);
+    if (SHT40_CRC8(&rx[0], 2) != rx[2]) return HAL_ERROR;
+    if (SHT40_CRC8(&rx[3], 2) != rx[5]) return HAL_ERROR;
 
-    /* 4) 6바이트 읽기 (T_MSB, T_LSB, T_CRC, RH_MSB, RH_LSB, RH_CRC) */
-    st = HAL_I2C_Master_Receive(hi2c, SHTC3_I2C_ADDR, rx, 6, 100);
+    if (serial != NULL)
+    {
+        *serial = ((uint32_t)rx[0] << 24) | ((uint32_t)rx[1] << 16) |
+                  ((uint32_t)rx[3] << 8)  | (uint32_t)rx[4];
+    }
+
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef SHT40_ReadTempHumidity(I2C_HandleTypeDef *hi2c, SHT40_Data_t *data)
+{
+    uint8_t rx[6];
+    HAL_StatusTypeDef st;
+
+    /* SHT40은 Wake/Sleep이 없으므로 측정 명령 1회로 완결된다. */
+    st = SHT40_SendCmd(hi2c, SHT40_CMD_MEAS_HIGH_T);
     if (st != HAL_OK) return st;
 
-    /* 5) CRC 검증 */
-    if (SHTC3_CRC8(&rx[0], 2) != rx[2]) return HAL_ERROR;
-    if (SHTC3_CRC8(&rx[3], 2) != rx[5]) return HAL_ERROR;
+    /* 측정 대기: high repeatability 최대 8.3ms */
+    HAL_Delay(SHT40_MEAS_DELAY_MS);
 
-    /* 6) Raw 값 → 물리값 변환
+    /* 6바이트 읽기 (T_MSB, T_LSB, T_CRC, RH_MSB, RH_LSB, RH_CRC) */
+    st = HAL_I2C_Master_Receive(hi2c, SHT40_I2C_ADDR, rx, 6, 100);
+    if (st != HAL_OK) return st;
+
+    /* CRC 검증 */
+    if (SHT40_CRC8(&rx[0], 2) != rx[2]) return HAL_ERROR;
+    if (SHT40_CRC8(&rx[3], 2) != rx[5]) return HAL_ERROR;
+
+    /* Raw 값 -> 물리값 변환 (Datasheet eq. (1),(2))
      *   T  = -45 + 175 * (raw / 65535)
-     *   RH = 100 * (raw / 65535)
-     */
+     *   RH = 100 * (raw / 65535)  (0~100 클램프) */
     uint16_t rawT  = ((uint16_t)rx[0] << 8) | rx[1];
     uint16_t rawRH = ((uint16_t)rx[3] << 8) | rx[4];
 
     data->temperature = -45.0f + 175.0f * ((float)rawT  / 65535.0f);
     data->humidity    =          100.0f * ((float)rawRH / 65535.0f);
 
-    /* 7) 다시 Sleep 진입 (저전력) */
-    SHTC3_Sleep(hi2c);
+    if (data->humidity < 0.0f)   data->humidity = 0.0f;
+    if (data->humidity > 100.0f) data->humidity = 100.0f;
 
     return HAL_OK;
 }
 
-HAL_StatusTypeDef SHTC3_Init(I2C_HandleTypeDef *hi2c)
+/* SHT40 존재/응답 확인: 소프트 리셋 후 시리얼 번호 판독 */
+HAL_StatusTypeDef SHT40_Init(I2C_HandleTypeDef *hi2c)
 {
     HAL_StatusTypeDef st;
-    uint16_t id = 0;
+    uint32_t serial = 0;
 
-    st = SHTC3_Wakeup(hi2c);
+    st = SHT40_SoftReset(hi2c);
     if (st != HAL_OK) return st;
 
-    st = SHTC3_SoftReset(hi2c);
-    if (st != HAL_OK) return st;
-
-    HAL_Delay(1);
-
-    st = SHTC3_ReadID(hi2c, &id);
-    if (st != HAL_OK) return st;
-
-    /* SHTC3 ID 확인: bits [11:6] = 000111, bits [2:0] = 111
-     *  => (id & 0x083F) == 0x0807
-     */
-    if ((id & 0x083F) != 0x0807) return HAL_ERROR;
-
-    SHTC3_Sleep(hi2c);
-    return HAL_OK;
-}
-
-void App_UpdateSHTC3ToConfigs(float temperature, float humidity)
-{
-    //;; TODO
+    return SHT40_ReadSerial(hi2c, &serial);
 }
 
 

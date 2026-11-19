@@ -1755,7 +1755,7 @@ static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t pac
 #if (APP_MGMT_TX_APPEND_ENV_ENABLE == APP_TRUE)
     uint16_t cursor;
     uint8_t env[APP_MGMT_TX_ENV_PAYLOAD_LEN];
-    SHTC3_Data_t th;
+    SHT40_Data_t th;
     uint8_t validFlags = 0u;
     int16_t tempX100 = 0;
     uint16_t rhX100 = 0u;
@@ -1772,7 +1772,7 @@ static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t pac
 
     (void)memset(env, 0, sizeof(env));
 
-    if (SHTC3_ReadTempHumidity(APP_I2C_AUX_HANDLE, &th) == HAL_OK)
+    if (SHT40_ReadTempHumidity(APP_I2C_AUX_HANDLE, &th) == HAL_OK)
     {
         float tempScaled = th.temperature * 100.0f;
         float rhScaled   = th.humidity * 100.0f;
