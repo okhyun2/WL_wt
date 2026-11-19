@@ -34,7 +34,6 @@
 
 #define NFC_APP_CTRL_APPLY_METERING_BIT                     (1U << 0)
 #define NFC_APP_CTRL_APPLY_REPORTING_BIT                    (1U << 1)
-#define NFC_APP_CTRL_APPLY_MGMT_BIT                         (1U << 2)
 #define NFC_APP_CTRL_APPLY_SPREAD_BIT                       (1U << 3)
 #define NFC_APP_CTRL_APPLY_ACK_WAIT_BIT                     (1U << 0)
 #define NFC_APP_CTRL_APPLY_ACK_TIMEOUT_BIT                  (1U << 1)
@@ -224,11 +223,10 @@ static uint8_t nfc_app_ctrl_validate_cmd(const NfcAppCtrlCmd_t *p_cmd)
     }
 }
 
-static uint8_t nfc_app_ctrl_validate_schedule_values(uint8_t metering, uint8_t reporting, uint8_t management, uint8_t spread)
+static uint8_t nfc_app_ctrl_validate_schedule_values(uint8_t metering, uint8_t reporting, uint8_t spread)
 {
     if ((nfc_app_ctrl_is_supported_period(metering) == 0U) ||
         (nfc_app_ctrl_is_supported_period(reporting) == 0U) ||
-        (nfc_app_ctrl_is_supported_period(management) == 0U) ||
         (nfc_app_ctrl_is_supported_period(spread) == 0U))
     {
         return 0U;
@@ -375,7 +373,6 @@ static uint8_t nfc_app_ctrl_compare_schedule(const AppMeterServerFormatOptions_t
 
     mismatch += (uint8_t)(lhs->meteringPeriodHours != rhs->meteringPeriodHours);
     mismatch += (uint8_t)(lhs->reportingPeriodHours != rhs->reportingPeriodHours);
-    mismatch += (uint8_t)(lhs->managementReportingPeriodHours != rhs->managementReportingPeriodHours);
     mismatch += (uint8_t)(lhs->reportingSpreadHours != rhs->reportingSpreadHours);
     return mismatch;
 }
@@ -507,7 +504,6 @@ static uint8_t nfc_app_ctrl_handle_nb(const NfcAppCtrlCmd_t *p_cmd,
             }
             if (nfc_app_ctrl_validate_schedule_values(p_req->nbPeriodSet.meteringPeriodHours,
                                                       p_req->nbPeriodSet.reportingPeriodHours,
-                                                      options.managementReportingPeriodHours,
                                                       options.reportingSpreadHours) == 0U)
             {
                 return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
@@ -848,7 +844,6 @@ static uint8_t nfc_app_ctrl_handle_param_runtime_info_get(NfcAppCtrlRspPayload_u
 
         p_rsp->paramRuntimeInfoGet.meteringPeriodHours = options.meteringPeriodHours;
         p_rsp->paramRuntimeInfoGet.reportingPeriodHours = options.reportingPeriodHours;
-        p_rsp->paramRuntimeInfoGet.managementReportingPeriodHours = options.managementReportingPeriodHours;
         p_rsp->paramRuntimeInfoGet.reportingSpreadHours = options.reportingSpreadHours;
 
         flags |= NFC_APP_CTRL_RUNTIME_INFO_FLAG_SCHEDULE_VALID;
@@ -916,7 +911,6 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
             {
                 p_rsp->paramScheduleGet.meteringPeriodHours = options.meteringPeriodHours;
                 p_rsp->paramScheduleGet.reportingPeriodHours = options.reportingPeriodHours;
-                p_rsp->paramScheduleGet.managementReportingPeriodHours = options.managementReportingPeriodHours;
                 p_rsp->paramScheduleGet.reportingSpreadHours = options.reportingSpreadHours;
                 p_rsp->paramScheduleGet.flags = 0U;
                 *p_rsp_len = 5U;
@@ -939,11 +933,9 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
             applyMask = p_req->paramScheduleSet.applyMask;
             if ((applyMask & NFC_APP_CTRL_APPLY_METERING_BIT) != 0U) { options.meteringPeriodHours = p_req->paramScheduleSet.meteringPeriodHours; }
             if ((applyMask & NFC_APP_CTRL_APPLY_REPORTING_BIT) != 0U) { options.reportingPeriodHours = p_req->paramScheduleSet.reportingPeriodHours; }
-            if ((applyMask & NFC_APP_CTRL_APPLY_MGMT_BIT) != 0U) { options.managementReportingPeriodHours = p_req->paramScheduleSet.managementReportingPeriodHours; }
             if ((applyMask & NFC_APP_CTRL_APPLY_SPREAD_BIT) != 0U) { options.reportingSpreadHours = p_req->paramScheduleSet.reportingSpreadHours; }
             if (nfc_app_ctrl_validate_schedule_values(options.meteringPeriodHours,
                                                       options.reportingPeriodHours,
-                                                      options.managementReportingPeriodHours,
                                                       options.reportingSpreadHours) == 0U)
             {
                 return (uint8_t)NFC_CMD_RESULT_INVALID_PARAM;
@@ -965,7 +957,6 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
             }
             p_rsp->paramScheduleSet.meteringPeriodHours = options.meteringPeriodHours;
             p_rsp->paramScheduleSet.reportingPeriodHours = options.reportingPeriodHours;
-            p_rsp->paramScheduleSet.managementReportingPeriodHours = options.managementReportingPeriodHours;
             p_rsp->paramScheduleSet.reportingSpreadHours = options.reportingSpreadHours;
             p_rsp->paramScheduleSet.verifyResult = verifyResult;
             *p_rsp_len = 5U;
@@ -1194,7 +1185,6 @@ static uint8_t nfc_app_ctrl_handle_param(const NfcAppCtrlCmd_t *p_cmd,
                     {
                         options.meteringPeriodHours = defaults.meteringPeriodHours;
                         options.reportingPeriodHours = defaults.reportingPeriodHours;
-                        options.managementReportingPeriodHours = defaults.managementReportingPeriodHours;
                         options.reportingSpreadHours = defaults.reportingSpreadHours;
                     }
                     if ((p_req->paramRestoreDefault.targetGroup == NFC_APP_CTRL_READBACK_GROUP_ALL) ||

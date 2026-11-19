@@ -39,7 +39,6 @@ typedef struct
     _unBattery terminalBattery; /*                  + 배터리(1(bit)) */
     uint8_t meteringPeriodHours;
     uint8_t reportingPeriodHours;
-    uint8_t managementReportingPeriodHours; /* 0: disabled, otherwise same enum as reportingPeriodHours */
     uint8_t reportingSpreadHours;           /* 0: legacy/default spread, otherwise <= reportingPeriodHours */
     /* [ACK 분리 2026-11-04] 기존 단일 ack* 필드를 mgmt/service 쌍으로 분리.
      * 구버전 호환: 기존 ackWaitEnabled 등 3필드는 'mgmt' 값으로 취급하고
@@ -127,8 +126,7 @@ void App_MeterServerOptionsSetPeriod   (AppMeterServerFormatOptions_t *p_options
                                         uint8_t reportingHours);
 void App_MeterServerOptionsSetTxPeriods(AppMeterServerFormatOptions_t *p_options,
                                         uint8_t meteringHours,
-                                        uint8_t reportingHours,
-                                        uint8_t managementReportingHours);
+                                        uint8_t reportingHours);   /* [MGMT-FIXED] mgmt 파라미터 제거 */
 void App_MeterServerOptionsSetSpread(AppMeterServerFormatOptions_t *p_options,
                                      uint8_t spreadHours);
 void App_MeterServerOptionsSetPolicy(AppMeterServerFormatOptions_t *p_options,

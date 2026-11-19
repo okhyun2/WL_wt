@@ -37,11 +37,6 @@ uint8_t App_MeterServerOptionsNormalizePeriod(uint8_t hours)
            : (uint8_t)APP_POLICY_DEFAULT_METERING_PERIOD_HOURS;
 }
 
-static uint8_t App_MeterServerOptionsIsTxPeriodSupportedOrDisabled(uint8_t hours)
-{
-    return (uint8_t)((hours == 0u) || (App_MeterServerOptionsIsPeriodSupported(hours) == APP_TRUE));
-}
-
 static uint8_t App_MeterServerOptionsIsBinaryFlag(uint8_t value)
 {
     return (uint8_t)((value == 0u) || (value == 1u));
@@ -56,7 +51,6 @@ AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_opti
 {
     uint8_t originalMetering;
     uint8_t originalReporting;
-    uint8_t originalManagementReporting;
     uint8_t originalSpread;
     uint8_t originalAckWait;
     uint8_t originalAckTimeoutSec;
@@ -67,7 +61,6 @@ AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_opti
 
     originalMetering = p_options->meteringPeriodHours;
     originalReporting = p_options->reportingPeriodHours;
-    originalManagementReporting = p_options->managementReportingPeriodHours;
     originalSpread = p_options->reportingSpreadHours;
     originalAckWait = p_options->ackWaitEnabled;
     originalAckTimeoutSec = p_options->ackTimeoutSec;
@@ -83,11 +76,6 @@ AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_opti
         (App_MeterServerOptionsIsPeriodSupported(originalReporting) == APP_TRUE)
         ? originalReporting
         : (uint8_t)APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS;
-
-    p_options->managementReportingPeriodHours =
-        (App_MeterServerOptionsIsTxPeriodSupportedOrDisabled(originalManagementReporting) == APP_TRUE)
-        ? originalManagementReporting
-        : (uint8_t)APP_POLICY_DEFAULT_MANAGEMENT_REPORTING_PERIOD_HOURS;
 
     if ((originalSpread == 0u) ||
         ((App_MeterServerOptionsIsPeriodSupported(originalSpread) == APP_TRUE) &&
@@ -140,20 +128,17 @@ AppStatus_t App_MeterServerOptionsValidate(AppMeterServerFormatOptions_t *p_opti
 
     if ((originalMetering != p_options->meteringPeriodHours) ||
         (originalReporting != p_options->reportingPeriodHours) ||
-        (originalManagementReporting != p_options->managementReportingPeriodHours) ||
         (originalSpread != p_options->reportingSpreadHours) ||
         (originalAckWait != p_options->ackWaitEnabled) ||
         (originalAckTimeoutSec != p_options->ackTimeoutSec) ||
         (originalAckPoll100Ms != p_options->ackPoll100Ms) ||
         (originalDeleteAfterSend != p_options->deleteAfterSend))
     {
-        APP_LOGD("OPT", "opt fix m=%u>%u r=%u>%u g=%u>%u s=%u>%u aw=%u>%u at=%u>%u ap=%u>%u d=%u>%u",
+        APP_LOGD("OPT", "opt fix m=%u>%u r=%u>%u s=%u>%u aw=%u>%u at=%u>%u ap=%u>%u d=%u>%u",
                  (unsigned)originalMetering,
                  (unsigned)p_options->meteringPeriodHours,
                  (unsigned)originalReporting,
                  (unsigned)p_options->reportingPeriodHours,
-                 (unsigned)originalManagementReporting,
-                 (unsigned)p_options->managementReportingPeriodHours,
                  (unsigned)originalSpread,
                  (unsigned)p_options->reportingSpreadHours,
                  (unsigned)originalAckWait,
@@ -263,7 +248,6 @@ void App_MeterServerOptionsSetDefaults(AppMeterServerFormatOptions_t *p_options)
 
     p_options->meteringPeriodHours = (uint8_t)APP_POLICY_DEFAULT_METERING_PERIOD_HOURS;
     p_options->reportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS;
-    p_options->managementReportingPeriodHours = (uint8_t)APP_POLICY_DEFAULT_MANAGEMENT_REPORTING_PERIOD_HOURS;
     p_options->reportingSpreadHours = (uint8_t)APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS;
     p_options->ackWaitEnabled = (uint8_t)APP_POLICY_WAIT_MGMT_ACK_ENABLE;
     p_options->ackTimeoutSec = (uint8_t)(APP_POLICY_MGMT_ACK_TIMEOUT_MS / 1000u);
@@ -802,9 +786,6 @@ void App_MeterServerOptionsDump(const AppMeterServerFormatOptions_t *p_options)
 
     APP_LOGD("OPT", "  meter_h : %u", (unsigned)p_options->meteringPeriodHours);
     APP_LOGD("OPT", "  report_h: %u", (unsigned)p_options->reportingPeriodHours);
-    APP_LOGD("OPT", "  mgmt_h  : %u (%s)",
-             (unsigned)p_options->managementReportingPeriodHours,
-             (p_options->managementReportingPeriodHours == 0u) ? "disabled" : "enabled");
     APP_LOGD("OPT", "  spread_h: %u (%s)",
              (unsigned)p_options->reportingSpreadHours,
              (p_options->reportingSpreadHours == 0u) ? "legacy/default" : "configured");
@@ -908,13 +889,11 @@ void App_MeterServerOptionsSetPeriod(AppMeterServerFormatOptions_t *p_options,
 
 void App_MeterServerOptionsSetTxPeriods(AppMeterServerFormatOptions_t *p_options,
                                         uint8_t meteringHours,
-                                        uint8_t reportingHours,
-                                        uint8_t managementReportingHours)
+                                        uint8_t reportingHours)
 {
     if (p_options == NULL) { return; }
     p_options->meteringPeriodHours = meteringHours;
     p_options->reportingPeriodHours = reportingHours;
-    p_options->managementReportingPeriodHours = managementReportingHours;
     (void)App_MeterServerOptionsValidate(p_options);
 }
 

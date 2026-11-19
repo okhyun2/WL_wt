@@ -637,8 +637,7 @@ void App_CommParamRecompose(void)
     {
         App_MeterServerOptionsSetTxPeriods(&opt,
                                            opt.meteringPeriodHours,
-                                           targetReportingHours,
-                                           opt.managementReportingPeriodHours);
+                                           targetReportingHours);   /* [MGMT-FIXED] adaptive policy에서 mgmt 제외 */
         App_MeterServerOptionsSetNightOnly(&opt,
                                            targetNightOnly,
                                            (uint8_t)APP_COMM_NIGHT_START_HOUR,
