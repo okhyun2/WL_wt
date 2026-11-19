@@ -4744,7 +4744,12 @@ AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
     AppStatus_t serviceStatus;
     AppStatus_t mgmtStatus;
     AppStatus_t status;
+    AppStatus_t qrepStatus;
     AppDateTime_t now;
+    AppDateTime_t qrepDueTime;
+    uint32_t qrepDateKey;
+    uint32_t qrepMsOfDay;
+    uint8_t qrepWins;
     uint32_t nowDateKey;
     uint32_t nowMsOfDay;
     uint32_t staleDateKey;
@@ -4761,15 +4766,23 @@ AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
     mgmtStatus = App_FsmMgmtTxScheduleEnsureInitialized();
     APP_RETURN_IF_FALSE((mgmtStatus == APP_STATUS_OK) || (mgmtStatus == APP_STATUS_NOT_INITIALIZED), mgmtStatus);
 
-    if ((serviceStatus != APP_STATUS_OK) && (mgmtStatus != APP_STATUS_OK))
-    {
-        return APP_STATUS_NOT_INITIALIZED;
-    }
-
     status = RTC_GetTime(&now);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
     nowDateKey = App_FsmMeterScheduleDateKey(&now);
     nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
+
+    /* [QREP-SCHEDULE] 3단계: QREP 독립 due를 min-due 후보에 합류.
+     * QREP due는 상태 캐시 없이 매번 계산한다(만료/catch-up 판정은
+     * app_nbiot.c App_NbiotQualityReportMaybeSend가 담당). */
+    qrepStatus = App_FsmGetNextQrepDueTime(&qrepDueTime);
+    APP_RETURN_IF_FALSE((qrepStatus == APP_STATUS_OK) ||
+                        (qrepStatus == APP_STATUS_NOT_INITIALIZED), qrepStatus);
+
+    if ((serviceStatus != APP_STATUS_OK) && (mgmtStatus != APP_STATUS_OK) &&
+        (qrepStatus != APP_STATUS_OK))
+    {
+        return APP_STATUS_NOT_INITIALIZED;
+    }
 
     if (serviceStatus == APP_STATUS_OK)
     {
@@ -4863,6 +4876,35 @@ AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
                                           g_appFsmTxSchedule.nextDueMsOfDay) == APP_TRUE)))
     {
         useService = APP_FALSE;
+    }
+
+    /* [QREP-SCHEDULE] 3단계: service/mgmt 승자보다 QREP due가 이르면 QREP로 대체 */
+    if (qrepStatus == APP_STATUS_OK)
+    {
+        qrepDateKey = App_FsmMeterScheduleDateKey(&qrepDueTime);
+        qrepMsOfDay = App_FsmMeterScheduleMsOfDay(&qrepDueTime);
+
+        if (useService == APP_TRUE)
+        {
+            qrepWins = App_FsmScheduleIsEarlierOrEqual(qrepDateKey,
+                                                       qrepMsOfDay,
+                                                       g_appFsmTxSchedule.nextDueDateKey,
+                                                       g_appFsmTxSchedule.nextDueMsOfDay);
+        }
+        else
+        {
+            qrepWins = App_FsmScheduleIsEarlierOrEqual(qrepDateKey,
+                                                       qrepMsOfDay,
+                                                       g_appFsmMgmtTxSchedule.nextDueDateKey,
+                                                       g_appFsmMgmtTxSchedule.nextDueMsOfDay);
+        }
+
+        if (qrepWins == APP_TRUE)
+        {
+            return App_FsmScheduleComposeDateTime(qrepDateKey,
+                                                  qrepMsOfDay,
+                                                  p_dueTime);
+        }
     }
 
     if (useService == APP_TRUE)
