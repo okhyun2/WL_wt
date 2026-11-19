@@ -795,7 +795,7 @@ static void App_Bc95LogBootInfo(void)
     p_maker = (App_Bc95QueryFirstPayloadLine(APP_BC95_AT_CMD_CGMI_QUERY, maker, sizeof(maker)) == APP_TRUE)
               ? maker : APP_BOOT_INFO_MODULE_MAKER_STRING;
     p_fw = (g_appBc95SimInfo.fwValid == APP_TRUE) ? g_appBc95SimInfo.fw : APP_BOOT_INFO_MODULE_FW_STRING;
-    APP_LOGN("NBIOT", "[[BootInfo]] Module : %s /%s", p_name, p_fw);
+    APP_LOGN("NBIOT", "[[BootInfo]] Module : %s / %s", p_name, p_fw);
     APP_LOGN("NBIOT", "[[BootInfo]] Module Maker : %s", p_maker);
 
     if (g_appBc95SimInfo.mdnValid == APP_TRUE)

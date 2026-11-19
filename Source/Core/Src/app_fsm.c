@@ -188,7 +188,6 @@ typedef struct
 static AppFsmContext_t g_appFsmContext;
 static AppFsmMeterScheduleContext_t g_appFsmMeterSchedule;
 static AppFsmTxScheduleContext_t g_appFsmTxSchedule;      /* service server */
-static AppFsmTxScheduleContext_t g_appFsmMgmtTxSchedule;  /* management server */
 static AppFsmUsimHoldContext_t g_appFsmUsimHold;
 extern NFC_LP_Handle_t g_nfcLpHandle;
 
@@ -202,18 +201,14 @@ static AppStatus_t App_FsmMeterProbeAndStore(void);
 static uint32_t App_FsmMeterApplyPostNbiotPowerOffGuard(const char *p_logTag);
 static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void);
 static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed);
-static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed);
 static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due);
 static AppStatus_t App_FsmTxScheduleLoadSpreadMaxMs(uint32_t *p_spreadMaxMs);
-static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due);
-static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void);
 static uint8_t App_FsmScheduleIsEarlierOrEqual(uint32_t lhsDateKey,
                                                uint32_t lhsMsOfDay,
                                                uint32_t rhsDateKey,
                                                uint32_t rhsMsOfDay);
 static AppStatus_t App_FsmTxScheduleApplyMeterProximityGuard(uint32_t *p_dueDateKey,
                                                              uint32_t *p_dueMsOfDay);
-static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void);
 AppStatus_t App_FsmGetNextQrepDueTime(AppDateTime_t *p_dueTime);   /* [QREP-SCHEDULE] 3단계 min-due 합류용 */
 static void App_FsmUsimHoldClear(void);
 static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase);
@@ -251,7 +246,6 @@ static uint8_t g_appFsmMgmtTxCarryPendingAfterAbort = APP_FALSE;
 static uint8_t  g_appFsmMgmtTxGuardShiftStreak = 0u;
 static uint32_t g_appFsmMgmtTxLastGuardAnchorDateKey = 0u;
 static uint32_t g_appFsmMgmtTxLastGuardAnchorMsOfDay = 0u;
-static void App_FsmMgmtTxGuardShiftReset(const char *p_reason);
 static AppStatus_t App_FsmRunTxWakeTracks(uint8_t deleteOnServiceTx);
 
 static const uint8_t g_nfcMasterKey[NFC_AUTH_KEY_SIZE] = APP_NFC_MASTER_KEY_BYTES;
@@ -608,27 +602,6 @@ AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord)
                                             APP_METER_STORAGE_SRC_DIGITAL_UART,
                                             APP_METER_STORAGE_METER_TYPE_DIGITAL_UART);
 #endif
-}
-
-static void App_FsmMgmtTxGuardShiftReset(const char *p_reason)
-{
-    if ((g_appFsmMgmtTxGuardShiftStreak != 0u) ||
-        (g_appFsmMgmtTxLastGuardAnchorDateKey != 0u) ||
-        (g_appFsmMgmtTxLastGuardAnchorMsOfDay != 0u))
-    {
-        APP_LOGN("FSM",
-                 "[[MgmtTxSchedule]] guard streak reset reason=%s streak=%u anchor=%lu %02lu:%02lu:%02lu",
-                 (p_reason != NULL) ? p_reason : "unknown",
-                 (unsigned)g_appFsmMgmtTxGuardShiftStreak,
-                 (unsigned long)g_appFsmMgmtTxLastGuardAnchorDateKey,
-                 (unsigned long)(g_appFsmMgmtTxLastGuardAnchorMsOfDay / 3600000u),
-                 (unsigned long)((g_appFsmMgmtTxLastGuardAnchorMsOfDay % 3600000u) / 60000u),
-                 (unsigned long)((g_appFsmMgmtTxLastGuardAnchorMsOfDay % 60000u) / 1000u));
-    }
-
-    g_appFsmMgmtTxGuardShiftStreak = 0u;
-    g_appFsmMgmtTxLastGuardAnchorDateKey = 0u;
-    g_appFsmMgmtTxLastGuardAnchorMsOfDay = 0u;
 }
 
 static AppStatus_t App_FsmRunTxWakeTracks(uint8_t deleteOnServiceTx)
@@ -2484,127 +2457,6 @@ static AppStatus_t App_FsmMeterScheduleConsumeDueNow(void)
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void)
-{
-    AppStatus_t status;
-    uint8_t needShift = APP_FALSE;
-    uint8_t haveServiceAnchor = APP_FALSE;
-    uint8_t newAnchorShift = APP_FALSE;
-    uint32_t prevDateKey;
-    uint32_t prevMsOfDay;
-    uint32_t serviceAnchorDateKey = 0u;
-    uint32_t serviceAnchorMsOfDay = 0u;
-
-    if (App_FsmTxScheduleBypassDebugGuards() == APP_TRUE)
-    {
-        return APP_STATUS_OK;
-    }
-
-    if ((g_appFsmTxSchedule.enabled != APP_TRUE) ||
-        (g_appFsmMgmtTxSchedule.enabled != APP_TRUE))
-    {
-        App_FsmMgmtTxGuardShiftReset("schedule disabled");
-        return APP_STATUS_OK;
-    }
-
-    if ((g_appFsmTxSchedule.lastDispatchedDateKey != 0u) ||
-        (g_appFsmTxSchedule.lastDispatchedMsOfDay != 0u))
-    {
-        haveServiceAnchor = APP_TRUE;
-        serviceAnchorDateKey = g_appFsmTxSchedule.lastDispatchedDateKey;
-        serviceAnchorMsOfDay = g_appFsmTxSchedule.lastDispatchedMsOfDay;
-    }
-    else
-    {
-        haveServiceAnchor = APP_TRUE;
-        serviceAnchorDateKey = g_appFsmTxSchedule.nextDueDateKey;
-        serviceAnchorMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
-    }
-
-    if ((haveServiceAnchor == APP_TRUE) &&
-        (g_appFsmMgmtTxSchedule.nextDueDateKey == serviceAnchorDateKey) &&
-        (g_appFsmMgmtTxSchedule.nextDueMsOfDay > serviceAnchorMsOfDay) &&
-        ((g_appFsmMgmtTxSchedule.nextDueMsOfDay - serviceAnchorMsOfDay) < APP_FSM_TX_SERVICE_MGMT_GAP_MS))
-    {
-        needShift = APP_TRUE;
-    }
-
-    /*
-     * 중요:
-     * needShift가 FALSE라고 해서 streak를 리셋하지 않는다.
-     * 지금까지의 로그에서 streak=1만 반복된 원인이 바로 여기서의 조기 리셋 가능성이 높다.
-     * streak는 mgmt가 실제 consume되거나 schedule이 꺼질 때만 reset한다.
-     */
-    if (needShift != APP_TRUE)
-    {
-        return APP_STATUS_OK;
-    }
-
-    if ((g_appFsmMgmtTxLastGuardAnchorDateKey != serviceAnchorDateKey) ||
-        (g_appFsmMgmtTxLastGuardAnchorMsOfDay != serviceAnchorMsOfDay))
-    {
-        newAnchorShift = APP_TRUE;
-    }
-
-    if ((newAnchorShift == APP_TRUE) &&
-        (g_appFsmMgmtTxGuardShiftStreak >= APP_FSM_MGMT_TX_GUARD_SHIFT_MAX))
-    {
-        APP_LOGW("FSM",
-                 "[[MgmtTxSchedule]] service-gap guard bypass after repeated shifts streak=%u due=%lu %02lu:%02lu:%02lu anchor=%lu %02lu:%02lu:%02lu",
-                 (unsigned)g_appFsmMgmtTxGuardShiftStreak,
-                 (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
-                 (unsigned long)(g_appFsmMgmtTxSchedule.nextDueMsOfDay / 3600000u),
-                 (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
-                 (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
-                 (unsigned long)serviceAnchorDateKey,
-                 (unsigned long)(serviceAnchorMsOfDay / 3600000u),
-                 (unsigned long)((serviceAnchorMsOfDay % 3600000u) / 60000u),
-                 (unsigned long)((serviceAnchorMsOfDay % 60000u) / 1000u));
-        return APP_STATUS_OK;
-    }
-
-    prevDateKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
-    prevMsOfDay = g_appFsmMgmtTxSchedule.nextDueMsOfDay;
-
-    status = App_FsmScheduleAddMs(serviceAnchorDateKey,
-                                  serviceAnchorMsOfDay,
-                                  APP_FSM_TX_SERVICE_MGMT_GAP_MS,
-                                  &g_appFsmMgmtTxSchedule.nextDueDateKey,
-                                  &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    status = App_FsmTxScheduleApplyMeterProximityGuard(&g_appFsmMgmtTxSchedule.nextDueDateKey,
-                                                       &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    if (newAnchorShift == APP_TRUE)
-    {
-        g_appFsmMgmtTxGuardShiftStreak++;
-        g_appFsmMgmtTxLastGuardAnchorDateKey = serviceAnchorDateKey;
-        g_appFsmMgmtTxLastGuardAnchorMsOfDay = serviceAnchorMsOfDay;
-    }
-
-    APP_LOGN("FSM",
-             "[[MgmtTxSchedule]] service-gap guard shift %lu %02lu:%02lu:%02lu -> %lu %02lu:%02lu:%02lu (service_anchor=%lu %02lu:%02lu:%02lu, gap=%lu, streak=%u, newAnchor=%u)",
-             (unsigned long)prevDateKey,
-             (unsigned long)(prevMsOfDay / 3600000u),
-             (unsigned long)((prevMsOfDay % 3600000u) / 60000u),
-             (unsigned long)((prevMsOfDay % 60000u) / 1000u),
-             (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
-             (unsigned long)(g_appFsmMgmtTxSchedule.nextDueMsOfDay / 3600000u),
-             (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
-             (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 60000u) / 1000u),
-             (unsigned long)serviceAnchorDateKey,
-             (unsigned long)(serviceAnchorMsOfDay / 3600000u),
-             (unsigned long)((serviceAnchorMsOfDay % 3600000u) / 60000u),
-             (unsigned long)((serviceAnchorMsOfDay % 60000u) / 1000u),
-             (unsigned long)APP_FSM_TX_SERVICE_MGMT_GAP_MS,
-             (unsigned)g_appFsmMgmtTxGuardShiftStreak,
-             (unsigned)newAnchorShift);
-
-    return APP_STATUS_OK;
-}
-
 static AppStatus_t App_FsmTxScheduleLoadPeriod(uint8_t *p_periodHours)
 {
     AppMeterServerFormatOptions_t options;
@@ -2641,55 +2493,6 @@ static AppStatus_t App_FsmTxScheduleLoadSpreadMaxMs(uint32_t *p_spreadMaxMs)
 
 /* [MGMT-SCHEDULE] dateKey(YYYYMMDD)에 하루를 더한다(월/연도 경계 처리). */
 /* [MGMT-WINDOW] 마지막 전송(due 소비)일 기록 - QREP lastDays와 동일 역할. */
-static uint8_t  g_appFsmMgmtTxWindowLastValid = APP_FALSE;
-static uint32_t g_appFsmMgmtTxWindowLastDays  = 0u;
-
-static uint32_t App_FsmMgmtTxWindowCalcDays(const AppDateTime_t *p_now)
-{
-    return ((uint32_t)p_now->year * 366u) + ((uint32_t)p_now->month * 31u) +
-           (uint32_t)p_now->day;
-}
-
-/* [MGMT-WINDOW] due일에 호출: 지금 전송 가능한지 판정.
- *  - 새벽 윈도우(02~06시) 안이면 전송.
- *  - 윈도우를 놓친 경우(주기 72h 등) 만료+1일 경과 시 윈도우 무시 즉시 전송.
- *  - 그 외 윈도우 밖이면 대기(다음 세션에서 재판정 - 스케줄 due는 아직 소비 안 됨). */
-static uint8_t App_FsmMgmtTxWindowAllowsSend(void)
-{
-    AppDateTime_t now;
-    uint8_t hourInWindow;
-    uint32_t nowDays;
-    uint32_t elapsedDays;
-
-    if (RTC_GetTime(&now) != APP_STATUS_OK)
-    {
-        return APP_TRUE;   /* RTC 미확정: 판정 보류(전송 허용) */
-    }
-
-    hourInWindow = ((now.hour >= APP_MGMT_TX_WINDOW_START_HOUR) &&
-                    (now.hour < APP_MGMT_TX_WINDOW_END_HOUR)) ? APP_TRUE : APP_FALSE;
-    if (hourInWindow == APP_TRUE)
-    {
-        return APP_TRUE;
-    }
-
-    if (g_appFsmMgmtTxWindowLastValid != APP_TRUE)
-    {
-        return APP_TRUE;   /* 첫 사이클: 기준일 없음 - 윈도우 밖이지만 즉시 전송 */
-    }
-
-    nowDays = App_FsmMgmtTxWindowCalcDays(&now);
-    elapsedDays = nowDays - g_appFsmMgmtTxWindowLastDays;
-    if (elapsedDays >= ((uint32_t)APP_MGMT_TX_INTERVAL_DAYS +
-                        (uint32_t)APP_MGMT_TX_CATCHUP_EXTRA_DAYS))
-    {
-        APP_LOGW("FSM", "[[MgmtTxSchedule]] window missed (elapsed=%lu d) -> catch-up immediate send",
-                 (unsigned long)elapsedDays);
-        return APP_TRUE;
-    }
-
-    return APP_FALSE;   /* 윈도우 대기 */
-}
 
 static uint32_t App_FsmMgmtTxScheduleAddOneDay(uint32_t dateKey)
 {
@@ -2822,121 +2625,13 @@ AppStatus_t App_FsmGetNextQrepDueTime(AppDateTime_t *p_dueTime)
  * 상태 캐시/스프레드/지터/재앵커 억제는 mgmt 스케줄에서 제거된다. */
 static AppStatus_t App_FsmGetNextMgmtDueTime(AppDateTime_t *p_dueTime)
 {
-#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
-    /* 벤치(분 단위 주기) 테스트: 캐시 기반 legacy due 유지 */
-    if ((g_appFsmMgmtTxSchedule.initialized != APP_TRUE) ||
-        (g_appFsmMgmtTxSchedule.enabled     != APP_TRUE))
-    {
-        return APP_STATUS_NOT_INITIALIZED;
-    }
-    return App_FsmScheduleComposeDateTime(g_appFsmMgmtTxSchedule.nextDueDateKey,
-                                          g_appFsmMgmtTxSchedule.nextDueMsOfDay,
-                                          p_dueTime);
-#else
+    /* [MGMT-FIXED] mgmt도 QREP과 동일 무상태 계산 - 캐시/지터/재앵커 억제 없음 */
     return App_FsmCalcNextDayWindowDue(p_dueTime,
                                        (uint8_t)APP_MGMT_TX_INTERVAL_DAYS,
                                        (uint8_t)APP_MGMT_TX_DAY_PARITY,
                                        (uint8_t)APP_MGMT_TX_WINDOW_START_HOUR,
-                                       0x4D475454u,   /* "MGTT" - legacy mgmt 해시 salt와 동일 */
+                                       0x4D475454u,   /* "MGTT" */
                                        APP_FSM_TX_DEVICE_SPREAD_MAX_MS);
-#endif
-}
-
-#if (APP_MGMT_TX_INTERVAL_DAYS >= 2u)
-/* [MGMT-SCHEDULE] 2일 주기 시 다음 due를 지정 홀/짝일로 정렬한다.
- * 48h 주기는 하루 걸러 발화하므로 한 번 정렬되면 이후 due도 parity 유지.
- * 다른 parity 날에 앵커되면 같은 시각으로 하루 미룬다(멱등). */
-static void App_FsmMgmtTxScheduleAlignParity(void)
-{
-    uint32_t day;
-
-    if ((g_appFsmMgmtTxSchedule.initialized != APP_TRUE) ||
-        (g_appFsmMgmtTxSchedule.enabled != APP_TRUE))
-    {
-        return;
-    }
-
-    day = g_appFsmMgmtTxSchedule.nextDueDateKey % 100u;
-    if ((day % 2u) == (uint32_t)APP_MGMT_TX_DAY_PARITY)
-    {
-        return;
-    }
-
-    g_appFsmMgmtTxSchedule.nextDueDateKey =
-        App_FsmMgmtTxScheduleAddOneDay(g_appFsmMgmtTxSchedule.nextDueDateKey);
-    APP_LOGD("FSM", "[[MgmtTxSchedule]] parity align -> due=%lu (parity=%u)",
-             (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
-             (unsigned int)APP_MGMT_TX_DAY_PARITY);
-}
-#endif
-
-/* [MGMT-WINDOW-SNAP] mgmt due를 "지정일의 새벽 윈도우 시작 시각"으로 스냅한다.
- * 기존 앵커+주기 방식은 due 시각이 앵커 시점에 따라 하루 중 어디든 될 수 있어
- * 윈도우 밖 due가 30분 단위로 재발화하는 낭비가 있었다. QREP 독립 스케줄과
- * 동일하게 due 시각 자체를 윈도우 시작으로 통일한다.
- * - 지정일 = INTERVAL_DAYS/DAY_PARITY (2일 주기 시 홀/짝일, 1일 주기 시 매일)
- * - 이미 지정일·윈도우 시작이면 그대로 둔다(멱등).
- * - debug 분 단위 주기(벤치 테스트)에는 적용하지 않는다. */
-static void App_FsmMgmtTxScheduleSnapDueToWindow(void)
-{
-    uint32_t day;
-    uint32_t dueKey;
-    uint8_t isDueDay;
-
-#if defined(APP_DEBUG_MGMT_TX_PERIOD_MS)
-    return;   /* 벤치용 짧은 주기 테스트: 윈도우 스냅 미적용 */
-#endif
-
-    if ((g_appFsmMgmtTxSchedule.initialized != APP_TRUE) ||
-        (g_appFsmMgmtTxSchedule.enabled     != APP_TRUE))
-    {
-        return;
-    }
-
-    dueKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
-    day = dueKey % 100u;
-
-#if (APP_MGMT_TX_INTERVAL_DAYS >= 2u)
-    isDueDay = (((day % 2u) == (uint32_t)APP_MGMT_TX_DAY_PARITY)) ? APP_TRUE : APP_FALSE;
-    if (isDueDay == APP_FALSE)
-    {
-        g_appFsmMgmtTxSchedule.nextDueDateKey =
-            App_FsmMgmtTxScheduleAddOneDay(dueKey);
-        dueKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
-        APP_LOGD("FSM", "[[MgmtTxSchedule]] window snap parity shift -> due=%lu (parity=%u)",
-                 (unsigned long)dueKey, (unsigned int)APP_MGMT_TX_DAY_PARITY);
-    }
-#else
-    (void)day;
-    (void)isDueDay;
-#endif
-
-    /* 시각을 윈도우 시작으로 스냅 (이미 스냅돼 있으면 무변경) */
-    if (g_appFsmMgmtTxSchedule.nextDueMsOfDay != ((uint32_t)APP_MGMT_TX_WINDOW_START_HOUR * 3600000u))
-    {
-        g_appFsmMgmtTxSchedule.nextDueMsOfDay =
-            (uint32_t)APP_MGMT_TX_WINDOW_START_HOUR * 3600000u;
-        g_appFsmMgmtTxSchedule.currentJitterMs = 0u;
-        APP_LOGD("FSM", "[[MgmtTxSchedule]] window snap -> due=%lu %02u:00:00 (window start)",
-                 (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
-                 (unsigned)APP_MGMT_TX_WINDOW_START_HOUR);
-    }
-
-    /* 과거 due(윈도우 시작이 이미 지남)라면 소비 시점에 기존 윈도우/catch-up
-     * 판정과 busy-defer가 처리하므로 여기서 추가 이동은 하지 않는다. */
-}
-
-static AppStatus_t App_FsmMgmtTxScheduleLoadPeriod(uint8_t *p_periodHours)
-{
-    /* [MGMT-SCHEDULE] mgmt 주기는 f/w 고정(QREP과 동일 방식).
-     * 서버 옵션(managementReportingPeriodHours)은 스케줄에 반영하지 않으며,
-     * 전송일 홀/짝은 EnsureInitialized의 parity 정렬로 강제된다.
-     * 주기 변경은 빌드 설정(APP_MGMT_TX_INTERVAL_DAYS)으로만 이루어진다. */
-    APP_RETURN_IF_FALSE(p_periodHours != NULL, APP_STATUS_INVALID_PARAM);
-
-    *p_periodHours = (uint8_t)(24u * (uint32_t)APP_MGMT_TX_INTERVAL_DAYS);
-
-    return APP_STATUS_OK;
 }
 
 static uint8_t App_FsmScheduleIsEarlierOrEqual(uint32_t lhsDateKey,
@@ -3058,12 +2753,8 @@ static AppStatus_t App_FsmAnchorRegularTxSchedulesFromBootLiveTx(void)
 {
     AppStatus_t status;
     uint8_t servicePeriodHours;
-    uint8_t mgmtPeriodHours;
 
     status = App_FsmTxScheduleLoadPeriod(&servicePeriodHours);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    status = App_FsmMgmtTxScheduleLoadPeriod(&mgmtPeriodHours);
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     status = App_FsmTxScheduleAnchorFromNowCommon(&g_appFsmTxSchedule,
@@ -3072,13 +2763,6 @@ static AppStatus_t App_FsmAnchorRegularTxSchedulesFromBootLiveTx(void)
                                                   "[[ServiceTxSchedule]]");
     APP_RETURN_IF_FALSE((status == APP_STATUS_OK) || (status == APP_STATUS_NOT_INITIALIZED), status);
 
-    status = App_FsmTxScheduleAnchorFromNowCommon(&g_appFsmMgmtTxSchedule,
-                                                  mgmtPeriodHours,
-                                                  APP_DEBUG_MGMT_TX_PERIOD_MS,
-                                                  "[[MgmtTxSchedule]]");
-    APP_RETURN_IF_FALSE((status == APP_STATUS_OK) || (status == APP_STATUS_NOT_INITIALIZED), status);
-
-    App_FsmMgmtTxGuardShiftReset("debug boot-live re-anchor");
     return APP_STATUS_OK;
 }
 #endif
@@ -3189,100 +2873,6 @@ static AppStatus_t App_FsmTxScheduleEnsureInitialized(void)
                                                     App_FsmGetRuntimeServiceTxPeriodMs()
 #endif
                                                     );
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    status = App_FsmMgmtTxScheduleApplyServiceGapGuard();
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-    return APP_STATUS_OK;
-}
-
-static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void)
-{
-    AppStatus_t status;
-    uint8_t periodHours;
-    /* [재앵커 억제] 재초기화가 기존 미래 due를 폐기하는 것을 막는다.
-     * ~10분마다 EnsureInitializedCommon 재진입 시 PlanBootstrap이 next를
-     * 재계산해 기존 due를 버리는 실측(19:04:59->19:22:55->19:32:54->...)
-     * 을 차단한다. 주기/spread 무변경 + 기존 due 미도달 조건에서만 억제. */
-    uint8_t  hadArmedDue      = APP_FALSE;
-    uint32_t savedDueDateKey  = 0u;
-    uint32_t savedDueMsOfDay  = 0u;
-    uint8_t  savedPeriodHours = 0u;
-    uint32_t savedSpreadMaxMs = 0u;
-    AppDateTime_t now;
-    uint32_t nowDateKey;
-    uint32_t nowMsOfDay;
-
-    status = App_FsmMgmtTxScheduleLoadPeriod(&periodHours);
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    if ((g_appFsmMgmtTxSchedule.initialized == APP_TRUE) &&
-        (g_appFsmMgmtTxSchedule.enabled     == APP_TRUE))
-    {
-        savedDueDateKey  = g_appFsmMgmtTxSchedule.nextDueDateKey;
-        savedDueMsOfDay  = g_appFsmMgmtTxSchedule.nextDueMsOfDay;
-        savedPeriodHours = g_appFsmMgmtTxSchedule.periodHours;
-        savedSpreadMaxMs = g_appFsmMgmtTxSchedule.configuredSpreadMaxMs;
-
-        if (RTC_GetTime(&now) == APP_STATUS_OK)
-        {
-            nowDateKey = App_FsmMeterScheduleDateKey(&now);
-            nowMsOfDay = App_FsmMeterScheduleMsOfDay(&now);
-            /* 기존 due가 아직 미래면 무장 상태로 기록 */
-            if (App_FsmScheduleIsDueOrPast(savedDueDateKey, savedDueMsOfDay,
-                                           nowDateKey, nowMsOfDay) != APP_TRUE)
-            {
-                hadArmedDue = APP_TRUE;
-            }
-        }
-    }
-
-    status = App_FsmTxScheduleEnsureInitializedCommon(&g_appFsmMgmtTxSchedule,
-                                                      periodHours,
-                                                      APP_FSM_TX_DEVICE_SPREAD_MAX_MS,
-                                                      0x4D474D54u,
-                                                      APP_FSM_TX_MGMT_SLOT_OFFSET_MS,
-                                                      "[[MgmtTxSchedule]]",
-                                                      "management tx schedule disabled",
-#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
-                                                    APP_DEBUG_MGMT_TX_PERIOD_MS
-#else
-                                                    App_FsmGetRuntimeMgmtTxPeriodMs()
-#endif
-                                                    );
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    /* [MGMT-SCHEDULE] 2일 주기 시 due를 지정 홀/짝일로 정렬(멱등). */
-#if (APP_MGMT_TX_INTERVAL_DAYS >= 2u)
-    App_FsmMgmtTxScheduleAlignParity();
-#endif
-
-    /* [MGMT-WINDOW-SNAP] due를 지정일 윈도우 시작 시각으로 스냅(멱등).
-     * 재앵커 억제가 due를 보존하는 경우에도 시각 정규화가 필요하므로
-     * 억제 체크보다 먼저 실행한다. */
-    App_FsmMgmtTxScheduleSnapDueToWindow();
-
-    if ((hadArmedDue == APP_TRUE) &&
-        (savedPeriodHours == g_appFsmMgmtTxSchedule.periodHours) &&
-        (savedSpreadMaxMs == g_appFsmMgmtTxSchedule.configuredSpreadMaxMs) &&
-        ((g_appFsmMgmtTxSchedule.nextDueDateKey != savedDueDateKey) ||
-         (g_appFsmMgmtTxSchedule.nextDueMsOfDay != savedDueMsOfDay)))
-    {
-        APP_LOGN("FSM",
-                 "[[MgmtTxSchedule]] re-anchor suppressed, keep armed due=%lu %02lu:%02lu:%02lu (planned=%lu %02lu:%02lu:%02lu)",
-                 (unsigned long)savedDueDateKey,
-                 (unsigned long)(savedDueMsOfDay / 3600000u),
-                 (unsigned long)((savedDueMsOfDay % 3600000u) / 60000u),
-                 (unsigned long)((savedDueMsOfDay % 60000u) / 1000u),
-                 (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
-                 (unsigned long)(g_appFsmMgmtTxSchedule.nextDueMsOfDay / 3600000u),
-                 (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 3600000u) / 60000u),
-                 (unsigned long)((g_appFsmMgmtTxSchedule.nextDueMsOfDay % 60000u) / 1000u));
-        g_appFsmMgmtTxSchedule.nextDueDateKey = savedDueDateKey;
-        g_appFsmMgmtTxSchedule.nextDueMsOfDay = savedDueMsOfDay;
-    }
-
-    status = App_FsmMgmtTxScheduleApplyServiceGapGuard();
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
     return APP_STATUS_OK;
@@ -3463,85 +3053,6 @@ static AppStatus_t App_FsmTxScheduleCheckDue(uint8_t *p_due)
     return APP_STATUS_OK;
 }
 
-static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due)
-{
-    AppDateTime_t now;
-    uint32_t todayDays;
-
-    APP_RETURN_IF_FALSE(p_due != NULL, APP_STATUS_INVALID_PARAM);
-    *p_due = APP_FALSE;
-
-#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
-    /* 벤치(분 단위 주기): legacy 캐시 기반 판정 유지 */
-    {
-        AppStatus_t status;
-        status = App_FsmMgmtTxScheduleEnsureInitialized();
-        if (status == APP_STATUS_NOT_INITIALIZED)
-        {
-            App_FsmMgmtTxGuardShiftReset("schedule not initialized");
-            return APP_STATUS_OK;
-        }
-        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-        status = App_FsmTxScheduleCheckDueCommon(&g_appFsmMgmtTxSchedule,
-                                                 p_due,
-                                                 "[[MgmtTxSchedule]]",
-                                                 APP_DEBUG_MGMT_TX_PERIOD_MS);
-        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-        if (*p_due == APP_TRUE)
-        {
-            if (App_FsmMgmtTxWindowAllowsSend() == APP_FALSE)
-            {
-                *p_due = APP_FALSE;
-            }
-        }
-        return APP_STATUS_OK;
-    }
-#else
-    /* [QREP-UNIFY] QREP App_NbiotQualityReportMaybeSend와 동일한 무상태 판정:
-     * 지정일(parity) + 오늘 미발송 + 윈도우/catch-up. 캐시 due 사용 안 함. */
-    if (RTC_GetTime(&now) != APP_STATUS_OK)
-    {
-        App_FsmMgmtTxGuardShiftReset("schedule rtc invalid");
-        return APP_STATUS_OK;
-    }
-
-#if (APP_MGMT_TX_INTERVAL_DAYS >= 2u)
-    if (((uint32_t)now.day % 2u) != (uint32_t)APP_MGMT_TX_DAY_PARITY)
-    {
-        return APP_STATUS_OK;   /* 오늘은 지정 parity가 아님 */
-    }
-#endif
-
-    todayDays = App_FsmMgmtTxWindowCalcDays(&now);
- 
-    if ((g_appFsmMgmtTxWindowLastValid == APP_TRUE) &&
-        (g_appFsmMgmtTxWindowLastDays == todayDays))
-    {
-        return APP_STATUS_OK;   /* 오늘 이미 발송 판정됨 */
-    }
-
-    if ((g_appFsmMgmtTxWindowLastValid == APP_TRUE) &&
-        ((todayDays - g_appFsmMgmtTxWindowLastDays) <
-         (uint32_t)APP_MGMT_TX_INTERVAL_DAYS))
-    {
-        return APP_STATUS_OK;   /* 미만료 */
-    }
-
-    if (App_FsmMgmtTxWindowAllowsSend() == APP_FALSE)
-    {
-        return APP_STATUS_OK;   /* 윈도우 대기 (catch-up 미만) */
-    }
-
-    /* 발송 판정 확정 - 기존 CheckDue 시점과 동일하게 여기서 소비일 기록 */
-    g_appFsmMgmtTxWindowLastDays = todayDays;
-    g_appFsmMgmtTxWindowLastValid = APP_TRUE;
-    *p_due = APP_TRUE;
-#endif
-    return APP_STATUS_OK;
-}
-
 static AppStatus_t App_FsmTxScheduleConsumeDueNowCommon(AppFsmTxScheduleContext_t *p_schedule,
                                                         uint8_t *p_consumed,
                                                         const char *p_tag,
@@ -3660,77 +3171,6 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed)
                                               );
 }
 
-static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed)
-{
-    AppDateTime_t now;
-    uint32_t todayDays;
-
-    APP_RETURN_IF_FALSE(p_consumed != NULL, APP_STATUS_INVALID_PARAM);
-    *p_consumed = APP_FALSE;
-
-#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
-    /* 벤치(분 단위 주기): legacy 캐시 기반 소비 유지 */
-    {
-        AppStatus_t status;
-        AppDateTime_t recNow;
-        status = App_FsmMgmtTxScheduleEnsureInitialized();
-        if (status == APP_STATUS_NOT_INITIALIZED)
-        {
-            App_FsmMgmtTxGuardShiftReset("consume while not initialized");
-            return APP_STATUS_OK;
-        }
-        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-        status = App_FsmTxScheduleConsumeDueNowCommon(&g_appFsmMgmtTxSchedule,
-                                                      p_consumed,
-                                                      "[[MgmtTxSchedule]]",
-                                                      APP_DEBUG_MGMT_TX_PERIOD_MS);
-        APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-        if (*p_consumed == APP_TRUE)
-        {
-            if (RTC_GetTime(&recNow) == APP_STATUS_OK)
-            {
-                g_appFsmMgmtTxWindowLastDays = App_FsmMgmtTxWindowCalcDays(&recNow);
-                g_appFsmMgmtTxWindowLastValid = APP_TRUE;
-            }
-            App_FsmMgmtTxScheduleSnapDueToWindow();
-            App_FsmMgmtTxGuardShiftReset("mgmt due consumed");
-        }
-        return APP_STATUS_OK;
-    }
-#else
-    /* [QREP-UNIFY] 무상태 판정 - 발화한 AlarmB가 mgmt due 발화인지 재확인.
-     * 기록은 CheckDue(발송 판정 시점)에서만 한다. */
-    if (RTC_GetTime(&now) != APP_STATUS_OK)
-    {
-        App_FsmMgmtTxGuardShiftReset("consume rtc invalid");
-        return APP_STATUS_OK;
-    }
-#if (APP_MGMT_TX_INTERVAL_DAYS >= 2u)
-    if (((uint32_t)now.day % 2u) != (uint32_t)APP_MGMT_TX_DAY_PARITY)
-    {
-        return APP_STATUS_OK;
-    }
-#endif
-
-    todayDays = App_FsmMgmtTxWindowCalcDays(&now);
-    if ((g_appFsmMgmtTxWindowLastValid == APP_TRUE) &&
-        (g_appFsmMgmtTxWindowLastDays == todayDays))
-    {
-        return APP_STATUS_OK;   /* 오늘 이미 판정됨 */
-    }
-    if (App_FsmMgmtTxWindowAllowsSend() != APP_TRUE)
-    {
-        return APP_STATUS_OK;   /* mgmt due 아님 (QREP 전용 발화 등) */
-    }
-
-    *p_consumed = APP_TRUE;
-    App_FsmMgmtTxGuardShiftReset("mgmt due consumed");
-#endif
-    return APP_STATUS_OK;
-}
-
 static AppStatus_t App_FsmTxScheduleDelayHoursFromNowCommon(AppFsmTxScheduleContext_t *p_schedule,
                                                             uint32_t delayHours,
                                                             const char *p_tag)
@@ -3789,23 +3229,6 @@ static AppStatus_t App_FsmTxScheduleDelayHoursFromNow(uint32_t delayHours)
                                                     "[[ServiceTxSchedule]]");
 }
 
-static AppStatus_t App_FsmMgmtTxScheduleDelayHoursFromNow(uint32_t delayHours)
-{
-    AppStatus_t status;
-
-    APP_RETURN_IF_FALSE(delayHours > 0u, APP_STATUS_INVALID_PARAM);
-    status = App_FsmMgmtTxScheduleEnsureInitialized();
-    if (status == APP_STATUS_NOT_INITIALIZED)
-    {
-        return APP_STATUS_OK;
-    }
-    APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
-
-    return App_FsmTxScheduleDelayHoursFromNowCommon(&g_appFsmMgmtTxSchedule,
-                                                    delayHours,
-                                                    "[[MgmtTxSchedule]]");
-}
-
 static void App_FsmUsimHoldClear(void)
 {
     (void)memset(&g_appFsmUsimHold, 0, sizeof(g_appFsmUsimHold));
@@ -3842,27 +3265,12 @@ static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase)
         status = App_FsmTxScheduleDelayHoursFromNow(holdHours);
         APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
-        status = App_FsmMgmtTxScheduleDelayHoursFromNow(holdHours);
-        APP_RETURN_IF_FALSE((status == APP_STATUS_OK) || (status == APP_STATUS_NOT_INITIALIZED), status);
-
         g_appFsmUsimHold.rtcValidMode = APP_TRUE;
 
         if (g_appFsmTxSchedule.enabled == APP_TRUE)
         {
             g_appFsmUsimHold.holdUntilDateKey = g_appFsmTxSchedule.nextDueDateKey;
             g_appFsmUsimHold.holdUntilMsOfDay = g_appFsmTxSchedule.nextDueMsOfDay;
-            hasHoldDeadline = APP_TRUE;
-        }
-
-        if ((g_appFsmMgmtTxSchedule.enabled == APP_TRUE) &&
-            ((hasHoldDeadline != APP_TRUE) ||
-             (App_FsmScheduleIsEarlierOrEqual(g_appFsmMgmtTxSchedule.nextDueDateKey,
-                                              g_appFsmMgmtTxSchedule.nextDueMsOfDay,
-                                              g_appFsmUsimHold.holdUntilDateKey,
-                                              g_appFsmUsimHold.holdUntilMsOfDay) == APP_TRUE)))
-        {
-            g_appFsmUsimHold.holdUntilDateKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
-            g_appFsmUsimHold.holdUntilMsOfDay = g_appFsmMgmtTxSchedule.nextDueMsOfDay;
             hasHoldDeadline = APP_TRUE;
         }
 
@@ -4385,7 +3793,23 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
             if (g_appFsmRtcTxWakePending != APP_TRUE)
             {
                 APP_RETURN_IF_FALSE(App_FsmTxScheduleCheckDue(&serviceDue) == APP_STATUS_OK, APP_STATUS_FATAL);
-                APP_RETURN_IF_FALSE(App_FsmMgmtTxScheduleCheckDue(&mgmtDue) == APP_STATUS_OK, APP_STATUS_FATAL);
+                {
+                    /* [MGMT-FIXED] 무상태 mgmt due 판정 - 캐시 CheckDue 대체 */
+                    AppDateTime_t mgmtDueTime;
+                    AppDateTime_t mgmtNow;
+                    AppStatus_t mgmtSt = App_FsmGetNextMgmtDueTime(&mgmtDueTime);
+                    APP_RETURN_IF_FALSE((mgmtSt == APP_STATUS_OK) || (mgmtSt == APP_STATUS_NOT_INITIALIZED), mgmtSt);
+                    if ((mgmtSt == APP_STATUS_OK) && (RTC_GetTime(&mgmtNow) == APP_STATUS_OK))
+                    {
+                        if (App_FsmScheduleIsDueOrPast(App_FsmMeterScheduleDateKey(&mgmtDueTime),
+                                                       App_FsmMeterScheduleMsOfDay(&mgmtDueTime),
+                                                       App_FsmMeterScheduleDateKey(&mgmtNow),
+                                                       App_FsmMeterScheduleMsOfDay(&mgmtNow)) == APP_TRUE)
+                        {
+                            mgmtDue = APP_TRUE;
+                        }
+                    }
+                }
 
                 if (g_appFsmMgmtTxCarryPendingAfterAbort == APP_TRUE)
                 {
@@ -4410,16 +3834,7 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
                             AppDateTime_t svcDue;
                             AppDateTime_t txDue;
                             uint8_t svcOk = (App_FsmGetNextTxDueTime(&svcDue) == APP_STATUS_OK) ? APP_TRUE : APP_FALSE;
-                            uint8_t txOk = APP_FALSE;
-                            if ((g_appFsmMgmtTxSchedule.enabled == APP_TRUE) &&
-                                (g_appFsmMgmtTxSchedule.nextDueDateKey != 0u))
-                            {
-                                txOk = (App_FsmScheduleComposeDateTime(g_appFsmMgmtTxSchedule.nextDueDateKey,
-                                                                       g_appFsmMgmtTxSchedule.nextDueMsOfDay,
-                                                                       &txDue) == APP_STATUS_OK)
-                                           ? APP_TRUE
-                                           : APP_FALSE;
-                            }
+                            uint8_t txOk = (App_FsmGetNextMgmtDueTime(&txDue) == APP_STATUS_OK) ? APP_TRUE : APP_FALSE;
                             APP_LOGN("FSM",
                                      "[[TxSchedule]] skip attach/send before due | service next=%s %04lu-%02lu-%02lu %02lu:%02lu:%02lu | mgmt next=%s %04lu-%02lu-%02lu %02lu:%02lu:%02lu",
                                      (svcOk == APP_TRUE) ? "ok" : "n/a",
@@ -4459,12 +3874,8 @@ static AppStatus_t App_FsmExecuteState(uint8_t currentState, uint32_t commandPar
         case APP_FSM_STATE_NBIOT_EXCHANGE_AT:
         {
             uint8_t isBootResetTrack = (g_appFsmFirstAttachCycleDone != APP_TRUE) ? APP_TRUE : APP_FALSE;
-            uint8_t mgmtTxConfiguredPeriod = 0u;
-            uint8_t deleteOnServiceTx = APP_TRUE;
+            uint8_t deleteOnServiceTx = APP_TRUE;   /* [MGMT-FIXED] mgmt 주기 always enabled */
             AppStatus_t trackStatus;
-
-            APP_RETURN_IF_FALSE(App_FsmMgmtTxScheduleLoadPeriod(&mgmtTxConfiguredPeriod) == APP_STATUS_OK, APP_STATUS_FATAL);
-            deleteOnServiceTx = (mgmtTxConfiguredPeriod == 0u) ? APP_TRUE : APP_FALSE;
 
 #if (APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE == APP_TRUE)
             if ((isBootResetTrack != APP_TRUE) && (g_appFsmWakeCollectionPending == APP_TRUE))
@@ -4892,7 +4303,6 @@ AppStatus_t App_FsmInit(void)
     g_appFsmRtcMgmtTxWakePending = APP_FALSE;
     (void)memset(&g_appFsmMeterSchedule, 0, sizeof(g_appFsmMeterSchedule));
     (void)memset(&g_appFsmTxSchedule, 0, sizeof(g_appFsmTxSchedule));
-    (void)memset(&g_appFsmMgmtTxSchedule, 0, sizeof(g_appFsmMgmtTxSchedule));
     App_FsmUsimHoldClear();
 
     return App_FsmQueueStateBack(APP_FSM_STATE_BOOT, 0u, 0u);
@@ -5062,12 +4472,6 @@ void App_FsmInvalidateRtcSchedules(void)
     g_appFsmTxSchedule.nextDueDateKey = 0u;
     g_appFsmTxSchedule.nextDueMsOfDay = 0u;
 
-    g_appFsmMgmtTxSchedule.initialized = APP_FALSE;
-    g_appFsmMgmtTxSchedule.enabled = APP_FALSE;
-    g_appFsmMgmtTxSchedule.rtcReadyLogged = APP_FALSE;
-    g_appFsmMgmtTxSchedule.nextDueDateKey = 0u;
-    g_appFsmMgmtTxSchedule.nextDueMsOfDay = 0u;
-
     APP_LOGN("FSM", "[[RtcSync]] invalidate meter/service/mgmt due cache -> alarms will be recalculated on next STOP entry");
 }
 
@@ -5099,16 +4503,10 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
                             (status == APP_STATUS_NOT_INITIALIZED),
                             status);
 
-        status = App_FsmMgmtTxScheduleConsumeDueNow(&mgmtConsumed);
-        APP_RETURN_IF_FALSE((status == APP_STATUS_OK) ||
-                            (status == APP_STATUS_MSGQ_EMPTY) ||
-                            (status == APP_STATUS_NOT_INITIALIZED),
-                            status);
-
         /* [QREP-ONLY-WAKE] service/mgmt 어느 쪽 due도 아닌 AlarmB 발화는
          * QREP 지정일 윈도우 시작 발화이다 - QREP 전송을 위해 세션을 연다
          * (mgmt wake 트리거를 빌려 세션 오픈; mgmt 전송 판정은 스스로 스킵). */
-        if ((serviceConsumed != APP_TRUE) && (mgmtConsumed != APP_TRUE))
+        if (serviceConsumed != APP_TRUE)
         {
             AppDateTime_t qrepNow;
             uint8_t qrepParityDay = APP_TRUE;
@@ -5132,7 +4530,7 @@ static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
         }
 
         g_appFsmRtcServiceTxWakePending = serviceConsumed;
-        g_appFsmRtcMgmtTxWakePending = mgmtConsumed;
+        g_appFsmRtcMgmtTxWakePending = APP_FALSE;
         g_appFsmRtcTxWakePending = ((serviceConsumed == APP_TRUE) || (mgmtConsumed == APP_TRUE)) ? APP_TRUE : APP_FALSE;
     }
 
