@@ -173,8 +173,8 @@ void App_UpdateBatteryToOptions(uint8_t voltX10, uint8_t alarm)
 
 /////////////////////////////////////////////////////////////////////////////////////////
 
-/* CRC-8: Polynomial 0x31, Init 0xFF (Sensirion 표준) */
-static uint8_t SHTC3_CRC8(const uint8_t *data, uint8_t len)
+/* CRC-8: Polynomial 0x31, Init 0xFF (Sensirion 표준, SHT40 Datasheet Table 7) */
+static uint8_t SHT40_CRC8(const uint8_t *data, uint8_t len)
 {
     uint8_t crc = 0xFF;
     for (uint8_t i = 0; i < len; i++) {
