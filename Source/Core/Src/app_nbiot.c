@@ -1196,7 +1196,7 @@ static AppStatus_t App_Bc95AtReadNuestatsPowerOnce(int16_t *p_signalDbm,
                                         APP_BC95_AT_NUESTATS_TOTAL_TAG, &totRaw);
     if ((sigFound != APP_TRUE) || (totFound != APP_TRUE))
     {
-        APP_LOGW("NBIOT", APP_NBIOT_LOG_PREATTACH " NUESTATS parse fail (sig=%u tot=%u st=%d)",
+        APP_LOGD("NBIOT", APP_NBIOT_LOG_PREATTACH " NUESTATS parse fail (sig=%u tot=%u st=%d)",
                  (unsigned)sigFound, (unsigned)totFound, (int)status);
         return (status != APP_STATUS_OK) ? status : APP_STATUS_FATAL;
     }
@@ -5572,7 +5572,17 @@ static AppStatus_t App_Bc95AtSendWithRetry(const char *p_cmd, uint8_t *p_rxBuf,
             (status == APP_STATUS_UART_TX_FAILED) ||
             (status == APP_STATUS_UART_TIMEOUT))
         {
-            APP_LOGW("NBIOT", "cmd(%s) retry %lu/%lu (status=%d)",
+            /* [LATE-RESPONSE] 타임아웃이어도 응답 바이트가 버퍼에 있으면
+             * 늦게 도착한 응답으로 판정 - 재전송 없이 그대로 반환한다.
+             * (NCONFIG?/NBAND 직후 모뎀 처리 지연이 매번 1회 재시도를
+             * 만들던 것을 재전송 없이 해소) */
+            if ((status == APP_STATUS_UART_TIMEOUT) && (p_rxLenOut != NULL) && (*p_rxLenOut > 0u))
+            {
+                APP_LOGD("NBIOT", "cmd(%s) late response accepted (rxLen=%u)",
+                         p_cmd, (unsigned)*p_rxLenOut);
+                return APP_STATUS_OK;
+            }
+            APP_LOGD("NBIOT", "cmd(%s) retry %lu/%lu (status=%d)",
                      p_cmd,
                      (unsigned long)(attempt + 1u),
                      (unsigned long)maxRetry, (int)status);
@@ -5581,6 +5591,12 @@ static AppStatus_t App_Bc95AtSendWithRetry(const char *p_cmd, uint8_t *p_rxBuf,
         }
         break;
     }
+
+    /* [RETRY-EXHAUSTED] 최대 재시도 도달 - 실질 오류이므로 WARN으로 남긴다 */
+    APP_LOGW("NBIOT", "cmd(%s) retry max reached %lu/%lu (status=%d)",
+             p_cmd,
+             (unsigned long)maxRetry,
+             (unsigned long)maxRetry, (int)status);
     return status;
 }
 

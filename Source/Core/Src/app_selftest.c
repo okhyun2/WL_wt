@@ -490,13 +490,13 @@ static uint8_t App_SelfTestProbeTx0MonActivity(void)
      * 연결돼 있으면 웨이크 프레임 전송 중 신호가 관측된다. */
     if ((high == 0u) || (low == 0u))
     {
-        APP_LOGW("SELF", "[TX0MON-DIAG] line IDLE (%uH/%uL of %u) -> meter likely disconnected",
+        APP_LOGW("SELF", "meter rx line IDLE (%uH/%uL of %u) -> meter likely disconnected",
                  (unsigned int)high, (unsigned int)low,
                  (unsigned int)(sizeof(levels) / sizeof(levels[0])));
         return APP_FALSE;
     }
 
-    APP_LOGN("SELF", "[TX0MON-DIAG] line ACTIVE (%uH/%uL of %u) -> meter connected, check UART/CRC path",
+    APP_LOGN("SELF", "meter rx line ACTIVE (%uH/%uL of %u) -> meter connected, check UART/CRC path",
              (unsigned int)high, (unsigned int)low,
              (unsigned int)(sizeof(levels) / sizeof(levels[0])));
     return APP_TRUE;
