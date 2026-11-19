@@ -401,15 +401,6 @@ uint32_t App_CommGetTxPeriodOverrideMs(void)
 #endif
 }
 
-uint32_t App_CommGetMgmtTxPeriodOverrideMs(void)
-{
-#if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)
-    return App_CommGetTxPeriodOverrideMs();
-#else
-    return 0u;
-#endif
-}
-
 uint32_t App_CommGetMeterPeriodOverrideMs(void)
 {
 #if (APP_EPC_TEST_MODE_SIGNAL_WEAK_ENABLE == APP_TRUE)

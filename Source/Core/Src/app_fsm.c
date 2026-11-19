@@ -96,15 +96,6 @@ static uint32_t App_FsmGetRuntimeServiceTxPeriodMs(void)
 #endif
 }
 
-static uint32_t App_FsmGetRuntimeMgmtTxPeriodMs(void)
-{
-#ifdef APP_DEBUG_MGMT_TX_PERIOD_MS
-    return APP_DEBUG_MGMT_TX_PERIOD_MS;
-#else
-    return App_CommGetMgmtTxPeriodOverrideMs();
-#endif
-}
-
 #define APP_FSM_MGMT_TX_BUSY_DEFER_MS  (30u * 1000u)
 
 /*

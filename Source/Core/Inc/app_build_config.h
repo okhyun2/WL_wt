@@ -370,7 +370,6 @@ extern "C" {
 /* OPS-01/02 period policy defaults (allowed values: 1/2/3/4/6/8/12/24h. default:meter-1h, report-4h) */
 #define APP_POLICY_DEFAULT_METERING_PERIOD_HOURS   (1u)
 #define APP_POLICY_DEFAULT_REPORTING_PERIOD_HOURS  (1u)
-#define APP_POLICY_DEFAULT_MANAGEMENT_REPORTING_PERIOD_HOURS  (1u)
 #define APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS     (0u) /* 0: legacy fixed spread fallback */
 #define APP_POLICY_DELETE_AFTER_UDP_SEND_SUCCESS   (APP_FALSE)
 /* [ACK 정책 분리 2026-11-04] 기존 APP_POLICY_WAIT_SERVER_ACK_ENABLE는

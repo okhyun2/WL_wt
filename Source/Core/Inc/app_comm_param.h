@@ -49,7 +49,6 @@ void App_CommAdaptivePolicySetDefaults(AppCommAdaptivePolicy_t *p_policy);
 void App_CommAdaptivePolicyGet(AppCommAdaptivePolicy_t *p_policy);
 void App_CommAdaptivePolicySet(const AppCommAdaptivePolicy_t *p_policy);
 uint32_t App_CommGetTxPeriodOverrideMs(void);
-uint32_t App_CommGetMgmtTxPeriodOverrideMs(void);
 uint32_t App_CommGetMeterPeriodOverrideMs(void);
 uint8_t App_CommShouldBypassNightOnlyGate(void);
 
