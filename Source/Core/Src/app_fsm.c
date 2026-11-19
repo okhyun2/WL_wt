@@ -2733,10 +2733,13 @@ static uint32_t App_FsmMgmtTxScheduleAddOneDay(uint32_t dateKey)
 static AppStatus_t App_FsmCalcNextDayWindowDue(AppDateTime_t *p_dueTime,
                                                uint8_t intervalDays,
                                                uint8_t dayParity,
-                                               uint8_t windowStartHour)
+                                               uint8_t windowStartHour,
+                                               uint32_t spreadSalt,
+                                               uint32_t spreadMaxMs)
 {
     AppDateTime_t dueTime;
     uint32_t day;
+    uint32_t spreadMs;
     uint8_t checked;
     uint8_t isDueDay;
 
@@ -2746,6 +2749,12 @@ static AppStatus_t App_FsmCalcNextDayWindowDue(AppDateTime_t *p_dueTime,
     {
         return APP_STATUS_NOT_INITIALIZED;
     }
+
+    /* [DEV-SPREAD] 기기별 Uid 해시 스프레드 - 윈도우 시작에 기기 고정 오프셋을
+     * 더해 다수 단말의 동시 wake/동시 접속을 분산한다. salt가 스케줄마다 다르면
+     * mgmt/QREP 발화도 서로 어긋난다. 매일 동일 값(멱등)이라 상태 불필요. */
+    spreadMs = ((App_ClockGetDeviceUidHash() ^ spreadSalt) %
+                ((spreadMaxMs / 1000u) + 1u)) * 1000u;
 
     for (checked = 0u; checked < 3u; checked++)
     {
@@ -2767,6 +2776,17 @@ static AppStatus_t App_FsmCalcNextDayWindowDue(AppDateTime_t *p_dueTime,
                 dueTime.hour   = windowStartHour;
                 dueTime.minute = 0u;
                 dueTime.second = 0u;
+                /* [DEV-SPREAD] 기기 고정 오프셋 가산 (윈도우 내 분산) */
+                App_FsmScheduleAddMs(dueTime.year * 10000u + dueTime.month * 100u + dueTime.day,
+                                     dueTime.hour * 3600000u,
+                                     spreadMs,
+                                     &day, &spreadMs);
+                dueTime.year   = (uint16_t)(day / 10000u);
+                dueTime.month  = (uint8_t)((day / 100u) % 100u);
+                dueTime.day    = (uint8_t)(day % 100u);
+                dueTime.hour   = (uint8_t)((spreadMs / 3600000u) % 24u);
+                dueTime.minute = (uint8_t)((spreadMs % 3600000u) / 60000u);
+                dueTime.second = (uint8_t)((spreadMs % 60000u) / 1000u);
                 *p_dueTime = dueTime;
                 return APP_STATUS_OK;
             }
@@ -2793,7 +2813,9 @@ AppStatus_t App_FsmGetNextQrepDueTime(AppDateTime_t *p_dueTime)
     return App_FsmCalcNextDayWindowDue(p_dueTime,
                                        (uint8_t)APP_QUALITY_REPORT_INTERVAL_DAYS,
                                        (uint8_t)APP_QUALITY_REPORT_DAY_PARITY,
-                                       (uint8_t)APP_QUALITY_REPORT_WINDOW_START_HOUR);
+                                       (uint8_t)APP_QUALITY_REPORT_WINDOW_START_HOUR,
+                                       0x51524550u,   /* "QREP" */
+                                       APP_FSM_TX_DEVICE_SPREAD_MAX_MS);
 }
 
 /* [QREP-UNIFY] mgmt due도 QREP과 동일 알고리즘 - 무상태 즉석 계산.
@@ -2814,7 +2836,9 @@ static AppStatus_t App_FsmGetNextMgmtDueTime(AppDateTime_t *p_dueTime)
     return App_FsmCalcNextDayWindowDue(p_dueTime,
                                        (uint8_t)APP_MGMT_TX_INTERVAL_DAYS,
                                        (uint8_t)APP_MGMT_TX_DAY_PARITY,
-                                       (uint8_t)APP_MGMT_TX_WINDOW_START_HOUR);
+                                       (uint8_t)APP_MGMT_TX_WINDOW_START_HOUR,
+                                       0x4D475454u,   /* "MGTT" - legacy mgmt 해시 salt와 동일 */
+                                       APP_FSM_TX_DEVICE_SPREAD_MAX_MS);
 #endif
 }
 
