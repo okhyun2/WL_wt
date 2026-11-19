@@ -214,6 +214,7 @@ static uint8_t App_FsmScheduleIsEarlierOrEqual(uint32_t lhsDateKey,
 static AppStatus_t App_FsmTxScheduleApplyMeterProximityGuard(uint32_t *p_dueDateKey,
                                                              uint32_t *p_dueMsOfDay);
 static AppStatus_t App_FsmMgmtTxScheduleApplyServiceGapGuard(void);
+AppStatus_t App_FsmGetNextQrepDueTime(AppDateTime_t *p_dueTime);   /* [QREP-SCHEDULE] 3단계 min-due 합류용 */
 static void App_FsmUsimHoldClear(void);
 static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase);
 static AppStatus_t App_FsmUsimHoldGateNbiotWake(uint8_t *p_blocked);
@@ -2721,6 +2722,69 @@ static uint32_t App_FsmMgmtTxScheduleAddOneDay(uint32_t dateKey)
     }
 
     return (year * 10000u) + (month * 100u) + day;
+}
+
+/* ============================================================
+ * [QREP-SCHEDULE] 품질리포트 독립 스케줄 (2단계)
+ *  - due = 다음 QREP 지정일의 새벽 윈도우 시작 시각
+ *    (1일 주기: 매일 / 2일 주기: DAY_PARITY 홀·짝일)
+ *  - AlarmB wake 시각 산출(GetNextTxDueTime)에서 이 due가 참조된다(3단계).
+ *  - 전송 본체/기록은 app_nbiot.c의 App_NbiotQualityReportMaybeSend가 담당.
+ *  - mgmt 주기 게이트와 무관하게 항상 컴파일된다.
+ * ============================================================ */
+
+/* 다음 QREP due를 반환. 오늘부터 최대 3일 탐색 - 2일 주기의 홀/짝 커버.
+ * 1일 주기: 오늘 윈도우 시작 전이면 오늘, 지났으면 내일 윈도우 시작. */
+AppStatus_t App_FsmGetNextQrepDueTime(AppDateTime_t *p_dueTime)
+{
+    AppDateTime_t dueTime;
+    uint32_t day;
+    uint8_t checked;
+    uint8_t isDueDay;
+
+    APP_RETURN_IF_FALSE(p_dueTime != NULL, APP_STATUS_INVALID_PARAM);
+
+    if (RTC_GetTime(&dueTime) != APP_STATUS_OK)
+    {
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    for (checked = 0u; checked < 3u; checked++)
+    {
+        isDueDay = APP_TRUE;
+#if (APP_QUALITY_REPORT_INTERVAL_DAYS >= 2u)
+        /* 2일 주기: 지정 홀/짝일만 후보로 한다 */
+        isDueDay = (((uint32_t)dueTime.day % 2u) ==
+                    (uint32_t)APP_QUALITY_REPORT_DAY_PARITY) ? APP_TRUE : APP_FALSE;
+#endif
+        if (isDueDay == APP_TRUE)
+        {
+            /* 오늘(checked==0)은 윈도우 시작이 아직 안 지났을 때만 유효.
+             * 이후 날짜는 항상 윈도우 시작 시각이 due. */
+            if ((checked > 0u) ||
+                ((uint32_t)dueTime.hour < (uint32_t)APP_QUALITY_REPORT_WINDOW_START_HOUR))
+            {
+                dueTime.hour   = (uint8_t)APP_QUALITY_REPORT_WINDOW_START_HOUR;
+                dueTime.minute = 0u;
+                dueTime.second = 0u;
+                *p_dueTime = dueTime;
+                return APP_STATUS_OK;
+            }
+        }
+
+        /* 다음 날 00:00으로 이동 (월말/윤년 경계는 dateKey 산술로 처리) */
+        day = ((uint32_t)dueTime.year * 10000u) + ((uint32_t)dueTime.month * 100u) +
+              (uint32_t)dueTime.day;
+        day = App_FsmMgmtTxScheduleAddOneDay(day);
+        dueTime.year   = (uint16_t)(day / 10000u);
+        dueTime.month  = (uint8_t)((day / 100u) % 100u);
+        dueTime.day    = (uint8_t)(day % 100u);
+        dueTime.hour   = 0u;
+        dueTime.minute = 0u;
+        dueTime.second = 0u;
+    }
+
+    return APP_STATUS_NOT_INITIALIZED;
 }
 
 #if (APP_MGMT_TX_INTERVAL_DAYS >= 2u)

@@ -298,6 +298,7 @@ extern "C" {
 #define APP_QUALITY_REPORT_PORT                     (50000u)
 #define APP_QUALITY_REPORT_MSG_VER                  (0x04u)
 #define APP_QUALITY_REPORT_INTERVAL_DAYS            (1u)   /* 1=하루 1회, 2=2일 1회 */
+#define APP_QUALITY_REPORT_DAY_PARITY               (0u)   /* 0=짝수날, 1=홀수날 */
 #define APP_QUALITY_REPORT_WINDOW_START_HOUR        (4u)   /* 새벽 윈도우 02시 */
 #define APP_QUALITY_REPORT_WINDOW_END_HOUR          (6u)   /* ~ 06시 (04시 포함) */
 #define APP_QUALITY_REPORT_CATCHUP_EXTRA_DAYS       (1u)   /* 만료 후 1일 경과 시 윈도우 무시 즉시 전송 */
