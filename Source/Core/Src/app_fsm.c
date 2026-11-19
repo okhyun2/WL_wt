@@ -3311,10 +3311,6 @@ static AppStatus_t App_FsmUsimHoldActivate(uint8_t phase)
         return APP_STATUS_OK;
     }
 
-    /* [USIMHOLD-LSE] STOP 진입 전 포그라운드 LSE 확정 재시도.
-     * 부팅 중 확정 실패한 보드도 세션 말에 다시 기회를 가진다 - 성공 시
-     * RTC 유효로 다음 hold가 알람 방식(48h 1회)으로 전환. 단말당 1회면 충분. */
-    (void)App_ClockWaitLseForeground(APP_CLOCK_LSE_BG_TOTAL_TIMEOUT_MS);
     g_appFsmUsimHold.rtcValidMode = APP_FALSE;
     holdSeconds = holdHours * 3600u;
     g_appFsmUsimHold.remainingWakeupSeconds = holdSeconds;

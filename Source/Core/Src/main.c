@@ -232,11 +232,6 @@ int main(void)
   {
     Error_Handler();
   }
-
-  /* [BOOT-LSE] LSI 기동 직후 LSE 확정 - READY 대기(8s x3)+정착+전환+CSS 무장 동기 완료.
-   * 정지 유심처럼 세션이 짧아도 부팅 중 RTC가 LSE로 고정되어 이후 hold가 알람 방식으로 동작.
-   * 백그라운드 폴링(main 루프)은 보조로 유지. */
-  App_ClockConfirmLseAtBoot();
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */

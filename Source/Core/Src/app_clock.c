@@ -108,67 +108,6 @@ static AppStatus_t App_ClockSwitchRtcSourceKeepingTime(uint32_t targetRtcClockSe
     return APP_STATUS_OK;
 }
 
-/* [USIMHOLD-LSE] 포그라운드 LSE 확정 - STOP 진입 전에 LSERDY를 동기 대기하고
- * 정착->전환->CSS 무장까지 완료한다. 백업도메인이 유지하므로 확정은 단말당 1회.
- * 실패 시 0 반환 - 호출자는 기존대로 WUT 폴백한다(회귀 없음). */
-uint8_t App_ClockWaitLseForeground(uint32_t timeoutMs)
-{
-    uint32_t start = HAL_GetTick();
-
-    if (App_ClockGetActiveRtcSource() == APP_RTC_CLOCK_SOURCE_LSE)
-    {
-        return APP_TRUE;   /* 이미 확정 - 백업도메인 유지 중 */
-    }
-
-    if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
-    {
-        SET_BIT(RCC->CSR, RCC_CSR_LSEON);   /* 발진 기동 보장 */
-        while ((HAL_GetTick() - start) < timeoutMs)
-        {
-            HAL_Delay(10u);
-            if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == SET)
-            {
-                break;
-            }
-        }
-        if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
-        {
-            APP_LOGW("CLK", "[[FG-LSE]] not ready in %lu ms -> WUT fallback", (unsigned long)timeoutMs);
-            return APP_FALSE;
-        }
-    }
-
-    HAL_Delay(APP_CLOCK_LSE_POST_READY_SETTLE_MS);
-    g_lseBgAttemptActive = APP_FALSE;   /* 백그라운드 시도 종료 - 포그라운드가 인계 */
-    App_ClockPollLseAndSwitchIfReady();  /* 정착->전환->CSS 무장 시퀀스 실행 */
-    if (App_ClockGetActiveRtcSource() == APP_RTC_CLOCK_SOURCE_LSE)
-    {
-        APP_LOGN("CLK", "[[FG-LSE]] confirmed -> RTC valid (alarm-based hold available)");
-        return APP_TRUE;
-    }
-    APP_LOGW("CLK", "[[FG-LSE]] switch failed -> WUT fallback");
-    return APP_FALSE;
-}
-
-/* [BOOT-LSE] 부팅 시점 포그라운드 확정 - LSI 기동 직후 READY 대기(8s x3 retry)+정착+
- * 전환+CSS 무장까지 동기 완료. 정지 유심처럼 세션이 짧아도 부팅 중 RTC가 LSE로 고정. */
-void App_ClockConfirmLseAtBoot(void)
-{
-    uint32_t attempt;
-
-    for (attempt = 0u; attempt < 3u; attempt++)
-    {
-        if (App_ClockWaitLseForeground(APP_CLOCK_LSE_READY_TIMEOUT_MS) == APP_TRUE)
-        {
-            return;   /* 확정 성공 - 백업도메인이 이후 유지 */
-        }
-        CLEAR_BIT(RCC->CSR, RCC_CSR_LSEON);
-        HAL_Delay(50u);
-        /* 재시도: LSEON 재설정은 WaitLseForeground 내부에서 수행 */
-    }
-    APP_LOGW("CLK", "[[BOOT-LSE]] %lu attempts exhausted -> runtime polling continues", (unsigned long)attempt);
-}
-
 void App_ClockPollLseAndSwitchIfReady(void)
 {
     if (g_lseBgAttemptActive == APP_FALSE) return;
