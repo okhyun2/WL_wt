@@ -15,7 +15,6 @@
 
 static AppClockContext_t g_appClockContext;
 
-static uint8_t  g_lseBgAttemptActive = APP_FALSE;
 static uint32_t g_lseBgAttemptStartMs = 0u;
 static AppRtcClockSource_t g_bootRtcSourceCaptured = APP_RTC_CLOCK_SOURCE_UNKNOWN;
 
@@ -72,7 +71,6 @@ AppStatus_t App_ClockBootStartLsiFirst(void)
     SET_BIT(RCC->CSR, RCC_CSR_LSEON);
 #endif
 
-    g_lseBgAttemptActive  = APP_TRUE;
     g_lseBgAttemptStartMs = HAL_GetTick();
     g_bootRtcSourceCaptured = App_ClockGetActiveRtcSource();   /* 이 시점 값을 보존 */
 
@@ -108,20 +106,17 @@ static AppStatus_t App_ClockSwitchRtcSourceKeepingTime(uint32_t targetRtcClockSe
     return APP_STATUS_OK;
 }
 
-void App_ClockPollLseAndSwitchIfReady(void)
+AppStatus_t App_ClockPollLseAndSwitchIfReady(void)
 {
-    if (g_lseBgAttemptActive == APP_FALSE) return;
-
     if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
     {
         if ((HAL_GetTick() - g_lseBgAttemptStartMs) > APP_CLOCK_LSE_BG_TOTAL_TIMEOUT_MS)
         {
-            g_lseBgAttemptActive = APP_FALSE;
             APP_LOGW("CLK", "LSE not ready in %lu ms, current source=%s (keep running)",
                      (unsigned long)APP_CLOCK_LSE_BG_TOTAL_TIMEOUT_MS,
                      App_ClockRtcSourceToString(App_ClockGetActiveRtcSource()));
         }
-        return;
+        return APP_STATUS_FATAL;
     }
 
     HAL_Delay(APP_CLOCK_LSE_POST_READY_SETTLE_MS);
@@ -170,7 +165,7 @@ void App_ClockPollLseAndSwitchIfReady(void)
         }
     }
 
-    g_lseBgAttemptActive = APP_FALSE;
+    return APP_STATUS_OK;
 }
 
 /* HAL 약한 콜백 오버라이드: LSE 장애 시 자동으로 LSI로 폴백 */

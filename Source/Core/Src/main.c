@@ -400,6 +400,16 @@ int main(void)
   LPTIM1_Start(); //add periodic wakeup source. max 4min
 #endif
 
+  {
+    AppStatus_t status;
+    status = App_ClockPollLseAndSwitchIfReady(); /* LSE 준비 확인/전환 */
+
+    if(status != APP_STATUS_OK)
+    {
+    //TODO;
+    }
+  }
+
   MX_WWDG_Init();
 
   /* USER CODE END 2 */
@@ -414,7 +424,7 @@ int main(void)
 
     /* 메인 루프 정상 동작 표시 */
     APP_WWDGFeed();
-    App_ClockPollLseAndSwitchIfReady(); /* non-blocking LSE 준비 확인/전환 */
+
     App_SystemProcess();
   }
   /* USER CODE END 3 */
