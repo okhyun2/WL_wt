@@ -744,9 +744,13 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         App_GpioLpConfigAnalogNoPull(eRTC_SCL_GPIO_Port, eRTC_SCL_Pin | eRTC_SDA_Pin);
     }
 
-    //TX0_MON monitor input [SLEEP-PIN]
+    //TX0_MON monitor pin [SLEEP-PIN]
     {
-        App_GpioLpConfigInput(TX0_MON_GPIO_Port, TX0_MON_Pin);
+        /* 계량기 미연결 시 TX0_MON 라인이 부유되므로 슬립 중에는 반드시
+         * 아날로그(hi-Z, 입력 버퍼 OFF)로 둔다. 디지털 입력 부유는
+         * 슈미트 버퍼 관통 전류(수백 uA)를 만든다.
+         * (런 모드에서는 meter 연결 시 라인이 구동되므로 입력으로 복원) */
+        App_GpioLpConfigAnalogNoPull(TX0_MON_GPIO_Port, TX0_MON_Pin);
     }
 
     //Aux pin
@@ -762,9 +766,9 @@ AppStatus_t App_GpioLpOnBeforeStopEnter(void)
         App_GpioLpConfigOutput(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
     }
 
-    //WD_Feed pin
+    //WD_Feed pin (TPL5010 DONE)
     {
-        App_GpioLpConfigAnalogNoPull(WD_FEED_GPIO_Port, WD_FEED_Pin);
+        App_GpioLpConfigOutput(WD_FEED_GPIO_Port, WD_FEED_Pin, GPIO_PIN_RESET);
     }
 
     //Meter uart loop pin

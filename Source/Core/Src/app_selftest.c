@@ -467,6 +467,41 @@ static AppStatus_t App_SelfTestCheckMeterUartLine(void)
  *
  * @return APP_STATUS_OK on success, error code otherwise.
  */
+/* [TX0MON-DIAG] TX0_MON(PC13) 라인 활동 판독.
+ * 미터 프로브 실패 시 호출하여 계량기 미연결/단선과 통신 불량을 구분한다.
+ * 반환: 라인이 구동 중(레벨 변동 또는 정의된 레벨)이면 APP_TRUE,
+ *       완전 정적(부유/미연결)이면 APP_FALSE. */
+static uint8_t App_SelfTestProbeTx0MonActivity(void)
+{
+    uint8_t levels[16];
+    uint8_t i;
+    uint8_t high = 0u;
+    uint8_t low = 0u;
+
+    App_GpioLpConfigInput(TX0_MON_GPIO_Port, TX0_MON_Pin);
+    for (i = 0u; i < (uint8_t)(sizeof(levels) / sizeof(levels[0])); i++)
+    {
+        levels[i] = App_GpioLpReadInputIsSet(TX0_MON_GPIO_Port, TX0_MON_Pin);
+        if (levels[i] != 0u) { high++; } else { low++; }
+        HAL_Delay(2);
+    }
+
+    /* 모든 샘플이 같은 레벨이면 라인이 구동되지 않는 것(미연결/단선)으로 판정.
+     * 연결돼 있으면 웨이크 프레임 전송 중 신호가 관측된다. */
+    if ((high == 0u) || (low == 0u))
+    {
+        APP_LOGW("SELF", "[TX0MON-DIAG] line IDLE (%uH/%uL of %u) -> meter likely disconnected",
+                 (unsigned int)high, (unsigned int)low,
+                 (unsigned int)(sizeof(levels) / sizeof(levels[0])));
+        return APP_FALSE;
+    }
+
+    APP_LOGN("SELF", "[TX0MON-DIAG] line ACTIVE (%uH/%uL of %u) -> meter connected, check UART/CRC path",
+             (unsigned int)high, (unsigned int)low,
+             (unsigned int)(sizeof(levels) / sizeof(levels[0])));
+    return APP_TRUE;
+}
+
 static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
@@ -501,7 +536,13 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
                                        meterReply,
                                        APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN,
                                        APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS);
-    APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
+    if (status != APP_STATUS_OK)
+    {
+        /* [TX0MON-DIAG] 수신 실패 원인 분리: 라인 활동 유무로
+         * 미연결(단자 배선) vs 연결됐으나 통신 불량을 구분한다. */
+        (void)App_SelfTestProbeTx0MonActivity();
+        APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
+    }
 
     (void)memcpy(g_appSelfTestMeterLastReply,
                  meterReply,
