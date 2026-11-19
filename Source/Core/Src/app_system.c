@@ -875,6 +875,7 @@ static AppStatus_t App_SystemInitLowPowerGpio(void)
         APP_GPIO_LP_CLK_USART1 |
         APP_GPIO_LP_CLK_USART2 |
         APP_GPIO_LP_CLK_LPUART1 |
+        APP_GPIO_LP_CLK_I2C1 |
         APP_GPIO_LP_CLK_I2C2 |
         APP_GPIO_LP_CLK_I2C3 |
     #if 0 //TODO delete
@@ -914,7 +915,7 @@ static AppStatus_t App_SystemPrintBootLogs(void)
     g_appSystemContext.logReady = APP_TRUE;
     g_appSystemContext.bootStage = APP_BOOT_STAGE_LOG_READY;
 
-    APP_LOGN("SYS", "[[Boot]] %s v%s", APP_NAME_STRING, App_SystemGetVersionString());
+    APP_LOGN("SYS", "[[Boot]] %s %s", APP_NAME_STRING, App_SystemGetVersionString());
     APP_LOGD("CLK", "[[Clock]] SYS=%lu HCLK=%lu PCLK1=%lu PCLK2=%lu MSI=%lu",
              (unsigned long)p_clockContext->sysclkHz,
              (unsigned long)p_clockContext->hclkHz,

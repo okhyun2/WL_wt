@@ -178,15 +178,27 @@ extern "C" {
 #define APP_BUILD_IS_PRODUCTION                     (APP_FALSE) //if true. change swd&debug pin -> analog input.(=disable swd&debug).
 //#define APP_BUILD_IS_PRODUCTION                     (APP_TRUE) //if true. change swd&debug pin -> analog input.(=disable swd&debug).
 
+#if (APP_BUILD_IS_PRODUCTION == APP_TRUE)
 /* APP_TRUE: APP_LOGT/D/I 호출과 포맷 문자열을 빌드에서 제거(flash 절감). SWD 핀 설정과 무관. 검증용 빌드는 APP_FALSE. */
-#define APP_LOG_STRIP_VERBOSE                       (APP_FALSE) //TODO debug:APP_FALSE, PRODUCTION:APP_TRUE
-
-#ifdef DEBUG
-#define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE) //org. ins timestamp
+#define APP_LOG_STRIP_VERBOSE                       (APP_TRUE) //debug:APP_FALSE, PRODUCTION:APP_TRUE
+#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //del timestamp
+/* [2026-11-05] 디버깅/추적 코드 게이트 — AckDbg/EvtTrace/RxProbe/probe 카운터/트레이스 상수.
+ * 제품 빌드에서 끄면 관련 전역·함수·로그가 모두 컴파일에서 제외된다. */
+#undef NBIOT_TRACE_DEBUG
+/* 가속 테스트(검침,주기보고,MGMT보고)시: define */
+#undef APP_TEST_PERIOD_ACCEL //PRODUCT-> #undef
 #else
-//#define APP_BUILD_DEBUG_ENABLED                     (APP_FALSE) //org. del timestamp
+/* APP_TRUE: APP_LOGT/D/I 호출과 포맷 문자열을 빌드에서 제거(flash 절감). SWD 핀 설정과 무관. 검증용 빌드는 APP_FALSE. */
+#define APP_LOG_STRIP_VERBOSE                       (APP_FALSE) //debug:APP_FALSE, PRODUCTION:APP_TRUE
 #define APP_BUILD_DEBUG_ENABLED                     (APP_TRUE)
-#endif
+/* [2026-11-05] 디버깅/추적 코드 게이트 — AckDbg/EvtTrace/RxProbe/probe 카운터/트레이스 상수.
+ * 제품 빌드에서 끄면 관련 전역·함수·로그가 모두 컴파일에서 제외된다. */
+#undef NBIOT_TRACE_DEBUG
+/* 가속 테스트(검침,주기보고,MGMT보고)시: define */
+#undef APP_TEST_PERIOD_ACCEL //PRODUCT-> #undef
+#endif //(APP_BUILD_IS_PRODUCTION == APP_TRUE)
+
+//////////////////////////////////////////////////////////////////////////////////////
 
 #define SUPPORT_EEPROM
 #undef SUPPORT_FALASH
@@ -194,13 +206,6 @@ extern "C" {
 //select support meter
 #define SUPPORT_METER_NORMAL
 #undef SUPPORT_METER_SC1xxx
-
-/* [2026-11-05] 디버깅/추적 코드 게이트 — AckDbg/EvtTrace/RxProbe/probe 카운터/트레이스 상수.
- * 제품 빌드에서 끄면 관련 전역·함수·로그가 모두 컴파일에서 제외된다. */
-#undef NBIOT_TRACE_DEBUG
-
-/* 가속 테스트(검침,주기보고,MGMT보고)시: define */
-#undef APP_TEST_PERIOD_ACCEL //TODO. PRODUCT-> #undef
 
 /* [TRACE-COMP-GATE] 주기 반복 컴포넌트의 trace comp 로그 게이트:
  * meter/rtc/housekeeping/watchdog 등 주기 세션마다 동일 전이 시퀀스를
