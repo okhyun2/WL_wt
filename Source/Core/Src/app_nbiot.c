@@ -10947,6 +10947,7 @@ AppStatus_t App_NBIoTReadQuality(uint8_t bSaveInfo)
  *             만료일 도래 && 새벽 윈도우(02~06시) -> 전송
  *             윈도우 놓침(mgmt 주기 최대 72h 등) -> 만료+1일 경과 시 즉시 전송(catch-up)
  *  - 주기   : APP_QUALITY_REPORT_INTERVAL_DAYS (고정값, 1=하루/2=이틀)
+ *             2일 주기 시 APP_QUALITY_REPORT_DAY_PARITY로 홀수날/짝수날 선택
  *  - 측정   : AT+NUESTATS(RADIO) 1회 - Signal power/ SNR/ TX power/
  *             Cell ID/ CURRENT BAND (raw 단위 0.1dB, BC95-GV 매뉴얼 106~107p)
  *  - 패킷   : Ver(1) CTN(6) 전원(3) CGI(4) RSRP(2) SINR(2) 모델명(1+n)
@@ -11262,6 +11263,16 @@ static AppStatus_t App_NbiotQualityReportMaybeSend(void)
 
     nowDays = ((uint32_t)now.year * 366u) + ((uint32_t)now.month * 31u) +
               (uint32_t)now.day;
+    /* [QREP-PARITY] 2일 주기에서 전송일을 홀수날/짝수날로 선택한다.
+     * 단순 경과 판정(INTERVAL_DAYS)만으로는 설치 시점에 따라 홀/짝이
+     * 단말마다 갈라지므로, 달력 일(day) 기준으로 강제한다.
+     * 월 경계(month*31 가산)는 day 성분이 그대로 남아 parity에 영향 없음. */
+#if (APP_QUALITY_REPORT_INTERVAL_DAYS >= 2u)
+    if (((uint32_t)now.day % 2u) != (uint32_t)APP_QUALITY_REPORT_DAY_PARITY)
+    {
+        return APP_STATUS_OK;   /* 오늘은 지정 parity가 아님 -> 스킵 */
+    }
+#endif
     bootReport = (g_appQualityReportLastValid == APP_FALSE) ? APP_TRUE : APP_FALSE;
 
     due = bootReport;

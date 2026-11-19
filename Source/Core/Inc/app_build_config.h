@@ -284,6 +284,9 @@ extern "C" {
 #define APP_QUALITY_REPORT_PORT                     (50000u)
 #define APP_QUALITY_REPORT_MSG_VER                  (0x04u)
 #define APP_QUALITY_REPORT_INTERVAL_DAYS            (1u)   /* 1=하루 1회, 2=2일 1회 */
+/* [QREP-PARITY] INTERVAL_DAYS=2일 때 전송 기준일의 홀/짝 선택.
+ * 0=짝수날(2,4,6,...), 1=홀수날(1,3,5,...). 1일 주기(=1u)일 때는 무시됨. */
+#define APP_QUALITY_REPORT_DAY_PARITY               (0u)   /* 0=짝수날, 1=홀수날 */
 #define APP_QUALITY_REPORT_WINDOW_START_HOUR        (2u)   /* 새벽 윈도우 02시 */
 #define APP_QUALITY_REPORT_WINDOW_END_HOUR          (6u)   /* ~ 06시 (04시 포함) */
 #define APP_QUALITY_REPORT_CATCHUP_EXTRA_DAYS       (1u)   /* 만료 후 1일 경과 시 윈도우 무시 즉시 전송 */
@@ -380,8 +383,8 @@ extern "C" {
 #define APP_POLICY_DEFAULT_REPORT_SPREAD_HOURS     (0u) /* 0: legacy fixed spread fallback */
 #define APP_POLICY_REPORT_SPREAD_FALLBACK_MS       (APP_NBIOT_XMIT_OFFSET_MAX_SEC * 1000u)
 //TODO change serial number -> serial_bcd 5
-#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
-//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x46\x10\x00\x00\x05" 
+//#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x12\x34\x56\x78\x90" 
+#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x46\x10\x00\x00\x05" 
 //#define APP_POLICY_DEFAULT_DEVICE_SERIAL_BCD       "\x45\x67\x00\x00\x02" 
 #define APP_POLICY_NBIOT_BOOTRACK_REG_SERVPLATFORM (APP_TRUE) //default: TRUE
 
