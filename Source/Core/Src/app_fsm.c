@@ -4463,7 +4463,7 @@ void App_FsmInvalidateRtcSchedules(void)
     g_appFsmTxSchedule.nextDueDateKey = 0u;
     g_appFsmTxSchedule.nextDueMsOfDay = 0u;
 
-    APP_LOGN("FSM", "[[RtcSync]] invalidate meter/service/mgmt due cache -> alarms will be recalculated on next STOP entry");
+    APP_LOGN("FSM", "[[RtcSync]] invalidate meter/service due cache -> alarms will be recalculated on next STOP entry");
 }
 
 static AppStatus_t App_FsmHandleRtcWakeRouting(uint32_t rtcAlarmFlags)
