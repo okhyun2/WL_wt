@@ -2815,6 +2815,62 @@ static void App_FsmMgmtTxScheduleAlignParity(void)
 }
 #endif
 
+/* [MGMT-WINDOW-SNAP] mgmt due를 "지정일의 새벽 윈도우 시작 시각"으로 스냅한다.
+ * 기존 앵커+주기 방식은 due 시각이 앵커 시점에 따라 하루 중 어디든 될 수 있어
+ * 윈도우 밖 due가 30분 단위로 재발화하는 낭비가 있었다. QREP 독립 스케줄과
+ * 동일하게 due 시각 자체를 윈도우 시작으로 통일한다.
+ * - 지정일 = INTERVAL_DAYS/DAY_PARITY (2일 주기 시 홀/짝일, 1일 주기 시 매일)
+ * - 이미 지정일·윈도우 시작이면 그대로 둔다(멱등).
+ * - debug 분 단위 주기(벤치 테스트)에는 적용하지 않는다. */
+static void App_FsmMgmtTxScheduleSnapDueToWindow(void)
+{
+    uint32_t day;
+    uint32_t dueKey;
+    uint8_t isDueDay;
+
+#if defined(APP_DEBUG_MGMT_TX_PERIOD_MS)
+    return;   /* 벤치용 짧은 주기 테스트: 윈도우 스냅 미적용 */
+#endif
+
+    if ((g_appFsmMgmtTxSchedule.initialized != APP_TRUE) ||
+        (g_appFsmMgmtTxSchedule.enabled     != APP_TRUE))
+    {
+        return;
+    }
+
+    dueKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
+    day = dueKey % 100u;
+
+#if (APP_MGMT_TX_INTERVAL_DAYS >= 2u)
+    isDueDay = (((day % 2u) == (uint32_t)APP_MGMT_TX_DAY_PARITY)) ? APP_TRUE : APP_FALSE;
+    if (isDueDay == APP_FALSE)
+    {
+        g_appFsmMgmtTxSchedule.nextDueDateKey =
+            App_FsmMgmtTxScheduleAddOneDay(dueKey);
+        dueKey = g_appFsmMgmtTxSchedule.nextDueDateKey;
+        APP_LOGD("FSM", "[[MgmtTxSchedule]] window snap parity shift -> due=%lu (parity=%u)",
+                 (unsigned long)dueKey, (unsigned int)APP_MGMT_TX_DAY_PARITY);
+    }
+#else
+    (void)day;
+    (void)isDueDay;
+#endif
+
+    /* 시각을 윈도우 시작으로 스냅 (이미 스냅돼 있으면 무변경) */
+    if (g_appFsmMgmtTxSchedule.nextDueMsOfDay != ((uint32_t)APP_MGMT_TX_WINDOW_START_HOUR * 3600000u))
+    {
+        g_appFsmMgmtTxSchedule.nextDueMsOfDay =
+            (uint32_t)APP_MGMT_TX_WINDOW_START_HOUR * 3600000u;
+        g_appFsmMgmtTxSchedule.currentJitterMs = 0u;
+        APP_LOGD("FSM", "[[MgmtTxSchedule]] window snap -> due=%lu %02u:00:00 (window start)",
+                 (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
+                 (unsigned)APP_MGMT_TX_WINDOW_START_HOUR);
+    }
+
+    /* 과거 due(윈도우 시작이 이미 지남)라면 소비 시점에 기존 윈도우/catch-up
+     * 판정과 busy-defer가 처리하므로 여기서 추가 이동은 하지 않는다. */
+}
+
 static AppStatus_t App_FsmMgmtTxScheduleLoadPeriod(uint8_t *p_periodHours)
 {
     /* [MGMT-SCHEDULE] mgmt 주기는 f/w 고정(QREP과 동일 방식).
@@ -3145,6 +3201,11 @@ static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void)
 #if (APP_MGMT_TX_INTERVAL_DAYS >= 2u)
     App_FsmMgmtTxScheduleAlignParity();
 #endif
+
+    /* [MGMT-WINDOW-SNAP] due를 지정일 윈도우 시작 시각으로 스냅(멱등).
+     * 재앵커 억제가 due를 보존하는 경우에도 시각 정규화가 필요하므로
+     * 억제 체크보다 먼저 실행한다. */
+    App_FsmMgmtTxScheduleSnapDueToWindow();
 
     if ((hadArmedDue == APP_TRUE) &&
         (savedPeriodHours == g_appFsmMgmtTxSchedule.periodHours) &&
@@ -3551,6 +3612,9 @@ static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed)
             g_appFsmMgmtTxWindowLastDays = App_FsmMgmtTxWindowCalcDays(&recNow);
             g_appFsmMgmtTxWindowLastValid = APP_TRUE;
         }
+
+        /* [MGMT-WINDOW-SNAP] 소비로 advance된 다음 due를 지정일 윈도우 시작으로 스냅 */
+        App_FsmMgmtTxScheduleSnapDueToWindow();
 
         App_FsmMgmtTxGuardShiftReset("mgmt due consumed");
     }
@@ -4845,6 +4909,8 @@ AppStatus_t App_FsmGetNextTxDueTime(AppDateTime_t *p_dueTime)
                                                                &g_appFsmMgmtTxSchedule.nextDueMsOfDay);
             APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
             g_appFsmMgmtTxSchedule.currentJitterMs = 0u;
+            /* [MGMT-WINDOW-SNAP] busy-defer로 미뤄진 due도 지정일 윈도우 시작으로 재스냅 */
+            App_FsmMgmtTxScheduleSnapDueToWindow();
             normalizeCount++;
             APP_LOGW("FSM", "[[MgmtTxSchedule]] stale next due %lu %02lu:%02lu:%02lu skipped while busy -> defer to %lu %02lu:%02lu:%02lu (prev_jitter=%lu, defer=%lu, count=%lu)",
                      (unsigned long)staleDateKey,
