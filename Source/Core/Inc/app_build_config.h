@@ -277,6 +277,20 @@ extern "C" {
 #define APP_NFC_TEST_MODE_FIELD_REFRESH_ENABLE      (0u) //0:disable(default), 1:enable. refresh ms tx nfc. for kc identify
 #define APP_NFC_TEST_MODE_REFRESH_MS                (100u)
 
+
+/* [MGMT-SCHEDULE] mgmt 전송도 QREP과 동일한 일 단위 독립 스케줄로 운용한다.
+ * - 주기: INTERVAL_DAYS(1=매일, 2=이틀 간격), 2일 주기 시 DAY_PARITY로
+ *   전송일을 홀수날/짝수날로 강제한다(달력 기준 - 설치 시점 무관).
+ * - 서버 옵션(managementReportingPeriodHours)은 스케줄에 반영되지 않는다.
+ * - wake(AlarmB)은 service/mgmt/qrep due의 최솟값으로 결정된다. */
+#define APP_MGMT_TX_INTERVAL_DAYS                   (1u)   /* 1=하루 1회, 2=2일 1회 */
+#define APP_MGMT_TX_DAY_PARITY                      (0u)   /* 0=짝수날, 1=홀수날 */
+/* [MGMT-WINDOW] 새벽 전송 윈도우(02~06시) + catch-up. QREP과 동일 정책:
+ * due일이라도 윈도우 밖이면 대기하고, 만료+1일 경과 시 윈도우 무시 즉시 전송. */
+#define APP_MGMT_TX_WINDOW_START_HOUR               (2u)   /* 새벽 윈도우 02시 */
+#define APP_MGMT_TX_WINDOW_END_HOUR                 (4u)   /* ~ 06시 (04시 포함) */
+#define APP_MGMT_TX_CATCHUP_EXTRA_DAYS              (1u)   /* 만료 후 1일 경과 시 즉시 전송 */
+
 /* [QUALITY-REPORT 2026-11-09] NB-IoT 단말 품질리포트 (규격 v1.8, MSG Ver.04)
  * 목적지/주기/새벽 윈도우는 고정값(컴파일타임 확정, NFC/서버 설정 아님). */
 //#define APP_QUALITY_REPORT_HOST                     "10.120.182.10" //TODO default server
@@ -284,10 +298,7 @@ extern "C" {
 #define APP_QUALITY_REPORT_PORT                     (50000u)
 #define APP_QUALITY_REPORT_MSG_VER                  (0x04u)
 #define APP_QUALITY_REPORT_INTERVAL_DAYS            (1u)   /* 1=하루 1회, 2=2일 1회 */
-/* [QREP-PARITY] INTERVAL_DAYS=2일 때 전송 기준일의 홀/짝 선택.
- * 0=짝수날(2,4,6,...), 1=홀수날(1,3,5,...). 1일 주기(=1u)일 때는 무시됨. */
-#define APP_QUALITY_REPORT_DAY_PARITY               (0u)   /* 0=짝수날, 1=홀수날 */
-#define APP_QUALITY_REPORT_WINDOW_START_HOUR        (2u)   /* 새벽 윈도우 02시 */
+#define APP_QUALITY_REPORT_WINDOW_START_HOUR        (4u)   /* 새벽 윈도우 02시 */
 #define APP_QUALITY_REPORT_WINDOW_END_HOUR          (6u)   /* ~ 06시 (04시 포함) */
 #define APP_QUALITY_REPORT_CATCHUP_EXTRA_DAYS       (1u)   /* 만료 후 1일 경과 시 윈도우 무시 즉시 전송 */
 #define APP_QUALITY_REPORT_MODEL_STRING             APP_BC95_PLATFORM_LGU_MODEL_STRING

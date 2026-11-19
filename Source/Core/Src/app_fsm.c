@@ -2638,26 +2638,129 @@ static AppStatus_t App_FsmTxScheduleLoadSpreadMaxMs(uint32_t *p_spreadMaxMs)
     return APP_STATUS_OK;
 }
 
+/* [MGMT-SCHEDULE] dateKey(YYYYMMDD)에 하루를 더한다(월/연도 경계 처리). */
+/* [MGMT-WINDOW] 마지막 전송(due 소비)일 기록 - QREP lastDays와 동일 역할. */
+static uint8_t  g_appFsmMgmtTxWindowLastValid = APP_FALSE;
+static uint32_t g_appFsmMgmtTxWindowLastDays  = 0u;
+
+static uint32_t App_FsmMgmtTxWindowCalcDays(const AppDateTime_t *p_now)
+{
+    return ((uint32_t)p_now->year * 366u) + ((uint32_t)p_now->month * 31u) +
+           (uint32_t)p_now->day;
+}
+
+/* [MGMT-WINDOW] due일에 호출: 지금 전송 가능한지 판정.
+ *  - 새벽 윈도우(02~06시) 안이면 전송.
+ *  - 윈도우를 놓친 경우(주기 72h 등) 만료+1일 경과 시 윈도우 무시 즉시 전송.
+ *  - 그 외 윈도우 밖이면 대기(다음 세션에서 재판정 - 스케줄 due는 아직 소비 안 됨). */
+static uint8_t App_FsmMgmtTxWindowAllowsSend(void)
+{
+    AppDateTime_t now;
+    uint8_t hourInWindow;
+    uint32_t nowDays;
+    uint32_t elapsedDays;
+
+    if (RTC_GetTime(&now) != APP_STATUS_OK)
+    {
+        return APP_TRUE;   /* RTC 미확정: 판정 보류(전송 허용) */
+    }
+
+    hourInWindow = ((now.hour >= APP_MGMT_TX_WINDOW_START_HOUR) &&
+                    (now.hour < APP_MGMT_TX_WINDOW_END_HOUR)) ? APP_TRUE : APP_FALSE;
+    if (hourInWindow == APP_TRUE)
+    {
+        return APP_TRUE;
+    }
+
+    if (g_appFsmMgmtTxWindowLastValid != APP_TRUE)
+    {
+        return APP_TRUE;   /* 첫 사이클: 기준일 없음 - 윈도우 밖이지만 즉시 전송 */
+    }
+
+    nowDays = App_FsmMgmtTxWindowCalcDays(&now);
+    elapsedDays = nowDays - g_appFsmMgmtTxWindowLastDays;
+    if (elapsedDays >= ((uint32_t)APP_MGMT_TX_INTERVAL_DAYS +
+                        (uint32_t)APP_MGMT_TX_CATCHUP_EXTRA_DAYS))
+    {
+        APP_LOGW("FSM", "[[MgmtTxSchedule]] window missed (elapsed=%lu d) -> catch-up immediate send",
+                 (unsigned long)elapsedDays);
+        return APP_TRUE;
+    }
+
+    return APP_FALSE;   /* 윈도우 대기 */
+}
+
+static uint32_t App_FsmMgmtTxScheduleAddOneDay(uint32_t dateKey)
+{
+    static const uint8_t monthDays[12] = {31u, 28u, 31u, 30u, 31u, 30u,
+                                          31u, 31u, 30u, 31u, 30u, 31u};
+    uint32_t year  = dateKey / 10000u;
+    uint32_t month = (dateKey / 100u) % 100u;
+    uint32_t day   = dateKey % 100u;
+    uint32_t monthLen;
+    uint8_t  leap;
+
+    leap = ((((year % 4u) == 0u) && ((year % 100u) != 0u)) ||
+            ((year % 400u) == 0u)) ? 1u : 0u;
+    monthLen = monthDays[(month - 1u) % 12u];
+    if ((month == 2u) && (leap == 1u))
+    {
+        monthLen = 29u;
+    }
+
+    day++;
+    if (day > monthLen)
+    {
+        day = 1u;
+        month++;
+        if (month > 12u)
+        {
+            month = 1u;
+            year++;
+        }
+    }
+
+    return (year * 10000u) + (month * 100u) + day;
+}
+
+#if (APP_MGMT_TX_INTERVAL_DAYS >= 2u)
+/* [MGMT-SCHEDULE] 2일 주기 시 다음 due를 지정 홀/짝일로 정렬한다.
+ * 48h 주기는 하루 걸러 발화하므로 한 번 정렬되면 이후 due도 parity 유지.
+ * 다른 parity 날에 앵커되면 같은 시각으로 하루 미룬다(멱등). */
+static void App_FsmMgmtTxScheduleAlignParity(void)
+{
+    uint32_t day;
+
+    if ((g_appFsmMgmtTxSchedule.initialized != APP_TRUE) ||
+        (g_appFsmMgmtTxSchedule.enabled != APP_TRUE))
+    {
+        return;
+    }
+
+    day = g_appFsmMgmtTxSchedule.nextDueDateKey % 100u;
+    if ((day % 2u) == (uint32_t)APP_MGMT_TX_DAY_PARITY)
+    {
+        return;
+    }
+
+    g_appFsmMgmtTxSchedule.nextDueDateKey =
+        App_FsmMgmtTxScheduleAddOneDay(g_appFsmMgmtTxSchedule.nextDueDateKey);
+    APP_LOGD("FSM", "[[MgmtTxSchedule]] parity align -> due=%lu (parity=%u)",
+             (unsigned long)g_appFsmMgmtTxSchedule.nextDueDateKey,
+             (unsigned int)APP_MGMT_TX_DAY_PARITY);
+}
+#endif
+
 static AppStatus_t App_FsmMgmtTxScheduleLoadPeriod(uint8_t *p_periodHours)
 {
-    AppMeterServerFormatOptions_t options;
-    AppStatus_t status;
-
+    /* [MGMT-SCHEDULE] mgmt 주기는 f/w 고정(QREP과 동일 방식).
+     * 서버 옵션(managementReportingPeriodHours)은 스케줄에 반영하지 않으며,
+     * 전송일 홀/짝은 EnsureInitialized의 parity 정렬로 강제된다.
+     * 주기 변경은 빌드 설정(APP_MGMT_TX_INTERVAL_DAYS)으로만 이루어진다. */
     APP_RETURN_IF_FALSE(p_periodHours != NULL, APP_STATUS_INVALID_PARAM);
 
-    status = App_MeterServerOptionsLoad(&options);
-    if ((status != APP_STATUS_OK) && (status != APP_STATUS_NOT_INITIALIZED))
-    {
-        return status;
-    }
+    *p_periodHours = (uint8_t)(24u * (uint32_t)APP_MGMT_TX_INTERVAL_DAYS);
 
-    if (options.managementReportingPeriodHours == 0u)
-    {
-        *p_periodHours = 0u;
-        return APP_STATUS_OK;
-    }
-
-    *p_periodHours = options.managementReportingPeriodHours;
     return APP_STATUS_OK;
 }
 
@@ -2974,6 +3077,11 @@ static AppStatus_t App_FsmMgmtTxScheduleEnsureInitialized(void)
                                                     );
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
+    /* [MGMT-SCHEDULE] 2일 주기 시 due를 지정 홀/짝일로 정렬(멱등). */
+#if (APP_MGMT_TX_INTERVAL_DAYS >= 2u)
+    App_FsmMgmtTxScheduleAlignParity();
+#endif
+
     if ((hadArmedDue == APP_TRUE) &&
         (savedPeriodHours == g_appFsmMgmtTxSchedule.periodHours) &&
         (savedSpreadMaxMs == g_appFsmMgmtTxSchedule.configuredSpreadMaxMs) &&
@@ -3201,8 +3309,22 @@ static AppStatus_t App_FsmMgmtTxScheduleCheckDue(uint8_t *p_due)
                                              );
     APP_RETURN_IF_FALSE(status == APP_STATUS_OK, status);
 
+    /* [MGMT-WINDOW] due 도래 시 새벽 윈도우/catch-up 판정을 한 번 더 통과.
+     * 윈도우 밖이면 이번 세션은 대기 - due 미소비 상태라 다음 세션 재판정. */
     if (*p_due == APP_TRUE)
     {
+        if (App_FsmMgmtTxWindowAllowsSend() == APP_FALSE)
+        {
+            AppDateTime_t winNow;
+            if (RTC_GetTime(&winNow) == APP_STATUS_OK)
+            {
+                APP_LOGI("FSM", "[[MgmtTxSchedule]] due %02u:00 outside window (%u~%u h) -> wait",
+                         (unsigned)winNow.hour,
+                         (unsigned)APP_MGMT_TX_WINDOW_START_HOUR,
+                         (unsigned)APP_MGMT_TX_WINDOW_END_HOUR);
+            }
+            *p_due = APP_FALSE;
+        }
         return APP_STATUS_OK;
     }
 
@@ -3333,6 +3455,7 @@ static AppStatus_t App_FsmTxScheduleConsumeDueNow(uint8_t *p_consumed)
 static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed)
 {
     AppStatus_t status;
+    AppDateTime_t recNow;
 
     APP_RETURN_IF_FALSE(p_consumed != NULL, APP_STATUS_INVALID_PARAM);
     *p_consumed = APP_FALSE;
@@ -3358,6 +3481,13 @@ static AppStatus_t App_FsmMgmtTxScheduleConsumeDueNow(uint8_t *p_consumed)
 
     if (*p_consumed == APP_TRUE)
     {
+        /* [MGMT-WINDOW] 전송 소비일 기록 - 윈도우/catch-up 판정 기준 */
+        if (RTC_GetTime(&recNow) == APP_STATUS_OK)
+        {
+            g_appFsmMgmtTxWindowLastDays = App_FsmMgmtTxWindowCalcDays(&recNow);
+            g_appFsmMgmtTxWindowLastValid = APP_TRUE;
+        }
+
         App_FsmMgmtTxGuardShiftReset("mgmt due consumed");
     }
 
