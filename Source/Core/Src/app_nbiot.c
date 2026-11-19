@@ -185,10 +185,6 @@
  * 255B 스냅샷 캡으로 최종 OK는 구조적으로 못 받아 timeout 경로로 skip 판정하므로
  * 전체 응답을 기다릴 필요가 없다 - 부팅당 1.5s 절감 */
 #define APP_NBIOT_NCONFIG_QUERY_RX_TIMEOUT_MS (1500u)
-/* [NCONFIG-GAP] NCONFIG? 응답 직후 set 명령 연속 전송 시 모뎀 처리 지연으로
- * UART_TIMEOUT(status=13) 1회 재시도가 항상 발생했다(재시도에서 성공).
- * 명령 간 갭을 두어 첫 시도에 성공하도록 한다. */
-#define APP_NBIOT_NCONFIG_CMD_GAP_MS         (150u)
 #define APP_NBIOT_SILENCE_REBOOT_EXTRA_WAIT_MS (3000u)
 
 #define APP_NBIOT_LOG_PREATTACH         "[[PreAttach]]"
@@ -970,8 +966,6 @@ static AppStatus_t App_Bc95AtNconfigSetTrueIfNeeded(void)
 
     App_Bc95AtDelayWithFeed(APP_NBIOT_NCONFIG_QUERY_SETTLE_MS);
     App_Bc95AtDelayWithFeed(APP_NBIOT_NVM_WRITE_GAP_MS);
-    /* [NCONFIG-GAP] query 응답 후 모뎀 처리 여유 - 첫 시도 성공 유도 */
-    App_Bc95AtDelayWithFeed(APP_NBIOT_NCONFIG_CMD_GAP_MS);
     return App_Bc95AtSendSimpleOkCommand(APP_BC95_AT_CMD_NCONFIG_AUTOCONNECT_ON,
                                          APP_BC95_AT_RX_TIMEOUT_MS,
                                          "AT+NCONFIG=AUTOCONNECT,TRUE",
