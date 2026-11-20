@@ -2005,57 +2005,57 @@ void Get_BootInfo(AppBootInfo_t *pBootInfo)
 
 static void Print_BootInfo(AppBootInfo_t *pBootInfo)
 {
-    APP_LOGD("BOOT", "=== Boot info ===");
+    APP_LOGI("BOOT", "=== Boot info ===");
 
     /* --- 리셋 원인 표시 --- */
-    APP_LOGD("BOOT", "reset_flags=0x%08lX",
+    APP_LOGI("BOOT", "reset_flags=0x%08lX",
            (unsigned long)pBootInfo->reset_flags);
 
     if (pBootInfo->reset_flags & RCC_CSR_LPWRRSTF)
-        APP_LOGD("BOOT", " LPWR");
+        APP_LOGI("BOOT", " LPWR");
     if (pBootInfo->reset_flags & RCC_CSR_WWDGRSTF)
-        APP_LOGD("BOOT", " WWDG");
+        APP_LOGI("BOOT", " WWDG");
     if (pBootInfo->reset_flags & RCC_CSR_IWDGRSTF)
-        APP_LOGD("BOOT", " IWDG");
+        APP_LOGI("BOOT", " IWDG");
     if (pBootInfo->reset_flags & RCC_CSR_SFTRSTF)
-        APP_LOGD("BOOT", " SFT");
+        APP_LOGI("BOOT", " SFT");
     if (pBootInfo->reset_flags & RCC_CSR_PORRSTF)
-        APP_LOGD("BOOT", " POR/PDR");
+        APP_LOGI("BOOT", " POR/PDR");
     if (pBootInfo->reset_flags & RCC_CSR_PINRSTF)
-        APP_LOGD("BOOT", " NRST");
+        APP_LOGI("BOOT", " NRST");
     if (pBootInfo->reset_flags & RCC_CSR_OBLRSTF)
-        APP_LOGD("BOOT", " OBL");
+        APP_LOGI("BOOT", " OBL");
 
     /* --- 백업 레지스터 내용 표시 --- */
-    APP_LOGD("BOOT", "backup");
-    APP_LOGD("BOOT", "  BKP0R = 0x%08lX", (unsigned long)pBootInfo->bkp0);
-    APP_LOGD("BOOT", "  BKP1R = 0x%08lX", (unsigned long)pBootInfo->bkp1);
-    APP_LOGD("BOOT", "  BKP2R = 0x%08lX", (unsigned long)pBootInfo->bkp2);
-    APP_LOGD("BOOT", "  BKP3R = 0x%08lX", (unsigned long)pBootInfo->bkp3);
-    APP_LOGD("BOOT", "  BKP4R = 0x%08lX", (unsigned long)pBootInfo->bkp4);
+    APP_LOGI("BOOT", "backup");
+    APP_LOGI("BOOT", "  BKP0R = 0x%08lX", (unsigned long)pBootInfo->bkp0);
+    APP_LOGI("BOOT", "  BKP1R = 0x%08lX", (unsigned long)pBootInfo->bkp1);
+    APP_LOGI("BOOT", "  BKP2R = 0x%08lX", (unsigned long)pBootInfo->bkp2);
+    APP_LOGI("BOOT", "  BKP3R = 0x%08lX", (unsigned long)pBootInfo->bkp3);
+    APP_LOGI("BOOT", "  BKP4R = 0x%08lX", (unsigned long)pBootInfo->bkp4);
 
     /* BKP0R 의미 해석 */
     if(pBootInfo->bkp0 == WWDG_RESET_MAGIC)
     {
-        APP_LOGD("BOOT", "  -> WWDG abnormal");
+        APP_LOGI("BOOT", "  -> WWDG abnormal");
     }
     else if(pBootInfo->bkp0 == NORMAL_BOOT_MAGIC)
     {
-        APP_LOGD("BOOT", "  -> prev normal");
+        APP_LOGI("BOOT", "  -> prev normal");
     }
     else if(pBootInfo->bkp0 == 0)
     {
         if((pBootInfo->bkp1 == 0) && (pBootInfo->bkp2 != EXT_WATCHDOG_TEST_ARM_MAGIC))
         {
-            APP_LOGD("BOOT", "  -> BKP clr");
+            APP_LOGI("BOOT", "  -> BKP clr");
         }
     }
     else
     {
-        APP_LOGD("BOOT", "  -> unknown");
+        APP_LOGI("BOOT", "  -> unknown");
     }
 
-    APP_LOGD("BOOT", "  BKP1R = 0x%08lX  emergency",
+    APP_LOGI("BOOT", "  BKP1R = 0x%08lX  emergency",
            (unsigned long)pBootInfo->bkp1);
 
     /* 외부 워치독(EWDT) 리셋 판별.
@@ -2068,13 +2068,13 @@ static void Print_BootInfo(AppBootInfo_t *pBootInfo)
         ((pBootInfo->reset_flags & RCC_CSR_PINRSTF) != 0u) &&
         (pBootInfo->bkp2 == EXT_WATCHDOG_TEST_ARM_MAGIC))
     {
-        APP_LOGD("BOOT", "EWDT reset confirmed");
+        APP_LOGI("BOOT", "EWDT reset confirmed");
         g_appSystemContext.bootResetCause = APP_BOOT_RESET_EXT_WATCHDOG_CONFIRMED;
     }
     else if (((pBootInfo->reset_flags & RCC_CSR_PORRSTF) == 0u) &&
              ((pBootInfo->reset_flags & RCC_CSR_PINRSTF) != 0u))
     {
-        APP_LOGD("BOOT", "NRST-only reset");
+        APP_LOGI("BOOT", "NRST-only reset");
         g_appSystemContext.bootResetCause = APP_BOOT_RESET_NRST_UNKNOWN;
     }
     else if ((pBootInfo->reset_flags & RCC_CSR_PORRSTF) != 0u)
@@ -2090,19 +2090,19 @@ static void Print_BootInfo(AppBootInfo_t *pBootInfo)
     if ((pBootInfo->reset_flags & RCC_CSR_WWDGRSTF) &&
         (pBootInfo->bkp0 == WWDG_RESET_MAGIC))
     {
-        APP_LOGD("BOOT", "[WWDG Diagnosis]");
-        APP_LOGD("BOOT", "  EWI emergency handler executed successfully.");
-        APP_LOGD("BOOT", "  Last status code: 0x%08lX",
+        APP_LOGI("BOOT", "[WWDG Diagnosis]");
+        APP_LOGI("BOOT", "  EWI emergency handler executed successfully.");
+        APP_LOGI("BOOT", "  Last status code: 0x%08lX",
                (unsigned long)pBootInfo->bkp1);
     }
     else if (pBootInfo->reset_flags & RCC_CSR_WWDGRSTF)
     {
-        APP_LOGD("BOOT", "[WWDG Diagnosis]");
-        APP_LOGD("BOOT", "  WWDG reset occurred, but no EWI handler trace found.");
-        APP_LOGD("BOOT", "  --> EWI was disabled or reset occurred before callback.");
+        APP_LOGI("BOOT", "[WWDG Diagnosis]");
+        APP_LOGI("BOOT", "  WWDG reset occurred, but no EWI handler trace found.");
+        APP_LOGI("BOOT", "  --> EWI was disabled or reset occurred before callback.");
     }
 
-    APP_LOGD("BOOT", "========================================");
+    APP_LOGI("BOOT", "========================================");
 
     #if (APP_EPC_TEST_MODE_ENABLE == APP_TRUE) && \
         (APP_EPC_ACTIVE_TEST_ID == 3u) && (APP_EPC_TEST3_WATCHDOG_DISABLE_EXTERNAL_FEED == APP_TRUE)

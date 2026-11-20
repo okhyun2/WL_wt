@@ -68,7 +68,7 @@ const char *App_ClockRtcSourceToString(AppRtcClockSource_t source);
 AppStatus_t App_ClockBootStartLsiFirst(void);
 
 /* main loop/FSM housekeeping에서 주기적으로 호출: LSE 준비되면 시각 보존 후 전환 */
-void App_ClockPollLseAndSwitchIfReady(void);
+AppStatus_t App_ClockPollLseAndSwitchIfReady(void);
 
 /* RCC->CSR 기반으로 현재 RTC가 어떤 소스로 구동 중인지 조회 (별도 상태 저장 불필요) */
 AppRtcClockSource_t App_ClockGetActiveRtcSource(void);
