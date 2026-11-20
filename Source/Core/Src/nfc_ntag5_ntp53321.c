@@ -741,7 +741,7 @@ NFC_Result_t NFC_NTP53321_ExitStandby(NFC_NTP53321_Handle_t *hntag)
 
     NFC_NTP53321_ReadSessionReg(hntag, NFC_SESSION_STATUS_ADDR, 1U, &status1);
 
-    APP_LOGI("NFC", "exit stdby S0=0x%02X S1=0x%02X", status0, status1);
+    APP_LOGD("NFC", "exit stdby S0=0x%02X S1=0x%02X", status0, status1);
     APP_LOGI("NFC", " VCC=%d FLD=%d VB=%d NB=%d",
              (status0 & NFC_STATUS0_VCC_SUPPLY_OK) ? 1 : 0,
              (status0 & NFC_STATUS0_NFC_FIELD_OK)  ? 1 : 0,

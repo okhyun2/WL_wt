@@ -543,7 +543,7 @@ AppStatus_t App_MeterBuildLiveRecordFromReceivedData(const uint8_t *pRxBuf,
 
     APP_RETURN_IF_FALSE(App_MeterBuildDigitalRecord(&rx_frame, p_record) == APP_STATUS_OK, APP_STATUS_FATAL);
 
-    APP_LOGI("NFC", "Update nfc live meter info (no storage).");
+    APP_LOGD("NFC", "Update nfc live meter info (no storage).");
     status = App_NfcSeoulNotifyLiveMeterRecord(p_record);
     (void)status;
     return APP_STATUS_OK;
@@ -710,7 +710,7 @@ AppStatus_t App_MeterSC1xxxBuildLiveRecordFromReceivedData(const uint8_t *pRxBuf
     App_MeterSC1xxxPrintData(&rx_frame);
     APP_RETURN_IF_FALSE(App_MeterBuildSc1xxxRecord(&rx_frame, p_record) == APP_STATUS_OK, APP_STATUS_FATAL);
 
-    APP_LOGI("NFC", "Update nfc live meter info (no storage).");
+    APP_LOGD("NFC", "Update nfc live meter info (no storage).");
     status = App_NfcSeoulNotifyLiveMeterRecord(p_record);
     (void)status;
     return APP_STATUS_OK;
