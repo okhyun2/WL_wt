@@ -371,9 +371,10 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
         APP_LOGW("FSM", "[[MeterWake]] uart rx failed/timeout status=%ld -> store placeholder record",
                  (long)status);
         /* [DIAG-BITS] TX0_MON 판독: 단선(HIGH 정적)=bit12, 불량(ACTIVE)=bit13 */
-        App_SelfTestSetDiagBit(
-            (App_SelfTestProbeTx0MonActivityPublic() == APP_FALSE) ? APP_DIAG_BIT_METER_OPEN
-                                                                   : APP_DIAG_BIT_METER_DEGRADED);
+        if (App_SelfTestProbeTx0MonActivityPublic() == APP_FALSE)
+        {
+            App_SelfTestSetDiagBit(APP_DIAG_BIT_METER_OPEN);   /* 단선(HIGH 정적)만 보고 */
+        }
         (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
         return status;
     }
@@ -382,8 +383,8 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
                    "FSM",
                    (const uint8_t *)meterReply,
                    APP_SELFTEST_UART_METER_NORMAL_EXPECTED_RX_MIN_LEN);
-    /* [DIAG-BITS] 계량기 통신 성공 - 단선/불량 비트 해제 */
-    App_SelfTestClearDiagBit(APP_DIAG_BIT_METER_OPEN | APP_DIAG_BIT_METER_DEGRADED);
+    /* [DIAG-BITS] 계량기 통신 성공 - 단선 비트 해제 */
+    App_SelfTestClearDiagBit(APP_DIAG_BIT_METER_OPEN);
 
     storageEnabledPrev = App_MeterIsStorageEnabled();
     App_MeterSetStorageEnabled(APP_TRUE);
@@ -439,9 +440,10 @@ static AppStatus_t App_FsmMeterProbeAndStore(void)
         APP_LOGW("FSM", "[[MeterWake]] uart rx failed/timeout status=%ld -> store placeholder record",
                  (long)status);
         /* [DIAG-BITS] TX0_MON 판독: 단선(HIGH 정적)=bit12, 불량(ACTIVE)=bit13 */
-        App_SelfTestSetDiagBit(
-            (App_SelfTestProbeTx0MonActivityPublic() == APP_FALSE) ? APP_DIAG_BIT_METER_OPEN
-                                                                   : APP_DIAG_BIT_METER_DEGRADED);
+        if (App_SelfTestProbeTx0MonActivityPublic() == APP_FALSE)
+        {
+            App_SelfTestSetDiagBit(APP_DIAG_BIT_METER_OPEN);   /* 단선(HIGH 정적)만 보고 */
+        }
         (void)App_MeterStorePlaceholderRecord(APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
         return status;
     }
@@ -515,9 +517,10 @@ AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord)
         APP_LOGW("FSM", "[[BootLiveTx]] uart rx failed/timeout status=%ld -> build placeholder live record",
                  (long)status);
         /* [DIAG-BITS] TX0_MON 판독 결과 저장 */
-        App_SelfTestSetDiagBit(
-            (App_SelfTestProbeTx0MonActivityPublic() == APP_FALSE) ? APP_DIAG_BIT_METER_OPEN
-                                                                   : APP_DIAG_BIT_METER_DEGRADED);
+        if (App_SelfTestProbeTx0MonActivityPublic() == APP_FALSE)
+        {
+            App_SelfTestSetDiagBit(APP_DIAG_BIT_METER_OPEN);   /* 단선(HIGH 정적)만 보고 */
+        }
         return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
     }
 
@@ -576,9 +579,10 @@ AppStatus_t App_FsmMeterProbeNoStore(AppMeterStorageRecord_t *p_liveRecord)
         APP_LOGW("FSM", "[[BootLiveTx]] uart rx failed/timeout status=%ld -> build placeholder live record",
                  (long)status);
         /* [DIAG-BITS] TX0_MON 판독 결과 저장 */
-        App_SelfTestSetDiagBit(
-            (App_SelfTestProbeTx0MonActivityPublic() == APP_FALSE) ? APP_DIAG_BIT_METER_OPEN
-                                                                   : APP_DIAG_BIT_METER_DEGRADED);
+        if (App_SelfTestProbeTx0MonActivityPublic() == APP_FALSE)
+        {
+            App_SelfTestSetDiagBit(APP_DIAG_BIT_METER_OPEN);   /* 단선(HIGH 정적)만 보고 */
+        }
         return App_MeterBuildPlaceholderRecord(p_liveRecord, APP_FSM_BOOT_METER_SRC_TYPE, APP_FSM_BOOT_METER_TYPE);
     }
 

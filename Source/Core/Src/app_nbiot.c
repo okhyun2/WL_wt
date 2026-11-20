@@ -1688,8 +1688,7 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_
          * 기존 diag[6]은 lastSequenceStatus 상위 바이트(항상 0x00)라 무충돌.
          *   bit11 (diag[6] bit3) = LSE_FAIL
          *   bit12 (diag[6] bit4) = 미터 단선 (TX0_MON HIGH 정적)
-         *   bit13 (diag[6] bit5) = 미터 불량 (TX0_MON ACTIVE)
-         *   bit14~15 = 예약(0) */
+         *   bit13~15 = 예약(0) */
         {
             uint16_t diagBits = App_SelfTestGetDiagBits();
             if (App_ClockIsLseStuckFlagged() == APP_TRUE) { diagBits |= APP_DIAG_BIT_LSE_FAIL; }
@@ -11607,9 +11606,9 @@ AppStatus_t App_NBIoTTransmitServiceUdp(uint8_t deleteStorage)
 #endif
 
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL, APP_FALSE);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", APP_SERVICE_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL, APP_FALSE);
 #else
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL, APP_FALSE);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", APP_SERVICE_SERVER_IP, APP_SERVICE_SERVER_PORT, deleteStorage, APP_TRUE, NULL, APP_FALSE, NULL, APP_FALSE);
 #endif
 }
 
@@ -11635,9 +11634,9 @@ AppStatus_t App_NBIoTTransmitServiceLiveRecord(const AppMeterStorageRecord_t *p_
 #endif
 
 #ifdef NBIOT_SUPPORT_DNS
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL, APP_FALSE);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", APP_SERVICE_SERVER_DOMAIN, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL, APP_FALSE);
 #else
-    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", MY_SERVER_IP, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL, APP_FALSE);
+    return App_NBIoTTransmitUdpInternal("[[ServiceTx]]", APP_SERVICE_SERVER_IP, APP_SERVICE_SERVER_PORT, APP_FALSE, APP_FALSE, p_record, APP_FALSE, NULL, APP_FALSE);
 #endif
 
     /* [QREP-INDEPENDENT] 부팅 mgmt 전송 성공/실패 무관 세션 종료 전 독자 판정 */

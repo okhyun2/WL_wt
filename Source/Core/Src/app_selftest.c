@@ -569,10 +569,11 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
     if (status != APP_STATUS_OK)
     {
         /* [TX0MON-DIAG] 수신 실패 원인 분리 + [DIAG-BITS] 저장:
-         * 단선(HIGH 정적)=bit12, 불량(ACTIVE)=bit13 */
-        App_SelfTestSetDiagBit(
-            (App_SelfTestProbeTx0MonActivity() == APP_FALSE) ? APP_DIAG_BIT_METER_OPEN
-                                                             : APP_DIAG_BIT_METER_DEGRADED);
+         * 단선(HIGH 정적)=bit12만 보고. 라인 ACTIVE(통신 불량)는 비트 미보고. */
+        if (App_SelfTestProbeTx0MonActivity() == APP_FALSE)
+        {
+            App_SelfTestSetDiagBit(APP_DIAG_BIT_METER_OPEN);
+        }
         APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
     }
 
