@@ -1061,13 +1061,6 @@ AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatu
    return App_SelfTestRunSequenceInternal(APP_SELFTEST_SEQ_PERIODIC_METER_WAKE, meterProbeStatus);
 }
 
-AppStatus_t App_LSEErrorBuzzer(void)
-{
-    return App_SelfTestPlayBuzzerPattern(1,
-                                         3,
-                                         0);
-}
-
 AppStatus_t App_SelfTestSignalErrorBuzzer(void)
 {
     return App_SelfTestPlayBuzzerPattern(APP_SELFTEST_BUZZER_ERROR_BEEP_COUNT,

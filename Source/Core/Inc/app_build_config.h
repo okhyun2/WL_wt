@@ -187,6 +187,7 @@ extern "C" {
 #undef NBIOT_TRACE_DEBUG
 /* 가속 테스트(검침,주기보고,MGMT보고)시: define */
 #undef APP_TEST_PERIOD_ACCEL //PRODUCT-> #undef
+#define APP_TEST_SERVER_TX_BUZZER_ENABLE            (APP_FALSE)
 #else
 /* APP_TRUE: APP_LOGT/D/I 호출과 포맷 문자열을 빌드에서 제거(flash 절감). SWD 핀 설정과 무관. 검증용 빌드는 APP_FALSE. */
 #define APP_LOG_STRIP_VERBOSE                       (APP_FALSE) //debug:APP_FALSE, PRODUCTION:APP_TRUE
@@ -196,6 +197,7 @@ extern "C" {
 #undef NBIOT_TRACE_DEBUG
 /* 가속 테스트(검침,주기보고,MGMT보고)시: define */
 #undef APP_TEST_PERIOD_ACCEL //PRODUCT-> #undef
+#define APP_TEST_SERVER_TX_BUZZER_ENABLE            (APP_TRUE)
 #endif //(APP_BUILD_IS_PRODUCTION == APP_TRUE)
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -246,12 +248,11 @@ extern "C" {
 
 #endif /* SUPPORT_SELFTEST || APP_WAKE_DATA_COLLECTION_ALWAYS_ENABLE */
 
-/* TODO ----------------------------------------------------------------
+/* ----------------------------------------------------------------
  * Test option: buzzer notification on successful server transmit
  *  - APP_TRUE : service/mgmt server 전송 성공 시 1회 부저
  *  - APP_FALSE: 비활성
  * ---------------------------------------------------------------- */
-#define APP_TEST_SERVER_TX_BUZZER_ENABLE            (APP_TRUE)
 #define APP_TEST_SERVER_TX_BUZZER_ON_MS             (80u)
 #define APP_TEST_SERVER_TX_BUZZER_OFF_MS            (40u)
 

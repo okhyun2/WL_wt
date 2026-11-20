@@ -2511,113 +2511,6 @@ static uint32_t App_FsmMgmtTxScheduleAddOneDay(uint32_t dateKey)
     return (year * 10000u) + (month * 100u) + day;
 }
 
-/* ============================================================
- * [QREP-UNIFY] 지정일 윈도우 시작 due 공용 산출 (QREP/mgmt 동일 알고리즘)
- *  - due = 다음 지정일(INTERVAL_DAYS/DAY_PARITY)의 윈도우 시작 시각
- *  - 무상태: 캐시 없이 RTC 기준 매번 계산 (QREP 방식)
- *  - 오늘부터 최대 3일 탐색 - 2일 주기의 홀/짝 커버
- * ============================================================ */
-static AppStatus_t App_FsmCalcNextDayWindowDue(AppDateTime_t *p_dueTime,
-                                               uint8_t intervalDays,
-                                               uint8_t dayParity,
-                                               uint8_t windowStartHour,
-                                               uint32_t spreadSalt,
-                                               uint32_t spreadMaxMs)
-{
-    AppDateTime_t dueTime;
-    uint32_t day;
-    uint32_t spreadMs;
-    uint8_t checked;
-    uint8_t isDueDay;
-
-    APP_RETURN_IF_FALSE(p_dueTime != NULL, APP_STATUS_INVALID_PARAM);
-
-    if (RTC_GetTime(&dueTime) != APP_STATUS_OK)
-    {
-        return APP_STATUS_NOT_INITIALIZED;
-    }
-
-    /* [DEV-SPREAD] 기기별 Uid 해시 스프레드 - 윈도우 시작에 기기 고정 오프셋을
-     * 더해 다수 단말의 동시 wake/동시 접속을 분산한다. salt가 스케줄마다 다르면
-     * mgmt/QREP 발화도 서로 어긋난다. 매일 동일 값(멱등)이라 상태 불필요. */
-    spreadMs = ((App_ClockGetDeviceUidHash() ^ spreadSalt) %
-                ((spreadMaxMs / 1000u) + 1u)) * 1000u;
-
-    for (checked = 0u; checked < 3u; checked++)
-    {
-        isDueDay = APP_TRUE;
-
-        if (intervalDays >= 2u)
-        {
-            isDueDay = (((uint32_t)dueTime.day % 2u) ==
-                        (uint32_t)dayParity) ? APP_TRUE : APP_FALSE;
-        }
-
-        if (isDueDay == APP_TRUE)
-        {
-            /* 오늘(checked==0)은 윈도우 시작이 아직 안 지났을 때만 유효.
-             * 이후 날짜는 항상 윈도우 시작 시각이 due. */
-            if ((checked > 0u) ||
-                ((uint32_t)dueTime.hour < (uint32_t)windowStartHour))
-            {
-                dueTime.hour   = windowStartHour;
-                dueTime.minute = 0u;
-                dueTime.second = 0u;
-                /* [DEV-SPREAD] 기기 고정 오프셋 가산 (윈도우 내 분산) */
-                App_FsmScheduleAddMs(dueTime.year * 10000u + dueTime.month * 100u + dueTime.day,
-                                     dueTime.hour * 3600000u,
-                                     spreadMs,
-                                     &day, &spreadMs);
-                dueTime.year   = (uint16_t)(day / 10000u);
-                dueTime.month  = (uint8_t)((day / 100u) % 100u);
-                dueTime.day    = (uint8_t)(day % 100u);
-                dueTime.hour   = (uint8_t)((spreadMs / 3600000u) % 24u);
-                dueTime.minute = (uint8_t)((spreadMs % 3600000u) / 60000u);
-                dueTime.second = (uint8_t)((spreadMs % 60000u) / 1000u);
-                *p_dueTime = dueTime;
-                return APP_STATUS_OK;
-            }
-        }
-
-        /* 다음 날 00:00으로 이동 (월말/윤년 경계는 dateKey 산술로 처리) */
-        day = ((uint32_t)dueTime.year * 10000u) + ((uint32_t)dueTime.month * 100u) +
-              (uint32_t)dueTime.day;
-        day = App_FsmMgmtTxScheduleAddOneDay(day);
-        dueTime.year   = (uint16_t)(day / 10000u);
-        dueTime.month  = (uint8_t)((day / 100u) % 100u);
-        dueTime.day    = (uint8_t)(day % 100u);
-        dueTime.hour   = 0u;
-        dueTime.minute = 0u;
-        dueTime.second = 0u;
-    }
-
-    return APP_STATUS_NOT_INITIALIZED;
-}
-
-/* 다음 QREP due - 공용 helper에 QREP 빌드 설정을 적용한 wrapper. */
-AppStatus_t App_FsmGetNextQrepDueTime(AppDateTime_t *p_dueTime)
-{
-    return App_FsmCalcNextDayWindowDue(p_dueTime,
-                                       (uint8_t)APP_QUALITY_REPORT_INTERVAL_DAYS,
-                                       (uint8_t)APP_QUALITY_REPORT_DAY_PARITY,
-                                       (uint8_t)APP_QUALITY_REPORT_WINDOW_START_HOUR,
-                                       0x51524550u,   /* "QREP" */
-                                       APP_FSM_TX_DAY_WINDOW_SPREAD_MAX_MS);
-}
-
-/* [QREP-UNIFY] mgmt due도 QREP과 동일 알고리즘 - 무상태 즉석 계산.
- * 상태 캐시/스프레드/지터/재앵커 억제는 mgmt 스케줄에서 제거된다. */
-static AppStatus_t App_FsmGetNextMgmtDueTime(AppDateTime_t *p_dueTime)
-{
-    /* [MGMT-FIXED] mgmt도 QREP과 동일 무상태 계산 - 캐시/지터/재앵커 억제 없음 */
-    return App_FsmCalcNextDayWindowDue(p_dueTime,
-                                       (uint8_t)APP_MGMT_TX_INTERVAL_DAYS,
-                                       (uint8_t)APP_MGMT_TX_DAY_PARITY,
-                                       (uint8_t)APP_MGMT_TX_WINDOW_START_HOUR,
-                                       0x4D475454u,   /* "MGTT" */
-                                       APP_FSM_TX_DAY_WINDOW_SPREAD_MAX_MS);
-}
-
 static uint8_t App_FsmScheduleIsEarlierOrEqual(uint32_t lhsDateKey,
                                                uint32_t lhsMsOfDay,
                                                uint32_t rhsDateKey,
@@ -2671,6 +2564,175 @@ static void App_FsmTxScheduleDisableContext(AppFsmTxScheduleContext_t *p_schedul
     p_schedule->currentJitterMs = 0u;
 }
 
+
+/* ============================================================
+ * [QREP-UNIFY] 지정일 윈도우 시작 due 공용 산출 (QREP/mgmt 동일 알고리즘)
+ *  - due = 다음 지정일(INTERVAL_DAYS/DAY_PARITY)의 윈도우 시작 시각
+ *  - 무상태: 캐시 없이 RTC 기준 매번 계산 (QREP 방식)
+ *  - 오늘부터 최대 3일 탐색 - 2일 주기의 홀/짝 커버
+ * ============================================================ */
+static AppStatus_t App_FsmCalcNextDayWindowDue(AppDateTime_t *p_dueTime,
+                                               uint8_t intervalDays,
+                                               uint8_t dayParity,
+                                               uint8_t windowStartHour,
+                                               uint32_t spreadSalt,
+                                               uint32_t spreadMaxMs)
+{
+    AppDateTime_t dueTime;
+    uint32_t day;
+    uint32_t spreadMs;
+    uint8_t checked;
+    uint8_t isDueDay;
+
+    APP_RETURN_IF_FALSE(p_dueTime != NULL, APP_STATUS_INVALID_PARAM);
+
+    if (RTC_GetTime(&dueTime) != APP_STATUS_OK)
+    {
+        return APP_STATUS_NOT_INITIALIZED;
+    }
+
+    /* [DEV-SPREAD] 기기별 Uid 해시 스프레드 - 윈도우 시작에 기기 고정 오프셋을
+     * 더해 다수 단말의 동시 wake/동시 접속을 분산한다. salt가 스케줄마다 다르면
+     * mgmt/QREP 발화도 서로 어긋난다. 매일 동일 값(멱등)이라 상태 불필요. */
+    spreadMs = ((App_ClockGetDeviceUidHash() ^ spreadSalt) %
+                ((spreadMaxMs / 1000u) + 1u)) * 1000u;
+
+    for (checked = 0u; checked < 3u; checked++)
+    {
+        isDueDay = APP_TRUE;
+
+        if (intervalDays >= 2u)
+        {
+            isDueDay = (((uint32_t)dueTime.day % 2u) ==
+                        (uint32_t)dayParity) ? APP_TRUE : APP_FALSE;
+        }
+
+        if (isDueDay == APP_TRUE)
+        {
+            /* [WINDOW-BOUNDARY-FIX] 오늘(checked==0) 판정을 시(hour) 비교에서
+             * "완성된 due(윈도우 시작+기기 스프레드)" 비교로 교체.
+             * 기존: hour < windowStartHour 비교라 스프레드로 윈도우 시작 이후에
+             *       예약된 due(예: 02:00 윈도우 + 11분 = 02:11:02)가, 윈도우 시작
+             *       정각 이후에 열리는 세션(예: 02:00 미터 wake)에서 시 단위
+             *       비교에 걸려 오늘 due가 통째로 소멸 -> 실측(11-20 로그):
+             *       02:11:02 무장 알람이 02:00:04 재무장 시 사라져 mgmt 정기
+             *       전송이 매일 0회. 스프레드는 uidHash^salt의 멱등 함수라
+             *       판정용 사전 계산과 아래 반환용 계산이 항상 같은 값을 낸다.
+             * 이후 날짜(checked>0)는 항상 윈도우 시작 시각이 due(기존 동작).
+             * now >= 오늘 due이면 내일로 넘어감 - catch-up 억제는 유지. */
+            if (checked > 0u)
+            {
+                dueTime.hour   = windowStartHour;
+                dueTime.minute = 0u;
+                dueTime.second = 0u;
+            }
+            else
+            {
+                AppDateTime_t todayWin;
+                uint32_t todaySpreadMs;
+                uint32_t todayDay;
+                AppDateTime_t todayNow;
+
+                (void)memcpy(&todayWin, &dueTime, sizeof(AppDateTime_t));
+                todayWin.hour   = windowStartHour;
+                todayWin.minute = 0u;
+                todayWin.second = 0u;
+                /* 판정용 오늘 due 사전 계산 (윈도우 시작 + 기기 고정 스프레드) */
+                App_FsmScheduleAddMs(todayWin.year * 10000u + todayWin.month * 100u + todayWin.day,
+                                     todayWin.hour * 3600000u,
+                                     spreadMs,
+                                     &todayDay, &todaySpreadMs);
+                todayWin.year   = (uint16_t)(todayDay / 10000u);
+                todayWin.month  = (uint8_t)((todayDay / 100u) % 100u);
+                todayWin.day    = (uint8_t)(todayDay % 100u);
+                todayWin.hour   = (uint8_t)((todaySpreadMs / 3600000u) % 24u);
+                todayWin.minute = (uint8_t)((todaySpreadMs % 3600000u) / 60000u);
+                todayWin.second = (uint8_t)((todaySpreadMs % 60000u) / 1000u);
+
+                if (RTC_GetTime(&todayNow) != APP_STATUS_OK)
+                {
+                    return APP_STATUS_NOT_INITIALIZED;
+                }
+                /* now < 오늘 due: 아직 오늘 발화 전 -> 오늘 due 유효 (아래 반환 경로 사용)
+                 * now >= 오늘 due: 오늘 기회 소진 -> 내일로 진행 (catch-up 억제 유지) */
+                if (App_FsmScheduleIsDueOrPast(App_FsmMeterScheduleDateKey(&todayWin),
+                                               App_FsmMeterScheduleMsOfDay(&todayWin),
+                                               App_FsmMeterScheduleDateKey(&todayNow),
+                                               App_FsmMeterScheduleMsOfDay(&todayNow)) == APP_TRUE)
+                {
+                    /* 오늘 due 지남 - 내일(다음 due날)로 이동 */
+                    day = ((uint32_t)dueTime.year * 10000u) + ((uint32_t)dueTime.month * 100u) +
+                          (uint32_t)dueTime.day;
+                    day = App_FsmMgmtTxScheduleAddOneDay(day);
+                    dueTime.year   = (uint16_t)(day / 10000u);
+                    dueTime.month  = (uint8_t)((day / 100u) % 100u);
+                    dueTime.day    = (uint8_t)(day % 100u);
+                    dueTime.hour   = 0u;
+                    dueTime.minute = 0u;
+                    dueTime.second = 0u;
+                    /* 아래 공통 다음-날 이동 대신 바로 다음 루프 체크로 넘어가지 않고
+                     * 일관성을 위해 due 날짜만 갱신한 뒤 루프 재검사에 맡긴다 */
+                    continue;
+                }
+
+                dueTime.hour   = windowStartHour;
+                dueTime.minute = 0u;
+                dueTime.second = 0u;
+            }
+            /* [DEV-SPREAD] 기기 고정 오프셋 가산 (윈도우 내 분산) - 멱등이라
+             * 위 판정용 사전 계산과 동일한 due가 완성된다 */
+            App_FsmScheduleAddMs(dueTime.year * 10000u + dueTime.month * 100u + dueTime.day,
+                                 dueTime.hour * 3600000u,
+                                 spreadMs,
+                                 &day, &spreadMs);
+            dueTime.year   = (uint16_t)(day / 10000u);
+            dueTime.month  = (uint8_t)((day / 100u) % 100u);
+            dueTime.day    = (uint8_t)(day % 100u);
+            dueTime.hour   = (uint8_t)((spreadMs / 3600000u) % 24u);
+            dueTime.minute = (uint8_t)((spreadMs % 3600000u) / 60000u);
+            dueTime.second = (uint8_t)((spreadMs % 60000u) / 1000u);
+            *p_dueTime = dueTime;
+            return APP_STATUS_OK;
+        }
+
+        /* 다음 날 00:00으로 이동 (월말/윤년 경계는 dateKey 산술로 처리) */
+        day = ((uint32_t)dueTime.year * 10000u) + ((uint32_t)dueTime.month * 100u) +
+              (uint32_t)dueTime.day;
+        day = App_FsmMgmtTxScheduleAddOneDay(day);
+        dueTime.year   = (uint16_t)(day / 10000u);
+        dueTime.month  = (uint8_t)((day / 100u) % 100u);
+        dueTime.day    = (uint8_t)(day % 100u);
+        dueTime.hour   = 0u;
+        dueTime.minute = 0u;
+        dueTime.second = 0u;
+    }
+
+    return APP_STATUS_NOT_INITIALIZED;
+}
+
+/* 다음 QREP due - 공용 helper에 QREP 빌드 설정을 적용한 wrapper. */
+AppStatus_t App_FsmGetNextQrepDueTime(AppDateTime_t *p_dueTime)
+{
+    return App_FsmCalcNextDayWindowDue(p_dueTime,
+                                       (uint8_t)APP_QUALITY_REPORT_INTERVAL_DAYS,
+                                       (uint8_t)APP_QUALITY_REPORT_DAY_PARITY,
+                                       (uint8_t)APP_QUALITY_REPORT_WINDOW_START_HOUR,
+                                       0x51524550u,   /* "QREP" */
+                                       APP_FSM_TX_DAY_WINDOW_SPREAD_MAX_MS);
+}
+
+/* [QREP-UNIFY] mgmt due도 QREP과 동일 알고리즘 - 무상태 즉석 계산.
+ * 상태 캐시/스프레드/지터/재앵커 억제는 mgmt 스케줄에서 제거된다. */
+static AppStatus_t App_FsmGetNextMgmtDueTime(AppDateTime_t *p_dueTime)
+{
+    /* [MGMT-FIXED] mgmt도 QREP과 동일 무상태 계산 - 캐시/지터/재앵커 억제 없음 */
+    return App_FsmCalcNextDayWindowDue(p_dueTime,
+                                       (uint8_t)APP_MGMT_TX_INTERVAL_DAYS,
+                                       (uint8_t)APP_MGMT_TX_DAY_PARITY,
+                                       (uint8_t)APP_MGMT_TX_WINDOW_START_HOUR,
+                                       0x4D475454u,   /* "MGTT" */
+                                       APP_FSM_TX_DAY_WINDOW_SPREAD_MAX_MS);
+}
 
 #if defined(APP_DEBUG_METER_PERIOD_MS) && \
     defined(APP_DEBUG_TX_PERIOD_MS) && \
