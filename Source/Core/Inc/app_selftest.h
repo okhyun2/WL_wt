@@ -87,6 +87,16 @@ AppStatus_t App_SelfTestRunPeriodicMeterWakeSequence(AppStatus_t meterProbeStatu
  */
 AppStatus_t App_SelfTestSignalErrorBuzzer(void);
 
+/* [DIAG-BITS] 진단 비트 (0xD2 TLV diag[6] 예약 비트 bit11~15에 보고):
+ * bit11=LSE_FAIL, bit12=METER_OPEN(단선), bit13=METER_DEGRADED(불량), bit14~15=예약 */
+#define APP_DIAG_BIT_LSE_FAIL          (0x0800u)
+#define APP_DIAG_BIT_METER_OPEN        (0x1000u)
+#define APP_DIAG_BIT_METER_DEGRADED    (0x2000u)
+void App_SelfTestSetDiagBit(uint16_t bitMask);
+void App_SelfTestClearDiagBit(uint16_t bitMask);
+uint16_t App_SelfTestGetDiagBits(void);
+uint8_t App_SelfTestProbeTx0MonActivityPublic(void);
+
 /**
  * @brief Route UART RX complete interrupt to self-test receive helper.
  *

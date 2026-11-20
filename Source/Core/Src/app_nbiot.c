@@ -1684,6 +1684,18 @@ static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_
         App_NbiotPutU16Le(&diag[2], passedMask);
         diag[4] = (uint8_t)(p_ctx->failCount & 0xFFu);
         App_NbiotPutU16Le(&diag[5], (uint16_t)p_ctx->lastSequenceStatus);
+        /* [DIAG-BITS] diag[6] 예약 비트(bit11~15 = 상위 바이트 bit3~7)에 진단 비트 반영.
+         * 기존 diag[6]은 lastSequenceStatus 상위 바이트(항상 0x00)라 무충돌.
+         *   bit11 (diag[6] bit3) = LSE_FAIL
+         *   bit12 (diag[6] bit4) = 미터 단선 (TX0_MON HIGH 정적)
+         *   bit13 (diag[6] bit5) = 미터 불량 (TX0_MON ACTIVE)
+         *   bit14~15 = 예약(0) */
+        {
+            uint16_t diagBits = App_SelfTestGetDiagBits();
+            if (App_ClockIsLseStuckFlagged() == APP_TRUE) { diagBits |= APP_DIAG_BIT_LSE_FAIL; }
+            diag[6] = (uint8_t)(((p_ctx->lastSequenceStatus >> 8) & 0x07u) |
+                                ((diagBits >> 8) & 0xF8u));
+        }
     }
 
     p_packet[cursor++] = APP_MGMT_TX_SELFTEST_TAG;

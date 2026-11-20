@@ -502,6 +502,36 @@ static uint8_t App_SelfTestProbeTx0MonActivity(void)
     return APP_TRUE;
 }
 
+/* [DIAG-BITS] 러닝 진단 비트 (0xD2 TLV diag[6] 예약 비트 bit11~15에 보고).
+ * bit11 (0x0800) = LSE_FAIL        : 부팅 LSE 확정 3회 소진 실패
+ * bit12 (0x1000) = METER_OPEN      : TX0_MON HIGH 정적 - 계량기 단선/미연결
+ * bit13 (0x2000) = METER_DEGRADED  : TX0_MON ACTIVE - 연결됐으나 통신 불량
+ * bit14~15 = 예약(0) */
+static uint8_t s_appDiagBitsL = 0x00u;
+static uint8_t s_appDiagBitsH = 0x00u;
+
+void App_SelfTestSetDiagBit(uint16_t bitMask)
+{
+    if ((bitMask & 0xFF00u) != 0u) { s_appDiagBitsH |= (uint8_t)((bitMask >> 8) & 0xFFu); }
+    if ((bitMask & 0x00FFu) != 0u) { s_appDiagBitsL |= (uint8_t)(bitMask & 0xFFu); }
+}
+
+void App_SelfTestClearDiagBit(uint16_t bitMask)
+{
+    if ((bitMask & 0xFF00u) != 0u) { s_appDiagBitsH &= (uint8_t)(~((bitMask >> 8) & 0xFFu) & 0xFFu); }
+    if ((bitMask & 0x00FFu) != 0u) { s_appDiagBitsL &= (uint8_t)(~bitMask & 0xFFu); }
+}
+
+uint16_t App_SelfTestGetDiagBits(void)
+{
+    return (uint16_t)(((uint16_t)s_appDiagBitsH << 8) | (uint16_t)s_appDiagBitsL);
+}
+
+uint8_t App_SelfTestProbeTx0MonActivityPublic(void)
+{
+    return App_SelfTestProbeTx0MonActivity();
+}
+
 static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
 {
     APP_RETURN_IF_FALSE(APP_UART_METER_HANDLE->Instance == USART2, APP_STATUS_HW_HANDLE_INVALID);
@@ -538,9 +568,11 @@ static AppStatus_t App_SelfTestCheckMeterNormalUart(void)
                                        APP_SELFTEST_UART_REPLY_METER_NORMAL_TIMEOUT_MS);
     if (status != APP_STATUS_OK)
     {
-        /* [TX0MON-DIAG] 수신 실패 원인 분리: 라인 활동 유무로
-         * 미연결(단자 배선) vs 연결됐으나 통신 불량을 구분한다. */
-        (void)App_SelfTestProbeTx0MonActivity();
+        /* [TX0MON-DIAG] 수신 실패 원인 분리 + [DIAG-BITS] 저장:
+         * 단선(HIGH 정적)=bit12, 불량(ACTIVE)=bit13 */
+        App_SelfTestSetDiagBit(
+            (App_SelfTestProbeTx0MonActivity() == APP_FALSE) ? APP_DIAG_BIT_METER_OPEN
+                                                             : APP_DIAG_BIT_METER_DEGRADED);
         APP_RETURN_IF_FALSE((status == APP_STATUS_OK), status);
     }
 
