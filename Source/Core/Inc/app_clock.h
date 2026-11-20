@@ -69,6 +69,9 @@ AppStatus_t App_ClockBootStartLsiFirst(void);
 
 /* main loop/FSM housekeeping에서 주기적으로 호출: LSE 준비되면 시각 보존 후 전환 */
 AppStatus_t App_ClockPollLseAndSwitchIfReady(void);
+uint8_t App_ClockWaitLseForeground(uint32_t timeoutMs);          /* [LSE-STUCK] 포그라운드 확정 */
+void App_ClockConfirmLseAtBoot(void);                                 /* [LSE-STUCK] 부팅 시 확정 (동기) */
+uint8_t App_ClockIsLseStuckFlagged(void);                             /* [LSE-STUCK] 부팅 확정 실패 플래그 */
 
 /* RCC->CSR 기반으로 현재 RTC가 어떤 소스로 구동 중인지 조회 (별도 상태 저장 불필요) */
 AppRtcClockSource_t App_ClockGetActiveRtcSource(void);

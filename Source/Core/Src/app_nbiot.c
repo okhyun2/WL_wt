@@ -391,6 +391,7 @@ static void App_Bc95AtDelayWithFeed(uint32_t ms);
 static AppStatus_t App_NbiotAppendMgmtEnvTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 static AppStatus_t App_NbiotAppendMgmtSelfTestTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
+static AppStatus_t App_NbiotAppendMgmtHealthTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result);
 static AppStatus_t App_NbiotQualityReportMaybeSend(void);
 
 static int s_bc95LastEVTIND = -1;
@@ -1556,6 +1557,18 @@ static AppStatus_t App_NbiotBuildMeterPacket(const char *p_logTag,
             APP_LOGD("NBIOT", "%s service-stat trailer skipped (status=%d, len=%u)",
                      p_logTag, (int)statAppendStatus, (unsigned int)buildResult.packetLength);
         }
+
+        /* [LSE-STUCK] health 트레일러(tag 0xD4): 부팅 LSE 확정 실패 시에만 부가.
+         * 정상 단말은 이 트레일러가 아예 붙지 않아 프레임이 기존과 동일하다. */
+        if (App_ClockIsLseStuckFlagged() == APP_TRUE)
+        {
+            AppStatus_t healthAppendStatus = App_NbiotAppendMgmtHealthTrailer(p_packet, packetCapacity, &buildResult);
+            if (healthAppendStatus != APP_STATUS_OK)
+            {
+                APP_LOGD("NBIOT", "%s health trailer skipped (status=%d, len=%u)",
+                         p_logTag, (int)healthAppendStatus, (unsigned int)buildResult.packetLength);
+            }
+        }
     }
 
     if (p_optOut != NULL)
@@ -1749,6 +1762,45 @@ static AppStatus_t App_NbiotAppendMgmtServiceStatTrailer(uint8_t *p_packet, uint
     s_appNbiotServiceTxAttempts = 0u;
     s_appNbiotServiceSuccessCount   = 0u;
     s_appNbiotServiceAppAckCount = 0u;
+
+    return APP_STATUS_OK;
+}
+
+/* [LSE-STUCK] mgmt 트레일러 tag 0xD4: device health
+ * payload(1바이트): bit0 = LSE_FAIL(부팅 LSE 확정 3회 소진 실패), 나머지 0 예약.
+ * 정상 단말에는 호출되지 않는다(조건부 append - 프레임 무변경). */
+static AppStatus_t App_NbiotAppendMgmtHealthTrailer(uint8_t *p_packet, uint16_t packetCapacity, AppMeterServerFormatResult_t *p_result)
+{
+    uint16_t cursor;
+    uint8_t health[APP_MGMT_TX_HEALTH_PAYLOAD_LEN];
+
+    APP_RETURN_IF_FALSE((p_packet != NULL) && (p_result != NULL), APP_STATUS_INVALID_PARAM);
+    APP_RETURN_IF_FALSE(p_result->packetLength >= 3u, APP_STATUS_INVALID_PARAM);
+
+    /* 기존 checksum 위치부터 다시 덮어쓴다 (service-stat 트레일러 0xD3 뒤에 이어 붙임) */
+    cursor = (uint16_t)(p_result->packetLength - 1u);
+
+    APP_RETURN_IF_FALSE(((uint32_t)cursor + 2u + APP_MGMT_TX_HEALTH_PAYLOAD_LEN + 1u) <= packetCapacity,
+                        APP_STATUS_BUFFER_OVERFLOW);
+
+    (void)memset(health, 0, sizeof(health));
+    health[0] = 0x01u;   /* bit0 = LSE_FAIL */
+
+    p_packet[cursor++] = APP_MGMT_TX_HEALTH_TAG;
+    p_packet[cursor++] = APP_MGMT_TX_HEALTH_PAYLOAD_LEN;
+    (void)memcpy(&p_packet[cursor], health, sizeof(health));
+    cursor = (uint16_t)(cursor + sizeof(health));
+
+    /* length = byte[2]부터 checksum 직전까지 */
+    p_packet[1] = (uint8_t)(cursor - 2u);
+    p_result->checksum = App_NbiotChecksum8(p_packet, 2u, cursor);
+    p_packet[cursor++] = p_result->checksum;
+
+    p_result->payloadLength = p_packet[1];
+    p_result->packetLength  = cursor;
+
+    APP_LOGN("NBIOT", "[[MgmtTx]] health trailer appended LSE_FAIL=1 len=%u",
+             (unsigned int)p_result->packetLength);
 
     return APP_STATUS_OK;
 }
@@ -7464,6 +7516,19 @@ AppStatus_t App_NBIoTMgmtSocketWakeTrack(uint8_t deleteStorage)
 
     {
         AppStatus_t mgmtStatus = App_NBIoTTransmitMgmtUdp(deleteStorage);
+
+#if (APP_CLOCK_LSE_STUCK_PERMA_SLEEP_ENABLE == APP_TRUE)
+        /* [LSE-STUCK] 영구 sleep 진입 조건: mgmt LSE_FAIL 전송 성공 확인 시에만.
+         * 전송 실패 시 다음 wake 부팅 확정이 재실패 -> 플래그 재생성 -> 재전송. */
+        if ((mgmtStatus == APP_STATUS_OK) && (App_ClockIsLseStuckFlagged() == APP_TRUE))
+        {
+            APP_LOGW("NBIOT", "[[LSE-STUCK]] mgmt LSE_FAIL delivered -> permanent sleep");
+            /* TODO(게이트 TRUE 전환 시): 모든 wake 타이머 중지 후 STOP 진입 -
+             * UsimHold WUT 폴백 경로의 sleep 진입 시퀀스를 재사용해 연결할 것.
+             * 현재 게이트 FALSE라 이 블록은 컴파일 단계에서 완전히 제거된다. */
+        }
+#endif
+
         /* [QREP-INDEPENDENT] mgmt 성공/실패 무관, 세션 종료 전 독자 판정 */
 #if (APP_TX_QREP_ENABLE == 1u)
         (void)App_NbiotQualityReportMaybeSend();

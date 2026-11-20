@@ -106,6 +106,82 @@ static AppStatus_t App_ClockSwitchRtcSourceKeepingTime(uint32_t targetRtcClockSe
     return APP_STATUS_OK;
 }
 
+/* [LSE-STUCK] 부팅 시점 포그라운드 확정 실패 표식 (세션 내 RAM 전용 - 저장소 불필요).
+ * 크리스털이 진짜 죽었으면 다음 부팅에서도 다시 실패해 플래그가 자연 재생성되고,
+ * 일시적 원인이면 다음 부팅 확정 성공 시 소멸한다(거짓 양성 자가 소멸). */
+static uint8_t g_lseStuckFlagged = APP_FALSE;
+
+uint8_t App_ClockIsLseStuckFlagged(void)
+{
+    return g_lseStuckFlagged;
+}
+
+/* [LSE-STUCK] 포그라운드 LSE 확정 - LSERDY를 동기 대기하고
+ * 정착->전환->CSS 무장까지 완료한다. 실패 시 0 반환 - 호출자는 기존대로 WUT 폴백한다(회귀 없음). */
+uint8_t App_ClockWaitLseForeground(uint32_t timeoutMs)
+{
+    uint32_t start = HAL_GetTick();
+
+    if (App_ClockGetActiveRtcSource() == APP_RTC_CLOCK_SOURCE_LSE)
+    {
+        return APP_TRUE;   /* 이미 확정 - 백업도메인 유지 중 */
+    }
+
+    if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
+    {
+        SET_BIT(RCC->CSR, RCC_CSR_LSEON);   /* 발진 기동 보장 */
+        while ((HAL_GetTick() - start) < timeoutMs)
+        {
+            HAL_Delay(10u);
+            if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == SET)
+            {
+                break;
+            }
+        }
+        if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)
+        {
+            APP_LOGW("CLK", "[[FG-LSE]] not ready in %lu ms -> WUT fallback", (unsigned long)timeoutMs);
+            return APP_FALSE;
+        }
+    }
+
+    HAL_Delay(APP_CLOCK_LSE_POST_READY_SETTLE_MS);
+    if (App_ClockPollLseAndSwitchIfReady() == APP_STATUS_OK) /* 정착->전환->CSS 무장 시퀀스 실행 */
+    {
+        if (App_ClockGetActiveRtcSource() == APP_RTC_CLOCK_SOURCE_LSE)
+        {
+            APP_LOGN("CLK", "[[FG-LSE]] confirmed -> RTC valid (alarm-based hold available)");
+            return APP_TRUE;
+        }
+    }
+    APP_LOGW("CLK", "[[FG-LSE]] switch failed -> WUT fallback");
+    return APP_FALSE;
+}
+
+/* [LSE-STUCK] 부팅 시점 포그라운드 확정 - READY 대기(8s x3 retry)+정착+전환+CSS 무장까지
+ * 동기 완료. 3회 소진 실패 시 stuck 플래그 세트 - mgmt 페이로드에 LSE_FAIL flag가 실린다.
+ * MX_WWDG_Init 이전 호출 전제라 동기 대기 중 WWDG 피드 부담 없음. */
+void App_ClockConfirmLseAtBoot(void)
+{
+    uint32_t attempt;
+
+    g_lseStuckFlagged = APP_FALSE;   /* 세션 신규 판정 - 매 부팅 리셋 */
+
+    for (attempt = 0u; attempt < 3u; attempt++)
+    {
+        if (App_ClockWaitLseForeground(APP_CLOCK_LSE_READY_TIMEOUT_MS) == APP_TRUE)
+        {
+            return;   /* 확정 성공 - 백업도메인이 이후 유지 */
+        }
+        CLEAR_BIT(RCC->CSR, RCC_CSR_LSEON);
+        HAL_Delay(50u);
+        /* 재시도: LSEON 재설정은 WaitLseForeground 내부에서 수행 */
+    }
+
+    g_lseStuckFlagged = APP_TRUE;
+    APP_LOGW("CLK", "[[BOOT-LSE]] 3 attempts exhausted -> LSE stuck flagged (mgmt LSE_FAIL flag armed)");
+}
+
 AppStatus_t App_ClockPollLseAndSwitchIfReady(void)
 {
     if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY) == RESET)

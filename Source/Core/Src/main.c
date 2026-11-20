@@ -400,14 +400,18 @@ int main(void)
   LPTIM1_Start(); //add periodic wakeup source. max 4min
 #endif
 
+  /* [LSE-STUCK] 워치독 기동 직전 부팅 LSE 확정 - READY 대기(8s x3)+정착+전환+CSS 무장
+   * 동기 완료. 이 구간은 MX_WWDG_Init 이전이라 동기 대기 중 피드 부담이 없다.
+   * 실패 시(3회 소진) 부저 알림 1회 - mgmt 페이로드에 LSE_FAIL flag가 실리고,
+   * 전송 성공 + 게이트 TRUE 조건에서만 영구 sleep 훅이 동작한다(기본 게이트 FALSE). */
+  App_ClockConfirmLseAtBoot();
+  if (App_ClockIsLseStuckFlagged() == APP_TRUE)
   {
-    AppStatus_t status;
-    status = App_ClockPollLseAndSwitchIfReady(); /* LSE 준비 확인/전환 */
+    HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_SET);
+    HAL_Delay(3000);
+    HAL_GPIO_WritePin(Piezo_PWM_GPIO_Port, Piezo_PWM_Pin, GPIO_PIN_RESET);
 
-    if(status != APP_STATUS_OK)
-    {
-    //TODO;
-    }
+    APP_LOGW("MAIN", "[[LSE-STUCK]] boot confirm failed -> buzzer + mgmt LSE_FAIL flag armed");
   }
 
   MX_WWDG_Init();

@@ -268,6 +268,15 @@ extern "C" {
 #define APP_MGMT_TX_SERVICE_STAT_TAG                (0xD3u)
 #define APP_MGMT_TX_SERVICE_STAT_PAYLOAD_LEN        (3u)  
 
+/* [LSE-STUCK] device-health 트레일러(tag 0xD4): LSE 확정 실패 시에만 부가.
+ * 정상 단말 프레임은 1바이트도 변하지 않는다(조건부 append).
+ * payload(1바이트): bit0=LSE_FAIL. 영구 sleep 게이트는 기본 FALSE -
+ * 서버 판정 플로우 실측 후 TRUE 전환한다. */
+#define APP_MGMT_TX_APPEND_HEALTH_ENABLE            (APP_TRUE)
+#define APP_MGMT_TX_HEALTH_TAG                      (0xD4u)
+#define APP_MGMT_TX_HEALTH_PAYLOAD_LEN              (1u)
+#define APP_CLOCK_LSE_STUCK_PERMA_SLEEP_ENABLE      (APP_FALSE)
+
 /* NFC production hardening */
 #define APP_NFC_MASTER_KEY_BYTES                      { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C }
 #define APP_NFC_TEMP_THRESHOLD_MIN_X10               (-400)
